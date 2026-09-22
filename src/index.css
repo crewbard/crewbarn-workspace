@@ -1,0 +1,366 @@
+﻿@import "tailwindcss";
+
+html { scrollbar-gutter: stable; }
+
+.cb-loading-region {
+  min-height: min(24rem, 60vh);
+  padding: 1.5rem;
+  border-radius: .75rem;
+  background: white;
+  color: #64748b;
+}
+.cb-loading-region::after {
+  content: '';
+  display: block;
+  height: 12rem;
+  margin-top: 1rem;
+  border-radius: .5rem;
+  background: repeating-linear-gradient(to bottom, #f1f5f9 0, #f1f5f9 2rem, transparent 2rem, transparent 3rem);
+}
+/* Details occupy reserved space; hover cannot resize a notification. */
+.cb-toast-stack {
+  position: fixed;
+  top: 5rem;
+  right: 1rem;
+  z-index: 200;
+  width: min(24rem, calc(100vw - 2rem));
+  max-height: calc(100dvh - 6rem);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+  display: flex;
+  flex-direction: column;
+  gap: .75rem;
+  pointer-events: auto;
+}
+.cb-notification {
+  pointer-events: auto;
+  flex: none;
+  box-sizing: border-box;
+  height: 16rem;
+  width: 100%;
+  display: grid;
+  grid-template-rows: 2rem 3.75rem 1.5rem minmax(0, 1fr);
+  padding: .75rem 1rem;
+  border: 1px solid #e2e8f0;
+  border-top: 3px solid #e8902c;
+  border-radius: .75rem;
+  background: white;
+  box-shadow: 0 8px 24px #0f172a20;
+  color: #92400e;
+}
+.cb-notification-violet { border-top-color: #7c3aed; color: #6d28d9; }
+.cb-notification-rose { border-top-color: #e11d48; color: #be123c; }
+.cb-notification-details { overflow-y: auto; overscroll-behavior: contain; }
+@media (hover: hover) and (pointer: fine) {
+  .cb-notification-details { visibility: hidden; }
+  .cb-notification:hover .cb-notification-details,
+  .cb-notification:focus-within .cb-notification-details,
+  .cb-notification[data-expanded="true"] .cb-notification-details { visibility: visible; }
+}
+
+@theme {
+  /* Brand colors */
+  --color-navy-50:  #F0F2F7;
+  --color-navy-100: #D9DEE8;
+  --color-navy-200: #A8B3C8;
+  --color-navy-300: #7588A8;
+  --color-navy-400: #4D6588;
+  --color-navy-500: #2D4368;
+  --color-navy-600: #1F2F4D;
+  --color-navy-700: #162038;
+  --color-navy-800: #0F1A2E;
+  --color-navy-900: #0A1220;
+
+  --color-amber-50:  #FDF7EE;
+  --color-amber-100: #FAEBD3;
+  --color-amber-200: #F4D7A1;
+  --color-amber-300: #EEBD6F;
+  --color-amber-400: #EAA947;
+  --color-amber-500: #E8902C;
+  --color-amber-600: #C57519;
+  --color-amber-700: #9C5C14;
+  --color-amber-800: #75450F;
+  --color-amber-900: #4F2E0A;
+
+  --color-success: #15803D;
+  --color-warning: #CA8A04;
+  --color-danger:  #B91C1C;
+  --color-info:    #1D4ED8;
+
+  --color-background: #F1F5F9;
+  --color-surface:    #FFFFFF;
+  --color-border:     #E7E5E4;
+
+  /* The runtime appearance setting rewrites --ui-font. Keep the design-system
+   * sans token linked to it so Tailwind's font-sans utilities follow too. */
+  --font-sans: var(--ui-font);
+  --font-mono: "JetBrains Mono", "Fira Code", monospace;
+
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --radius-lg: 8px;
+  --radius-xl: 12px;
+}
+
+html, body, #root {
+  height: 100%;
+}
+
+/* Rem-based utility sizes and inherited form text now respond to the user's
+ * reading-size choice instead of changing only unstyled body copy. */
+html {
+  font-size: var(--ui-base, 16px);
+}
+
+/* Navigation chrome surface color — overwritten at runtime by the theme
+ * provider from the user's saved choice. Seeded here (navy default) so the
+ * top bar / sidebar paint correctly before JS hydrates. */
+:root {
+  --chrome-bg: #0F1A2E;
+}
+
+/* Brand accent — a tenant's accent choice flows through EVERY amber-* utility
+ * without touching components. Tailwind v4 compiles `bg-amber-500` etc. to
+ * `var(--color-amber-<shade>)`; we point those at `--accent-<shade>`, seeded
+ * to the exact amber ramp so the default look is unchanged. useTheme rewrites
+ * `--accent-*` on <html> from the saved accent (see lib/accentColors.ts).
+ * Unlayered so it wins over Tailwind's @theme defaults; seeded here so there's
+ * no flash before JS hydrates. */
+:root {
+  --accent-50:  #FDF7EE;
+  --accent-100: #FAEBD3;
+  --accent-200: #F4D7A1;
+  --accent-300: #EEBD6F;
+  --accent-400: #EAA947;
+  --accent-500: #E8902C;
+  --accent-600: #C57519;
+  --accent-700: #9C5C14;
+  --accent-800: #75450F;
+  --accent-900: #4F2E0A;
+  --accent-950: #451A03;
+
+  /* Named roles for the branding preview + swatches. */
+  --accent:        var(--accent-500);
+  --accent-soft:   var(--accent-50);
+  --accent-border: var(--accent-200);
+  --accent-text:   var(--accent-700);
+
+  /* Remap the amber design tokens onto the accent ramp. */
+  --color-amber-50:  var(--accent-50);
+  --color-amber-100: var(--accent-100);
+  --color-amber-200: var(--accent-200);
+  --color-amber-300: var(--accent-300);
+  --color-amber-400: var(--accent-400);
+  --color-amber-500: var(--accent-500);
+  --color-amber-600: var(--accent-600);
+  --color-amber-700: var(--accent-700);
+  --color-amber-800: var(--accent-800);
+  --color-amber-900: var(--accent-900);
+  --color-amber-950: var(--accent-950);
+
+  /* Typography controls (Branding & appearance). Seeded to the current look —
+   * 16px is the app's prior implicit base, so the default is unchanged. */
+  --ui-font: "Inter", system-ui, -apple-system, sans-serif;
+  --ui-base: 16px;
+}
+
+html[data-density="compact"] {
+  --app-row-py: 0.625rem;
+  --app-section-py: 1rem;
+}
+
+html[data-density="dense"] {
+  --app-row-py: 0.45rem;
+  --app-section-py: 0.75rem;
+}
+
+body {
+  font-family: var(--ui-font, var(--font-sans));
+  font-size: 1rem;
+  background-color: var(--color-background);
+  color: var(--color-navy-800);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+button,
+input,
+select,
+textarea {
+  font-family: inherit;
+}
+
+code, pre, kbd {
+  font-family: var(--font-mono);
+}
+
+/* ============================================================ */
+/* Animated gradient background for login page right pane       */
+/* ============================================================ */
+
+.gradient-animated {
+  background: linear-gradient(
+    135deg,
+    #0F1A2E 0%,
+    #1F2F4D 25%,
+    #2D4368 50%,
+    #C57519 75%,
+    #E8902C 100%
+  );
+  background-size: 400% 400%;
+  animation: gradientShift 24s ease infinite;
+}
+
+@keyframes gradientShift {
+  0% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+  100% { background-position: 0% 50%; }
+}
+
+/* Floating blobs add depth and motion */
+.gradient-blob-1,
+.gradient-blob-2,
+.gradient-blob-3 {
+  filter: blur(60px);
+  opacity: 0.5;
+  mix-blend-mode: overlay;
+  pointer-events: none;
+}
+
+.gradient-blob-1 {
+  background: radial-gradient(circle at 30% 30%, #E8902C 0%, transparent 50%);
+  animation: blobFloat1 18s ease-in-out infinite;
+}
+
+.gradient-blob-2 {
+  background: radial-gradient(circle at 70% 60%, #4D6588 0%, transparent 50%);
+  animation: blobFloat2 22s ease-in-out infinite;
+}
+
+.gradient-blob-3 {
+  background: radial-gradient(circle at 50% 80%, #EEBD6F 0%, transparent 50%);
+  animation: blobFloat3 26s ease-in-out infinite;
+}
+
+@keyframes blobFloat1 {
+  0%, 100% { transform: translate(0%, 0%) scale(1); }
+  33%      { transform: translate(15%, 10%) scale(1.1); }
+  66%      { transform: translate(-10%, 20%) scale(0.95); }
+}
+
+@keyframes blobFloat2 {
+  0%, 100% { transform: translate(0%, 0%) scale(1); }
+  33%      { transform: translate(-15%, -10%) scale(1.05); }
+  66%      { transform: translate(20%, 5%) scale(1.1); }
+}
+
+@keyframes blobFloat3 {
+  0%, 100% { transform: translate(0%, 0%) scale(1); }
+  50%      { transform: translate(10%, -15%) scale(1.15); }
+}
+
+/* Respect users who prefer reduced motion */
+@media (prefers-reduced-motion: reduce) {
+  .gradient-animated,
+  .gradient-blob-1,
+  .gradient-blob-2,
+  .gradient-blob-3 {
+    animation: none;
+  }
+}
+
+/* ============================================================ */
+/* On-site pulse — a job whose tech is on site right now gently  */
+/* breathes a translucent green↔amber wash OVER the card so the  */
+/* dispatcher's eye is drawn to live jobs. Low opacity + slow on */
+/* purpose (a soft glow, never a flash).                         */
+/* ============================================================ */
+.onsite-pulse {
+  position: relative;
+}
+.onsite-pulse::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  animation: onsitePulse 2.8s ease-in-out infinite;
+}
+@keyframes onsitePulse {
+  0%, 100% { background-color: rgba(16, 185, 129, 0.14); }  /* faint emerald */
+  50%      { background-color: rgba(245, 158, 11, 0.20); }  /* faint amber */
+}
+@media (prefers-reduced-motion: reduce) {
+  /* Steady, even fainter wash instead of motion. */
+  .onsite-pulse::after {
+    animation: none;
+    background-color: rgba(16, 185, 129, 0.12);
+  }
+}
+
+/* Left-site flag — the tech left the geofence with an open visit (checkout
+ * needed). Static, not pulsing: a faint rose wash + a solid rose left bar so
+ * it reads at a glance on the compact Week/Day cards. Suppresses the green
+ * on-site pulse (we apply one OR the other). */
+.leftsite-flag {
+  position: relative;
+  box-shadow: inset 3px 0 0 #f43f5e; /* rose-500 left accent */
+}
+.leftsite-flag::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  background-color: rgba(244, 63, 94, 0.12); /* faint rose */
+}
+
+/* Zebra striping — every other tbody row gets a very faint slate tint
+ * for readability across long lists. Hover state still darkens normally.
+ * Opt out per-table by adding data-no-stripe on the table or the row. */
+table:not([data-no-stripe]) > tbody > tr:nth-child(even):not([data-no-stripe]) {
+  background-color: rgb(241 245 249 / 0.85); /* slate-100 @ 85% */
+}
+
+/* Hover state — darker than the stripe so hovering is always distinguishable.
+ * !important so this beats any per-row `hover:bg-slate-50` Tailwind class. */
+table:not([data-no-stripe]) > tbody > tr:not([data-no-stripe]):hover {
+  background-color: rgb(226 232 240) !important; /* slate-200 */
+}
+
+/* Browser appearance preferences. These are intentionally broad, light-touch
+ * overrides so users can make the app fit smaller monitors without every page
+ * needing its own setting. */
+html[data-page-width="wide"] .max-w-4xl,
+html[data-page-width="wide"] .max-w-5xl,
+html[data-page-width="wide"] .max-w-6xl,
+html[data-page-width="wide"] .max-w-7xl {
+  max-width: 92rem;
+}
+
+html[data-page-width="full"] .max-w-4xl,
+html[data-page-width="full"] .max-w-5xl,
+html[data-page-width="full"] .max-w-6xl,
+html[data-page-width="full"] .max-w-7xl {
+  max-width: none;
+}
+
+html[data-density="compact"] table > tbody > tr > td,
+html[data-density="compact"] table > thead > tr > th {
+  padding-top: 0.5rem;
+  padding-bottom: 0.5rem;
+}
+
+html[data-density="dense"] table > tbody > tr > td,
+html[data-density="dense"] table > thead > tr > th {
+  padding-top: 0.35rem;
+  padding-bottom: 0.35rem;
+}
+
+html[data-density="dense"] .rounded-xl {
+  border-radius: 0.5rem;
+}
+.job-form-right-rail > * + * {
+  margin-top: 1rem;
+}

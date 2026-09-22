@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64">
+  <style>
+    .cee { stroke: #0F1A2E; }
+    @media (prefers-color-scheme: dark) { .cee { stroke: #FFFFFF; } }
+  </style>
+  <path d="M51 27 L32 13 L13 27" fill="none" stroke="#F59E0B"
+        stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/>
+  <path class="cee" d="M14 27 V38 q0 8 8 8 h20" fill="none"
+        stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>

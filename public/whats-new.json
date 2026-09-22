@@ -1,0 +1,144 @@
+{
+  "releases": [
+    {
+      "version": "2026-09-22a",
+      "items": [
+        "Tool Shed \u2192 Modules is now a builder: tick the parts of CrewBarn this shop actually uses and everything else leaves the navigation, the Tool Shed and the phone apps \u2014 for everyone here, not just you. 22 areas instead of the old four, each showing what it unlocks. Start from a preset (Scheduling & billing, Dispatch-heavy, Office only, Parts & stock, Everything) and change anything after. Turning things off doesn\u2019t change your bill \u2014 CrewBarn is priced per person who signs in; this changes what your app looks like, not what it costs",
+        "Modules that need each other say so before you find out the hard way: switching off Inventory also removes Purchasing, Accounting takes Payroll with it, and a module whose requirement is off can\u2019t be ticked until you turn that back on",
+        "Self-hosted CrewBarn \u2192 Quick setup: fixed three things that could stall a deploy. Cloudflare won\u2019t let our link pre-select the Pages permission, so the page now shows the three permission rows your token needs and marks the one to add by hand \u2014 and a token without it is refused when you paste it, instead of failing minutes later mid-deploy",
+        "Quick setup: a subdomain is no longer reported as \u201calready taken\u201d because of a wildcard DNS record \u2014 that made every name you tried look used. When something genuinely is on that address the message now names it (including \u201cthat\u2019s your CrewBarn website\u201d) and says what to do",
+        "Quick setup: the \u201cOpen it (first time)\u201d link now waits until Cloudflare has finished issuing the certificate, so clicking it can\u2019t land on a timeout that looks like a broken deploy \u2014 and the link survives a server cache clear instead of disappearing",
+        "connect.crewbarn.com now has Website Builder, so a workspace on the Self-hosted plan can build and publish its site without the full web app"
+      ]
+    },
+    {
+      "version": "2026-09-21b",
+      "items": [
+        "Security: two-factor sign-in can no longer be skipped by the sign-in request itself — an account that requires 2FA is always challenged, on the web and in the phone app (a very old app build gets “update the app” instead of a pass)",
+        "Security: names, addresses and notes merged into invoice, contract and agreement documents are treated as text, never as HTML — and the previews here and on the customer portal are sanitized before they render. Templates look the same; only markup smuggled in through customer data is stripped",
+        "Security: every page now sends HSTS, nosniff, frame-options and referrer-policy headers; a Content-Security-Policy runs in report-only mode, switchable from Platform admin → Platform integrations → Security (Off / Report only / Enforce) with the browser reports listed there",
+        "Tax classes: the “Seed default tax class” box is gone — New tax class → Prefill from ZIP does the same lookup and lets you check the components before saving. (ZIP lookup itself is fixed: it was sending your zip.tax key to TaxJar.)",
+        "Platform admin → Security: one page with every control (2FA enforcement, database isolation, browser policy, bot check, debug/log level, DB encryption), live row-level-security check on every tenant table, who holds platform access and their 2FA, installed-package advisories (nightly + Run now), Net2Phone webhook exposure, sign-in failures (24h/7d) with the event trail, and the platform-admin access log. The Content-Security-Policy switch moved here from Integrations",
+        "Sign-in: five wrong “re-enter your password” answers a minute (delete confirmation, change password, deletion codes) and you wait a minute; changing your password now signs out your other devices",
+        "Beta: a shared invite code stops when the spots are gone and brings at most 10 crew logins; the /beta application can no longer rewrite someone who has already been invited",
+        "Net2Phone: Settings → Communication → “Require a key in the callback URL” puts a secret in your webhook address so nobody else can post into your inbox; media links in inbound texts are only fetched from public hosts",
+        "API tokens now always expire (default one year, up to ten) and cannot change account security, mint credentials, edit provider settings or manage staff — that needs a signed-in session",
+        "Platform: dependencies updated (38 known advisories to zero); platform-admin writes made without an acting tenant land in the admin’s own workspace",
+        "Smoother loads: the shell remembers your permissions, enabled modules and plan between visits, so the navigation paints complete on the first frame instead of filling in a beat later; admin, Tool Shed and reporting pages now download only when you open them (main bundle −15%)",
+        "Customer app builder: uploaded icons are fitted, never cropped — a wide logo keeps its ends — and Android gets a separate safe-zone icon so the launcher's round/squircle mask doesn't clip it",
+        "Platform admin → Customer app: build CrewBarn's own app — the whole customer portal (every provider, marketplace, requests, estimates, invoices, reviews) in a native shell — through the same pipeline as tenant apps, no charge",
+        "Customer app: the page now tells you when there's a newer app than the one you built — “App update available — N changes since this build” with the list of what changed — or “Up to date”. (Builds from before today didn't record their version; the next build will.)",
+        "Customer app: “Request service” now asks Service or Estimate first — Estimate opens a draft estimate on the customer's record (photos attached, office notified) instead of a job request; the customer sees it under Estimates",
+        "Platform admin → Customer app: a QR code to install the test build on a phone, same as the tenant page",
+        "Customer apps: an over-the-air update channel. Platform admin → Customer app → “Publish update to all apps” ships app-code fixes (security, screens, copy) to every installed app — every tenant's and CrewBarn's — with no store build; phones pick it up on next launch. Your customer app page shows what was last pushed. Only builds made from today on listen for these, so one more store build is needed first",
+        "Portal: the account-type choice is a compact one-row control; photo/video buttons are proper tiles, thumbnails open full-screen (videos play), and “send where I am” sits under the location on a service request",
+        "Settings → AI → Provider and model: “Where AI runs, and what runs it” — every AI job in CrewBarn (CBI, call transcripts, intake drafts, photo part-match, reading text off photos, document extraction, part research, reminders, learning, importer) with the engine your saved settings would use for each, a tick when it would work, and one recommendation for all of it (Claude Sonnet 5) with a button to select it. The model list now has the current Claude family: Sonnet 5, Opus 5, Fable 5.1, Haiku 4.5",
+        "Messages: photos people text in open in a full-screen viewer — scroll or pinch to zoom (up to 8×), drag to pan, rotate, arrow through a message's photos — with Sharpen / Brighten / Contrast sliders, B&W and an Auto preset. Sharpening works on the photo's real pixels, so it holds up when you zoom in",
+        "Messages: “Read text with AI” in the photo viewer — zoom in on the stamping on a key bow, VIN plate or cylinder and the AI (your own key, Settings → AI) reads the code exactly as it sees it, marks characters it isn't sure of (0/O, 1/I, 5/S…) with alternatives, and the reading stays under the photo for whoever opens the thread next. It reads what's on your screen — crop, rotation and clean-up included — so zoom in first. Or press Select and drag a box around the numbers with your mouse or finger: only what's inside the box gets read. The AI also gets an auto-cleaned copy (grayscale, contrast stretched, sharpened) so you don't have to tune the sliders first, and the result shows what it saw and how many pixels of the original that was — a tiny area is flagged, and an unreadable one comes back as nothing rather than a guess. VINs prove themselves: the check digit is verified, a doubtful 5/S or 8/B is settled by it, the model year is shown, and a VIN that doesn't check is flagged before it goes on a key order"
+      ]
+    },
+    {
+      "version": "2026-09-21a",
+      "items": [
+        "Two plans now: Self-hosted (connect.crewbarn.com + the API + the open-source tenant page on your own domain + the phone app) and Hosted (adds the full web app here). Same $150 base, different seat price — pick or switch under Tool Shed → Subscription; seats re-price prorated",
+        "connect.crewbarn.com is live: sign in with your CrewBarn login to buy seats, set your CBI key, create API tokens, activate self-hosted domains, read the endpoint guide, build your customer app, and download the open-source tenant page",
+        "Self-hosted CrewBarn → Quick setup on connect.crewbarn.com: pick a subdomain and CrewBarn deploys the open-source console into your own Cloudflare account, wires the domain, and opens it already connected — updates pushable from the same page",
+        "Website Builder → Layout & hero image: upload a favicon (the browser-tab icon) for your website; your logo is used until you do",
+        "app.crewbarn.com/beta: the CrewBarn hero with an invite-code box. A code (Platform admin → Applicants → New code, or Invite on an application; 30 days, one use) opens the sign-up right there — company, trade, crew emails, password — and the crew get phone-app logins when the owner confirms. Free CrewBarn for life, bring your own keys."
+      ]
+    },
+    {
+      "version": "2026-09-20g",
+      "items": [
+        "Tool Shed → Subscription: CrewBarn’s plan is live — $150/month for your company and one admin, $35/month for each additional person who signs in. Crew without a login and API tokens are free",
+        "Subscribe on a secure Stripe page, change your seat count any time, manage the card and invoices on the billing portal. Nothing changes for you until you subscribe",
+        "If a payment fails you get a grace period (banner at the top), then the account goes read-only until it’s fixed — nothing is ever deleted",
+        "Tool Shed → Self-hosted Console: run the open-source CrewBarn console on your own domain. Activate each domain with a token (shown once); it follows your subscription — free is read-only — and rotates monthly. Your data and keys stay on CrewBarn"
+      ]
+    },
+    {
+      "version": "2026-09-20f",
+      "items": [
+        "Tool Shed → API Endpoint Guide: a browsable guide to the API (customers, jobs, estimates, invoices, payments, catalog, inventory, assets, purchasing, staff, communications, reports) with copy-paste examples",
+        "CBI is in the guide too: POST /v1/ai/chat (and /voice, /speech) so your own systems can ask CrewBarn questions or have it book a job — runs as the token’s user, on your own AI key",
+        "CBI calls are now rate-limited (30/min chat and voice, 60/min speech) so a runaway script can’t burn your AI key"
+      ]
+    },
+    {
+      "version": "2026-09-20e",
+      "items": [
+        "Notifications: a customer's shared location opens on a map right there, with Directions, Open customer, and Open job (or Create job) buttons",
+        "Customer App: the app is native now — real screens over your data (request with the camera, tech on the way, approve estimates, pay invoices, share location, call) instead of the website in a box; rebuild to get it"
+      ]
+    },
+    {
+      "version": "2026-09-20d",
+      "items": [
+        "Website Builder: Add page is now a proper window — pick service / service-area / blog post, name it, tell it what to say, and Write it with AI (grounded in your real services and cities); drop a picture on it, read it over, add",
+        "Customer App: the app is unlocked with a token — buy one on the page (the token is emailed to you and shown right there), or enter one CrewBarn gave you; another token adds more builds"
+      ]
+    },
+    {
+      "version": "2026-09-20b",
+      "items": [
+        "Website Builder: + Add page — a service page, a service-area page for a city you work in (\"Locksmith in Palm Bay, FL\"), or a blog post; delete any you added",
+        "Website Builder: every page can have a picture — upload it on the page, it shows beside the heading (or on the blog card and post)",
+        "Tenant websites: the blog is a real blog now — featured post, picture cards, categories you can filter, dates; posts sort newest first",
+        "Tenant websites: Service areas pages list every city page and link to your services; they feed Google your service area too",
+        "Tenant websites: the Contact page shows your office address and website again (it never did — wrong field)"
+      ]
+    },
+    {
+      "version": "2026-09-20a",
+      "items": [
+        "Website Builder: new Search engines card — your sitemap, robots.txt and business schema are built for you from what you save (nothing to regenerate), with a checklist of what feeds them and a one-click validator",
+        "Tenant websites: every page now carries a full business schema (type, phone, address, service area, services, your Google listing) and a canonical address, so Google puts YOUR number next to YOUR name; sitemap.xml + robots.txt on every site"
+      ]
+    },
+    {
+      "version": "2026-09-19g",
+      "items": [
+        "This update card now lists only what changed since you last saw it, and scrolls when the list is long",
+        "Customer App: every build now also makes a test version you can install on an Android phone to try the app before listing it — it does not use up a build",
+        "Customer portal: a company's app branding only shows inside that company's app — portal.crewbarn.com always looks like CrewBarn"
+      ]
+    },
+    {
+      "version": "2026-09-19e",
+      "items": [
+        "Customer App: a build that fails on CrewBarn's side (or goes silent for 2 hours) is given back — it never counts against your three; Cancel build if one gets stuck"
+      ]
+    },
+    {
+      "version": "2026-09-19d",
+      "items": [
+        "Customer App: click Build and watch it happen — a live build console shows each step as the pipeline reports it, with the elapsed clock and the downloads when it's done (Watch build reopens it any time)"
+      ]
+    },
+    {
+      "version": "2026-09-19c",
+      "items": [
+        "Tool Shed → Customer App: your own branded app for the Play Store and App Store — name it, upload an icon, pick the features, pay once, build, and list it from your own developer accounts (step-by-step included)",
+        "Customer portal: requesting service or an estimate now takes photos and a short video (BarnCam) — they land on the job for the tech",
+        "Customer page: the primary contact cell shows name, phone and the whole email",
+        "Estimates: Files view is now the same cabinet as Jobs — Year → Month, with Won / Lost / Dormant tiles (dormant = sent, unanswered, untouched 14+ days) that filter the folder; estimates file by the date they went out, not the day they were imported",
+        "Jobs: month folders also show Completed vs Still open, and each tile filters the folder",
+        "Jobs: Invoiced and Paid are gone from the job Status list — a job ends at Complete; billed and collected show on the invoice. Jobs that were in those statuses now read Complete.",
+        "Dispatch: each tech now reads Live · Open or Live · Closed — whether their app is on screen or running in the background (phone update needed)",
+        "Jobs: the invoice opens on top of the job (View invoice) instead of taking you to another page — send, mark paid, charge the terminal and print from there",
+        "Jobs: marking a job Complete creates its invoice right away, so Charge on terminal and View invoice appear without clicking Invoice Job",
+        "Dispatch: an accepted portal request leaves the Estimate requests panel once its job is scheduled",
+        "Hiring: moving an applicant to Interview asks for the date, time and place — they get it by email and text, can confirm or ask for a different time from their job-board page, and you accept it or propose another right on the applicant card",
+        "Hiring: Hire from the applicant card — pick the role (that sets their app permissions), field app / employee portal, wage; the set-up link goes to their email and phone and shows on their job-board page",
+        "Hiring: resumes and license photos open in an overlay, not a new tab",
+        "GoDaddy Payments: live updates — a charge taken in the GoDaddy app on a tech's phone lands on the job by itself (map each phone to its tech under Payments → Devices)",
+        "Hiring: postings can require driver's license photos (front and back) — applicants use their phone camera, or scan a QR code from a computer; you see both on the application",
+        "Customer portal: Pay by bank transfer — customers see your bank details and tell you when they've sent it",
+        "Portal requests now create the estimate or job on the customer's account, land in Dispatch → Needs scheduling, and show on the dashboard",
+        "Tool Shed → Payments: connect your business checking so bank transfers match to invoices on their own",
+        "Every job email and text links the customer to that job in their portal",
+        "GoDaddy Payments: transactions sync into Accounting → Card processor"
+      ]
+    }
+  ]
+}

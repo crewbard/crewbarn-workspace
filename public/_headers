@@ -1,0 +1,9 @@
+# Static hardening for every response. The Content-Security-Policy itself is
+# set per request by functions/_middleware.js from the switch on Platform
+# admin → Security, so it can move off → report → enforce without a deploy.
+/*
+  Strict-Transport-Security: max-age=31536000; includeSubDomains
+  X-Content-Type-Options: nosniff
+  X-Frame-Options: SAMEORIGIN
+  Referrer-Policy: strict-origin-when-cross-origin
+  Permissions-Policy: camera=(self), microphone=(self), geolocation=(self), usb=(), interest-cohort=()

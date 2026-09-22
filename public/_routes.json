@@ -1,0 +1,5 @@
+{
+  "version": 1,
+  "include": ["/*"],
+  "exclude": ["/assets/*", "/*.js", "/*.css", "/*.map", "/*.png", "/*.jpg", "/*.svg", "/*.ico", "/*.json", "/*.webmanifest", "/*.woff", "/*.woff2", "/*.txt"]
+}

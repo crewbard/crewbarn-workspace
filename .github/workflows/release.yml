@@ -1,0 +1,26 @@
+# Tag a version (git tag v1.0.0 && git push --tags) and this builds the
+# dashboard and attaches a ready-to-host zip to the GitHub release. CrewBarn's
+# Quick setup downloads the latest release's zip and uploads it to the
+# workspace's own Cloudflare Pages.
+name: Release
+on:
+  push:
+    tags: ['v*']
+permissions:
+  contents: write
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+      - run: cd dist && zip -r ../crewbarn-work-dashboard-${{ github.ref_name }}.zip .
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: crewbarn-work-dashboard-${{ github.ref_name }}.zip
+          generate_release_notes: true
