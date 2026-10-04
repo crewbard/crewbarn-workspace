@@ -172,6 +172,19 @@ export function HelpPanel({
           </span>
         </label>
 
+        <div className="border-b border-slate-200 bg-white px-5 py-2.5">
+          <Link
+            to="/onboarding"
+            onClick={onClose}
+            className="text-sm font-semibold text-amber-700 underline decoration-amber-300 underline-offset-4 hover:text-amber-800"
+          >
+            Open the automated onboarding walkthrough with audio
+          </Link>
+          <span className="ml-2 hidden text-xs text-slate-500 sm:inline">
+            It only starts after you select the walkthrough link on the onboarding screen.
+          </span>
+        </div>
+
         <div className="border-b border-slate-200 p-3 sm:hidden">
           <label className="block text-xs font-medium text-slate-600">
             Help topic

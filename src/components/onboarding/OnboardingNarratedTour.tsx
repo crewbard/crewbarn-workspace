@@ -36,8 +36,10 @@ export function OnboardingNarratedTour() {
     tour.drive()
   }
 
-  return <div className="flex flex-wrap items-center gap-2">
-    <button type="button" onClick={startTour} className="rounded-lg bg-amber-500 px-3 py-2 text-sm font-semibold text-white hover:bg-amber-600">{hasCompleted ? 'Replay audio walkthrough' : 'Start audio walkthrough'}</button>
-    <button type="button" onClick={() => setAudioOn((current) => { if (current) stopNarration(); return !current })} aria-pressed={audioOn} className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-navy-700 hover:border-amber-300">Audio {audioOn ? 'on' : 'off'}</button>
+  return <div className="mt-4 flex flex-wrap items-center gap-x-4 gap-y-2">
+    <button type="button" onClick={startTour} className="text-sm font-semibold text-amber-700 underline decoration-amber-300 underline-offset-4 hover:text-amber-800">
+      {hasCompleted ? 'Replay automated walkthrough with audio' : 'Automated walkthrough with audio'}
+    </button>
+    <button type="button" onClick={() => setAudioOn((current) => { if (current) stopNarration(); return !current })} aria-pressed={audioOn} className="text-xs font-semibold text-slate-500 underline decoration-slate-300 underline-offset-4 hover:text-navy-800">Audio {audioOn ? 'on' : 'off'}</button>
   </div>
 }

@@ -112,6 +112,7 @@ export function OnboardingOverlay({ open, onClose, startAtFirst = false }: Onboa
                 A short list, in order. Stop whenever you like and pick it up later — nothing here
                 goes out to a customer until the last step.
               </p>
+              <OnboardingNarratedTour />
 
               </div>
               {onboarding && (
@@ -201,7 +202,6 @@ export function OnboardingOverlay({ open, onClose, startAtFirst = false }: Onboa
 
             <main className="max-h-[calc(100vh-3rem)] min-h-[640px] overflow-y-auto bg-slate-50 p-6">
               <div className="flex flex-wrap items-center justify-between gap-3">
-                <OnboardingNarratedTour />
                 {onboarding && (
                   <button
                     type="button"
