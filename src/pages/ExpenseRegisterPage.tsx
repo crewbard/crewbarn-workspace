@@ -3,6 +3,8 @@ import type { FormEvent } from 'react'
 import { Link } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { apiRequest } from '@/lib/api'
+import { useTheme } from '@/hooks/useTheme'
+import { EasyPageHeading } from '@/components/easy/EasyPageHeading'
 import { tenantDate, useTenantTimezone } from '@/hooks/useTenantTime'
 import type { PaginatedResponse } from '@/types/api'
 
@@ -100,6 +102,8 @@ function downloadCsv(filename: string, headers: string[], rows: unknown[][]) {
 }
 
 export function ExpenseRegisterPage() {
+  const { theme } = useTheme()
+  const easy = theme === 'easy-side' || theme === 'easy-top'
   const queryClient = useQueryClient()
   const tenantTimezone = useTenantTimezone()
   const today = tenantDate(tenantTimezone)
@@ -275,13 +279,15 @@ export function ExpenseRegisterPage() {
   return (
     <div className="min-h-screen bg-slate-100 px-4 py-4 text-slate-950 sm:px-6 sm:py-6 2xl:px-8">
       <div className="mx-auto w-full max-w-none space-y-6">
-        <header className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
-          <div>
+<header data-easy-accounting-header={easy || undefined} className={easy ? 'flex min-w-0 w-full flex-col items-stretch gap-4' : 'flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between'}>
+          <div className={easy ? 'min-w-0 w-full' : undefined}>
+            {easy ? <EasyPageHeading title="Expense register" description="Record company spending, review receipts, and manage reimbursements. Use the filters below to find an expense." /> : <>
             <p className="text-xs font-semibold uppercase tracking-wide text-amber-700">Accounting</p>
             <h1 className="mt-1 text-2xl font-semibold text-slate-900">Expense Register</h1>
             <p className="mt-2 max-w-3xl text-slate-600">
               Track fuel, vendor bills, job materials, tech reimbursements, and company overhead before bank match, payroll, and reports.
             </p>
+            </>}
           </div>
           <a className="rounded-md border border-slate-300 bg-white px-4 py-2 font-semibold text-slate-700 shadow-sm" href="/accounting/expenses">
             Back to expense workspace
@@ -289,9 +295,9 @@ export function ExpenseRegisterPage() {
         </header>
 
         <section className="grid gap-3 md:grid-cols-3">
-          <SummaryTile label="Current filter total" value={dollars(subtotal + taxTotal)} />
-          <SummaryTile label="Tax in filter" value={dollars(taxTotal)} />
-          <SummaryTile label="Pending reimbursement exposure" value={dollars(reimbursableTotal)} />
+          <SummaryTile label="Expenses on this page" value={expensesQ.isError ? 'Unavailable' : expensesQ.isLoading ? '...' : dollars(subtotal + taxTotal)} />
+          <SummaryTile label="Tax on this page" value={expensesQ.isError ? 'Unavailable' : expensesQ.isLoading ? '...' : dollars(taxTotal)} />
+          <SummaryTile label="Reimbursable expenses on this page" value={expensesQ.isError ? 'Unavailable' : expensesQ.isLoading ? '...' : dollars(reimbursableTotal)} />
         </section>
 
         <section className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
@@ -367,7 +373,7 @@ export function ExpenseRegisterPage() {
         </section>
 
         <section className="rounded-lg border border-slate-200 bg-white shadow-sm">
-          <div className="grid gap-3 border-b border-slate-200 p-4 lg:grid-cols-12">
+          <div data-easy-filter-grid className="grid gap-3 border-b border-slate-200 p-4 lg:grid-cols-12">
             <input className="rounded-md border border-slate-300 px-3 py-2 lg:col-span-3" placeholder="Search description, ref, notes..." value={filters.q} onChange={(e) => { setPage(1); setFilters((old) => ({ ...old, q: e.target.value })) }} />
             <input className="rounded-md border border-slate-300 px-3 py-2 lg:col-span-2" type="date" value={filters.date_from} onChange={(e) => { setPage(1); setFilters((old) => ({ ...old, date_from: e.target.value })) }} />
             <input className="rounded-md border border-slate-300 px-3 py-2 lg:col-span-2" type="date" value={filters.date_to} onChange={(e) => { setPage(1); setFilters((old) => ({ ...old, date_to: e.target.value })) }} />
@@ -450,6 +456,11 @@ export function ExpenseRegisterPage() {
               <tbody>
                 {expensesQ.isLoading ? (
                   <tr><td className="px-4 py-8 text-center text-slate-500" colSpan={9}>Loading expenses...</td></tr>
+                ) : expensesQ.isError ? (
+                  <tr><td className="px-4 py-8 text-center text-red-700" colSpan={9}>
+                    <div role="alert">Expenses could not be loaded.</div>
+                    <button type="button" onClick={() => void expensesQ.refetch()} className="mt-2 rounded-md border border-red-300 px-3 py-2 font-semibold">Try again</button>
+                  </td></tr>
                 ) : expenses.length === 0 ? (
                   <tr><td className="px-4 py-8 text-center text-slate-500" colSpan={9}>No expenses in this filter.</td></tr>
                 ) : expenses.map((expense) => (

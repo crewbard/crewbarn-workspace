@@ -47,17 +47,21 @@ function formatDate(iso: string | null | undefined): string {
 export function InvoiceDetail({
   invoiceId,
   embedded = false,
+  presentation = 'standard',
   onDeleted,
   onChanged,
 }: {
   invoiceId: string
   /** Inside the job page's overlay: no page gutters, no "source job" link, delete closes the overlay. */
   embedded?: boolean
+  /** Opt-in presentation, including invoices opened from a job. */
+  presentation?: 'standard' | 'easy'
   onDeleted?: () => void
   /** Anything that changed the invoice (sent, paid, cancelled) — the host refetches its own view. */
   onChanged?: () => void
 }) {
   const id = invoiceId
+  const easy = presentation === 'easy'
   const navigate = useNavigate()
   const qc = useQueryClient()
   const [showMarkPaid, setShowMarkPaid] = useState(false)
@@ -143,9 +147,10 @@ export function InvoiceDetail({
 
   return (
     <div className={`mx-auto w-full max-w-none space-y-4 sm:space-y-6 ${gutters}`}>
-      <div className="flex items-baseline gap-2 sm:gap-3 flex-wrap">
-        <span className="text-sm text-slate-500 font-mono">#{inv.display_number}</span>
-        <h1 className="text-xl sm:text-2xl font-bold text-navy-900">
+      <div className={easy ? 'flex flex-wrap items-baseline gap-3 rounded-2xl bg-emerald-950 p-5 sm:p-7' : 'flex items-baseline gap-2 sm:gap-3 flex-wrap'}>
+        {easy && <p className="w-full text-xs font-semibold uppercase tracking-widest text-emerald-200">Customer billing</p>}
+        <span className={`text-sm font-mono ${easy ? 'text-emerald-200' : 'text-slate-500'}`}>#{inv.display_number}</span>
+        <h1 className={easy ? 'break-words text-2xl font-semibold tracking-tight text-white sm:text-3xl' : 'text-xl sm:text-2xl font-bold text-navy-900'}>
           {inv.work_order?.title ?? `Invoice for ${inv.customer?.display_name ?? '—'}`}
         </h1>
         <span
@@ -167,6 +172,16 @@ export function InvoiceDetail({
           </span>
         )}
       </div>
+
+      {easy && <section aria-label="Invoice summary" className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+        <h2 className="mb-3 text-sm font-semibold text-slate-700">At a glance</h2>
+        <dl className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+          <div><dt className="text-sm text-slate-500">Invoice total</dt><dd className="mt-1 text-2xl font-bold tabular-nums text-slate-900">{formatCurrency(m.total_cents)}</dd></div>
+          <div><dt className="text-sm text-slate-500">Payments recorded</dt><dd className="mt-1 text-2xl font-bold tabular-nums text-slate-900">{formatCurrency(m.amount_paid_cents)}</dd></div>
+          <div><dt className="text-sm text-slate-500">{isCancelled ? 'Invoice status' : isPaid ? 'Payment status' : 'Still to pay'}</dt><dd className={`mt-1 text-2xl font-bold tabular-nums ${isCancelled ? 'text-slate-600' : isPaid ? 'text-emerald-700' : 'text-rose-700'}`}>{isCancelled ? 'Cancelled' : isPaid ? 'Paid' : formatCurrency(m.balance_due_cents)}</dd></div>
+        </dl>
+        <p className="mt-4 border-t border-slate-100 pt-3 text-sm text-slate-600">{isCancelled ? 'This invoice is cancelled. Review its details and existing records below.' : isPaid ? 'Payment is recorded. Review the invoice and payment details below.' : 'Review the customer, due date and line items before using the invoice actions below. Nothing is sent or charged by opening this page.'}</p>
+      </section>}
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
         {/* Main column: line items + totals */}

@@ -2,6 +2,8 @@ import { useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { apiRequest } from '@/lib/api'
+import { AccountingTools } from '@/components/accounting/AccountingTools'
+import { useTheme } from '@/hooks/useTheme'
 
 /**
  * Money desk — the Accounting landing page.
@@ -214,6 +216,8 @@ interface BankTxnRow {
 }
 
 export function MoneyDeskPage() {
+  const { theme } = useTheme()
+  const easy = theme === 'easy-side' || theme === 'easy-top'
   const qc = useQueryClient()
   const [selected, setSelected] = useState<Record<string, boolean>>({})
   const [cleared, setCleared] = useState<Partial<Record<GroupId, number>>>({})
@@ -351,6 +355,12 @@ export function MoneyDeskPage() {
         // matched_type and matched_id, and picking which payments a deposit
         // covers is the judgement the review screen exists for. A one-click
         // "Confirm" here would either 422 or guess with someone's books.
+        setCleared((c) => ({ ...c, [group]: (c[group] ?? 0) + 1 }))
+        setSelected((s) => {
+          const next = { ...s }
+          delete next[`${group}:${id}`]
+          return next
+        })
       }
       return keys.length
     },
@@ -358,19 +368,23 @@ export function MoneyDeskPage() {
       setBusy(group)
       setError(null)
     },
-    onSuccess: (n, { group, keys }) => {
-      setCleared((c) => ({ ...c, [group]: (c[group] ?? 0) + n }))
-      setSelected((s) => {
-        const next = { ...s }
-        keys.forEach((k) => delete next[`${group}:${k}`])
-        return next
-      })
-      void qc.invalidateQueries({ queryKey: ['desk'] })
-    },
     onError: (e) =>
       setError(e instanceof Error ? e.message : 'That action could not be completed.'),
-    onSettled: () => setBusy(null),
+    onSettled: () => {
+      setBusy(null)
+      void qc.invalidateQueries({ queryKey: ['desk'] })
+    },
   })
+
+  function confirmRun(group: GroupId, keys: string[]) {
+    if (run.isPending || keys.length === 0 || group === 'match') return
+    const label = GROUPS.find(item => item.id === group)?.batch ?? 'Apply action to'
+    const consequence = group === 'late' || group === 'bill'
+      ? 'This may send messages to customers.'
+      : 'This updates financial records.'
+    if (!window.confirm(`${label} ${keys.length} selected item${keys.length === 1 ? '' : 's'}? ${consequence}`)) return
+    run.mutate({ group, keys })
+  }
 
   const moneyIn = (inflow.data?.data ?? []).reduce((n, p) => n + p.amount_cents, 0)
   const moneyOut = (outflow.data?.data ?? []).reduce((n, e) => n + e.amount_cents, 0)
@@ -392,7 +406,8 @@ export function MoneyDeskPage() {
   })
 
   return (
-    <div className="mx-auto max-w-[1180px] px-6 py-8">
+    <div className={easy ? 'w-full min-w-0 max-w-none p-3 sm:p-4 lg:p-6' : 'mx-auto max-w-[1180px] px-6 py-8'}>
+      <AccountingTools />
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
           <p className="text-[11px] font-bold uppercase tracking-[0.08em] text-[#B45309]">
@@ -620,8 +635,8 @@ export function MoneyDeskPage() {
                     ) : (
                       <button
                         type="button"
-                        disabled={busy === g.id}
-                        onClick={() => run.mutate({ group: g.id, keys: [r.key] })}
+                        disabled={run.isPending}
+                        onClick={() => confirmRun(g.id, [r.key])}
                         className="shrink-0 whitespace-nowrap rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-[11.5px] font-bold text-slate-700 hover:bg-slate-50 disabled:opacity-50"
                       >
                         {g.action}
@@ -650,8 +665,8 @@ export function MoneyDeskPage() {
                   ) : (
                     <button
                       type="button"
-                      disabled={busy === g.id}
-                      onClick={() => run.mutate({ group: g.id, keys: picked.map((r) => r.key) })}
+                      disabled={run.isPending}
+                      onClick={() => confirmRun(g.id, picked.map((r) => r.key))}
                       className="rounded-lg px-4 py-2 text-[12.5px] font-bold text-white disabled:opacity-60"
                       style={{ background: '#E8902C' }}
                     >

@@ -11,6 +11,7 @@ import { ToolShedMenu } from './ToolShedMenu'
 import { MobileNavDrawer } from './MobileNavDrawer'
 import { HeaderAiInput } from './HeaderAiInput'
 import { GlobalSearch } from './GlobalSearch'
+import { CatalogLauncher } from '@/components/catalogs/CatalogLauncher'
 import { NewAssetWizardModal } from '@/components/NewAssetWizardModal'
 
 import { useUnhandledIncomingCalls } from '@/hooks/useUnhandledIncomingCalls'
@@ -41,6 +42,33 @@ export const PRIMARY_NAV: PrimaryNavItem[] = [
   { to: '/accounting', label: 'Accounting' },
 ]
 
+/**
+ * The rest of the work bar.
+ *
+ * Sidebar renders these four outside PRIMARY_NAV because each carries its
+ * own badge or permission gate (Calls needs calls.view, Franchise only
+ * appears for a franchisor). They are still the work bar as far as anybody
+ * using CrewBarn is concerned, and the Modules builder has to be able to
+ * say "switching this off takes Messages out of your work bar".
+ *
+ * Kept here beside PRIMARY_NAV rather than in the Modules page, and
+ * crewbarn:audit-settings checks each one is still rendered in Sidebar.tsx
+ * so this cannot quietly become a list of links that no longer exist.
+ */
+export const WORK_BAR_EXTRAS: PrimaryNavItem[] = [
+  { to: '/communications', label: 'Messages' },
+  { to: '/calls', label: 'Calls' },
+  { to: '/intake', label: 'Intake Queue' },
+  { to: '/franchises', label: 'Franchise' },
+]
+
+export function primaryNavForTheme(theme: string, canViewParts: boolean): PrimaryNavItem[] {
+  if ((theme !== 'easy-side' && theme !== 'easy-top') || !canViewParts) return PRIMARY_NAV
+  return PRIMARY_NAV.flatMap(item => item.to === '/accounting'
+    ? [{ to: '/inventory', label: 'Parts' }, item]
+    : [item])
+}
+
 export function TopBar({
   onOpenHelp,
   variant = 'classic',
@@ -53,7 +81,7 @@ export function TopBar({
   variant?: 'classic' | 'pro'
 } = {}) {
   const isPro = variant === 'pro'
-  const { density } = useTheme()
+  const { density, theme, setTheme } = useTheme()
   const compactHeader = !isPro && density !== 'comfortable'
   const navigate = useNavigate()
   const { account, logout } = useAuth()
@@ -61,12 +89,12 @@ export function TopBar({
   const { has, hasAny } = usePermissions()
   const callAlerts = useUnhandledIncomingCalls()
   const intakeCount = useIntakePendingCount()
-  const visibleNav = PRIMARY_NAV.filter((item) => isRouteVisible(item.to))
+  const visibleNav = primaryNavForTheme(theme, has('inventory.view')).filter((item) => isRouteVisible(item.to))
   // Franchise Dashboard tab — only for a franchisor tenant + franchises.view.
   // Appended here so both the desktop nav and the mobile drawer pick it up.
   const franchiseFeature = useFranchiseFeature()
   const navWithFranchise =
-    franchiseFeature.enabled && has('franchises.view')
+    franchiseFeature.enabled && has('franchises.view') && isRouteVisible('/franchises')
       ? [...visibleNav, { to: '/franchises', label: 'Franchise' }]
       : visibleNav
   const [isToolShedOpen, setIsToolShedOpen] = useState(false)
@@ -224,20 +252,30 @@ export function TopBar({
 
   return (
     <>
-      <header className="sticky top-0 z-30 bg-[var(--chrome-bg)] border-b border-white/10">
+      <header data-easy-topbar={theme === 'easy-top' && !isPro ? '' : undefined} className="sticky top-0 z-30 bg-[var(--chrome-bg)] border-b border-white/10">
+        {theme === 'easy-top' && !isPro && (
+          <div data-easy-brand-strip>
+            <Link to="/" className="flex min-w-0 items-center gap-2 text-sm text-white">
+              <span className="shrink-0 font-bold">Crew<span className="text-[#fbbf24]">Barn</span></span>
+              {account?.tenant?.name && <><span aria-hidden="true" className="text-white/40">·</span><span className="min-w-0 break-words text-white">{account.tenant.name}</span></>}
+            </Link>
+          </div>
+        )}
         <div
+          data-header-controls
           className={[
             'flex items-center px-3',
+            !isPro && theme !== 'easy-top' ? 'flex-wrap' : '',
             compactHeader
-              ? 'h-11 md:px-4 gap-2 md:gap-3'
-              : 'h-14 md:px-6 gap-3 md:gap-6',
+              ? `${!isPro && theme !== 'easy-top' ? 'min-h-11 py-1.5' : 'h-11'} md:px-4 gap-2 md:gap-3`
+              : `${!isPro && theme !== 'easy-top' ? 'min-h-14 py-2' : 'h-14'} md:px-6 gap-3 md:gap-6`,
           ].join(' ')}
         >
           {/* Navigation fallback. Opens the drawer before the top bar gets cramped. */}
           <button
             type="button"
             onClick={() => setIsMobileNavOpen(true)}
-            className={`${isPro ? 'md:hidden' : 'xl:hidden'} ${compactHeader ? 'w-8 h-8' : 'w-10 h-10'} flex items-center justify-center rounded-md -ml-1 text-white/80 hover:bg-white/10`}
+            className={`${isPro ? 'md:hidden' : theme === 'easy-top' ? 'min-[1920px]:hidden' : 'xl:hidden'} ${compactHeader ? 'w-8 h-8' : 'w-10 h-10'} shrink-0 flex items-center justify-center rounded-md -ml-1 text-white/80 hover:bg-white/10`}
             aria-label="Open navigation"
           >
             <svg viewBox="0 0 24 24" fill="none" className="w-6 h-6">
@@ -253,7 +291,7 @@ export function TopBar({
           {/* Brand + tenant — in pro mode the Sidebar owns the brand on
               desktop, so hide it here (md+) and keep it only for mobile
               (where the sidebar is collapsed behind the hamburger). */}
-          <Link
+          {(theme !== 'easy-top' || isPro) && <Link
             to="/"
             className={[
               'flex items-center gap-2 shrink-0 group',
@@ -271,12 +309,12 @@ export function TopBar({
                 </span>
               </>
             )}
-          </Link>
+          </Link>}
 
           {/* Primary nav — desktop only; mobile drawer mirrors below.
               Hidden entirely in pro mode (the Sidebar carries it). */}
-          {!isPro && (
-          <nav className={`hidden xl:flex items-center ${compactHeader ? 'gap-0.5' : 'gap-1'}`}>
+          {!isPro && isRouteVisible('/communications') && (
+          <nav className={`hidden ${theme === 'easy-top' ? 'min-[1920px]:flex' : 'xl:flex'} items-center ${compactHeader ? 'gap-0.5' : 'gap-1'}`}>
             {navWithFranchise.map((item) => (
               <NavLink
                 key={item.to}
@@ -339,7 +377,7 @@ export function TopBar({
 
             {/* Tool Shed trigger */}
             <div
-              className="relative"
+              className="relative shrink-0"
               onMouseEnter={openToolShed}
               onMouseLeave={scheduleCloseToolShed}
             >
@@ -349,7 +387,7 @@ export function TopBar({
                 data-tour="nav-tool-shed"
                 onClick={() => setIsToolShedOpen((v) => !v)}
                 className={[
-                  `relative flex items-center gap-1 ${compactHeader ? 'px-2 py-1.5 text-xs' : 'px-3 py-2 text-sm'} font-medium transition-colors`,
+                  `relative flex shrink-0 items-center gap-1 whitespace-nowrap ${compactHeader ? 'px-2 py-1.5 text-xs' : 'px-3 py-2 text-sm'} font-medium transition-colors`,
                   isToolShedOpen
                     ? 'text-white'
                     : 'text-white/70 hover:text-white',
@@ -360,7 +398,7 @@ export function TopBar({
                 Tool Shed
                 <svg
                   className={[
-                    'w-3.5 h-3.5 transition-transform',
+                    'w-3.5 h-3.5 shrink-0 transition-transform',
                     isToolShedOpen ? 'rotate-180' : '',
                   ].join(' ')}
                   viewBox="0 0 12 12"
@@ -511,15 +549,15 @@ export function TopBar({
 
           {/* AI ask box — hidden entirely when AI is off / unconfigured.
               Also hidden on mobile (drawer-only nav). */}
-          <div className="hidden xl:block">
-            <HeaderAiInput />
+          <div data-header-ai className="hidden xl:block">
+            {isRouteVisible('/tool-shed/ai') && <HeaderAiInput />}
           </div>
 
           {/* Right-side actions — search + quick-create + help + account.
               (Notifications / settings placeholders were removed until they
               actually do something.) */}
-          <div className={`flex items-center ${compactHeader ? 'gap-0.5' : 'gap-1'}`}>
-            {compactHeader && !isPro && (
+          <div data-header-actions className={`flex items-center ${compactHeader ? 'gap-0.5' : 'gap-1'}`}>
+            {compactHeader && !isPro && isRouteVisible('/communications') && (
               <div ref={moreMenuRef} className="relative hidden md:block xl:hidden">
                 <button
                   type="button"
@@ -587,6 +625,9 @@ export function TopBar({
             {/* Global search — the non-AI way to jump to a record. Both themes. */}
             <GlobalSearch />
 
+            {/* The shop's catalogues, Alt C from anywhere. */}
+            <CatalogLauncher />
+
             {/* Quick create button - "+" with dropdown of create actions */}
             <div ref={quickCreateRef} className={`relative ml-1 ${compactHeader ? 'md:ml-1' : 'md:ml-2'}`}>
               <button
@@ -632,6 +673,13 @@ export function TopBar({
                     icon="document"
                   >
                     New Estimate
+                  </QuickCreateLink>
+                  <QuickCreateLink
+                    to="/maintenance-contracts/new"
+                    onClick={() => setIsQuickCreateOpen(false)}
+                    icon="document"
+                  >
+                    New Service Agreement
                   </QuickCreateLink>
                   <QuickCreateLink
                     to="/customers/new"
@@ -770,6 +818,11 @@ export function TopBar({
                   <MenuItem onClick={() => setIsAvatarMenuOpen(false)} disabled>
                     Help
                   </MenuItem>
+                  <div className="border-t border-slate-100 my-1" />
+                  <div className="px-4 py-1 text-xs font-semibold text-slate-500">Layout preview</div>
+                  <MenuItem onClick={() => { setTheme('easy-side'); setIsAvatarMenuOpen(false) }}>Easy · Side bar{theme === 'easy-side' ? ' ✓' : ''}</MenuItem>
+                  <MenuItem onClick={() => { setTheme('easy-top'); setIsAvatarMenuOpen(false) }}>Easy · Top bar{theme === 'easy-top' ? ' ✓' : ''}</MenuItem>
+                  <MenuItemLink to="/tool-shed/appearance" onClick={() => setIsAvatarMenuOpen(false)}>All layouts</MenuItemLink>
                   <div className="border-t border-slate-100 my-1" />
                   <MenuItem onClick={handleSignOut}>Sign out</MenuItem>
                 </div>
@@ -941,6 +994,8 @@ function QuickCreateLink({
   icon: QuickCreateIconName
   children: React.ReactNode
 }) {
+  const { isRouteVisible } = useModuleVisibility()
+  if (!isRouteVisible(to)) return null
   return (
     <Link
       to={to}

@@ -23,8 +23,10 @@ import type {
   LineType,
 } from '@/types/estimateLineItem'
 import { CatalogItemPickerModal } from '@/components/CatalogItemPickerModal'
+import { CatalogDescriptionInput } from '@/components/CatalogDescriptionInput'
 import { useTaxClasses } from '@/hooks/useTaxClasses'
 import { ScanToAddLineItem } from '@/components/ScanToAddLineItem'
+import { usePricingRules } from '@/hooks/usePricingRules'
 
 /**
  * Unified row shape for the editor - either a server line item OR a draft.
@@ -210,6 +212,19 @@ export function EstimateLineItemEditorCore({
     total: base - discountTotal + taxAfter,
   }
 
+  /*
+   * Is this estimate under the minimum the shop said it would turn out for?
+   *
+   * Only once there is something on it — an empty estimate is not under
+   * anything, it is just empty — and only when a minimum has been set.
+   */
+  const pricing = usePricingRules()
+  const floor = pricing?.minimum_service_call ?? null
+  const belowFloor =
+    floor !== null && floor > 0 && totals.total > 0 && totals.total < Math.round(floor * 100)
+      ? floor
+      : null
+
   // 14-col grid:
   //   With drag handle:  drag(1) desc(4) type(2) qty(1) unit-price(2) tax(2) total(1) del(1)
   //   Without:           desc(5) type(2) qty(1) unit-price(2) tax(2) total(1) del(1)
@@ -383,6 +398,17 @@ export function EstimateLineItemEditorCore({
               {formatCents(totals.total)}
             </span>
           </div>
+
+          {/* The floor the shop set in its cost model, said once, quietly.
+              Not a block: there are good reasons to go under it, and the
+              person doing it knows them better than a rule does. It is
+              worth saying out loud BEFORE the estimate goes out rather
+              than working it out afterwards. */}
+          {belowFloor !== null && (
+            <p className="mt-2 text-right text-xs font-semibold text-amber-700">
+              Under your {formatCents(Math.round(belowFloor * 100))} minimum service call.
+            </p>
+          )}
         </div>
       )}
     </div>
@@ -497,7 +523,8 @@ const EstimateLineRow = memo(function EstimateLineRow({
       )}
 
       <div className={`${dragHandle ? 'col-span-4' : 'col-span-5'} flex min-w-0 items-center gap-2`}>
-        <input
+        <CatalogDescriptionInput
+          onPick={item => { focusedRef.current = null; const description = item.description || item.name; setDescLocal(description); onChange({ description, service_catalog_item_id: item.id, unit_price_cents: item.pricing.customer_cost_cents, tax_class_id: item.pricing.tax_class_id }) }}
           type="text"
           value={descLocal}
           onChange={(e) => setDescLocal(e.target.value)}

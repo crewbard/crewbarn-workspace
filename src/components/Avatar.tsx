@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { IconPhone } from '@tabler/icons-react'
 
 /**
  * Avatar — a round identity chip for a customer/contact. Precedence:
@@ -24,7 +25,16 @@ function hashIndex(s: string, mod: number): number {
   return h % mod
 }
 
+/**
+ * Initials for a monogram, or '' when the name has no letters in it.
+ *
+ * An unknown caller is identified by their number, and the first letter of
+ * each of the first two "words" of "(321) 527-4637" is "(" and "5" — which
+ * is what the incoming-call card was showing. A name with letters anywhere
+ * in it behaves exactly as before, so "333 by the Sea" still reads "3B".
+ */
 export function initialsOf(name: string): string {
+  if (!/\p{L}/u.test(name)) return ''
   const words = name.trim().split(/\s+/).filter(Boolean)
   const two = (words[0]?.[0] ?? '') + (words[1]?.[0] ?? '')
   return (two || name.slice(0, 2)).toUpperCase()
@@ -178,7 +188,10 @@ export function Avatar({
       }}
       className={`inline-flex items-center justify-center rounded-full font-semibold leading-none select-none ${className}`}
     >
-      {initialsOf(name)}
+      {/* Digits but no letters is a phone number, so say so with the handset
+          rather than with two characters of it. A name that is empty is not a
+          phone number, and gets the plain circle it always got. */}
+      {initialsOf(name) || (/\d/.test(name) ? <IconPhone size={Math.round(size * 0.5)} stroke={1.8} /> : null)}
     </span>
   )
 }

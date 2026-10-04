@@ -45,6 +45,7 @@ interface DraftState {
   is_billing_contact: boolean
   is_service_contact: boolean
   is_intake_contact: boolean
+  is_intake_approver: boolean
   sms_consent: boolean
   active: boolean
 
@@ -75,6 +76,7 @@ function emptyDraft(): DraftState {
     is_billing_contact: false,
     is_service_contact: false,
     is_intake_contact: false,
+    is_intake_approver: false,
     sms_consent: false,
     active: true,
     mailing_address_line1: '',
@@ -105,6 +107,7 @@ function contactToDraft(c: CustomerContact): DraftState {
     is_billing_contact:   !!c.is_billing_contact,
     is_service_contact:   !!c.is_service_contact,
     is_intake_contact:    !!c.is_intake_contact,
+    is_intake_approver:   !!c.is_intake_approver,
     sms_consent:          !!c.sms_consent,
     active:               c.active !== false,
     mailing_address_line1: c.mailing_address?.line1 ?? '',
@@ -179,6 +182,7 @@ export function ContactEditorModal({
       is_billing_contact: draft.is_billing_contact,
       is_service_contact: draft.is_service_contact,
       is_intake_contact:  draft.is_intake_contact,
+      is_intake_approver: draft.is_intake_approver,
       sms_consent:        draft.sms_consent,
       active:             draft.active,
       bill_to_service_address: draft.bill_to_service_address,
@@ -262,6 +266,15 @@ export function ContactEditorModal({
                 className="rounded border-slate-300"
               />
               <span>Intake / bill-to</span>
+            </label>
+            <label className="inline-flex items-center gap-2 text-sm cursor-pointer" title="Texted when work is sent to the intake number, and their reply of APPROVED authorizes it">
+              <input
+                type="checkbox"
+                checked={draft.is_intake_approver}
+                onChange={(e) => patch({ is_intake_approver: e.target.checked })}
+                className="rounded border-slate-300"
+              />
+              <span>Approves intake</span>
             </label>
             <label className="inline-flex items-center gap-2 text-sm cursor-pointer ml-auto">
               <input

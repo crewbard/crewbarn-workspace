@@ -11,6 +11,14 @@ export interface InventoryStockLevelQuantities {
   qty_available: number
   sn_tracked: boolean
   sn_unit_count: number | null
+  /**
+   * What this spot is SUPPOSED to carry. Null = no par set, which is not the
+   * same as 0 — zero says "carry none of these here", null says nobody has
+   * decided. Only spots with a par can be short of anything.
+   */
+  par_qty: number | null
+  /** How far under par, or null when there is no par to be under. */
+  short_by: number | null
 }
 
 export interface InventoryStockLevelLocationMini {
@@ -57,6 +65,8 @@ export interface InventoryStockLevelInput {
   catalog_item_id: string
   qty_on_hand?: number
   qty_reserved?: number
+  /** null CLEARS the par; 0 sets a real par of none. */
+  par_qty?: number | null
   last_counted_at?: string | null
 }
 

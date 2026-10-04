@@ -127,7 +127,7 @@ CrewBarn keeps the office, field team, customer communication, money, and invent
 - [Jobs](/jobs) schedule and track the work your team performs.
 - [Inventory](/inventory) shows where parts live and records every movement.
 - [Estimates](/estimates) turn proposed work into an approved job.
-- [Tool Shed](/tool-shed) contains tenant settings, permissions, connections, and business rules.
+- [CrewBarn Connect](/tool-shed) contains tenant settings, permissions, connections, and business rules.
 
 ## A practical example
 
@@ -141,7 +141,7 @@ Each part has a separate purpose:
 - **Field actions** connect mobile events such as arrival or completion to tenant statuses.
 - **Cash drawers** track who physically holds cash or checks after the invoice is paid.
 
-Open the [Settings directory](/tool-shed) to review each function. On any documented setting, use the **?** in the header or beside its Tool Shed link for instructions and an example.
+Open the [Settings directory](/tool-shed) to review each function. On any documented setting, use the **?** in the header or beside its CrewBarn Connect link for instructions and an example.
 `.trim(),
   },
   {
@@ -393,7 +393,7 @@ Use PDF for a readable snapshot and spreadsheet export for sorting, reconciliati
 
 For unpaid work, use the unpaid invoice report or invoice status filter and choose All dates or an explicit date range. Confirm credits, deposits, partial payments, voids, and write-offs before contacting the customer.
 
-[Open Accounting](/accounting) · [Open Invoices](/accounting/invoices) · [Open Reports](/reports)
+[Open Accounting](/accounting) · [Open Invoices](/accounting/invoices) · [Open Reports](/accounting/reports)
 `.trim(),
   },
 
@@ -407,7 +407,7 @@ For unpaid work, use the unpaid invoice report or invoice status filter and choo
 
 Preview with a safe record before publishing. Confirm merge fields, customer visibility, signature requirements, page breaks, branding, and mobile readability. Editing a template affects future documents; previously generated documents should remain historical records.
 
-[Open Custom Documents](/custom-documents) · [Open Tool Shed](/tool-shed)
+[Open Custom Documents](/custom-documents) · [Open CrewBarn Connect](/tool-shed)
 `.trim(),
   },
   {
@@ -940,5 +940,6 @@ The tester logs in with the \`@crewbarn.com\` address as their username — they
 
 export const HELP_TOPICS: HelpTopic[] = HELP_TOPIC_DEFINITIONS.map((topic) => ({
   ...topic,
-  body: EXPANDED_HELP_GUIDES[topic.id] ?? topic.body,
+  body: ((topic.category.startsWith('Settings') ? 'Settings are now managed at [connect.crewbarn.com](https://connect.crewbarn.com/connect). Sign in with your CrewBarn account; your existing permissions still apply.\n\n' : '') + (EXPANDED_HELP_GUIDES[topic.id] ?? topic.body)).replace(/\]\((\/tool-shed[^\s)]*|\/catalog\/tax-classes|\/custom-documents|\/website-builder)\)/g, (_, path: string) =>
+    '](https://connect.crewbarn.com' + (path === '/tool-shed' ? '/connect' : path) + ')'),
 }))

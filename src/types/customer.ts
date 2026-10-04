@@ -48,6 +48,8 @@ export interface CustomerContact {
   is_billing_contact: boolean
   is_service_contact: boolean
   is_intake_contact: boolean
+  /** Their reply of APPROVED authorizes work texted to the intake number. */
+  is_intake_approver: boolean
   sms_consent: boolean
   consent_recorded_at: string | null
   birthday: string | null
@@ -133,6 +135,8 @@ export interface Customer {
   /** FK → payment_terms. Null = use tenant default; if no tenant default
    *  is configured, code falls back to COD (days_until_due = 0). */
   payment_term_id: string | null
+  invoice_email_subject?: string | null
+  statement_preferences?: { day: number; recipients: string[]; subject: string } | null
   taxable: boolean
   tax_item: string | null
   tax_id: string | null
@@ -220,6 +224,7 @@ export interface CustomerContactInput {
   is_billing_contact?: boolean
   is_service_contact?: boolean
   is_intake_contact?: boolean
+  is_intake_approver?: boolean
   sms_consent?: boolean
   consent_recorded_at?: string | null
   birthday?: string | null
@@ -268,6 +273,8 @@ export interface CustomerInput {
   payment_method?: string | null
   is_net_account?: boolean
   payment_term_id?: string | null
+  invoice_email_subject?: string | null
+  statement_preferences?: { day: number; recipients: string[]; subject: string } | null
   taxable?: boolean
   tax_item?: string | null
   tax_id?: string | null

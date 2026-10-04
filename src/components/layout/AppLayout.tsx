@@ -1,11 +1,14 @@
 import { Suspense, useState } from 'react'
+import '@/themes/traditional-workspace.css'
 import { Outlet, useLocation } from 'react-router-dom'
 import { TopBar } from './TopBar'
 import { SubNav } from './SubNav'
+import { EasySectionTabs } from '@/components/easy/EasySectionTabs'
 import { Sidebar } from './Sidebar'
 import { CategoryRail } from './CategoryRail'
 import { useTheme } from '@/hooks/useTheme'
-import { TesterWalkthroughWidget } from '@/components/TesterWalkthroughWidget'
+import '@/components/easy/easy-workspace.css'
+import '@/themes/easy-theme.css'
 import { TesterIntroOverlay } from '@/components/TesterIntroOverlay'
 import { HelpPanel, useHelpKeyboardShortcut } from '@/components/HelpPanel'
 import { AiHelpBubble } from '@/components/AiHelpBubble'
@@ -56,7 +59,8 @@ export function AppLayout() {
   const openContextHelp = () => {
     openHelpTopic(contextHelpTopicId ?? HELP_HOME_TOPIC_ID)
   }
-  const sidebarLayout = theme === 'pro'
+  const sidebarLayout = theme === 'pro' || theme === 'easy-side'
+  const easy = theme === 'easy-side' || theme === 'easy-top'
   const railLayout = theme === 'rail'
 
   // Resolve the banner and entitlement before painting the workspace. Otherwise
@@ -76,11 +80,10 @@ export function AppLayout() {
           <TopBar variant="pro" onOpenHelp={openContextHelp} />
           <FranchiseDrillBanner />
           <SubscriptionBanner />
-          <main className="flex-1 overflow-y-auto bg-background">
+          <main data-traditional-workspace="rail" className="flex-1 overflow-y-auto bg-background">
             <HostedPlanWall><Suspense fallback={<div className="flex min-h-[40vh] items-center justify-center text-sm text-slate-500" role="status">Loading…</div>}><Outlet /></Suspense></HostedPlanWall>
           </main>
         </div>
-        <TesterWalkthroughWidget />
         <TesterIntroOverlay />
         <HelpPanel open={helpOpen} onClose={() => setHelpOpen(false)} />
         <AiHelpBubble />
@@ -100,11 +103,11 @@ export function AppLayout() {
           <TopBar variant="pro" onOpenHelp={openContextHelp} />
           <FranchiseDrillBanner />
           <SubscriptionBanner />
-          <main className="flex-1 overflow-y-auto bg-background">
+          <main data-traditional-workspace={!easy ? 'pro' : undefined} data-easy-workspace={easy ? '' : undefined} className="flex-1 overflow-y-auto bg-background">
+            {easy && <EasySectionTabs />}
             <HostedPlanWall><Suspense fallback={<div className="flex min-h-[40vh] items-center justify-center text-sm text-slate-500" role="status">Loading…</div>}><Outlet /></Suspense></HostedPlanWall>
           </main>
         </div>
-        <TesterWalkthroughWidget />
         <TesterIntroOverlay />
         <HelpPanel open={helpOpen} onClose={() => setHelpOpen(false)} />
         <AiHelpBubble />
@@ -118,13 +121,12 @@ export function AppLayout() {
   return (
     <div className="min-h-screen bg-background flex flex-col">
       <TopBar onOpenHelp={openContextHelp} />
-      <SubNav />
+      {easy ? <EasySectionTabs /> : <SubNav />}
       <FranchiseDrillBanner />
           <SubscriptionBanner />
-      <main className="flex-1">
+      <main data-traditional-workspace={!easy ? 'classic' : undefined} data-easy-workspace={easy ? '' : undefined} className="flex-1">
         <HostedPlanWall><Suspense fallback={<div className="flex min-h-[40vh] items-center justify-center text-sm text-slate-500" role="status">Loading…</div>}><Outlet /></Suspense></HostedPlanWall>
       </main>
-      <TesterWalkthroughWidget />
       <TesterIntroOverlay />
       <HelpPanel open={helpOpen} onClose={() => setHelpOpen(false)} />
       <AiHelpBubble />

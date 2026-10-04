@@ -34,7 +34,7 @@ export function InventorySettingsPanel() {
     }
   }, [updateMutation.isSuccess])
 
-  if (isLoading || formValues === null || !data) {
+  if (!isError && (isLoading || formValues === null || !data)) {
     return (
       <div className="space-y-6">
         <div className="bg-white border border-slate-200 rounded-xl shadow-sm p-6 animate-pulse">
@@ -61,6 +61,8 @@ export function InventorySettingsPanel() {
     )
   }
 
+  if (!formValues || !data) return null
+
   const dirty =
     formValues.inventory_require_bin_for_stock !==
       data.inventory_require_bin_for_stock ||
@@ -74,6 +76,8 @@ export function InventorySettingsPanel() {
       data.inventory_require_po_for_stock_add ||
     formValues.inventory_require_van_stock_for_job_use !==
       data.inventory_require_van_stock_for_job_use ||
+    formValues.inventory_locked_to_controllers !==
+      data.inventory_locked_to_controllers ||
     formValues.inventory_show_sn_tracking !==
       data.inventory_show_sn_tracking ||
     formValues.inventory_allow_write_in !== data.inventory_allow_write_in
@@ -125,6 +129,13 @@ export function InventorySettingsPanel() {
     ) {
       patch.inventory_require_van_stock_for_job_use =
         formValues.inventory_require_van_stock_for_job_use
+    }
+    if (
+      formValues.inventory_locked_to_controllers !==
+      data.inventory_locked_to_controllers
+    ) {
+      patch.inventory_locked_to_controllers =
+        formValues.inventory_locked_to_controllers
     }
     if (
       formValues.inventory_show_sn_tracking !==
@@ -244,8 +255,20 @@ export function InventorySettingsPanel() {
             disabled={saving || permissionsLoading || !canEdit}
           />
           <ToggleRow
-            label="Require tech van stock before job use"
-            description="When off, a tech can pull an available item from a warehouse shelf or another tracked location, scan it, and add it to the job; CrewBarn logs the exact stock-unit source. When on, stocked job products can only be added if the scanned unit is already in that tech's assigned truck/van."
+            label="Lock the store"
+            description="Off, a tech scans any part straight onto their van with Check in and the scan is the record — which suits a shop where the people holding scanners are the people who own the outcome. On, only staff you have given Edit inventory to can move stock: they transfer it to a tech's van, and the tech scans each item in to confirm they received it. The scan still does the moving either way; this decides who gets to decide."
+            value={formValues.inventory_locked_to_controllers}
+            onChange={(v) =>
+              setFormValues({
+                ...formValues,
+                inventory_locked_to_controllers: v,
+              })
+            }
+            disabled={saving || permissionsLoading || !canEdit || !formValues.inventory_stock_unit_tracking_enabled}
+          />
+          <ToggleRow
+            label="Watch van stock"
+            description="Nothing is ever blocked. Every stocked item carries its own QR fingerprint and cannot go on a job without being scanned, so CrewBarn already knows which physical unit was used, which shelf or van it came out of, who took it and which job it went on — a tech can always use whatever part is in front of them. Turn this on and CrewBarn also acts on it: when one tech uses a part out of another tech's van, it raises a transfer request to put one back from the shop, and if the tech who took it is set to carry that part on their own van it flags that their van was empty. Leave it off and the movement record is the whole story."
             value={formValues.inventory_require_van_stock_for_job_use}
             onChange={(v) =>
               setFormValues({

@@ -20,6 +20,7 @@ import { AssetQrCard } from "@/components/AssetQrCard"
 import { AssetGroupTreePicker } from "@/components/AssetGroupTreePicker"
 import { AssetGroupManagerModal } from "@/components/AssetGroupManagerModal"
 import { AssetHistoryTimeline } from "@/components/AssetHistoryTimeline"
+import { AssetNoteBox } from '@/components/AssetNoteBox'
 import { AssetCustomFieldsForm, assetCustomFieldsAreValid, normalizeAssetCustomFields } from "@/components/AssetCustomFieldsForm"
 import { NewAssetWizardModal } from "@/components/NewAssetWizardModal"
 import type { Asset, AssetServiceLocation } from "@/types/asset"
@@ -178,6 +179,18 @@ export function AssetsPage() {
             <div className="text-xs text-slate-500 text-right">
               Showing {assets.length} of {meta.total} assets
               {debouncedSearch ? ` matching "${debouncedSearch}"` : ""}
+              {/*
+                Of the ones SHOWN, deliberately: this counts what is on
+                the page, and claiming a figure for the whole list from
+                one page of it would be wrong in the direction that
+                matters.
+              */}
+              {assets.some((a) => !a.verified_at) && (
+                <span className="text-amber-700">
+                  {" "}
+                  · {assets.filter((a) => !a.verified_at).length} of these not confirmed on site
+                </span>
+              )}
             </div>
           )}
         </>
@@ -199,10 +212,12 @@ export function AssetsPage() {
 // ---------- Header ----------
 
 function Header({ onNew, onScan, hasTypes }: { onNew: () => void; onScan: (code: string) => void; hasTypes: boolean }) {
+  const { theme } = useTheme()
+  const easy = theme === 'easy-side' || theme === 'easy-top'
   return (
-    <div className="flex items-start justify-between gap-6">
-      <div>
-        <h1 className="text-3xl font-semibold text-slate-900">Assets</h1>
+    <div className={easy ? 'flex w-full min-w-0 flex-col items-stretch gap-4' : 'flex items-start justify-between gap-6'}>
+      <div className={easy ? 'w-full min-w-0' : undefined}>
+        {easy ? <EasyPageHeading title="Customer equipment & assets" description="Find or scan equipment, open its service history, or add an asset using the existing controls." /> : <h1 className="text-3xl font-semibold text-slate-900">Assets</h1>}
         <p className="text-sm text-slate-600 mt-1">
           Physical things at customer locations - doors, extinguishers, safes, AC units. Tracked across years.
         </p>
@@ -271,7 +286,7 @@ function FiltersBar({
 
   return (
     <div className="space-y-2">
-      <div className="flex gap-3">
+      <div data-easy-list-toolbar className="flex gap-3">
         <input
           type="search"
           value={search}
@@ -292,7 +307,7 @@ function FiltersBar({
           ))}
         </select>
       </div>
-      <div className="flex gap-3 items-center">
+      <div data-easy-list-toolbar className="flex gap-3 items-center">
         <input
           type="text"
           value={filterLocationId}
@@ -387,6 +402,7 @@ function AssetsTable({ assets, onEdit }: { assets: Asset[]; onEdit: (a: Asset) =
                 {asset.asset_code && (
                   <span className="font-mono">· {asset.asset_code}</span>
                 )}
+                {!asset.verified_at && <NotConfirmed />}
               </div>
               <div className="text-xs text-slate-500 mt-0.5">
                 {formatLocation(asset.service_location)}
@@ -456,7 +472,12 @@ function AssetsTable({ assets, onEdit }: { assets: Asset[]; onEdit: (a: Asset) =
                   <span className="text-slate-400 text-xs">-</span>
                 )}
               </td>
-              <td className="px-6 py-4 font-medium text-slate-900">{asset.name}</td>
+              <td className="px-6 py-4 font-medium text-slate-900">
+                <span className="inline-flex items-center gap-2">
+                  {asset.name}
+                  {!asset.verified_at && <NotConfirmed />}
+                </span>
+              </td>
               <td className="px-6 py-4 text-xs font-mono text-slate-600">
                 {asset.asset_code || <span className="text-slate-300">-</span>}
               </td>
@@ -509,6 +530,31 @@ function AssetsTable({ assets, onEdit }: { assets: Asset[]; onEdit: (a: Asset) =
       </table>
     </div>
     </>
+  )
+}
+
+/**
+ * Nobody has stood in front of this one.
+ *
+ * The tree builder turns "3 floors, 8 units each, 2 per unit" into
+ * forty-eight rows in a second, and none of them corresponds to anything
+ * until a tech records a condition against it. Unmarked, those rows are
+ * indistinguishable from equipment somebody logged by hand — and they
+ * are what a Schedule A is built from, what a report counts, and what a
+ * customer is billed to visit.
+ *
+ * Marked on what is UNCONFIRMED rather than ticking what is confirmed:
+ * on a property that has been walked this shows nothing at all, and the
+ * few rows that need a second look are the ones that stand out.
+ */
+function NotConfirmed() {
+  return (
+    <span
+      className="inline-flex items-center px-1.5 py-0.5 text-[10px] bg-amber-50 text-amber-700 rounded font-medium uppercase tracking-wide"
+      title="Nobody has recorded a condition against this on site yet, so it may not be there."
+    >
+      Not confirmed
+    </span>
   )
 }
 
@@ -920,6 +966,7 @@ function AssetLeafNode({
       {asset.asset_code && (
         <span className="font-mono text-xs text-slate-400 truncate">{asset.asset_code}</span>
       )}
+      {!asset.verified_at && <NotConfirmed />}
       {asset.is_secured && (
         <span className="text-xs" title="Secured asset">🔒</span>
       )}
@@ -1498,8 +1545,17 @@ function AssetForm({
 
           <h3 className="text-xs font-medium text-slate-700 uppercase tracking-wide mb-3 mt-6">Service history</h3>
           <p className="text-xs text-slate-500 mb-3">
-            Quotes and work orders that reference this asset, plus components installed via the inventory bridge. Newest first.
+            Quotes and jobs that reference this item, parts installed against it, and what techs
+            logged or noted on site. Newest first.
           </p>
+          {/*
+            Above the timeline, not below it. Writing a note is the thing
+            somebody came here to do; reading the history is what they do
+            on the way past.
+          */}
+          <div className="mb-3">
+            <AssetNoteBox assetId={existingAsset.id} />
+          </div>
           <AssetHistoryTimeline assetId={existingAsset.id} />
         </div>
       )}
@@ -1979,3 +2035,5 @@ function ErrorBanner({ message }: { message: string }) {
     </div>
   )
 }
+import { useTheme } from '@/hooks/useTheme'
+import { EasyPageHeading } from '@/components/easy/EasyPageHeading'

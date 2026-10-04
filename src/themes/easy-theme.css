@@ -1,0 +1,42 @@
+/*
+ * CrewBarn Easy theme kit v1 — edit these values, not business components.
+ * This file is imported by the work shell and included in generated work builds.
+ * Only Easy workspace/shared navigation is affected. Classic, Connect and
+ * portal styles are not targeted. Existing Appearance controls still own the
+ * font, chrome and accent; references below follow the selected accent.
+ *
+ * Example navy preset:
+ *   --easy-heading-bg: #0f1a2e;
+ *   --easy-heading-text: #ffffff;
+ *   --easy-heading-muted: #cbd5e1;
+ *   --easy-card-radius: 10px;
+ *
+ * Keep foreground/background pairs readable. Do not override visibility,
+ * pointer events, focus outlines, status colors, or permission-related markup.
+ * No remote CSS, scripts, API keys or business configuration belongs here.
+ */
+:where([data-easy-workspace], [data-easy-section-tabs]) {
+  --easy-page-bg: #f1f5f9;
+  --easy-surface: #ffffff;
+  --easy-border: #e2e8f0;
+  --easy-text: #0f172a;
+  --easy-muted: #475569;
+  --easy-heading-bg: #022c22;
+  --easy-heading-text: #ffffff;
+  --easy-heading-muted: #d1fae5;
+  --easy-card-radius: 16px;
+  --easy-folder-heading-bg: #0f1a2e;
+  --easy-folder-heading-text: #ffffff;
+  --easy-card-shadow: 0 2px 8px rgb(15 23 42 / 4%);
+  --easy-search-bg: #f8fafc;
+  --easy-focus: var(--accent-500, #e8902c);
+  --easy-selected-bg: var(--accent-50, #fdf7ee);
+  --easy-selected-border: var(--accent-500, #e8902c);
+  --easy-tab-active-bg: var(--accent-900, #4f2e0a);
+  --easy-tab-active-text: #ffffff;
+  --easy-tab-active-count: var(--accent-100, #faebd3);
+  --easy-view-selected-bg: color-mix(in srgb, var(--accent-500, #e8902c) 15%, transparent);
+  --easy-view-selected-text: var(--accent-900, #4f2e0a);
+  --easy-view-selected-border: var(--accent-500, #e8902c);
+  --easy-view-hover-bg: color-mix(in srgb, var(--accent-500, #e8902c) 5%, transparent);
+}

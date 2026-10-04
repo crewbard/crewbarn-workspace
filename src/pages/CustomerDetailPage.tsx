@@ -1,5 +1,7 @@
 import { useEffect, useState } from 'react'
+import { EquipmentSharingCard } from '@/components/assets/EquipmentSharingCard'
 import { formatPhone } from '@/lib/comms'
+import { CONNECT_URL } from '@/lib/workspaceScope'
 import { Avatar } from '@/components/Avatar'
 import { CustomerAvatarPicker } from '@/components/CustomerAvatarPicker'
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
@@ -9,6 +11,7 @@ import { useWorkOrders } from '@/hooks/useWorkOrders'
 import { useEstimates } from '@/hooks/useEstimates'
 import { Button } from '@/components/ui/Button'
 import { CustomerForm } from '@/components/CustomerForm'
+import { CustomerStatementButton } from '@/components/CustomerStatementButton'
 import { LocationPickerModal } from '@/components/LocationPickerModal'
 import { LocationMapPlaceholder } from '@/components/LocationMapPlaceholder'
 import { ReceivePaymentModal } from '@/components/ReceivePaymentModal'
@@ -73,6 +76,7 @@ import {
   updateCustomerServiceLocation,
 } from '@/lib/customerServiceLocations'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useTheme } from '@/hooks/useTheme'
 
 type TabKey = 'overview' | 'edit' | 'contacts' | 'locations' | 'assets' | 'jobs' | 'estimates' | 'invoices' | 'tasks' | 'messages' | 'documents' | 'secure-files' | 'templates' | 'activity'
 
@@ -104,6 +108,16 @@ const TAB_GROUPS: { key: TabGroupKey; label: string; count?: number; tabs: TabKe
 ]
 
 type ContactInputWithId = CustomerContactInput & { id?: string }
+
+// Same tab keys/components/permissions; Easy changes only their grouping.
+const EASY_CUSTOMER_GROUPS: { key: string; label: string; count?: number; tabs: TabKey[] }[] = [
+  { key: 'overview', label: 'Overview', tabs: ['overview'] },
+  { key: 'work', label: 'Jobs & equipment', tabs: ['jobs', 'tasks', 'assets'] },
+  { key: 'money', label: 'Estimates & invoices', tabs: ['invoices', 'estimates'] },
+  { key: 'people', label: 'People & places', tabs: ['contacts', 'locations'] },
+  { key: 'files', label: 'Files', tabs: ['documents', 'secure-files', 'templates'] },
+  { key: 'more', label: 'More', tabs: ['edit', 'messages', 'activity'] },
+]
 type LocationInputWithId = CustomerServiceLocationInput & { id?: string }
 type SecureFileViewerState = {
   file: CustomerSecureFile
@@ -155,6 +169,9 @@ async function syncCustomerChildren(
 }
 
 export function CustomerDetailPage() {
+  const { theme } = useTheme()
+  const easy = theme === 'easy-side' || theme === 'easy-top'
+  const tabGroups = easy ? EASY_CUSTOMER_GROUPS : TAB_GROUPS
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
   const { has } = usePermissions()
@@ -169,7 +186,11 @@ export function CustomerDetailPage() {
   const [editServerErrors, setEditServerErrors] = useState<Record<string, string[]>>()
 
   const activeTab = (searchParams.get('tab') as TabKey) || 'overview'
-  const setTab = (tab: TabKey) => setSearchParams({ tab })
+  const setTab = (tab: TabKey) => {
+    const next = new URLSearchParams(searchParams)
+    next.set('tab', tab)
+    setSearchParams(next)
+  }
 
   const handleDelete = async () => {
     if (!customer) return
@@ -431,6 +452,7 @@ export function CustomerDetailPage() {
       serverErrors={editServerErrors}
       initialData={customer}
       mode="edit"
+      onOpenTemplates={() => setTab('templates')}
     />
   )
 
@@ -452,28 +474,28 @@ export function CustomerDetailPage() {
           </Link>
         </div>
 
-        <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-5 sm:p-7">
+        <div className={easy ? 'rounded-2xl border border-emerald-900 bg-emerald-950 p-5 shadow-sm sm:p-7' : 'bg-white rounded-xl border border-slate-200 shadow-sm p-5 sm:p-7'}>
           <div className="flex flex-col gap-5">
             <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
               <div className="flex items-start gap-3 min-w-0">
                 <CustomerAvatarPicker customer={customer} size={56} />
                 <div className="min-w-0">
                   <div className="flex items-center gap-2 flex-wrap">
-                    <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-slate-950 break-words">{customer.display_name}</h1>
+                    <h1 className={`text-2xl sm:text-3xl font-extrabold tracking-tight break-words ${easy ? 'text-white' : 'text-slate-950'}`}>{customer.display_name}</h1>
                     <span className="inline-flex items-center rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-700 capitalize">{customer.customer_type}</span>
                     {customer.vip && <span className="inline-flex items-center rounded-full bg-amber-100 px-2.5 py-1 text-xs font-semibold text-amber-800">VIP</span>}
                     {!customer.active && <span className="inline-flex items-center rounded-full bg-slate-200 px-2.5 py-1 text-xs font-semibold text-slate-600">Inactive</span>}
                   </div>
-                  <div className="mt-1 font-mono text-sm text-slate-600">Account #{customer.account_number}</div>
+                  <div className={`mt-1 font-mono text-sm ${easy ? 'text-emerald-200' : 'text-slate-600'}`}>Account #{customer.account_number}</div>
                   {customer.tags && customer.tags.length > 0 && (
                     <div className="mt-2 flex flex-wrap gap-1.5">
                       {customer.tags.map((tag) => <span key={tag} className="rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-600">{tag}</span>)}
                     </div>
                   )}
-                  {customer.service_agreement && <div className="mt-2 text-xs font-medium text-slate-500">Service agreement customer</div>}
+                  {customer.service_agreement && <div className={`mt-2 text-xs font-medium ${easy ? 'text-emerald-100' : 'text-slate-500'}`}>Service agreement customer</div>}
                 </div>
               </div>
-              <div className="relative flex items-center gap-2 sm:shrink-0">
+              <div className="relative flex flex-wrap items-center gap-2 sm:shrink-0">
                 <button type="button" onClick={() => setMessagesOpen(true)} className="inline-flex items-center justify-center rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-800 hover:bg-slate-50 whitespace-nowrap" title="View and send customer messages">
                   💬 Messages
                 </button>
@@ -497,23 +519,32 @@ export function CustomerDetailPage() {
         <CustomerRevenueStats customerId={customer.id} customer={customer} lastContact={formatDate(customer.last_contact_at)} />
 
         <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
-          <div className="flex overflow-x-auto border-b border-slate-200">
-            {TAB_GROUPS.map((group) => {
+          <div role="group" aria-label="Customer sections" className={easy ? 'grid grid-cols-2 gap-2 border-b border-slate-200 p-3 sm:grid-cols-3 xl:grid-cols-6' : 'flex overflow-x-auto border-b border-slate-200'}>
+            {tabGroups.map((group) => {
               const isActive = group.tabs.includes(activeTab)
               return (
-                <button key={group.key} type="button" onClick={() => setTab(group.tabs[0])} className={`whitespace-nowrap border-b-2 px-4 py-3 text-sm font-semibold transition-colors ${isActive ? 'border-amber-500 bg-amber-50/70 text-slate-950' : 'border-transparent text-slate-600 hover:bg-slate-50 hover:text-slate-950'}`}>
+                <button key={group.key} type="button" aria-pressed={isActive} onClick={() => setTab(group.tabs[0])} className={easy ? `rounded-xl border px-3 py-3 text-left text-sm font-semibold ${isActive ? 'border-emerald-900 bg-emerald-950 text-white' : 'border-slate-200 text-slate-600 hover:bg-emerald-50'}` : `whitespace-nowrap border-b-2 px-4 py-3 text-sm font-semibold transition-colors ${isActive ? 'border-amber-500 bg-amber-50/70 text-slate-950' : 'border-transparent text-slate-600 hover:bg-slate-50 hover:text-slate-950'}`}>
                   {group.label}{group.count ? <span className="ml-2 text-xs text-slate-400">{group.count}</span> : null}
+                  {easy && group.tabs.length > 1 && (
+                    <span className="mt-1 block text-xs font-normal opacity-80">
+                      {group.tabs
+                        .filter(key => !(key === 'activity' && !has('settings.view')) && !(key === 'secure-files' && !has('customers.secure_files.list') && !has('customers.secure_files.manage')))
+                        .map(key => TABS.find(tab => tab.key === key)?.label)
+                        .filter(Boolean)
+                        .join(' · ')}
+                    </span>
+                  )}
                 </button>
               )
             })}
           </div>
           {activeTab !== 'overview' && (
-            <div className="flex overflow-x-auto border-b border-slate-100 bg-slate-50/70 px-2">
-              {(TAB_GROUPS.find((group) => group.tabs.includes(activeTab))?.tabs ?? []).map((key) => {
+            <div role="group" aria-label="Customer section tools" className={`flex ${easy ? 'flex-wrap' : 'overflow-x-auto'} border-b border-slate-100 bg-slate-50/70 px-2`}>
+              {(tabGroups.find((group) => group.tabs.includes(activeTab))?.tabs ?? []).map((key) => {
                 const tab = TABS.find((item) => item.key === key)
                 if (!tab || (key === 'activity' && !has('settings.view')) || (key === 'secure-files' && !has('customers.secure_files.list') && !has('customers.secure_files.manage'))) return null
                 return (
-                  <button key={key} type="button" onClick={() => setTab(key)} className={`whitespace-nowrap px-3 py-2 text-xs font-semibold ${activeTab === key ? 'text-slate-950' : 'text-slate-500 hover:text-slate-800'}`}>
+                  <button key={key} type="button" data-easy-view-option aria-pressed={activeTab === key} onClick={() => setTab(key)} className={`${easy ? 'my-1 rounded-lg' : ''} whitespace-nowrap px-3 py-2 text-xs font-semibold ${activeTab === key ? 'text-slate-950' : 'text-slate-500 hover:text-slate-800'}`}>
                     {tab.label}
                   </button>
                 )
@@ -526,10 +557,10 @@ export function CustomerDetailPage() {
         {activeTab === 'edit' && renderEdit()}
         {activeTab === 'contacts' && renderContacts()}
         {activeTab === 'locations' && renderLocations()}
-        {activeTab === 'assets' && <CustomerAssetsTab customer={customer} />}
-        {activeTab === 'jobs' && <CustomerJobsTab customer={customer} />}
-        {activeTab === 'estimates' && <CustomerEstimatesTab customer={customer} />}
-        {activeTab === 'invoices' && <CustomerInvoicesTab customer={customer} />}
+        {activeTab === 'assets' && <CustomerAssetsTab key={customer.id} customer={customer} />}
+        {activeTab === 'jobs' && <CustomerJobsTab key={customer.id} customer={customer} />}
+        {activeTab === 'estimates' && <CustomerEstimatesTab key={customer.id} customer={customer} />}
+        {activeTab === 'invoices' && <CustomerInvoicesTab key={customer.id} customer={customer} />}
         {activeTab === 'activity' && has('settings.view') && (
           <EntityActivityPanel entityId={customer.id} noun="customer" />
         )}
@@ -700,8 +731,10 @@ function CustomerMergeModal({
 // ============================================================
 
 function CustomerAssetsTab({ customer }: { customer: Customer }) {
-  const { data, isLoading, isError, error } = useAssets({
+  const [page, setPage] = useState(1)
+  const { data, isLoading, isError, error, isFetching, refetch } = useAssets({
     customer_id: customer.id,
+    page,
     per_page: 100,
   })
   const [showWizard, setShowWizard] = useState(false)
@@ -739,6 +772,7 @@ function CustomerAssetsTab({ customer }: { customer: Customer }) {
       {isError && (
         <p className="text-sm text-red-700">
           Failed to load assets.{error instanceof Error ? ` ${error.message}` : ''}
+          <button type="button" onClick={() => { void refetch() }} disabled={isFetching} className="ml-2 underline disabled:opacity-50">Retry</button>
         </p>
       )}
 
@@ -757,7 +791,18 @@ function CustomerAssetsTab({ customer }: { customer: Customer }) {
       )}
 
       {!isLoading && !isError && assets.length > 0 && (
-        <CustomerAssetsTable assets={assets} />
+        <CustomerAssetsByLocation assets={assets} />
+      )}
+
+      {!isLoading && !isError && data?.meta && (
+        <nav aria-label="Customer assets pages" className="mt-4 flex flex-wrap items-center justify-between gap-3 text-xs text-slate-600">
+          <span role="status">{isFetching ? 'Updating assets…' : `Showing ${data.meta.from ?? 0}–${data.meta.to ?? 0} of ${data.meta.total} assets`}</span>
+          {data.meta.last_page > 1 && <div className="flex items-center gap-3">
+            <button type="button" disabled={isFetching || page <= 1} onClick={() => setPage(p => Math.max(1, p - 1))} className="rounded border border-slate-300 px-3 py-2 disabled:opacity-40">Previous</button>
+            <span>Page {data.meta.current_page} of {data.meta.last_page}</span>
+            <button type="button" disabled={isFetching || page >= data.meta.last_page} onClick={() => setPage(p => p + 1)} className="rounded border border-slate-300 px-3 py-2 disabled:opacity-40">Next</button>
+          </div>}
+        </nav>
       )}
 
       {showWizard && (
@@ -771,9 +816,80 @@ function CustomerAssetsTab({ customer }: { customer: Customer }) {
   )
 }
 
-function CustomerAssetsTable({ assets }: { assets: Asset[] }) {
+/**
+ * The same assets, grouped by the property they are at.
+ *
+ * A flat list is fine for a customer with one building and useless for
+ * one with nine: "which of these is at Harbor Point" is the question
+ * being asked, and a Location column makes somebody answer it by
+ * scanning. Grouping also gives each property somewhere to say that
+ * another company keeps records there.
+ */
+function CustomerAssetsByLocation({ assets }: { assets: Asset[] }) {
+  const groups = new Map<string, { label: string; assets: Asset[] }>()
+
+  for (const asset of assets) {
+    const id = asset.service_location?.id ?? 'none'
+    const label =
+      asset.service_location?.nickname
+      || asset.service_location?.city
+      || 'No property set'
+
+    const group = groups.get(id) ?? { label, assets: [] }
+    group.assets.push(asset)
+    groups.set(id, group)
+  }
+
+  const ordered = [...groups.entries()].sort((a, b) => a[1].label.localeCompare(b[1].label))
+
   return (
-    <div className="overflow-hidden rounded border border-slate-200">
+    <div className="space-y-6">
+      {ordered.map(([locationId, group]) => (
+        <section key={locationId}>
+          <div className="mb-2 flex flex-wrap items-baseline justify-between gap-2">
+            <h3 className="text-sm font-semibold text-navy-800">{group.label}</h3>
+            <span className="text-xs text-slate-500">
+              {group.assets.length} item{group.assets.length === 1 ? '' : 's'}
+            </span>
+          </div>
+          {locationId !== 'none' && (
+            <div className="mb-3">
+              <EquipmentSharingCard locationId={locationId} />
+            </div>
+          )}
+          <CustomerAssetsTable assets={group.assets} />
+        </section>
+      ))}
+    </div>
+  )
+}
+
+function CustomerAssetsTable({ assets }: { assets: Asset[] }) {
+  const { theme } = useTheme()
+  const easy = theme === 'easy-top' || theme === 'easy-side'
+  return (
+    <>
+    {easy && <ul aria-label="Customer assets" className="space-y-3 md:hidden">
+      {assets.map(asset => <li key={asset.id} className="rounded-xl border border-slate-200 p-4">
+        <div className="flex items-start justify-between gap-3">
+          <h3 className="min-w-0 break-words font-semibold text-slate-900">{asset.name}</h3>
+          {asset.is_secured && <span className="shrink-0 text-xs text-slate-600">🔒 Secured</span>}
+        </div>
+        <dl className="mt-3 grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-2 text-xs">
+          <dt className="text-slate-500">Type</dt><dd className="break-words">{asset.asset_type?.name ?? '—'}</dd>
+          <dt className="text-slate-500">Code</dt><dd className="break-all font-mono">{asset.asset_code || '—'}</dd>
+          <dt className="text-slate-500">Location</dt><dd className="break-words">{asset.service_location?.nickname || asset.service_location?.city || '—'}</dd>
+          <dt className="text-slate-500">Group</dt><dd className="break-words">{asset.asset_group?.name ?? '—'}</dd>
+        </dl>
+        <div className="mt-3 flex flex-wrap gap-2">
+          <Link to={`/assets?q=${encodeURIComponent(asset.asset_code || asset.name)}`} className="inline-flex min-h-11 items-center rounded-lg border border-amber-300 px-3 text-sm font-semibold text-amber-800" aria-label={`View or edit ${asset.name}`}>View / Edit →</Link>
+          {asset.scan_url && (
+            <a href={asset.scan_url} target="_blank" rel="noreferrer" className="inline-flex min-h-11 items-center rounded-lg border border-slate-300 px-3 text-sm font-semibold text-slate-700" aria-label={`Open the public record for ${asset.name}`}>Public record →</a>
+          )}
+        </div>
+      </li>)}
+    </ul>}
+    <div className={`${easy ? 'hidden md:block' : ''} overflow-x-auto rounded border border-slate-200`}>
       <table className="w-full text-sm">
         <thead className="bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
           <tr>
@@ -831,6 +947,7 @@ function CustomerAssetsTable({ assets }: { assets: Asset[] }) {
         </tbody>
       </table>
     </div>
+    </>
   )
 }
 
@@ -910,6 +1027,13 @@ function CustomerLocationsTab({ customer }: { customer: Customer }) {
               </div>
               <div className="text-sm text-slate-700 leading-relaxed">
                 {loc.address.formatted}
+              </div>
+              {/* Only speaks when another CrewBarn company keeps equipment
+                  records at this same address, or when this shop has
+                  already asked about it. Silent otherwise, which is most
+                  properties. */}
+              <div className="mt-3">
+                <EquipmentSharingCard locationId={loc.id} />
               </div>
               {loc.gated_property && loc.gate_code && (
                 <div className="bg-amber-50 border border-amber-200 rounded p-2 mt-2">
@@ -1064,6 +1188,8 @@ function SubTab({
     <button
       type="button"
       onClick={onClick}
+      aria-pressed={active}
+      data-easy-view-option
       className={`relative px-3 py-2 text-xs font-medium whitespace-nowrap border-b-2 transition-colors ${
         active
           ? 'border-amber-500 text-navy-800'
@@ -1112,7 +1238,7 @@ function CustomerJobsTab({ customer }: { customer: Customer }) {
     setPage(1)
   }
 
-  const { data, isLoading, isError, error } = useWorkOrders({
+  const { data, isLoading, isError, error, refetch, isFetching } = useWorkOrders({
     service_customer_id: customer.id,
     include_bill_to: true, // their own jobs + sub-account jobs billed to them
     invoiced: filter === 'all' ? undefined : filter === 'invoiced',
@@ -1151,23 +1277,23 @@ function CustomerJobsTab({ customer }: { customer: Customer }) {
       </div>
 
       {/* Sub-tabs */}
-      <div className="flex gap-1 mb-3 border-b border-slate-200">
+      <div role="group" aria-label="Customer job filters" className="flex flex-wrap gap-1 mb-3 border-b border-slate-200">
         <SubTab active={filter === 'all'} onClick={() => pickFilter('all')}>
-          All ({totalJobs})
+          All ({isLoading || isError ? '—' : totalJobs})
         </SubTab>
         <SubTab
           active={filter === 'uninvoiced'}
           onClick={() => pickFilter('uninvoiced')}
           highlight={uninvoicedTotal > 0}
         >
-          Uninvoiced ({uninvoicedTotal})
+          Uninvoiced ({isLoading || isError ? '—' : uninvoicedTotal})
         </SubTab>
         <SubTab active={filter === 'invoiced'} onClick={() => pickFilter('invoiced')}>
-          Invoiced ({invoicedTotal})
+          Invoiced ({isLoading || isError ? '—' : invoicedTotal})
         </SubTab>
       </div>
 
-      {filterTotal > 0 && (
+      {!isLoading && !isError && filterTotal > 0 && (
         <p className="mb-2 text-xs text-slate-500">
           Showing {fromRow}–{toRow} of {filterTotal.toLocaleString()}
         </p>
@@ -1183,11 +1309,12 @@ function CustomerJobsTab({ customer }: { customer: Customer }) {
       {isError && (
         <p className="text-sm text-red-700">
           Failed to load jobs.{error instanceof Error ? ` ${error.message}` : ''}
+          <button type="button" onClick={() => { void refetch() }} disabled={isFetching} className="ml-2 underline disabled:opacity-50">Retry</button>
         </p>
       )}
       {!isLoading && !isError && rows.length === 0 && (
         <div className="text-center text-sm text-slate-500 py-8">
-          No jobs yet.{' '}
+          {filter === 'all' ? 'No jobs yet.' : 'No jobs match this filter.'}{' '}
           <Link
             to={`/jobs/new?customer_id=${customer.id}`}
             className="text-amber-700 hover:underline font-medium"
@@ -1249,7 +1376,7 @@ function CustomerJobsTab({ customer }: { customer: Customer }) {
           </div>
 
           {/* Desktop: the original table */}
-          <div className="hidden md:block overflow-hidden rounded border border-slate-200">
+          <div className="hidden md:block overflow-x-auto rounded border border-slate-200">
             <table className="w-full text-sm">
               <thead className="bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
                 <tr>
@@ -1311,12 +1438,12 @@ function CustomerJobsTab({ customer }: { customer: Customer }) {
         </>
       )}
 
-      {lastPage > 1 && (
+      {!isLoading && !isError && lastPage > 1 && (
         <div className="mt-4 flex items-center justify-between gap-2">
           <button
             type="button"
             onClick={() => setPage((p) => Math.max(1, p - 1))}
-            disabled={currentPage <= 1}
+            disabled={isFetching || currentPage <= 1}
             className="text-sm px-3 py-1.5 rounded border border-slate-300 text-slate-700 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed"
           >
             ← Prev
@@ -1325,7 +1452,7 @@ function CustomerJobsTab({ customer }: { customer: Customer }) {
           <button
             type="button"
             onClick={() => setPage((p) => Math.min(lastPage, p + 1))}
-            disabled={currentPage >= lastPage}
+            disabled={isFetching || currentPage >= lastPage}
             className="text-sm px-3 py-1.5 rounded border border-slate-300 text-slate-700 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed"
           >
             Next →
@@ -1341,8 +1468,10 @@ function CustomerJobsTab({ customer }: { customer: Customer }) {
 // ============================================================
 
 function CustomerEstimatesTab({ customer }: { customer: Customer }) {
-  const { data, isLoading, isError, error } = useEstimates({
+  const [page, setPage] = useState(1)
+  const { data, isLoading, isError, error, refetch, isFetching } = useEstimates({
     customer_id: customer.id,
+    page,
     per_page: 100,
   })
   const rows = data?.data ?? []
@@ -1364,6 +1493,17 @@ function CustomerEstimatesTab({ customer }: { customer: Customer }) {
         </Link>
       </div>
 
+      {!isLoading && !isError && data?.meta && (
+        <nav aria-label="Customer estimates pages" className="mb-4 flex flex-wrap items-center justify-between gap-3 text-xs text-slate-600">
+          <span role="status">{isFetching ? 'Updating estimates…' : `Showing ${data.meta.from ?? 0}–${data.meta.to ?? 0} of ${data.meta.total} estimates`}</span>
+          {data.meta.last_page > 1 && <div className="flex items-center gap-3">
+            <button type="button" disabled={isFetching || page <= 1} onClick={() => setPage(p => Math.max(1, p - 1))} className="rounded border border-slate-300 px-3 py-2 disabled:opacity-40">Previous</button>
+            <span>Page {data.meta.current_page} of {data.meta.last_page}</span>
+            <button type="button" disabled={isFetching || page >= data.meta.last_page} onClick={() => setPage(p => p + 1)} className="rounded border border-slate-300 px-3 py-2 disabled:opacity-40">Next</button>
+          </div>}
+        </nav>
+      )}
+
       {isLoading && (
         <div className="space-y-2">
           {[0, 1, 2].map((i) => (
@@ -1374,6 +1514,7 @@ function CustomerEstimatesTab({ customer }: { customer: Customer }) {
       {isError && (
         <p className="text-sm text-red-700">
           Failed to load estimates.{error instanceof Error ? ` ${error.message}` : ''}
+          <button type="button" onClick={() => { void refetch() }} disabled={isFetching} className="ml-2 underline disabled:opacity-50">Retry</button>
         </p>
       )}
       {!isLoading && !isError && rows.length === 0 && (
@@ -1423,7 +1564,7 @@ function CustomerEstimatesTab({ customer }: { customer: Customer }) {
           </div>
 
           {/* Desktop table */}
-          <div className="hidden md:block overflow-hidden rounded border border-slate-200">
+          <div className="hidden md:block overflow-x-auto rounded border border-slate-200">
           <table className="w-full text-sm">
             <thead className="bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
               <tr>
@@ -1590,17 +1731,17 @@ function CustomerContactsTab({ customer }: { customer: Customer }) {
                   {c.department}
                 </div>
               )}
-              <div className="grid grid-cols-2 gap-3 text-sm">
+              <div className="grid grid-cols-1 gap-3 text-sm sm:grid-cols-2">
                 {c.email && (
                   <div>
                     <span className="text-slate-500 text-xs">Email:</span>{' '}
-                    <a href={`mailto:${c.email}`} className="text-amber-700 hover:underline">{c.email}</a>
+                    <a href={`mailto:${c.email}`} className="break-all text-amber-700 hover:underline">{c.email}</a>
                   </div>
                 )}
                 {c.email_alt && (
                   <div>
                     <span className="text-slate-500 text-xs">Email alt:</span>{' '}
-                    <a href={`mailto:${c.email_alt}`} className="text-amber-700 hover:underline">{c.email_alt}</a>
+                    <a href={`mailto:${c.email_alt}`} className="break-all text-amber-700 hover:underline">{c.email_alt}</a>
                   </div>
                 )}
                 {c.phone && (
@@ -2422,10 +2563,12 @@ function CustomerDocumentsTab({ customer }: { customer: Customer }) {
 // ============================================================
 
 function CustomerInvoicesTab({ customer }: { customer: Customer }) {
-  const { data: rows, isLoading, isError, error } = useInvoices({ customer_id: customer.id, per_page: 200, include_bill_to: true })
+  const invoiceQuery = useInvoices({ customer_id: customer.id, per_page: 200, include_bill_to: true })
+  const rows = invoiceQuery.data
   // The actionable list — every invoice still owing, fetched with the
   // server-side balance filter so the page cap can never hide an unpaid one.
-  const { data: openRows } = useInvoices({ customer_id: customer.id, per_page: 200, balance: 'open', include_bill_to: true })
+  const openInvoiceQuery = useInvoices({ customer_id: customer.id, per_page: 200, balance: 'open', include_bill_to: true })
+  const openRows = openInvoiceQuery.data
   // True totals over ALL invoices (tab counts + truncation notice).
   const { data: summaryRes } = useQuery({
     queryKey: ['customer-invoice-summary', customer.id],
@@ -2442,17 +2585,15 @@ function CustomerInvoicesTab({ customer }: { customer: Customer }) {
   const [creatorOpen, setCreatorOpen] = useState(false)
   const [receivePaymentOpen, setReceivePaymentOpen] = useState(false)
   const [filter, setFilter] = useState<'all' | 'unpaid' | 'paid' | 'cancelled'>('all')
+  const selectedQuery = filter === 'unpaid' ? openInvoiceQuery : invoiceQuery
+  const { isLoading, isError, error } = selectedQuery
 
   const allInvoices = rows ?? []
   // Filter buckets. "Unpaid" = anything with outstanding balance and
   // not cancelled (covers draft, sent, partially paid). "Paid" =
   // fully paid OR explicit status=paid. "Cancelled" = soft hidden in
   // most views, surfaced for office reconciliation only.
-  const unpaidInvoices =
-    openRows ??
-    allInvoices.filter(
-      (i) => i.status !== 'cancelled' && (i.money?.total_cents ?? 0) > (i.money?.amount_paid_cents ?? 0),
-    )
+  const unpaidInvoices = openRows ?? []
   const paidInvoices = allInvoices.filter(
     (i) => i.status !== 'cancelled' && (i.money?.amount_paid_cents ?? 0) >= (i.money?.total_cents ?? 0) && (i.money?.total_cents ?? 0) > 0,
   )
@@ -2530,6 +2671,7 @@ function CustomerInvoicesTab({ customer }: { customer: Customer }) {
           >
             Receive payment
           </button>
+          <CustomerStatementButton customer={customer} />
           <button
             type="button"
             onClick={() => setCreatorOpen(true)}
@@ -2557,19 +2699,19 @@ function CustomerInvoicesTab({ customer }: { customer: Customer }) {
 
       {/* Sub-tab filter — defaults to "All" but "Unpaid" is where the
           office spends most of their time at month-end. */}
-      <div className="flex gap-1 mb-3 border-b border-slate-200">
+      <div role="group" aria-label="Customer invoice filters" className="flex flex-wrap gap-1 mb-3 border-b border-slate-200">
         <SubTab active={filter === 'all'} onClick={() => setFilter('all')}>
-          All ({summary?.invoice_count ?? allInvoices.length})
+          All ({summary?.invoice_count ?? (invoiceQuery.isSuccess ? allInvoices.length : '—')})
         </SubTab>
         <SubTab
           active={filter === 'unpaid'}
           onClick={() => setFilter('unpaid')}
           highlight={unpaidInvoices.length > 0}
         >
-          Unpaid ({summary?.open_count ?? unpaidInvoices.length})
+          Unpaid ({summary?.open_count ?? (openInvoiceQuery.isSuccess ? unpaidInvoices.length : '—')})
         </SubTab>
         <SubTab active={filter === 'paid'} onClick={() => setFilter('paid')}>
-          Paid ({summary?.paid_count ?? paidInvoices.length})
+          Paid ({summary?.paid_count ?? (invoiceQuery.isSuccess ? paidInvoices.length : '—')})
         </SubTab>
         {cancelledInvoices.length > 0 && (
           <SubTab
@@ -2595,17 +2737,18 @@ function CustomerInvoicesTab({ customer }: { customer: Customer }) {
       {isError && (
         <p className="text-sm text-red-700">
           Failed to load invoices.{error instanceof Error ? ` ${error.message}` : ''}
+          <button type="button" onClick={() => { void selectedQuery.refetch() }} disabled={selectedQuery.isFetching} className="ml-2 underline disabled:opacity-50">Retry</button>
         </p>
       )}
       {!isLoading && !isError && invoices.length === 0 && (
         <div className="text-center text-sm text-slate-500 py-8">
-          No invoices yet.{' '}
+          {filter === 'all' ? 'No invoices yet.' : 'No invoices match this filter.'}{' '}
           <button
             type="button"
             onClick={() => setCreatorOpen(true)}
             className="text-amber-700 hover:underline font-medium"
           >
-            Create the first one
+            Create an invoice
           </button>
           .
         </div>
@@ -2711,7 +2854,7 @@ function CustomerInvoicesTab({ customer }: { customer: Customer }) {
           </div>
 
           {/* Desktop table — unchanged */}
-          <div className="hidden md:block overflow-hidden rounded border border-slate-200">
+          <div className="hidden md:block overflow-x-auto rounded border border-slate-200">
           <table className="w-full text-sm">
             <thead className="bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
               <tr>
@@ -2845,6 +2988,7 @@ interface DocTemplateRow {
 
 /** Doc types we let customers override. Mirrors DocumentTemplate::TYPES. */
 const OVERRIDABLE_DOC_TYPES: Array<{ value: string; label: string; hint: string }> = [
+  { value: 'statement', label: 'Statement', hint: 'Monthly account statement layout for this customer.' },
   { value: 'invoice',    label: 'Invoice',    hint: 'Used when invoicing this customer.' },
   { value: 'receipt',    label: 'Receipt',    hint: 'Used when issuing a paid receipt.' },
   { value: 'estimate',   label: 'Estimate',   hint: 'Used when sending an estimate / quote.' },
@@ -2946,6 +3090,9 @@ function CustomerTemplatesTab({ customer }: { customer: Customer }) {
         <h2 className="text-sm font-semibold text-navy-800 uppercase tracking-wider">
           Templates for this customer
         </h2>
+        <a href={`${CONNECT_URL}/custom-documents`} target="_blank" rel="noopener noreferrer" className="text-sm font-semibold text-amber-700 hover:underline">
+          Create templates in Connect ↗ <span className="sr-only">(opens in a new tab)</span>
+        </a>
         <button
           type="button"
           onClick={() => save.mutate()}
@@ -2959,9 +3106,9 @@ function CustomerTemplatesTab({ customer }: { customer: Customer }) {
         Pin a specific template for each doc type when this customer needs a different
         layout than your default. Anything left as <strong>Use tenant default</strong>{' '}
         falls back to whichever template you&apos;ve marked as the default on the{' '}
-        <Link to="/custom-documents" className="text-amber-700 hover:underline">
+        <a href={`${CONNECT_URL}/custom-documents`} target="_blank" rel="noopener noreferrer" className="text-amber-700 hover:underline">
           Templates &amp; Forms
-        </Link>{' '}
+        </a>{' '}
         page.
       </p>
 

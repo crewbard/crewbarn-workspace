@@ -10,7 +10,7 @@ nothing itself.
 
 ## What is and is not here
 
-Here: 142 routes covering the work. 123 pages.
+Here: 199 routes covering the work. 84 pages.
 
 Not here, and genuinely absent rather than hidden — seats and billing, API
 tokens, provider keys and integrations, encryption, security settings,
@@ -36,11 +36,19 @@ cp .env.example .env     # VITE_API_URL=https://api.crewbarn.com
 npm run dev
 ```
 
-Ready-to-host zip: the [latest release](https://github.com/crewbard/crewbard-crewbarn-work/releases/latest).
+Ready-to-host zip: the [latest release](https://github.com/crewbard/crewbarn-work/releases/latest).
 Unzip onto any static host. CrewBarn's Quick setup does exactly this into your
 own Cloudflare Pages — see Self-hosted CrewBarn on connect.crewbarn.com.
 
 You need a CrewBarn account to sign in; this is the client, not the service.
+
+## Theme your work dashboard
+
+Choose either Easy layout, then edit the scoped tokens in
+src/themes/easy-theme.css and rebuild. See [THEMING.md](THEMING.md) for
+the supported tokens, an example, limitations and update instructions.
+Existing Appearance controls still manage the accent, navigation color and font.
+The theme kit changes presentation, not permissions or API behavior.
 
 ## Generated
 

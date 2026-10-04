@@ -1,4 +1,7 @@
-import { useState } from 'react'
+import { lazy, Suspense, useState } from 'react'
+import { useTheme } from '@/hooks/useTheme'
+
+const EasySettingsDirectory = lazy(() => import('./EasySettingsDirectory'))
 import { Link, NavLink } from 'react-router-dom'
 import { useAuth } from '@/hooks/useAuth'
 import { PERM, usePermissions } from '@/hooks/usePermissions'
@@ -7,8 +10,8 @@ import { useUnhandledIncomingCalls } from '@/hooks/useUnhandledIncomingCalls'
 import { useIntakePendingCount } from '@/hooks/useIntakePendingCount'
 import { useModuleVisibility } from '@/hooks/useModuleVisibility'
 import { useFranchiseFeature } from '@/hooks/useFranchiseFeature'
-import { PRIMARY_NAV } from './TopBar'
-import { TOOL_SHED_SECTIONS, type ToolShedSection } from './ToolShedMenu'
+import { primaryNavForTheme } from './TopBar'
+import { useVisibleToolShedSections } from './ToolShedMenu'
 
 /**
  * Sidebar — the dark navy left rail of the CrewBarn "pro" theme. A vertical
@@ -58,15 +61,16 @@ export function Sidebar({
   onOpenHelp?: () => void
 }) {
   const { account, logout } = useAuth()
-  const { has, isLoading, isPlatformAdmin } = usePermissions()
+  const { has, isLoading } = usePermissions()
   const callAlerts = useUnhandledIncomingCalls()
   const intakeCount = useIntakePendingCount()
   const badges = useNavBadges()
   const { isRouteVisible } = useModuleVisibility()
   const franchise = useFranchiseFeature()
   const [toolShedOpen, setToolShedOpen] = useState(false)
+  const { theme } = useTheme()
   const linkSize = 'normal' as const
-  const orderedPrimary = PRIMARY_NAV.filter((item) => isRouteVisible(item.to))
+  const orderedPrimary = primaryNavForTheme(theme, has('inventory.view')).filter((item) => isRouteVisible(item.to))
 
   // Badges keyed by route — same semantics as TopBar / MobileNavDrawer.
   const badgesFor: Record<string, BadgePill[]> = {
@@ -89,18 +93,7 @@ export function Sidebar({
   }
 
   // Tool Shed sections filtered by permission (mirrors the mega-menu).
-  const toolShedSections: ToolShedSection[] = isLoading
-    ? []
-    : TOOL_SHED_SECTIONS.map((section) => ({
-        ...section,
-        items: section.items.filter(
-          (it) =>
-            !(it.hideForPlatformAdmin && isPlatformAdmin) &&
-            !(it.franchiseOnly && !franchise.isFranchise) &&
-            (!it.requires || has(it.requires)) &&
-            isRouteVisible(it.to),
-        ),
-      })).filter((section) => section.items.length > 0)
+  const { sections: toolShedSections } = useVisibleToolShedSections()
 
   const userInitials = (() => {
     const first = account?.extension?.first_name
@@ -117,10 +110,11 @@ export function Sidebar({
 
   return (
     <aside
+      data-traditional-chrome={theme === 'pro' ? '' : undefined}
       className="hidden md:flex flex-col shrink-0 h-screen w-60 bg-[var(--chrome-bg)] text-white/80"
     >
       {/* Brand */}
-      <div className="flex items-center px-4 border-b border-white/10 shrink-0 h-14">
+      <div data-sidebar-brand className="flex items-center px-4 border-b border-white/10 shrink-0 h-14">
         <Link to="/" className="flex items-center gap-2 group">
           <span className="text-lg font-bold text-white">
             Crew<span className="text-amber-400">Barn</span>
@@ -150,6 +144,7 @@ export function Sidebar({
           />
         ))}
 
+        {isRouteVisible('/communications') && <>
         <SidebarSectionLabel>Communication</SidebarSectionLabel>
         <SidebarLink to="/communications" label="Messages" icon="messages" badges={[]} size={linkSize} />
         {!isLoading && has(PERM.CALLS_VIEW) && (
@@ -162,10 +157,11 @@ export function Sidebar({
           />
         )}
         <SidebarLink to="/intake" label="Intake Queue" icon="messages" badges={intakeCount > 0 ? [{ count: intakeCount, color: 'amber' }] : []} size={linkSize} />
+        </>}
 
         {/* Franchise Dashboard — only when the tenant is a franchisor + the
             user can view franchises. */}
-        {franchise.enabled && has('franchises.view') && (
+        {franchise.enabled && has('franchises.view') && isRouteVisible('/franchises') && (
           <SidebarLink to="/franchises" label="Franchise" icon="reports" badges={[]} size={linkSize} />
         )}
 
@@ -199,7 +195,9 @@ export function Sidebar({
 
           {toolShedOpen && (
             <div className="mt-1 mb-1 space-y-2">
-              {toolShedSections.map((section) => (
+              {theme === 'easy-side' && <div className="rounded-lg bg-white text-slate-900"><Suspense fallback={<p role="status" className="p-3">Loading settings…</p>}><EasySettingsDirectory compact onClose={() => setToolShedOpen(false)} /></Suspense></div>}
+              {theme === 'easy-side' && <NavLink to="/tool-shed" onClick={() => setToolShedOpen(false)} className="block rounded-md px-3 py-3 text-sm font-semibold text-white hover:bg-white/10">Open work tools →</NavLink>}
+              {theme !== 'easy-side' && toolShedSections.map((section) => (
                 <div key={section.title}>
                   <div className="px-3 pt-1.5 pb-0.5 text-[10px] uppercase tracking-wide font-semibold text-white/45">
                     {section.title}

@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link } from 'react-router-dom'
+import { useTheme } from '@/hooks/useTheme'
+import { EasyPageHeading } from '@/components/easy/EasyPageHeading'
 import { API_URL, apiRequest, getActingTenant, getFranchiseActAs, getStoredToken } from '@/lib/api'
 import {
   SalesTaxDetailOverlay,
@@ -179,6 +181,8 @@ export function SalesTaxReportView({
   onClose?: () => void
 }) {
   const presets = useMemo(rangePresets, [])
+  const { theme } = useTheme()
+  const easy = !embedded && (theme === 'easy-side' || theme === 'easy-top')
   const queryClient = useQueryClient()
   // Default to last month — common filing cadence is monthly in
   // Florida for small businesses.
@@ -257,6 +261,7 @@ export function SalesTaxReportView({
           // 70% of the viewport, centred, once there's room for it. Below lg
           // that would leave a column too narrow for the jurisdiction table, so
           // it goes full width with padding instead.
+          : easy ? 'mx-auto w-full min-w-0 space-y-6 px-4 py-4 sm:px-6 sm:py-6'
           : 'mx-auto w-full space-y-6 px-4 py-4 sm:px-6 sm:py-6 lg:w-[70%]'
       }
     >
@@ -280,6 +285,7 @@ export function SalesTaxReportView({
               </Link>
             )}
           </div>
+          {easy ? <EasyPageHeading title="Sales tax report" description="Choose the reporting period, review totals and jurisdiction details, then use the existing filing and payment tools below." /> : <>
           <h1 className={embedded ? 'text-[26px] font-bold text-[#0A1220]' : 'text-3xl font-semibold text-slate-900'}>
             Sales Tax Report
           </h1>
@@ -287,6 +293,7 @@ export function SalesTaxReportView({
             Totals + per-jurisdiction breakdown for the filing form. Includes invoices in{' '}
             <em>sent</em> or <em>paid</em> status with an issue date in the window.
           </p>
+          </>}
         </div>
       </div>
 
@@ -300,6 +307,7 @@ export function SalesTaxReportView({
                 key={key}
                 type="button"
                 onClick={() => applyPreset(key as keyof typeof presets)}
+                aria-pressed={isActive}
                 className={`text-xs px-3 py-1.5 rounded-full border ${
                   isActive
                     ? 'bg-amber-500 text-white border-amber-500'
@@ -616,8 +624,9 @@ export function SalesTaxReportView({
           <div className="text-sm text-slate-500 py-12 text-center">Calculating…</div>
         )}
         {query.isError && (
-          <div className="text-sm text-red-700 bg-red-50 border border-red-200 rounded px-3 py-2">
+          <div role="alert" className="text-sm text-red-700 bg-red-50 border border-red-200 rounded px-3 py-2">
             Failed to load report. {(query.error as Error)?.message}
+            <button type="button" onClick={() => void query.refetch()} className="ml-3 rounded border border-red-300 px-3 py-2 font-semibold">Retry report</button>
           </div>
         )}
 

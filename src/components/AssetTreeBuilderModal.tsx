@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react'
+import { buildAssetTreeWithAi } from '@/lib/assetGroups'
 import { Modal } from '@/components/ui/Modal'
 import { useAssetTypes } from '@/hooks/useAssetTypes'
 import {
@@ -23,6 +24,15 @@ interface BranchDraft {
   path: string
   code: string
   count: string
+  /**
+   * The schedule's own rows, when one was read.
+   *
+   * Carried untouched from the reply to the create call: these are
+   * the numbers stencilled on the frames. Typing over the count drops
+   * them, because a list of six beside a count of forty is a promise
+   * the create call does not keep.
+   */
+  assets?: { name: string; tag: string | null }[]
 }
 
 const TRADE_PRESETS: Record<string, BranchDraft[]> = {
@@ -69,6 +79,88 @@ export function AssetTreeBuilderModal({
   const [preview, setPreview] = useState<AssetTreeBuilderPreview | null>(null)
   const [createdResult, setCreatedResult] = useState<AssetTreeBuilderCreateResponse | null>(null)
   const [error, setError] = useState<string | null>(null)
+  /*
+   * The office is where the spreadsheet is. This existed only on the
+   * phone, so whoever held the customer's schedule had to retype it
+   * as a sentence — which threw away every number on it.
+   */
+  const [description, setDescription] = useState('')
+  const [schedule, setSchedule] = useState('')
+  const [instruction, setInstruction] = useState('')
+  const [assumptions, setAssumptions] = useState<string[]>([])
+  const [questions, setQuestions] = useState<
+    { id: string; text: string; options: string[] }[]
+  >([])
+  const [editedFrom, setEditedFrom] = useState<number | null>(null)
+  const [aiBusy, setAiBusy] = useState(false)
+  /** Build a draft, or change the one on screen. One call either way. */
+  const runAi = async (change?: string) => {
+    if (!change && !description.trim() && !schedule.trim()) {
+      setError('Describe the property, or paste a schedule.')
+      return
+    }
+
+    setAiBusy(true)
+    setError(null)
+    setPreview(null)
+
+    try {
+      const res = await buildAssetTreeWithAi({
+        ...(description.trim() ? { description: description.trim() } : {}),
+        ...(schedule.trim() ? { schedule: schedule.trim() } : {}),
+        ...(change
+          ? {
+              instruction: change,
+              // The rows as they stand, corrections and all. Rebuilding
+              // from the description would undo work done by hand.
+              current: rows
+                .filter((r) => r.path.trim() !== '')
+                .map((r) => ({
+                  path: r.path.trim(),
+                  code: r.code.trim().toUpperCase() || null,
+                  asset_count: Number.parseInt(r.count, 10) || 0,
+                  ...(r.assets?.length ? { assets: r.assets } : {}),
+                })),
+            }
+          : {}),
+        asset_type_name: selectedType?.name,
+      })
+
+      if (res.root_name) setRootName(res.root_name)
+      setAssumptions(res.assumptions ?? [])
+      setQuestions(res.questions ?? [])
+      setEditedFrom(res.edited_from ?? null)
+      if (change) setInstruction('')
+      setRows(
+        (res.branches ?? []).map((b) => ({
+          path: b.path,
+          code: b.code ?? '',
+          count: String(b.asset_count ?? 1),
+          assets: b.assets?.length ? b.assets : undefined,
+        })),
+      )
+    } catch (err) {
+      setError(
+        err instanceof Error
+          ? err.message
+          : 'The builder could not read that. Try rephrasing, or build by hand.',
+      )
+    } finally {
+      setAiBusy(false)
+    }
+  }
+
+  /**
+   * Answering puts the answer where the next draft reads it.
+   *
+   * Appended to the description rather than sent as a side channel, so
+   * it can be seen, edited, and kept when the draft is built again.
+   */
+  const answer = (question: { id: string; text: string }, choice: string) => {
+    setDescription((d) => `${d.trim()}\n${question.text} ${choice}`.trim())
+    setQuestions((qs) => qs.filter((q) => q.id !== question.id))
+  }
+
   const previewMutation = usePreviewAssetTreeBuilder()
   const createMutation = useCreateAssetTreeBuilder()
 
@@ -78,6 +170,8 @@ export function AssetTreeBuilderModal({
         path: row.path.trim(),
         code: row.code.trim().toUpperCase() || null,
         asset_count: Number.parseInt(row.count, 10) || 0,
+        // Sent only when a schedule gave us real ones.
+        ...(row.assets?.length ? { assets: row.assets } : {}),
       }))
       .filter((row) => row.path && row.asset_count > 0)
 
@@ -212,6 +306,133 @@ export function AssetTreeBuilderModal({
                   />
                 </label>
               </div>
+            </section>
+
+            {/*
+              Above the rows it fills in. The office has the schedule;
+              typing it back out as a sentence is what threw away every
+              number on it.
+            */}
+            <section className="rounded-lg border border-slate-200 p-4">
+              <h3 className="text-sm font-semibold text-slate-900">Build it from what you have</h3>
+              <p className="text-xs text-slate-500">
+                Describe the property, or paste the customer’s own list. A pasted
+                list keeps every number on it.
+              </p>
+
+              <div className="mt-3 grid gap-3 md:grid-cols-2">
+                <label className="block text-sm font-medium text-slate-700">
+                  Describe it
+                  <textarea
+                    value={description}
+                    onChange={(event) => setDescription(event.target.value)}
+                    rows={5}
+                    placeholder="e.g. 3 floors, 8 units per floor, 2 locks per unit"
+                    className="mt-1 w-full rounded border border-slate-200 px-3 py-2 text-sm focus:border-amber-500 focus:outline-none"
+                  />
+                </label>
+                <label className="block text-sm font-medium text-slate-700">
+                  Or paste a schedule
+                  <textarea
+                    value={schedule}
+                    onChange={(event) => setSchedule(event.target.value)}
+                    rows={5}
+                    placeholder="Paste rows from a spreadsheet or hardware list"
+                    className="mt-1 w-full rounded border border-slate-200 px-3 py-2 font-mono text-xs focus:border-amber-500 focus:outline-none"
+                  />
+                </label>
+              </div>
+
+              <p className="mt-2 text-xs text-slate-500">
+                Every row is treated as something real. Nothing is merged, and no row
+                is invented to tidy a gap — a gap is usually something that is not
+                there.
+              </p>
+
+              <button
+                type="button"
+                onClick={() => void runAi()}
+                disabled={aiBusy || (!description.trim() && !schedule.trim())}
+                className="mt-3 rounded bg-amber-600 px-3 py-2 text-sm font-semibold text-white disabled:bg-slate-200 disabled:text-slate-400"
+              >
+                {aiBusy ? 'Reading…' : 'Build the rows'}
+              </button>
+
+              {assumptions.length > 0 && (
+                <div className="mt-4 rounded border-l-4 border-amber-500 bg-amber-50 p-3">
+                  <p className="text-sm font-semibold text-slate-900">It filled in for you</p>
+                  <ul className="mt-1 space-y-1">
+                    {assumptions.map((a, i) => (
+                      <li key={i} className="text-sm text-slate-700">• {a}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+
+              {questions.map((q) => (
+                <div key={q.id} className="mt-3 rounded border border-slate-200 p-3">
+                  <p className="text-sm font-semibold text-slate-900">{q.text}</p>
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    {(q.options.length ? q.options : ['Yes', 'No']).map((opt) => (
+                      <button
+                        key={opt}
+                        type="button"
+                        onClick={() => answer(q, opt)}
+                        className="rounded-full bg-amber-600 px-3 py-1 text-xs font-semibold text-white"
+                      >
+                        {opt}
+                      </button>
+                    ))}
+                    <button
+                      type="button"
+                      onClick={() => setQuestions((qs) => qs.filter((x) => x.id !== q.id))}
+                      className="rounded-full border border-slate-200 px-3 py-1 text-xs font-semibold text-slate-600"
+                    >
+                      Skip
+                    </button>
+                  </div>
+                  <p className="mt-2 text-xs text-slate-500">
+                    Answering adds it to the description. Build again to use it.
+                  </p>
+                </div>
+              ))}
+
+              {rows.length > 0 && (
+                <div className="mt-4 border-t border-slate-200 pt-3">
+                  <label className="block text-sm font-medium text-slate-700">
+                    Change something
+                    <input
+                      value={instruction}
+                      onChange={(event) => setInstruction(event.target.value)}
+                      placeholder="e.g. add a roof hatch to each stair, or floor 4 has no units"
+                      className="mt-1 w-full rounded border border-slate-200 px-3 py-2 text-sm focus:border-amber-500 focus:outline-none"
+                    />
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() => void runAi(instruction.trim())}
+                    disabled={aiBusy || !instruction.trim()}
+                    className="mt-2 rounded border border-amber-600 px-3 py-1.5 text-sm font-semibold text-amber-700 disabled:border-slate-200 disabled:text-slate-400"
+                  >
+                    Apply the change
+                  </button>
+                  <p className="mt-1 text-xs text-slate-500">
+                    Your edits stay. Only what you name is touched.
+                  </p>
+                </div>
+              )}
+
+              {/*
+                A change read too broadly comes back far smaller, and
+                work done by hand goes with it. Said out loud rather
+                than left in a total nobody is counting.
+              */}
+              {editedFrom !== null && rows.length < editedFrom && (
+                <p className="mt-3 text-sm font-semibold text-red-700">
+                  That went from {editedFrom} rows to {rows.length}. Check before you
+                  create.
+                </p>
+              )}
             </section>
 
             <section className="rounded-lg border border-slate-200 p-4">
@@ -364,7 +585,18 @@ function updateRow(
   resetCreatedState: () => void
 ) {
   resetCreatedState()
-  setRows(rows.map((row, rowIndex) => (rowIndex === index ? { ...row, ...patch } : row)))
+  setRows(
+    rows.map((row, rowIndex) => {
+      if (rowIndex !== index) return row
+
+      // Typing over the count drops that row's schedule entries: the
+      // server trusts the list, so keeping both would show one number
+      // and create another.
+      const dropsList = patch.count !== undefined && patch.count !== row.count
+
+      return { ...row, ...patch, ...(dropsList ? { assets: undefined } : {}) }
+    }),
+  )
   setPreview(null)
 }
 

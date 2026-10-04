@@ -12,9 +12,11 @@ import {
   thermalPrintCss,
   type ThermalSizeKey,
 } from '@/lib/thermalLabels'
+import { LabelStudio } from '@/components/labels/LabelStudio'
+import type { LabelFaceData } from '@/components/labels/LabelFace'
 import { printLabelPdf, type PdfLabel } from '@/lib/pdfLabels'
 import { downloadLabelPng } from '@/lib/pngLabels'
-import { isWebBluetoothSupported, printLabelsViaBluetooth } from '@/lib/escposBluetooth'
+import { printLabelsViaBluetooth } from '@/lib/escposBluetooth'
 
 /**
  * Print-friendly QR sticker sheet for an inventory bin.
@@ -155,6 +157,10 @@ export function BinLabelsPage() {
    * screen and the printer now build from the same itemsByBin map, in the same
    * order, so the preview is the output.
    */
+  const descendantCount = bins.length
+  const leafCount = bins.filter((b) => !bins.some((other) => other.parent_bin_id === b.id)).length
+  const itemCount = Array.from(itemsByBin.values()).reduce((n, list) => n + list.length, 0)
+
   function buildBinLabels(): PdfLabel[] {
     const out: PdfLabel[] = []
     for (const b of bins) {
@@ -181,6 +187,25 @@ export function BinLabelsPage() {
     }
     return out
   }
+
+  /**
+   * The same labels the printers get, in the shape the face component
+   * draws. One builder for both: the previous screen built its own JSX and
+   * silently disagreed with the print path about the item stickers.
+   */
+  const faces: LabelFaceData[] = useMemo(
+    () =>
+      buildBinLabels().map((l) => ({
+        qrValue: l.qrValue,
+        name: l.title,
+        code: l.details?.[0]?.startsWith('SKU:') ? l.details[0] : l.title,
+        tag: l.subtitle ?? undefined,
+        path: l.details?.find((d) => d.includes('\u203a')) ?? l.details?.[l.details.length - 1],
+      })),
+    // buildBinLabels reads bins + itemsByBin, which are the real inputs.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [bins, itemsByBin],
+  )
 
   function baseFilename(): string {
     return (rootBin?.path_label || rootBin?.name || rootBin?.bin_code || 'bin')
@@ -243,160 +268,38 @@ export function BinLabelsPage() {
     <div className="bg-white min-h-screen">
       <style>{thermalPrintCss(thermal, multiUp)}</style>
 
-      <div className="no-print bg-slate-100 border-b border-slate-200 px-6 py-3 flex items-center justify-between gap-3">
-        <div>
-          <div className="text-sm font-medium text-slate-800">
-            Bin labels — {rootBin.path_label || rootBin.name || rootBin.bin_code}
-          </div>
-          <div className="text-xs text-slate-500">
-            {bins.length} sticker{bins.length === 1 ? '' : 's'} · Ctrl+P to print
-          </div>
-        </div>
-        <div className="flex items-center gap-2">
-          <div className="inline-flex rounded-md border border-slate-300 overflow-hidden text-xs">
-            <ToggleBtn
-              active={includeMode === 'this'}
-              onClick={() => setParam('include', null)}
-              title="Print only this bin"
-            >
-              This bin
-            </ToggleBtn>
-            <ToggleBtn
-              active={includeMode === 'descendants'}
-              onClick={() => setParam('include', 'descendants')}
-              title="Print this bin + every bin underneath"
-              borderLeft
-            >
-              + descendants
-            </ToggleBtn>
-            <ToggleBtn
-              active={includeMode === 'leaves'}
-              onClick={() => setParam('include', 'leaves')}
-              title="Print only leaf bins (skip racks/shelves above)"
-              borderLeft
-            >
-              Leaves only
-            </ToggleBtn>
-          </div>
-          <label className="flex items-center gap-1 text-xs text-slate-700" title="Also print a QR label for every catalog item currently stored in the bin(s) above">
-            <input
-              type="checkbox"
-              checked={includeItems}
-              onChange={(e) => setParam('items', e.target.checked ? '1' : null)}
-              className="rounded border-slate-300 text-amber-600 focus:ring-amber-500"
-            />
-            + items in bin
-          </label>
-          {!isThermal && (
-            <div className="inline-flex rounded-md border border-slate-300 overflow-hidden text-xs">
-              <ToggleBtn
-                active={!isMini}
-                onClick={() => setParam('size', null)}
-              >
-                Regular
-              </ToggleBtn>
-              <ToggleBtn
-                active={isMini}
-                onClick={() => setParam('size', 'mini')}
-                title="Tiny stickers for inside-bin labels"
-                borderLeft
-              >
-                Mini
-              </ToggleBtn>
-            </div>
-          )}
-          <select
-            value={thermal}
-            onChange={(e) =>
-              setParam('thermal', e.target.value === 'sheet' ? null : e.target.value)
-            }
-            className="text-xs px-3 py-1.5 border border-slate-300 rounded bg-white"
-            title="Pick a thermal label size when using a Dymo / Brother / Zebra printer. Sheet mode uses letter-sized paper."
-          >
-            {Object.values(THERMAL_SIZES).map((s) => (
-              <option key={s.key} value={s.key}>
-                {s.label}
-              </option>
-            ))}
-          </select>
-          {isThermal && (
-            <select
-              value={String(copies)}
-              onChange={(e) =>
-                setParam('copies', e.target.value === '1' ? null : e.target.value)
+      <LabelStudio
+        backTo={{ href: `/inventory-bins/${rootBin.id}`, label: rootBin.name || rootBin.bin_code || 'the bin' }}
+        faces={faces}
+        size={thermal}
+        onSize={(next) => setParam('thermal', next === 'sheet' ? null : next)}
+        copies={copies}
+        onCopies={(n) => setParam('copies', String(n))}
+        gap={gap}
+        onGap={(g) => setParam('gap', g === 0 ? null : String(g))}
+        scope={{
+          value: includeMode,
+          onChange: (next) => setParam('include', next === 'this' ? null : next),
+          options: [
+            { value: 'this', title: 'Just this shelf', help: `One label for ${rootBin.name || rootBin.bin_code || 'this bin'}`, count: 1 },
+            { value: 'descendants', title: 'This shelf and everything inside', help: 'Every bin under it gets its own label', count: descendantCount },
+            { value: 'leaves', title: 'Only the bins', help: 'Skip the rack and shelf labels', count: leafCount },
+          ],
+        }}
+        extra={
+          itemCount > 0
+            ? {
+                label: `Also label the ${itemCount} item${itemCount === 1 ? '' : 's'} stored here`,
+                on: includeItems,
+                onChange: (on) => setParam('items', on ? '1' : null),
               }
-              className="text-xs px-3 py-1.5 border border-slate-300 rounded bg-white"
-              title="Print this many of each sticker"
-            >
-              {[1, 2, 3, 4, 5, 10, 20, 50].map((n) => (
-                <option key={n} value={String(n)}>
-                  {n} cop{n === 1 ? 'y' : 'ies'} each
-                </option>
-              ))}
-            </select>
-          )}
-          {isThermal && (
-            <label className="flex items-center gap-1 text-xs text-slate-700">
-              <input
-                type="checkbox"
-                checked={multiUp}
-                onChange={(e) => setParam('multiup', e.target.checked ? '1' : null)}
-                className="rounded border-slate-300 text-amber-600 focus:ring-amber-500"
-                title="Lay out N labels on a letter-sized PDF for pre-cut label sheets"
-              />
-              Multi-up sheet
-            </label>
-          )}
-          {isThermal && multiUp && (
-            <input
-              type="number"
-              step="0.0625"
-              min="0"
-              max="0.5"
-              value={String(gap)}
-              onChange={(e) => setParam('gap', e.target.value === '0' ? null : e.target.value)}
-              className="text-xs px-2 py-1 border border-slate-300 rounded w-20"
-              title="Gap (inches) between adjacent labels — match the die-cut spec of your label sheet"
-            />
-          )}
-          {isThermal && !multiUp && (
-            <>
-              <button
-                type="button"
-                onClick={handleDownloadPng}
-                className="text-sm px-3 py-1.5 border border-slate-300 text-slate-700 hover:bg-slate-50 rounded"
-                title="Download a PNG image of one label — upload it to your printer's software"
-              >
-                🖼 PNG
-              </button>
-              {isWebBluetoothSupported() && (
-                <button
-                  type="button"
-                  onClick={handleBluetoothPrint}
-                  className="text-sm px-3 py-1.5 border border-blue-300 text-blue-700 hover:bg-blue-50 rounded"
-                  title="Print directly to a Bluetooth thermal printer (ESC/POS). Browser will prompt to pair the first time."
-                >
-                  📡 Bluetooth
-                </button>
-              )}
-            </>
-          )}
-          <button
-            type="button"
-            onClick={isThermal ? handlePrint : () => window.print()}
-            className="text-sm px-4 py-1.5 bg-amber-600 hover:bg-amber-700 text-white rounded"
-            title={
-              isThermal
-                ? multiUp
-                  ? 'Generate a letter-size PDF with multiple labels per page'
-                  : 'Generate the labels and open your printer dialog — pick printer + copies there'
-                : 'Print the sticker sheet'
-            }
-          >
-            Print
-          </button>
-        </div>
-      </div>
+            : undefined
+        }
+        onPrint={handlePrint}
+        onBluetooth={handleBluetoothPrint}
+        onDownloadImage={handleDownloadPng}
+      />
+
 
       <div className={`print-stage ${isThermal && !multiUp ? 'p-0' : isMini ? 'p-2' : 'p-4'}`}>
         <div
@@ -626,35 +529,6 @@ function ThermalBinLabel({
         )}
       </div>
     </div>
-  )
-}
-
-function ToggleBtn({
-  active,
-  onClick,
-  children,
-  title,
-  borderLeft,
-}: {
-  active: boolean
-  onClick: () => void
-  children: React.ReactNode
-  title?: string
-  borderLeft?: boolean
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      title={title}
-      className={`px-3 py-1.5 ${borderLeft ? 'border-l border-slate-300' : ''} ${
-        active
-          ? 'bg-amber-600 text-white'
-          : 'bg-white text-slate-700 hover:bg-slate-50'
-      }`}
-    >
-      {children}
-    </button>
   )
 }
 

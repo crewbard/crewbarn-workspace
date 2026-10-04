@@ -1,8 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { apiRequest } from '@/lib/api'
 import { Avatar } from '@/components/Avatar'
+import type { ReferenceCard } from '@/lib/referenceCards'
+import { catalogsIn, matchCatalogs, openCatalogs } from '@/lib/catalogs'
 
 /**
  * GlobalSearch — a command-palette style search in the top bar. This is the
@@ -41,7 +43,7 @@ interface EstimateHit {
 }
 
 interface SearchResult {
-  kind: 'customer' | 'job' | 'estimate'
+  kind: 'customer' | 'job' | 'estimate' | 'catalog'
   id: string
   title: string
   subtitle?: string
@@ -53,6 +55,7 @@ const KIND_LABEL: Record<SearchResult['kind'], string> = {
   customer: 'Customers',
   job: 'Jobs',
   estimate: 'Estimates',
+  catalog: 'Catalogs',
 }
 
 function pathFor(r: SearchResult): string {
@@ -63,6 +66,7 @@ function pathFor(r: SearchResult): string {
 
 export function GlobalSearch() {
   const navigate = useNavigate()
+  const queryClient = useQueryClient()
   const [open, setOpen] = useState(false)
   const [query, setQuery] = useState('')
   const [debounced, setDebounced] = useState('')
@@ -106,7 +110,7 @@ export function GlobalSearch() {
     staleTime: 30_000,
     queryFn: async () => {
       const enc = encodeURIComponent(debounced)
-      const [customers, jobs, estimates] = await Promise.all([
+      const [customers, jobs, estimates, cards] = await Promise.all([
         apiRequest<{ data: CustomerHit[] }>(`/v1/customers?q=${enc}&per_page=5`).catch(
           () => ({ data: [] as CustomerHit[] }),
         ),
@@ -116,8 +120,19 @@ export function GlobalSearch() {
         apiRequest<{ data: EstimateHit[] }>(`/v1/estimates?q=${enc}&per_page=5`).catch(
           () => ({ data: [] as EstimateHit[] }),
         ),
+        // The catalogues by title: the same list, and the same cached copy, the Alt C launcher reads.
+        queryClient.fetchQuery({
+          queryKey: ['reference-cards'],
+          queryFn: () => apiRequest<{ cards: ReferenceCard[] }>('/v1/reference-cards'),
+          staleTime: 60_000,
+        }).catch(() => ({ cards: [] as ReferenceCard[] })),
       ])
-      return { customers: customers.data, jobs: jobs.data, estimates: estimates.data }
+      return {
+        customers: customers.data,
+        jobs: jobs.data,
+        estimates: estimates.data,
+        catalogs: matchCatalogs(catalogsIn(cards.cards), debounced).slice(0, 5),
+      }
     },
   })
 
@@ -162,6 +177,14 @@ export function GlobalSearch() {
           .join(' · ') || undefined,
       })
     }
+    for (const c of data.catalogs ?? []) {
+      out.push({
+        kind: 'catalog',
+        id: c.document.id,
+        title: c.document.title,
+        subtitle: c.card.title !== c.document.title ? c.card.title : undefined,
+      })
+    }
     return out
   }, [data])
 
@@ -172,7 +195,9 @@ export function GlobalSearch() {
 
   function go(r: SearchResult) {
     setOpen(false)
-    navigate(pathFor(r))
+    // A catalogue opens over the page you are on, not on a page of its own.
+    if (r.kind === 'catalog') openCatalogs({ documentId: r.id })
+    else navigate(pathFor(r))
   }
 
   function onInputKeyDown(e: React.KeyboardEvent) {
@@ -231,7 +256,7 @@ export function GlobalSearch() {
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
                 onKeyDown={onInputKeyDown}
-                placeholder="Search customers, jobs, estimates…"
+                placeholder="Search customers, jobs, estimates, catalogs…"
                 className="flex-1 py-3.5 text-sm bg-transparent focus:outline-none placeholder:text-slate-400"
               />
               {isFetching && (
@@ -258,7 +283,7 @@ export function GlobalSearch() {
                   No matches for “{debounced}”.
                 </p>
               )}
-              {(['customer', 'job', 'estimate'] as const).map((kind) => {
+              {(['customer', 'job', 'estimate', 'catalog'] as const).map((kind) => {
                 const group = results.filter((r) => r.kind === kind)
                 if (group.length === 0) return null
                 return (
@@ -324,6 +349,16 @@ function KindIcon({ kind }: { kind: SearchResult['kind'] }) {
         <svg viewBox="0 0 20 20" fill="none" className="w-4 h-4">
           <circle cx="10" cy="7" r="3" stroke="currentColor" strokeWidth="1.6" />
           <path d="M4 17a6 6 0 0112 0" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
+        </svg>
+      </span>
+    )
+  }
+  if (kind === 'catalog') {
+    return (
+      <span className={`${wrap} bg-slate-100 text-slate-600`}>
+        <svg viewBox="0 0 20 20" fill="none" className="w-4 h-4">
+          <path d="M4 4.5A1.5 1.5 0 015.5 3H16v12H5.5A1.5 1.5 0 004 16.5v-12z" stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round" />
+          <path d="M4 16.5A1.5 1.5 0 005.5 18H16v-3" stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round" />
         </svg>
       </span>
     )

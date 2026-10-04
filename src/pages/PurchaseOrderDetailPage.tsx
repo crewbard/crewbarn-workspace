@@ -29,6 +29,7 @@ import type {
 } from '@/types/purchaseOrder'
 import type { CatalogItem } from '@/types/catalogItem'
 import type { LowStockItem } from '@/types/lowStock'
+import { useTheme } from '@/hooks/useTheme'
 
 const STATUS_PALETTE: Record<string, { bg: string; text: string }> = {
   draft: { bg: 'bg-slate-100', text: 'text-slate-700' },
@@ -58,6 +59,9 @@ const STATUS_OPTIONS: PurchaseOrderStatus[] = [
 ]
 
 export function PurchaseOrderDetailPage() {
+  const { theme } = useTheme()
+  const easy = theme === 'easy-side' || theme === 'easy-top'
+  const [statusError, setStatusError] = useState<string | null>(null)
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
   const poQuery = usePurchaseOrder(id)
@@ -89,7 +93,12 @@ export function PurchaseOrderDetailPage() {
 
   async function handleStatusChange(next: PurchaseOrderStatus) {
     if (next === po.status) return
-    await updateMutation.mutateAsync({ id: po.id, input: { status: next } })
+    setStatusError(null)
+    try {
+      await updateMutation.mutateAsync({ id: po.id, input: { status: next } })
+    } catch (error) {
+      setStatusError(error instanceof Error ? error.message : 'Could not update the order status.')
+    }
   }
 
   async function handleDelete() {
@@ -110,10 +119,10 @@ export function PurchaseOrderDetailPage() {
         </Link>
       </div>
 
-      <div className="flex items-start justify-between mb-6 gap-6">
+      <div className={easy ? 'mb-6 flex flex-wrap items-start justify-between gap-5 rounded-2xl bg-emerald-950 p-5 sm:p-7' : 'flex items-start justify-between mb-6 gap-6'}>
         <div>
           <div className="flex items-center gap-3">
-            <h1 className="text-2xl font-semibold text-slate-900 font-mono">
+            <h1 className={`text-2xl font-semibold font-mono ${easy ? 'text-white' : 'text-slate-900'}`}>
               {po.po_number}
             </h1>
             <span
@@ -122,7 +131,7 @@ export function PurchaseOrderDetailPage() {
               {STATUS_LABELS[po.status] ?? po.status}
             </span>
           </div>
-          <p className="text-sm text-slate-600 mt-1">
+          <p className={`text-sm mt-1 ${easy ? 'text-emerald-100' : 'text-slate-600'}`}>
             Vendor: <span className="font-medium">{po.vendor?.label ?? '—'}</span>
             {po.vendor_order_number && (
               <>
@@ -131,10 +140,36 @@ export function PurchaseOrderDetailPage() {
                 <span className="font-mono font-medium">{po.vendor_order_number}</span>
               </>
             )}
+            {po.estimate_id && (
+              <>
+                {' · '}
+                {po.kind === 'estimate' ? 'For estimate ' : 'From estimate '}
+                <Link to={`/estimates/${po.estimate_id}`} className="font-medium underline">
+                  {po.estimate_number ?? 'the estimate'}
+                </Link>
+              </>
+            )}
+            {po.work_order_id && (
+              <>
+                {' · '}
+                <Link to={`/jobs/${po.work_order_id}`} className="font-medium underline">the job</Link>
+              </>
+            )}
           </p>
+          {po.status_note && (
+            <p className={`mt-2 rounded px-2.5 py-1.5 text-sm ${easy ? 'bg-amber-100 text-amber-950' : 'bg-amber-50 text-amber-900'}`}>
+              {po.status_note}
+            </p>
+          )}
+          {po.order_note && (
+            <p className={`mt-2 text-sm ${easy ? 'text-emerald-100' : 'text-slate-600'}`}>
+              Ordered before the customer approved: {po.order_note}
+            </p>
+          )}
         </div>
-        <div className="flex items-center gap-2">
+        <div className={easy ? 'flex flex-wrap items-center gap-2 rounded-xl bg-white p-2' : 'flex items-center gap-2'}>
           <select
+            aria-label="Purchase order status"
             value={po.status}
             onChange={(e) => handleStatusChange(e.target.value as PurchaseOrderStatus)}
             disabled={updateMutation.isPending}
@@ -156,12 +191,19 @@ export function PurchaseOrderDetailPage() {
         </div>
       </div>
 
-      <HeaderCard po={po} />
-      <LineItemsCard po={po} />
+      {statusError && <p role="alert" className="mb-4 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">{statusError}</p>}
+      {easy && <nav aria-label="Purchase order sections" className="mb-5 flex flex-wrap gap-2">
+        <a href="#po-details" className="rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-semibold">Order details</a>
+        <a href="#po-items" className="rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-semibold">Items & quantities</a>
+        {['draft', 'ordered', 'partially_received', 'received'].includes(po.status) && <a href="#po-receive" className="rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-semibold">Receive delivery</a>}
+      </nav>}
+
+      <div id="po-details" className="scroll-mt-24"><HeaderCard po={po} /></div>
+      <div id="po-items" className="scroll-mt-24"><LineItemsCard po={po} /></div>
       {(po.status === 'draft' ||
         po.status === 'ordered' ||
         po.status === 'partially_received' ||
-        po.status === 'received') && <ReceivePanel po={po} />}
+        po.status === 'received') && <div id="po-receive" className="scroll-mt-24"><ReceivePanel po={po} /></div>}
     </div>
   )
 }
@@ -588,7 +630,16 @@ function LineItemRow({
           <span className="italic text-slate-400">free-text</span>
         )}
       </td>
-      <td className="px-3 py-3 text-slate-800">{item.description}</td>
+      <td className="px-3 py-3 text-slate-800">
+        {item.description}
+        {(item.part_number || item.source_page_label) && (
+          <div className="text-xs text-slate-400">
+            {item.part_number && <span className="font-mono">{item.part_number}</span>}
+            {item.part_number && item.source_page_label && ' · '}
+            {item.source_page_label && `catalog p. ${item.source_page_label}`}
+          </div>
+        )}
+      </td>
       <td className="px-3 py-3 text-right tabular-nums">{item.qty_ordered}</td>
       <td className="px-3 py-3 text-right tabular-nums text-slate-500">{item.qty_received}</td>
       <td className="px-3 py-3 text-right tabular-nums">
@@ -755,7 +806,11 @@ function NewLineItemPanel({
                 {itemsQuery.isLoading && (
                   <div className="px-3 py-2 text-xs text-slate-500">Loading…</div>
                 )}
-                {!itemsQuery.isLoading && results.length === 0 && (
+                {itemsQuery.isError && <div role="alert" className="px-3 py-2 text-xs text-red-700">
+                  Product search could not be loaded.
+                  <button type="button" disabled={itemsQuery.isFetching} className="ml-2 underline disabled:opacity-50" onMouseDown={event => event.preventDefault()} onClick={() => void itemsQuery.refetch()}>Try again</button>
+                </div>}
+                {!itemsQuery.isLoading && !itemsQuery.isError && results.length === 0 && (
                   <div className="px-3 py-2 text-xs text-slate-500 flex items-center justify-between">
                     <span>No matches.</span>
                     <button
@@ -770,7 +825,7 @@ function NewLineItemPanel({
                     </button>
                   </div>
                 )}
-                {results.map((it) => (
+                {!itemsQuery.isError && results.map((it) => (
                   <button
                     type="button"
                     key={it.id}
@@ -975,6 +1030,7 @@ function LowStockPickerModal({
   }
 
   async function handleAddSelected() {
+    if (lowStockQuery.isError || lowStockQuery.isFetching) return
     setError(null)
     const picks = items.filter((it) => rowState[it.id]?.selected)
     if (picks.length === 0) {
@@ -1046,18 +1102,19 @@ function LowStockPickerModal({
             <div className="text-sm text-slate-500 py-8 text-center">Loading low-stock items…</div>
           )}
           {lowStockQuery.isError && (
-            <div className="text-sm text-red-600 py-4">
+            <div role="alert" className="text-sm text-red-600 py-4">
               Failed to load: {lowStockQuery.error instanceof Error ? lowStockQuery.error.message : 'unknown error'}
+              <button type="button" disabled={lowStockQuery.isFetching} className="ml-2 underline disabled:opacity-50" onClick={() => void lowStockQuery.refetch()}>Try again</button>
             </div>
           )}
 
-          {!lowStockQuery.isLoading && items.length === 0 && (
+          {!lowStockQuery.isLoading && !lowStockQuery.isError && items.length === 0 && (
             <div className="text-sm text-slate-500 py-8 text-center">
               No items at or below reorder threshold. Set reorder thresholds on catalog items to populate this list.
             </div>
           )}
 
-          {filtered.length > 0 && (
+          {!lowStockQuery.isError && filtered.length > 0 && (
             <div className="border border-slate-200 rounded overflow-hidden">
               <table className="w-full text-sm">
                 <thead className="bg-slate-50 border-b border-slate-200 text-xs uppercase tracking-wide text-slate-500">
@@ -1156,6 +1213,8 @@ function LowStockPickerModal({
           type="button"
           onClick={handleAddSelected}
           disabled={
+            lowStockQuery.isError ||
+            lowStockQuery.isFetching ||
             createMutation.isPending ||
             selectedIds.length === 0 ||
             bulkProgress !== null
@@ -1946,12 +2005,16 @@ function LinkOrCreateCatalogItemModal({
                 {pickerResults.isLoading && (
                   <div className="px-3 py-2 text-xs text-slate-500">Loading…</div>
                 )}
-                {!pickerResults.isLoading && (pickerResults.data?.data ?? []).length === 0 && (
+                {pickerResults.isError && <div role="alert" className="px-3 py-2 text-xs text-red-700">
+                  Product search could not be loaded.
+                  <button type="button" disabled={pickerResults.isFetching} className="ml-2 underline disabled:opacity-50" onClick={() => void pickerResults.refetch()}>Try again</button>
+                </div>}
+                {!pickerResults.isLoading && !pickerResults.isError && (pickerResults.data?.data ?? []).length === 0 && (
                   <div className="px-3 py-2 text-xs text-slate-500">
                     {debouncedQuery ? 'No matches.' : 'Start typing to search.'}
                   </div>
                 )}
-                {(pickerResults.data?.data ?? []).map((it) => (
+                {!pickerResults.isError && (pickerResults.data?.data ?? []).map((it) => (
                   <button
                     type="button"
                     key={it.id}

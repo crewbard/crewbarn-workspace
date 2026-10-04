@@ -1,3 +1,4 @@
+import { AuthedAudio } from '@/components/comms/AuthedAudio'
 import { useEffect, useRef, useState } from 'react'
 import { useMutation, useQuery } from '@tanstack/react-query'
 import { Link, useLocation } from 'react-router-dom'
@@ -828,9 +829,7 @@ function CallRecordingCard({ call, onLinkClick, compact = false }: { call: CallR
         </div>
       )}
       {call.has_recording && (
-        <audio controls preload="none" src={callRecordingUrl(call.call_id)} className={compact ? 'h-9 w-full' : 'mt-2 h-9 w-full'}>
-          Your browser does not support audio playback.
-        </audio>
+        <AuthedAudio src={callRecordingUrl(call.call_id)} className={compact ? 'h-9 w-full' : 'mt-2 h-9 w-full'} />
       )}
     </div>
   )
@@ -843,14 +842,14 @@ function CallRecordingList({ calls, onLinkClick }: { calls: CallRecording[]; onL
     </div>
   )
 }
+/*
+ * A bare URL. This carried ?access_token=<session token> so a plain
+ * <audio src> could authenticate — which put a full API token into browser
+ * history, access logs, proxy logs and any Referer from the tab. AuthedAudio
+ * fetches it with the header instead, so no credential rides in a URL.
+ */
 function callRecordingUrl(callId: string): string {
-  const query = new URLSearchParams()
-  const token = getStoredToken()
-  const actingTenant = getActingTenant()
-  if (token) query.set('access_token', token)
-  if (actingTenant) query.set('acting_tenant', actingTenant)
-  const suffix = query.toString() ? '?' + query.toString() : ''
-  return API_URL + '/v1/comms/messages/' + encodeURIComponent(callId) + '/recording' + suffix
+  return API_URL + '/v1/comms/messages/' + encodeURIComponent(callId) + '/recording'
 }
 
 // ---------- Helpers (icons + markdown renderer) ----------

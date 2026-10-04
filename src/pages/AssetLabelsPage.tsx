@@ -9,8 +9,10 @@ import {
   type ThermalSizeKey,
 } from '@/lib/thermalLabels'
 import { printLabelPdf, type PdfLabel } from '@/lib/pdfLabels'
+import { LabelStudio } from '@/components/labels/LabelStudio'
+import type { LabelFaceData } from '@/components/labels/LabelFace'
 import { downloadLabelPng } from '@/lib/pngLabels'
-import { isWebBluetoothSupported, printLabelsViaBluetooth } from '@/lib/escposBluetooth'
+import { printLabelsViaBluetooth } from '@/lib/escposBluetooth'
 import type { Asset } from '@/types/asset'
 
 /**
@@ -69,174 +71,66 @@ export function AssetLabelsPage() {
       title: asset.name,
       subtitle: asset.asset_type?.name ?? undefined,
       details: [
-        locationText ? `📍 ${locationText}` : '',
+        locationText,
         asset.asset_code ?? '',
         [asset.manufacturer, asset.model].filter(Boolean).join(' · '),
       ].filter(Boolean),
     }
   }
 
+  /** What the studio draws, from the same builder the printers use. */
+  const faces: LabelFaceData[] = (() => {
+    const label = buildAssetLabel()
+    if (!label) return []
+    return [
+      {
+        qrValue: label.qrValue,
+        name: label.title,
+        code: asset.asset_code ?? undefined,
+        tag: asset.asset_type?.name ?? undefined,
+        path:
+          asset.service_location?.nickname ??
+          asset.service_location?.street_address ??
+          undefined,
+      },
+    ]
+  })()
+
   return (
     <div className="bg-white min-h-screen">
       <style>{thermalPrintCss(thermal, multiUp)}</style>
 
-      <div className="no-print bg-slate-100 border-b border-slate-200 px-6 py-3 flex items-center justify-between gap-3">
-        <div>
-          <div className="text-sm font-medium text-slate-800">
-            Asset label — {asset.display_label}
-          </div>
-          <div className="text-xs text-slate-500">
-            {copies} sticker{copies === 1 ? '' : 's'} · Ctrl+P to print
-          </div>
-        </div>
-        <div className="flex items-center gap-2">
-          {!isThermal && (
-            <div className="inline-flex rounded-md border border-slate-300 overflow-hidden text-xs">
-              <ToggleBtn
-                active={!isMini}
-                onClick={() => setParam('size', null)}
-              >
-                Regular
-              </ToggleBtn>
-              <ToggleBtn
-                active={isMini}
-                onClick={() => setParam('size', 'mini')}
-                title="Tiny stickers"
-                borderLeft
-              >
-                Mini
-              </ToggleBtn>
-            </div>
-          )}
-          <select
-            value={thermal}
-            onChange={(e) =>
-              setParam('thermal', e.target.value === 'sheet' ? null : e.target.value)
-            }
-            className="text-xs px-3 py-1.5 border border-slate-300 rounded bg-white"
-            title="Pick a thermal label size for Dymo / Brother / Zebra"
-          >
-            {Object.values(THERMAL_SIZES).map((s) => (
-              <option key={s.key} value={s.key}>
-                {s.label}
-              </option>
-            ))}
-          </select>
-          <select
-            value={String(copies)}
-            onChange={(e) =>
-              setParam('copies', e.target.value === '1' ? null : e.target.value)
-            }
-            className="text-xs px-3 py-1.5 border border-slate-300 rounded bg-white"
-            title="Number of copies"
-          >
-            {[1, 2, 3, 4, 5, 10, 20, 50].map((n) => (
-              <option key={n} value={String(n)}>
-                {n} cop{n === 1 ? 'y' : 'ies'}
-              </option>
-            ))}
-          </select>
-          {isThermal && (
-            <label className="flex items-center gap-1 text-xs text-slate-700">
-              <input
-                type="checkbox"
-                checked={multiUp}
-                onChange={(e) => setParam('multiup', e.target.checked ? '1' : null)}
-                className="rounded border-slate-300 text-amber-600 focus:ring-amber-500"
-                title="Lay out N labels on a letter-sized PDF for pre-cut label sheets"
-              />
-              Multi-up sheet
-            </label>
-          )}
-          {isThermal && multiUp && (
-            <input
-              type="number"
-              step="0.0625"
-              min="0"
-              max="0.5"
-              value={String(gap)}
-              onChange={(e) => setParam('gap', e.target.value === '0' ? null : e.target.value)}
-              className="text-xs px-2 py-1 border border-slate-300 rounded w-20"
-              title="Gap (inches) between adjacent labels"
-            />
-          )}
-          {isThermal && !multiUp && (
-            <>
-              <button
-                type="button"
-                onClick={async () => {
-                  const lbl = buildAssetLabel()
-                  if (!lbl) return
-                  await downloadLabelPng({
-                    label: lbl,
-                    thermalSize: thermal,
-                    filename: `${asset.name}-${thermal}.png`.replace(/[^A-Za-z0-9.-]+/g, '-'),
-                  })
-                }}
-                className="text-sm px-3 py-1.5 border border-slate-300 text-slate-700 hover:bg-slate-50 rounded"
-                title="Download a PNG image of the label"
-              >
-                🖼 PNG
-              </button>
-              {isWebBluetoothSupported() && (
-                <button
-                  type="button"
-                  onClick={async () => {
-                    const lbl = buildAssetLabel()
-                    if (!lbl) return
-                    try {
-                      await printLabelsViaBluetooth({
-                        labels: [lbl],
-                        thermalSize: thermal,
-                        copies,
-                      })
-                    } catch (err) {
-                      alert(err instanceof Error ? err.message : String(err))
-                    }
-                  }}
-                  className="text-sm px-3 py-1.5 border border-blue-300 text-blue-700 hover:bg-blue-50 rounded"
-                  title="Print directly to a Bluetooth thermal printer"
-                >
-                  📡 Bluetooth
-                </button>
-              )}
-            </>
-          )}
-          <button
-            type="button"
-            onClick={
-              isThermal
-                ? async () => {
-                    const lbl = buildAssetLabel()
-                    if (!lbl) return
-                    await printLabelPdf({
-                      labels: [lbl],
-                      thermalSize: thermal,
-                      copies,
-                      multiUp,
-                      gap,
-                      filename: `${asset.name}-labels.pdf`.replace(
-                        /[^A-Za-z0-9.-]+/g,
-                        '-'
-                      ),
-                    })
-                  }
-                : () => window.print()
-            }
-            className="text-sm px-4 py-1.5 bg-amber-600 hover:bg-amber-700 text-white rounded"
-            title={
-              isThermal
-                ? multiUp
-                  ? 'Generate a letter-size PDF with multiple labels per page'
-                  : 'Generate the labels and open your printer dialog'
-                : 'Print the sticker sheet'
-            }
-          >
-            Print
-          </button>
-        </div>
-      </div>
-
+      <LabelStudio
+        backTo={{ href: `/assets/${asset.id}`, label: asset.name }}
+        faces={faces}
+        size={thermal}
+        onSize={(next) => setParam('thermal', next === 'sheet' ? null : next)}
+        copies={copies}
+        onCopies={(n) => setParam('copies', String(n))}
+        gap={gap}
+        onGap={(g) => setParam('gap', g === 0 ? null : String(g))}
+        onPrint={async () => {
+          const label = buildAssetLabel()
+          if (label) {
+            await printLabelPdf({ labels: [label], thermalSize: thermal, copies, multiUp, gap })
+          }
+        }}
+        onBluetooth={async () => {
+          const label = buildAssetLabel()
+          if (!label) return
+          try {
+            await printLabelsViaBluetooth({ labels: [label], thermalSize: thermal, copies })
+          } catch (err) {
+            alert(err instanceof Error ? err.message : String(err))
+          }
+        }}
+        onDownloadImage={async () => {
+          const label = buildAssetLabel()
+          if (label) {
+            await downloadLabelPng({ label, thermalSize: thermal, filename: `${asset.asset_code || asset.id}.png` })
+          }
+        }}
+      />
       <div className={`print-stage ${isThermal ? 'p-0' : isMini ? 'p-2' : 'p-4'}`}>
         <div
           className={
@@ -367,34 +261,6 @@ function AssetLabelCard({
   )
 }
 
-function ToggleBtn({
-  active,
-  onClick,
-  children,
-  title,
-  borderLeft,
-}: {
-  active: boolean
-  onClick: () => void
-  children: React.ReactNode
-  title?: string
-  borderLeft?: boolean
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      title={title}
-      className={`px-3 py-1.5 ${borderLeft ? 'border-l border-slate-300' : ''} ${
-        active
-          ? 'bg-amber-600 text-white'
-          : 'bg-white text-slate-700 hover:bg-slate-50'
-      }`}
-    >
-      {children}
-    </button>
-  )
-}
 
 function Centered({ children }: { children: React.ReactNode }) {
   return (

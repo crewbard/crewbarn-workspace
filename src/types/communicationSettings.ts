@@ -76,6 +76,8 @@ export interface CommunicationSettings {
 
   // Call transcription
   transcription_openai_api_key_present: boolean
+  transcription_provider?: 'openai' | 'assemblyai'
+  transcription_assemblyai_api_key_present?: boolean
 }
 
 /**
@@ -136,6 +138,8 @@ export interface CommunicationSettingsUpdate {
 
   // Call transcription
   transcription_openai_api_key?: string | null
+  transcription_provider?: 'openai' | 'assemblyai'
+  transcription_assemblyai_api_key?: string | null
 }
 
 export interface CommunicationSettingsResponse {

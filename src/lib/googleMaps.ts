@@ -37,6 +37,47 @@ export async function getGoogleMapsKey(): Promise<string | null> {
   return fetchKey()
 }
 
+/**
+ * Hand the loader a key instead of letting it fetch one.
+ *
+ * The wall board has no signed-in session, so the usual settings fetch
+ * would 401 and the map would silently never load. Its key arrives on the
+ * board's own config call, and this seeds the same cache so everything
+ * downstream — the single-load promise, the libraries — is unchanged.
+ */
+export function primeGoogleMapsKey(key: string | null): void {
+  cachedKey = key
+}
+
+/**
+ * Did Google refuse the key?
+ *
+ * A rejected referrer, a disabled API or unpaid billing does not reject
+ * the promise — the script loads fine and Google paints "Oops! Something
+ * went wrong" inside the map container. Anything relying on a catch()
+ * therefore thinks the map worked and hides its own fallback, which is
+ * how a wall ends up showing a grey apology box instead of the crew.
+ *
+ * Google calls window.gm_authFailure for exactly this, so it is the one
+ * reliable signal.
+ */
+let authFailed = false
+
+export function googleMapsAuthFailed(): boolean {
+  return authFailed
+}
+
+if (typeof window !== 'undefined') {
+  ;(window as unknown as { gm_authFailure?: () => void }).gm_authFailure = () => {
+    authFailed = true
+  }
+}
+
+/** Google's own error panel, for the cases that do not call gm_authFailure. */
+export function hasMapError(host: HTMLElement | null): boolean {
+  return !!host?.querySelector('.gm-err-container')
+}
+
 export async function isGoogleMapsConfigured(): Promise<boolean> {
   const k = await fetchKey()
   return !!k

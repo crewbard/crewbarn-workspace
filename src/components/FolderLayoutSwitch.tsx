@@ -20,7 +20,7 @@ export function FolderLayoutSwitch({
   onChange: (layout: FolderLayout) => void
 }) {
   return (
-    <div className="inline-flex h-9 items-center gap-0.5 rounded-md border border-slate-300 bg-slate-100 p-1" role="group" aria-label="Folder layout">
+    <div data-easy-view-group className="inline-flex min-h-11 shrink-0 items-center gap-0.5 rounded-lg border border-slate-300 bg-slate-100 p-1" role="group" aria-label="Folder layout">
       {OPTIONS.map((opt) => {
         const active = value === opt.id
         return (
@@ -29,6 +29,7 @@ export function FolderLayoutSwitch({
             type="button"
             onClick={() => onChange(opt.id)}
             aria-pressed={active}
+            data-easy-view-option
             className={
               'rounded px-2.5 py-1 text-xs font-semibold transition-colors ' +
               (active ? 'bg-amber-500 text-white shadow-sm' : 'text-slate-600 hover:bg-white hover:text-slate-900')

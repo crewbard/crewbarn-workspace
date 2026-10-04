@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { apiRequest } from '@/lib/api'
 import { AttachmentOverlay } from '@/components/ui/AttachmentOverlay'
+import { useTheme } from '@/hooks/useTheme'
 
 /**
  * Signed Doc tab on the staff WO detail page. Renders every signature
@@ -25,6 +26,8 @@ interface SignatureRow {
 }
 
 export function WorkOrderSignaturesPanel({ workOrderId }: { workOrderId: string }) {
+  const { theme } = useTheme()
+  const easy = theme === 'easy-side' || theme === 'easy-top'
   const [overlay, setOverlay] = useState<{ url: string; filename: string } | null>(null)
 
   const q = useQuery<{ data: SignatureRow[] }>({
@@ -38,7 +41,9 @@ export function WorkOrderSignaturesPanel({ workOrderId }: { workOrderId: string 
     return <div className="text-sm text-slate-500">Loading signatures…</div>
   }
   if (q.isError) {
-    return <div className="text-sm text-red-700">{(q.error as Error).message}</div>
+    return <div role="alert" className="rounded-xl border border-red-200 bg-white p-4 text-sm text-red-700">Signatures could not be loaded.
+      <button type="button" disabled={q.isFetching} onClick={() => void q.refetch()} className="ml-2 underline disabled:opacity-50">Retry</button>
+    </div>
   }
 
   if (rows.length === 0) {
@@ -52,10 +57,14 @@ export function WorkOrderSignaturesPanel({ workOrderId }: { workOrderId: string 
 
   return (
     <div className="space-y-3">
+      {easy && <header className="rounded-xl border border-slate-200 bg-white p-4">
+        <h2 className="font-semibold text-slate-900">Captured signatures ({rows.length})</h2>
+        <p className="mt-1 text-sm text-slate-600">Review the signer, capture time, and recorded location. Select a signature image to enlarge it. New signatures are captured in the field workflow.</p>
+      </header>}
       {rows.map((s) => (
         <div
           key={s.id}
-          className="bg-white border border-slate-200 rounded-xl p-4 flex items-start gap-4"
+          className="bg-white border border-slate-200 rounded-xl p-4 flex flex-wrap items-start gap-4"
         >
           <button
             type="button"
@@ -77,7 +86,7 @@ export function WorkOrderSignaturesPanel({ workOrderId }: { workOrderId: string 
             )}
           </button>
           <div className="min-w-0 flex-1">
-            <div className="text-sm font-semibold text-slate-900">{s.signer_name}</div>
+            <div className="break-words text-sm font-semibold text-slate-900">{s.signer_name}</div>
             {s.signer_role && (
               <div className="text-xs text-slate-500">{s.signer_role}</div>
             )}

@@ -6,6 +6,7 @@ import {
 } from '@/components/EstimateLineItemEditorCore'
 import type { EstimateLineItemDraft } from '@/types/estimateLineItem'
 import type { CatalogItem } from '@/types/catalogItem'
+import { priceFromCost, usePricingRules } from '@/hooks/usePricingRules'
 
 interface EstimateLineItemEditorBufferedProps {
   drafts: EstimateLineItemDraft[]
@@ -17,6 +18,21 @@ interface EstimateLineItemEditorBufferedProps {
 
 function generateDraftId(): string {
   return `draft_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`
+}
+
+
+/**
+ * What this catalog item should cost the customer on a line.
+ *
+ * The catalog price when there is one. When there is not, the shop's own
+ * material markup applied to what the part cost — better than the $0 that
+ * used to go out on the estimate. With no markup set it stays 0, because
+ * inventing a price is worse than showing an obvious blank.
+ */
+function unitPriceFor(item: CatalogItem, markupPercent: number | null): number {
+  const listed = item.pricing.customer_cost_cents
+  if (listed > 0) return listed
+  return priceFromCost(item.pricing.owner_cost_cents ?? 0, markupPercent) ?? listed
 }
 
 export function blankEstimateLineDraft(): EstimateLineItemDraft {
@@ -107,13 +123,15 @@ export function EstimateLineItemEditorBuffered({
     onChange(reordered)
   }
 
+  const pricing = usePricingRules()
+
   const handlePickFromCatalog = (item: CatalogItem) => {
     const draft: EstimateLineItemDraft = {
       ...blankEstimateLineDraft(),
       type: item.type === 'product' ? 'product' : 'service',
       description: item.name,
       quantity: item.default_quantity || 1,
-      unit_price_cents: item.pricing.customer_cost_cents,
+      unit_price_cents: unitPriceFor(item, pricing?.material_markup_percent ?? null),
       service_catalog_item_id: item.id,
       tax_class_id: item.tax_class?.id ?? null,
     }

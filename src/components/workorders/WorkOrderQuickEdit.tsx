@@ -59,7 +59,7 @@ export const WorkOrderQuickEdit = forwardRef<
 >(function WorkOrderQuickEdit({ wo, onStateChange, showInlineSave = true }, ref) {
   const qc = useQueryClient()
 
-  const techsQ = useTenantAccounts('', 100)
+  const techsQ = useTenantAccounts('', 100, true)
   const statusesQ = useQuery({
     queryKey: ['job-statuses'],
     queryFn: () => apiRequest<{ data: JobStatusRow[] }>('/v1/job-statuses'),

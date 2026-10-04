@@ -1,9 +1,14 @@
-import { useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { createContext, useContext, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
+import { ReferencedText } from '@/components/ReferencedText'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
+import { IntakeDraftHandoff } from './IntakeDraftHandoff'
+import { PhotoTeachingNotes } from './PhotoTeachingNotes'
 import { SafeHtml } from '@/components/SafeHtml'
 import { ApiError } from '@/lib/api'
+import { AuthedAudio } from './AuthedAudio'
+import { CallJobLink } from './CallJobLink'
 import { verifyAddress } from '@/lib/verifyAddress'
 import {
   convertIntakeDraft,
@@ -27,6 +32,7 @@ import {
   type CommsImageAnalysis,
   type CommsMessage,
   type CommsTextReadingEntry,
+  type ThreadReader,
 } from '@/lib/comms'
 import { suggestTechsForLocation } from '@/lib/dispatch'
 import { AddressAutocomplete } from '@/components/AddressAutocomplete'
@@ -58,6 +64,8 @@ export function ConversationThread({
 }) {
   const queryClient = useQueryClient()
   const [draft, setDraft] = useState('')
+  const [handoffParams] = useSearchParams()
+  const handoffId = handoffParams.get('intake_follow_up')
   const [emailSubject, setEmailSubject] = useState('')
   const [pendingImages, setPendingImages] = useState<string[]>([])
   const [uploading, setUploading] = useState(false)
@@ -83,6 +91,7 @@ export function ConversationThread({
 
   const messages = (threadQuery.data?.messages ?? []).filter(shouldShowMessage)
   const conversation = threadQuery.data?.conversation
+  const readers = threadQuery.data?.read_by ?? []
   const isEmail = conversation?.channel === 'email'
   const isCallThread = conversation?.channel === 'call' || conversation?.channel === 'voicemail'
 
@@ -192,6 +201,11 @@ export function ConversationThread({
       )}
 
       {/* Messages */}
+      {handoffId && <IntakeDraftHandoff key={`${conversationId}:${handoffId}`} intakeId={handoffId} conversationId={conversationId} recipient={conversation?.external_email || conversation?.external_number || ''} onLoad={text => {
+        if ((draft.trim() || pendingImages.length) && !window.confirm('Replace the current message and remove its attachments with the saved intake draft?')) return false
+        setDraft(text); setPendingImages([]); setSendError(null)
+        return true
+      }} />}
       <div
         ref={scrollRef}
         onScroll={() => {
@@ -209,7 +223,9 @@ export function ConversationThread({
           ) : messages.length === 0 ? (
             <div className="text-sm text-slate-500">No messages yet.</div>
           ) : (
-            messages.map((m) => <MessageBubble key={m.id} message={m} conversationId={conversationId} />)
+            <ReadersContext.Provider value={readers}>
+              {messages.map((m) => <MessageBubble key={m.id} message={m} conversationId={conversationId} />)}
+            </ReadersContext.Provider>
           )}
         </div>
       </div>
@@ -466,6 +482,12 @@ function TemplatePicker({
   )
 }
 
+/**
+ * Cursors for this thread, so every bubble can work out its own receipt
+ * without each one being handed a list of names.
+ */
+const ReadersContext = createContext<ThreadReader[]>([])
+
 function MessageBubble({ message, conversationId }: { message: CommsMessage; conversationId: string }) {
   const queryClient = useQueryClient()
   const feedbackMutation = useMutation({
@@ -501,7 +523,8 @@ function MessageBubble({ message, conversationId }: { message: CommsMessage; con
   const imageUrls = media.filter((u) => mediaKind(u) === 'image')
 
   return (
-    <div className={`flex ${outbound ? 'justify-end' : 'justify-start'}`}>
+    <div className={`flex items-end gap-3 ${outbound ? 'justify-end' : 'justify-start'}`}>
+      {outbound && <ReadBy message={message} align="left" />}
       <div className="max-w-[75%] space-y-1">
         {(hasBody || media.length === 0) && (
           <div
@@ -513,7 +536,13 @@ function MessageBubble({ message, conversationId }: { message: CommsMessage; con
                 : 'rounded-bl-sm border border-slate-200 bg-white text-slate-800'
             }`}
           >
-            {parsedBody.body}
+            {/*
+              A customer naming their car in a text is the commonest
+              place a vehicle appears. Rendered around the spans the
+              detector reports, so the message itself is never
+              rewritten.
+            */}
+            <ReferencedText text={parsedBody.body} />
           </div>
         )}
         {media.map((url) => {
@@ -536,11 +565,11 @@ function MessageBubble({ message, conversationId }: { message: CommsMessage; con
             )
           }
           return (
+            <div key={url} className={`relative w-fit ${outbound ? 'ml-auto' : ''}`}>
             <button
-              key={url}
               type="button"
               onClick={() => setViewer(imageUrls.indexOf(url))}
-              title={imageTitle ?? 'Open photo'}
+              title="Open photo viewer"
               className={`relative block cursor-zoom-in rounded-lg focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-500 ${outbound ? 'ml-auto' : ''}`}
             >
               <img
@@ -548,8 +577,9 @@ function MessageBubble({ message, conversationId }: { message: CommsMessage; con
                 alt="attachment"
                 className="max-h-60 max-w-[14rem] rounded-lg border border-slate-200 object-cover"
               />
-              {!outbound && imageAnalysis && <ImageAnalysisBadge analysis={imageAnalysis} />}
             </button>
+            {!outbound && <PhotoTeachingNotes message={message} url={url} analysis={imageAnalysis} photoNumber={imageUrls.indexOf(url) + 1} photoCount={imageUrls.length} images={imageUrls} />}
+            </div>
           )
         })}
         {imageUrls.length > 0 && <SavedReadings message={message} />}
@@ -587,7 +617,46 @@ function MessageBubble({ message, conversationId }: { message: CommsMessage; con
           {failed && <span className="text-red-500"> · failed{message.error ? `: ${message.error}` : ''}</span>}
         </div>
       </div>
+      {!outbound && <ReadBy message={message} align="right" />}
     </div>
+  )
+}
+
+/**
+ * Who in the office has seen this message.
+ *
+ * A reader's cursor says they have read everything up to a moment, so a
+ * message is read by them when it arrived at or before it. That is why the
+ * thread sends cursors and not a list of names per message.
+ *
+ * The author of an outbound message is not told they read their own text.
+ */
+function ReadBy({ message, align }: { message: CommsMessage; align: 'left' | 'right' }) {
+  const readers = useContext(ReadersContext)
+  const sentAt = message.created_at ? new Date(message.created_at).getTime() : null
+  if (sentAt === null) return null
+
+  const seen = readers.filter((r) => {
+    if (!r.last_read_at) return false
+    if (message.sent_by_account_id && r.account_id === message.sent_by_account_id) return false
+    return new Date(r.last_read_at).getTime() >= sentAt
+  })
+  if (seen.length === 0) return null
+
+  const names = seen.map((r) => r.name)
+  const label = names.length <= 2
+    ? names.join(' and ')
+    : `${names.slice(0, 2).join(', ')} +${names.length - 2}`
+
+  return (
+    <span
+      title={`Read by ${names.join(', ')}`}
+      className={`min-w-0 shrink select-none truncate pb-5 text-[11px] text-slate-400 ${
+        align === 'right' ? 'text-left' : 'text-right'
+      }`}
+    >
+      Read by {label}
+    </span>
   )
 }
 
@@ -668,42 +737,6 @@ function SavedReadings({ message }: { message: CommsMessage }) {
   )
 }
 
-function ImageAnalysisBadge({ analysis }: { analysis: CommsImageAnalysis }) {
-  const best = analysis.matches?.[0]
-  const stock = best ? analysis.stock?.find((row) => row.matched_part_id === best.part.id) : null
-  const label = analysis.status === 'ready' ? 'AI' : 'AI?'
-
-  return (
-    <span className="group absolute left-2 top-2">
-      <span className="inline-flex rounded-full border border-white/70 bg-navy-900/85 px-2 py-0.5 text-[10px] font-semibold text-white shadow">
-        {label}
-      </span>
-      <span className="pointer-events-none absolute left-0 top-6 z-30 hidden w-72 rounded-lg border border-slate-200 bg-white p-3 text-left text-xs text-slate-700 shadow-xl group-hover:block">
-        <span className="block font-semibold text-slate-950">{analysis.summary || 'Image analyzed'}</span>
-        {analysis.description && <span className="mt-1 block leading-relaxed text-slate-600">{analysis.description}</span>}
-        {best && (
-          <span className="mt-2 block rounded-md bg-slate-50 p-2">
-            <span className="block font-semibold text-slate-800">
-              Best match: {best.part.part_number || best.part.sku || best.part.model_number || 'Inventory item'} ({best.confidence}%)
-            </span>
-            {best.part.description && <span className="mt-0.5 block text-slate-600">{best.part.description}</span>}
-            <span className="mt-0.5 block text-slate-500">{best.reason}</span>
-          </span>
-        )}
-        {stock && (
-          <span className="mt-2 block rounded-md bg-emerald-50 p-2 text-emerald-800">
-            Stock: {formatQty(stock.qty_available)} available / {formatQty(stock.qty_on_hand)} on hand
-            {stock.sku ? ` · ${stock.sku}` : ''}
-          </span>
-        )}
-        {analysis.visible_text?.length > 0 && (
-          <span className="mt-2 block text-slate-500">Text: {analysis.visible_text.slice(0, 4).join(', ')}</span>
-        )}
-        {analysis.error && <span className="mt-2 block text-amber-700">{analysis.error}</span>}
-      </span>
-    </span>
-  )
-}
 
 function getImageAnalysis(message: CommsMessage): CommsImageAnalysis | null {
   const raw = message.meta?.ai_image_analysis
@@ -726,9 +759,6 @@ function getImageAnalysis(message: CommsMessage): CommsImageAnalysis | null {
   }
 }
 
-function formatQty(value: number): string {
-  return Number.isInteger(value) ? String(value) : value.toFixed(2).replace(/\.?0+$/, '')
-}
 
 function splitBodyImageUrls(body: string | null | undefined): { body: string; imageUrls: string[] } {
   if (!body) return { body: '', imageUrls: [] }
@@ -936,8 +966,9 @@ function callDurationLabel(meta: Record<string, unknown> | null | undefined): st
  * No segments (an older call, a short voicemail, a labelling pass that failed
  * its own sanity check) falls back to exactly what this showed before.
  */
-function CallTranscript({ message }: { message: CommsMessage }) {
+export function CallTranscript({ message }: { message: CommsMessage }) {
   const segments = message.transcript_segments
+  const [view, setView] = useState<'conversation' | 'original'>('conversation')
 
   if (!segments || segments.length === 0) {
     return (
@@ -949,6 +980,15 @@ function CallTranscript({ message }: { message: CommsMessage }) {
 
   return (
     <div className="space-y-2">
+      <div className="flex gap-2" role="group" aria-label="Transcript view">
+        {(['conversation', 'original'] as const).map(value => <button key={value} type="button"
+          aria-pressed={view === value} onClick={() => setView(value)}
+          className={`rounded-md border px-3 py-1.5 text-xs font-semibold ${view === value ? 'bg-slate-900 text-white' : 'bg-white text-slate-600'}`}>
+          {value === 'conversation' ? 'Conversation' : 'Original'}
+        </button>)}
+      </div>
+      {view === 'original' ? <p className="whitespace-pre-wrap break-words text-sm leading-relaxed text-slate-600">{typeof message.meta?.original_transcript === 'string' ? message.meta.original_transcript : message.body}</p> : <>
+      <p className="text-[11px] text-slate-500">{segments.some(s => s.source === 'audio') ? 'Voices separated from audio. Customer/dispatch roles are not verified. Check the recording for uncertain words.' : 'Speaker roles are inferred from the words, not verified from voices. Check the recording when attribution matters.'}</p>
       {segments.map((seg, i) => {
         const office = seg.speaker === 'office'
         const customer = seg.speaker === 'customer'
@@ -956,23 +996,26 @@ function CallTranscript({ message }: { message: CommsMessage }) {
           <div
             key={i}
             className={[
-              'rounded-lg border-l-4 px-3 py-2 text-sm leading-relaxed',
-              office
-                ? 'border-l-amber-400 bg-amber-50/60 text-slate-800'
-                : customer
-                  ? 'border-l-sky-400 bg-sky-50/60 text-slate-800'
+              'w-fit max-w-[92%] rounded-xl border px-3 py-2 text-sm leading-relaxed sm:max-w-[80%]',
+              office || (!customer && seg.source === 'audio' && seg.voice === 2)
+                ? 'ml-auto border-amber-200 bg-amber-50/60 text-slate-800'
+                : customer || (seg.source === 'audio' && seg.voice === 1)
+                  ? 'mr-auto border-sky-200 bg-sky-50/60 text-slate-800'
                   // Unlabelled on purpose rather than guessed: the labeller is
                   // told to say "unknown" instead of inventing an attribution.
-                  : 'border-l-slate-300 bg-slate-50 text-slate-600',
+                  : 'mx-auto border-slate-200 bg-slate-50 text-slate-600',
             ].join(' ')}
           >
             <span className="mb-0.5 block text-[10px] font-bold uppercase tracking-wide text-slate-500">
-              {office ? 'Office' : customer ? 'Customer' : 'Unclear'}
+              {office ? 'Dispatch · inferred' : customer ? 'Customer · inferred' : seg.voice ? `Speaker ${seg.voice}` : 'Speaker unclear'}
+              {seg.start != null && <span className="ml-2 font-normal">{Math.floor(seg.start / 60)}:{String(Math.floor(seg.start % 60)).padStart(2, '0')}</span>}
             </span>
-            <span className="whitespace-pre-wrap break-words">{seg.text}</span>
+            <span className="whitespace-pre-wrap break-words">
+              <ReferencedText text={seg.text} />
+            </span>
           </div>
         )
-      })}
+      })}</>}
     </div>
   )
 }
@@ -1001,7 +1044,7 @@ function CallEntry({ message }: { message: CommsMessage }) {
   // With an AI summary the raw transcript is secondary — keep it behind a
   // button instead of dumping a wall of text into the thread. Long transcripts
   // collapse too, even without a summary.
-  const collapsibleTranscript = hasBody && (!!intake || (message.body?.length ?? 0) > 280)
+  const collapsibleTranscript = hasBody && (!!intake || !!message.transcript_segments?.length || (message.body?.length ?? 0) > 280)
 
   return (
     <div className="flex justify-center">
@@ -1029,7 +1072,10 @@ function CallEntry({ message }: { message: CommsMessage }) {
           <div className="mt-3">
             <div className="text-[10px] font-bold uppercase tracking-wide text-slate-400">What they need</div>
             {intake.summary && (
-              <p className="mt-1 text-sm leading-relaxed text-slate-700">{intake.summary}</p>
+              <p className="mt-1 text-sm leading-relaxed text-slate-700">
+                {/* The call summary names the vehicle more often than anything else does. */}
+                <ReferencedText text={intake.summary} />
+              </p>
             )}
             {(intake.service || intake.priority || intake.area) && (
               <div className="mt-3 grid gap-2 sm:grid-cols-3">
@@ -1046,11 +1092,14 @@ function CallEntry({ message }: { message: CommsMessage }) {
         {/* A short transcript with no summary reads fine inline; anything
             longer sits behind "Read transcript". */}
         {hasBody && !collapsibleTranscript && (
-          <p className="mt-2 whitespace-pre-wrap break-words text-sm text-slate-600">{message.body}</p>
+          <p className="mt-2 whitespace-pre-wrap break-words text-sm text-slate-600">
+            <ReferencedText text={message.body} />
+          </p>
         )}
 
         {(hasBody || playbackUrl) && (
           <div className="mt-3 flex flex-wrap items-center gap-2">
+            {message.conversation_id && <CallJobLink conversationId={message.conversation_id} />}
             {intake?.created_work_order_id ? (
               <button
                 type="button"
@@ -1090,7 +1139,7 @@ function CallEntry({ message }: { message: CommsMessage }) {
               </button>
             )}
             {intake?.confidence != null && (
-              <span className="text-[11px] text-slate-400">{Math.round(intake.confidence * 100)}% sure</span>
+              <span className="text-[11px] text-slate-400" title="AI estimate for extracted intake details, not voice identification or transcript accuracy">Intake confidence: {Math.round(intake.confidence * 100)}%</span>
             )}
           </div>
         )}
@@ -1098,6 +1147,9 @@ function CallEntry({ message }: { message: CommsMessage }) {
           <span className="mt-1 block text-xs text-red-600">
             {intakeMutation.error instanceof ApiError ? intakeMutation.error.message : 'Could not create AI draft.'}
           </span>
+        )}
+        {showPlayer && playbackUrl && (
+          <AuthedAudio src={playbackUrl} autoPlay className="mt-3 w-full" />
         )}
         {showTranscript && collapsibleTranscript && (
           <div className="mt-3 border-t border-slate-100 pt-3">
@@ -1126,13 +1178,6 @@ function CallEntry({ message }: { message: CommsMessage }) {
         )}
         {!hasBody && message.transcription_status === 'failed' && (
           <p className="mt-2 text-xs italic text-slate-400">Transcript unavailable.</p>
-        )}
-        {showPlayer && playbackUrl && (
-          <audio controls autoPlay preload="none" src={playbackUrl} className="mt-3 w-full">
-            <a href={playbackUrl} target="_blank" rel="noreferrer">
-              Play recording
-            </a>
-          </audio>
         )}
         {!hasBody && !hasRecording && (
           <p className="mt-1 text-xs text-slate-500">No transcript or recording.</p>
@@ -1220,11 +1265,42 @@ function CallIntakePreviewDrawer({
   }, [draft, onClose])
 
   if (!draft) return null
+
+  // A draft can come back FAILED on a perfectly successful request — the AI
+  // call worked but produced nothing usable. Rendering the editor anyway
+  // gives a panel of blank fields, which reads as "the button did nothing".
+  // Say what happened instead, and offer the retry.
+  const readFailed = draft.status === 'failed'
+
   return createPortal(
     <div className="fixed inset-0 z-[9999] flex justify-end" role="dialog" aria-modal="true" aria-label="Review before creating">
       <button type="button" aria-label="Close" onClick={onClose} className="absolute inset-0 bg-slate-900/30" />
-      {/* key by draft id so the editable fields re-seed for each new draft. */}
-      <CallIntakeEditor key={draft.id} draft={draft} playbackUrl={playbackUrl} sourceConversationId={sourceConversationId} onClose={onClose} onCreate={onCreate} />
+      {readFailed ? (
+        <div className="relative z-10 flex h-full w-full max-w-md flex-col bg-white p-6 shadow-xl">
+          <h2 className="text-lg font-bold text-slate-900">Couldn't read this call</h2>
+          <p className="mt-2 text-sm leading-relaxed text-slate-600">
+            The recording came through, but the AI didn't return anything we could turn into a job. Nothing was created.
+          </p>
+          {draft.error && (
+            <p className="mt-3 rounded-md bg-slate-50 px-3 py-2 text-xs text-slate-600">{draft.error}</p>
+          )}
+          <p className="mt-3 text-xs text-slate-500">
+            Try again — if it keeps happening, check Tool Shed &rarr; CBI AI Settings, or read the transcript and create the job by hand.
+          </p>
+          <div className="mt-5 flex gap-2">
+            <button
+              type="button"
+              onClick={onClose}
+              className="rounded-md border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+            >
+              Close
+            </button>
+          </div>
+        </div>
+      ) : (
+        /* key by draft id so the editable fields re-seed for each new draft. */
+        <CallIntakeEditor key={draft.id} draft={draft} playbackUrl={playbackUrl} sourceConversationId={sourceConversationId} onClose={onClose} onCreate={onCreate} />
+      )}
     </div>,
     document.body,
   )
@@ -1480,9 +1556,7 @@ function CallIntakeEditor({
         {playbackUrl && (
           <div>
             <div className="mb-1.5 text-[10px] font-bold uppercase tracking-wide text-slate-400">Recording</div>
-            <audio controls preload="none" src={playbackUrl} className="w-full">
-              <a href={playbackUrl} target="_blank" rel="noreferrer">Play recording</a>
-            </audio>
+            <AuthedAudio src={playbackUrl} className="w-full" />
           </div>
         )}
 
@@ -1684,7 +1758,9 @@ function CallIntakeEditor({
         {draft.transcript_text && (
           <details>
             <summary className="cursor-pointer text-xs font-semibold text-slate-500 hover:text-slate-700">Full transcript</summary>
-            <p className="mt-2 whitespace-pre-wrap text-xs leading-relaxed text-slate-600">{draft.transcript_text}</p>
+            <p className="mt-2 whitespace-pre-wrap text-xs leading-relaxed text-slate-600">
+              <ReferencedText text={draft.transcript_text} />
+            </p>
           </details>
         )}
       </div>

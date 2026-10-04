@@ -27,13 +27,13 @@ function guide(input: GuideInput): string {
 
 export const EXPANDED_HELP_GUIDES: Record<string, string> = {
   'navigating-the-app': guide({
-    summary: 'CrewBarn groups daily work in the main navigation and tenant setup in the Tool Shed. What appears depends on the signed-in user’s role, enabled modules, and tenant configuration.',
+    summary: 'CrewBarn groups daily work in the main navigation and tenant setup in the CrewBarn Connect. What appears depends on the signed-in user’s role, enabled modules, and tenant configuration.',
     useWhen: ['You are learning where a function lives.', 'A coworker can see a page that you cannot.', 'You need to move between a list, record detail, and its related setup.'],
-    steps: ['Use the main navigation for operational work such as Customers, Jobs, Estimates, Inventory, and Accounting.', 'Open a row or card to reach a record’s detail page; use its tabs for related history, files, messages, and activity.', 'Open **Tool Shed** for company setup, workflows, roles, integrations, and business controls.', 'Use Help search for a feature name, or press **?** to open the guide for the current settings page.', 'If a function is missing, check the tenant’s Modules setting and ask an owner to verify your role permissions.'],
-    example: 'A dispatcher works in Jobs and Customers all day, but opens Tool Shed → Job Statuses only when changing workflow rules or customer notifications.',
+    steps: ['Use the main navigation for operational work such as Customers, Jobs, Estimates, Inventory, and Accounting.', 'Open a row or card to reach a record’s detail page; use its tabs for related history, files, messages, and activity.', 'Open **CrewBarn Connect** for company setup, workflows, roles, integrations, and business controls.', 'Use Help search for a feature name, or press **?** to open the guide for the current settings page.', 'If a function is missing, check the tenant’s Modules setting and ask an owner to verify your role permissions.'],
+    example: 'A dispatcher works in Jobs and Customers all day, but opens CrewBarn Connect → Job Statuses only when changing workflow rules or customer notifications.',
     effects: ['Navigation does not grant access; API permissions still enforce every protected action.', 'Layout and density preferences can change where navigation appears without changing the underlying functions.'],
     watchFor: ['Do not share an owner login to work around missing access. Give the person an appropriate role instead.', 'A hidden module and a denied permission can look similar; check both.'],
-    links: [{ label: 'Tool Shed', route: '/tool-shed' }, { label: 'App Layout', route: '/tool-shed/appearance' }],
+    links: [{ label: 'CrewBarn Connect', route: '/tool-shed' }, { label: 'App Layout', route: '/tool-shed/appearance' }],
   }),
   'help-and-feedback': guide({
     summary: 'CrewBarn Help provides searchable instructions and direct links. CBI can answer questions using the page you are viewing, while support and tester notes are better for defects or product feedback.',

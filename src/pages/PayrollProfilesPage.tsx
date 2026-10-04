@@ -3,6 +3,8 @@ import type { FormEvent } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link, useSearchParams } from 'react-router-dom'
 import { apiRequest } from '@/lib/api'
+import { useTheme } from '@/hooks/useTheme'
+import { EasyPageHeading } from '@/components/easy/EasyPageHeading'
 
 type DayKey = 'monday' | 'tuesday' | 'wednesday' | 'thursday' | 'friday' | 'saturday' | 'sunday'
 type WeeklyTimeSchedule = Record<DayKey, boolean[]>
@@ -23,6 +25,7 @@ type PayrollProfile = {
   commission_percent: number
   commission_basis: 'paid_revenue' | 'gross_revenue' | 'gross_margin'
   parts_commission_percent: number
+  supervisor_bonus_percent: number
   parts_commission_max_parts_cents: number
   target_margin_percent: number | null
   standard_weekly_hours: number
@@ -44,6 +47,7 @@ type ProfileForm = {
   commission_percent: string
   commission_basis: PayrollProfile['commission_basis']
   parts_commission_percent: string
+  supervisor_bonus_percent: string
   parts_commission_max_parts: string
   target_margin_percent: string
   standard_weekly_hours: string
@@ -204,6 +208,7 @@ function formFromProfile(profile: PayrollProfile): ProfileForm {
     commission_percent: String(profile.commission_percent ?? 0),
     commission_basis: profile.commission_basis,
     parts_commission_percent: String(profile.parts_commission_percent ?? 0),
+    supervisor_bonus_percent: String(profile.supervisor_bonus_percent ?? 0),
     parts_commission_max_parts: String((profile.parts_commission_max_parts_cents ?? 0) / 100),
     target_margin_percent: profile.target_margin_percent == null ? '' : String(profile.target_margin_percent),
     standard_weekly_hours: String(profile.standard_weekly_hours ?? 40),
@@ -285,6 +290,8 @@ function PayrollPreviewMetric({ label, value, strong = false }: { label: string;
 }
 
 export function PayrollProfilesPage() {
+  const { theme } = useTheme()
+  const easy = theme === 'easy-side' || theme === 'easy-top'
   const queryClient = useQueryClient()
   const [searchParams] = useSearchParams()
   const [selectedId, setSelectedId] = useState<string | null>(null)
@@ -342,6 +349,7 @@ export function PayrollProfilesPage() {
           commission_percent: Number(payload.commission_percent || 0),
           commission_basis: payload.commission_basis,
           parts_commission_percent: Number(payload.parts_commission_percent || 0),
+          supervisor_bonus_percent: Number(payload.supervisor_bonus_percent || 0),
           parts_commission_max_parts: Number(payload.parts_commission_max_parts || 0),
           target_margin_percent: payload.target_margin_percent === '' ? null : Number(payload.target_margin_percent),
           standard_weekly_hours: Number(payload.standard_weekly_hours || 40),
@@ -379,13 +387,15 @@ export function PayrollProfilesPage() {
   return (
     <div className="min-h-screen bg-slate-100 px-4 py-4 text-slate-950 sm:px-6 sm:py-6 2xl:px-8">
       <div className="mx-auto w-full max-w-none space-y-6">
-        <header className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
-          <div>
+<header data-easy-accounting-header={easy || undefined} className={easy ? 'flex min-w-0 w-full flex-col items-stretch gap-4' : 'flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between'}>
+          <div className={easy ? 'min-w-0 w-full' : undefined}>
+            {easy ? <EasyPageHeading title="Payroll profiles" description="Choose a team member, review their pay rules and work schedule, then save when ready. The calculator previews the rules without posting payroll." /> : <>
             <p className="text-xs font-semibold uppercase tracking-wide text-amber-700">Accounting</p>
             <h1 className="mt-1 text-2xl font-semibold text-slate-900">Payroll Profiles</h1>
             <p className="mt-2 max-w-3xl text-slate-600">
               Set how each technician is paid so Accounting can calculate labor cost, commission, PTO, reimbursement, and tech profitability.
             </p>
+            </>}
           </div>
           <div className="flex flex-wrap gap-2">
             <Link className="rounded-md border border-slate-300 bg-white px-4 py-2 font-semibold text-slate-700 shadow-sm" to="/accounting/payroll">
@@ -405,6 +415,7 @@ export function PayrollProfilesPage() {
               <div className="mt-4 space-y-2">
                 <input
                   type="search"
+                  aria-label="Search payroll staff"
                   value={staffSearch}
                   onChange={(event) => {
                     setStaffSearch(event.target.value)
@@ -416,6 +427,7 @@ export function PayrollProfilesPage() {
                 />
                 <div className="grid grid-cols-2 gap-2">
                   <select
+                    aria-label="Filter by pay type"
                     value={payTypeView}
                     onChange={(event) => {
                       setPayTypeView(event.target.value as 'all' | PayrollProfile['pay_type'])
@@ -431,6 +443,7 @@ export function PayrollProfilesPage() {
                     <option value="hybrid">Hybrid</option>
                   </select>
                   <select
+                    aria-label="Filter by profile status"
                     value={profileStatusView}
                     onChange={(event) => {
                       setProfileStatusView(event.target.value as 'all' | 'active' | 'inactive')
@@ -449,6 +462,11 @@ export function PayrollProfilesPage() {
             <div className="divide-y divide-slate-100">
               {profilesQ.isLoading ? (
                 <div className="p-4 text-sm text-slate-500">Loading staff...</div>
+              ) : profilesQ.isError ? (
+                <div role="alert" className="p-4 text-sm text-red-700">
+                  Payroll profiles could not be loaded.
+                  <button type="button" onClick={() => void profilesQ.refetch()} className="mt-2 block rounded-md border border-red-300 px-3 py-2 font-semibold">Try again</button>
+                </div>
               ) : profiles.length === 0 ? (
                 <div className="p-4 text-sm text-slate-500">No staff accounts found.</div>
               ) : filteredProfiles.length === 0 ? (
@@ -459,6 +477,7 @@ export function PayrollProfilesPage() {
                   <button
                     className={`block w-full px-4 py-3 text-left transition ${active ? 'bg-amber-50' : 'hover:bg-slate-50'}`}
                     key={profile.account_id}
+                    aria-pressed={active}
                     onClick={() => choose(profile)}
                     type="button"
                   >
@@ -491,6 +510,7 @@ export function PayrollProfilesPage() {
                     <button
                       className={`rounded-md px-4 py-2 text-sm font-bold ${activeEditorTab === 'pay' ? 'bg-slate-950 text-white' : 'border border-slate-300 bg-white text-slate-700'}`}
                       onClick={() => setActiveEditorTab('pay')}
+                      aria-pressed={activeEditorTab === 'pay'}
                       type="button"
                     >
                       Pay rules
@@ -498,6 +518,7 @@ export function PayrollProfilesPage() {
                     <button
                       className={`rounded-md px-4 py-2 text-sm font-bold ${activeEditorTab === 'schedule' ? 'bg-slate-950 text-white' : 'border border-slate-300 bg-white text-slate-700'}`}
                       onClick={() => setActiveEditorTab('schedule')}
+                      aria-pressed={activeEditorTab === 'schedule'}
                       type="button"
                     >
                       Work schedule
@@ -564,6 +585,20 @@ export function PayrollProfilesPage() {
                           value={editorForm.parts_commission_max_parts}
                           onChange={(e) => setForm({ ...editorForm, parts_commission_max_parts: e.target.value })}
                         />
+                      </label>
+                      <label className="grid gap-1 text-sm font-semibold text-slate-700">
+                        Supervising a territory %
+                        <input
+                          className="rounded-md border border-slate-300 bg-white px-3 py-2"
+                          inputMode="decimal"
+                          value={editorForm.supervisor_bonus_percent}
+                          onChange={(e) => setForm({ ...editorForm, supervisor_bonus_percent: e.target.value })}
+                        />
+                        <span className="text-xs font-normal text-slate-500">
+                          A share of what their territory’s work leaves, after parts,
+                          subcontractors and the hours clocked on it. Not their own jobs.
+                          Added on top of their pay, so salary is fine.
+                        </span>
                       </label>
                     </div>
                   </div>

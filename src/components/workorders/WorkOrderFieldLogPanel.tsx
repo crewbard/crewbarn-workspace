@@ -254,7 +254,7 @@ function VisitRow({
             Visit #{visit.visit_number}
           </span>
           <span className="ml-2 text-xs text-slate-500">
-            {visit.tech?.name ?? visit.tech_account_id}
+            {visit.tech?.display_name ?? visit.tech_account_id}
           </span>
         </div>
         <div className="flex items-center gap-1.5">

@@ -81,6 +81,36 @@ export interface AssetTreeBuilderBranch {
   path: string
   code?: string | null
   asset_count: number
+  /**
+   * The real things, when a schedule was read rather than a sentence.
+   *
+   * These are the numbers stencilled on the frames. `asset_count`
+   * invents names; a listed branch uses its own, and the server
+   * derives the count from the list so the two cannot disagree.
+   */
+  assets?: { name: string; tag: string | null }[]
+}
+
+/** What the builder returns when it reads a description or a schedule. */
+export interface AssetTreeBuilderAiResponse {
+  root_name: string
+  /** What it filled in for you. Shown before anything is created. */
+  assumptions: string[]
+  /** What it could not settle. At most three, each worth asking. */
+  questions: { id: string; text: string; options: string[] }[]
+  branches: Array<AssetTreeBuilderBranch & { asset_type_id?: string | null }>
+  /** On an edit, the branch count it started from. */
+  edited_from?: number
+}
+
+export interface AssetTreeBuilderAiInput {
+  description?: string
+  /** A pasted spreadsheet, hardware list or item index. */
+  schedule?: string
+  /** A change to the draft on screen, with `current` alongside. */
+  instruction?: string
+  current?: AssetTreeBuilderBranch[]
+  asset_type_name?: string
 }
 
 export interface AssetTreeBuilderPayload {

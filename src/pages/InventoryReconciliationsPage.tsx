@@ -5,6 +5,8 @@ import {
 } from '@/hooks/useInventoryReconciliations'
 import { ApiError } from '@/lib/api'
 import { formatQty } from '@/lib/unitsOfMeasure'
+import { useTheme } from '@/hooks/useTheme'
+import { EasyActionCards } from '@/components/easy/EasyActionCards'
 import type {
   InventoryReconciliation,
   InventoryReconciliationStatus,
@@ -25,6 +27,8 @@ import type {
  * happened. This page records WHY for the audit trail.
  */
 export function InventoryReconciliationsPage() {
+  const { theme } = useTheme()
+  const easy = theme === 'easy-side' || theme === 'easy-top'
   const [status, setStatus] = useState<InventoryReconciliationStatus>('pending')
   const query = useInventoryReconciliations({ status, per_page: 100 })
   const rows: InventoryReconciliation[] = query.data?.data ?? []
@@ -42,13 +46,18 @@ export function InventoryReconciliationsPage() {
         </p>
       </div>
 
-      <div className="flex items-center gap-3">
+      {easy ? <EasyActionCards label="Review stock shortfalls" actions={[
+        { key: 'pending', title: 'Needs an explanation', description: 'Review shortfalls still waiting for reconciliation.' },
+        { key: 'resolved_received', title: 'Receive recorded', description: 'Review shortfalls resolved as unrecorded receipts.' },
+        { key: 'resolved_writeoff', title: 'Write-off recorded', description: 'Review shortfalls resolved as losses.' },
+      ].map(action => ({ ...action, active: status === action.key, onClick: () => setStatus(action.key as InventoryReconciliationStatus) }))} /> : <div className="flex items-center gap-3">
         <span className="text-xs font-medium text-slate-700 uppercase tracking-wide">Status</span>
         {(['pending', 'resolved_received', 'resolved_writeoff'] as const).map((s) => (
           <button
             key={s}
             type="button"
             onClick={() => setStatus(s)}
+            aria-pressed={status === s}
             className={`text-xs px-3 py-1.5 rounded font-medium ${
               status === s
                 ? 'bg-amber-100 text-amber-800 border border-amber-300'
@@ -58,15 +67,19 @@ export function InventoryReconciliationsPage() {
             {labelForStatus(s)}
           </button>
         ))}
-      </div>
+      </div>}
 
+      {query.isError && <div role="alert" className="rounded-xl border border-amber-300 bg-amber-50 p-4 text-sm text-amber-900">
+        Reconciliations could not be loaded. The queue may be incomplete.
+        <button type="button" onClick={() => void query.refetch()} disabled={query.isFetching} className="ml-2 underline disabled:opacity-50">Retry</button>
+      </div>}
       {query.isLoading && (
         <div className="bg-white border border-slate-200 rounded-xl shadow-sm p-12 text-center text-sm text-slate-500">
           Loading…
         </div>
       )}
 
-      {!query.isLoading && rows.length === 0 && (
+      {!query.isLoading && !query.isError && rows.length === 0 && (
         <div className="bg-white border border-slate-200 rounded-xl shadow-sm p-12 text-center">
           <p className="text-sm text-slate-600">
             {status === 'pending'
@@ -77,8 +90,8 @@ export function InventoryReconciliationsPage() {
       )}
 
       {rows.length > 0 && (
-        <div className="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden">
-          <table className="w-full text-sm">
+        <div className={`bg-white border border-slate-200 rounded-xl shadow-sm ${easy ? 'overflow-x-auto' : 'overflow-hidden'}`}>
+          <table className={`w-full text-sm ${easy ? 'min-w-[720px]' : ''}`}>
             <thead className="bg-slate-50 text-xs uppercase tracking-wide text-slate-500 border-b border-slate-200">
               <tr>
                 <th className="text-left px-4 py-3 font-medium">When</th>

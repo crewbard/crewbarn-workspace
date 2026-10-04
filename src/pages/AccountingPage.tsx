@@ -8,6 +8,9 @@ import { PeriodPicker } from '@/components/dashboard/PeriodPicker'
 import { paymentMethodLabel } from '@/lib/paymentMethod'
 import type { ReportPeriod } from '@/hooks/useDashboardSummary'
 import type { Invoice } from '@/types/invoice'
+import { useTheme } from '@/hooks/useTheme'
+import { EasyPageHeading } from '@/components/easy/EasyPageHeading'
+import { EasyActionCards } from '@/components/easy/EasyActionCards'
 
 type Range = 'day' | 'week' | 'month' | 'quarter' | 'year'
 type WorkflowTab = 'collect' | 'spend' | 'pay' | 'close'
@@ -141,6 +144,8 @@ function balanceOf(inv: Invoice): number {
 }
 
 export function AccountingPage() {
+  const { theme } = useTheme()
+  const easy = theme === 'easy-side' || theme === 'easy-top'
   const [range, setRange] = useState<Range>('month')
   // WHICH calendar period. null = the current (open) one. Switching the range
   // invalidates the key (a "2025" key is meaningless for Month), so it resets.
@@ -367,9 +372,10 @@ export function AccountingPage() {
 
   return (
     <div data-tour="accounting-root" className="mx-auto w-full max-w-none space-y-6 px-4 py-4 sm:px-6 sm:py-6 2xl:px-8">
+      {easy && <EasyPageHeading title="Money & accounting" description="Review the period, then choose the work: collect customer money, manage costs, review team pay, or close the books." />}
       <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
         <div>
-          <h1 className="text-2xl font-semibold text-slate-900">Accounting</h1>
+          {easy ? <h2 className="text-lg font-semibold text-slate-900">Reporting period</h2> : <h1 className="text-2xl font-semibold text-slate-900">Accounting</h1>}
           <p className="mt-1 text-sm text-slate-500">
             Money dashboard for receivables, collections, taxes, payroll, and margin review.
           </p>
@@ -390,6 +396,8 @@ export function AccountingPage() {
                   setRange(option)
                   setPeriod(null) // a "2025" key is meaningless for Month, etc.
                 }}
+                aria-pressed={range === option}
+                data-easy-view-option
                 className={[
                   'px-3 py-2 text-sm font-semibold capitalize',
                   range === option ? 'bg-slate-900 text-white' : 'text-slate-600 hover:bg-slate-50',
@@ -452,12 +460,17 @@ export function AccountingPage() {
         </section>
 
         <section>
-          <div className="mb-4 flex gap-1 overflow-x-auto border-b border-slate-200">
+          {easy ? <EasyActionCards label="What do you need to do?" actions={[
+            { key: 'collect', title: 'Collect customer money', description: 'Invoices, cash drawer, and customer credits.' },
+            { key: 'spend', title: 'Manage business costs', description: 'Bills, expenses, and purchasing.' },
+            { key: 'pay', title: 'Review team pay', description: 'Payroll and contractor records.' },
+            { key: 'close', title: 'Close the books', description: 'Reconciliation, statements, and reports.' },
+          ].map(action => ({ ...action, active: workflowTab === action.key, onClick: () => setWorkflowTab(action.key as WorkflowTab) }))} /> : <div className="mb-4 flex gap-1 overflow-x-auto border-b border-slate-200">
             <AccountingWorkflowTab active={workflowTab === 'collect'} onClick={() => setWorkflowTab('collect')}>📥 Collect</AccountingWorkflowTab>
             <AccountingWorkflowTab active={workflowTab === 'spend'} onClick={() => setWorkflowTab('spend')}>📤 Spend</AccountingWorkflowTab>
             <AccountingWorkflowTab active={workflowTab === 'pay'} onClick={() => setWorkflowTab('pay')}>👥 Team pay</AccountingWorkflowTab>
             <AccountingWorkflowTab active={workflowTab === 'close'} onClick={() => setWorkflowTab('close')}>📚 Close the books</AccountingWorkflowTab>
-          </div>
+          </div>}
           <div className="grid gap-4">
             {workflowTab === 'collect' && <AccountingWorkflowCard title="Collect" icon="📥" description="Invoice, collect, and apply customer money.">
               <AccountingToolLink to="/accounting/invoices" label="Invoices & A/R" detail={`${openInvoices.length} open · ${overdueInvoices.length} overdue`} />

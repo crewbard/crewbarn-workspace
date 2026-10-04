@@ -15,6 +15,7 @@ import {
   UI_FONTS,
   ensureUiFontLoaded,
   textScalePx,
+  textScaleRatio,
   uiFontStack,
   type TextScale,
 } from '@/lib/uiFonts'
@@ -40,7 +41,7 @@ import {
  * sticks across reloads and is instant (no round-trip). Selectable from
  * Tool Shed → General → Appearance.
  */
-export type AppTheme = 'classic' | 'pro' | 'rail'
+export type AppTheme = 'classic' | 'pro' | 'rail' | 'easy-side' | 'easy-top'
 export type AppDensity = 'comfortable' | 'compact' | 'dense'
 export type AppPageWidth = 'centered' | 'wide' | 'full'
 export type JobViewPreference = 'workflow' | 'cards' | 'files' | 'compact'
@@ -95,7 +96,7 @@ function readTheme(): AppTheme {
     // The app has two shells now: Top bar (classic) and Side bar (pro). Migrate
     // the retired sidebar variants (command/field/studio) to 'pro'; everything
     // else — including the old compact/minimal top-bar variants — to 'classic'.
-    if (value === 'rail') return 'rail'
+    if (value === 'rail' || value === 'easy-side' || value === 'easy-top') return value
     return value === 'pro' || value === 'command' || value === 'field' || value === 'studio'
       ? 'pro'
       : 'classic'
@@ -361,6 +362,10 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
 
   useLayoutEffect(() => {
     document.documentElement.style.setProperty('--ui-base', textScalePx(textScale))
+    // Pixel-sized text cannot follow --ui-base. index.css restates those
+    // sizes as a multiple of this, so one choice moves all of the text
+    // rather than only the part that happens to be measured in rem.
+    document.documentElement.style.setProperty('--ui-ratio', String(textScaleRatio(textScale)))
   }, [textScale])
 
   // Cross-tab sync — flipping theme or color in one tab updates the others.

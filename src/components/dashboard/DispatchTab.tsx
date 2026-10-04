@@ -310,7 +310,7 @@ function DispatchBoard() {
   const today = todayIso()
   const calQ = useCalendarEvents({ start: today, end: today })
   const unstQ = useUnscheduledJobs()
-  const techsQ = useTenantAccounts('', 100)
+  const techsQ = useTenantAccounts('', 100, true)
 
   const jobs: ScheduleWorkOrder[] = (calQ.data as CalResponse | undefined)?.data ?? []
   const unscheduled: ScheduleWorkOrder[] = unstQ.data?.data ?? []
@@ -335,6 +335,8 @@ function DispatchBoard() {
             email: job.lead_tech?.email ?? null,
             role: null,
             app_access: true,
+            // Historical assignment stays visible; it does not prove current eligibility.
+            is_field_technician: false,
           },
           jobs: [],
         })

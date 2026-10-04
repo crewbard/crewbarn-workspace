@@ -135,7 +135,7 @@ export function OfficeDrawer() {
 
   return (
     <div className="mt-5">
-      {stale.length > 0 && (
+      {drawer.isSuccess && stale.length > 0 && (
         <div className="mb-4 rounded-[13px] border-l-4 border-[#E8902C] border-y border-r border-slate-200 bg-white p-5">
           <p className="text-[14px] font-bold text-[#0A1220]">
             {stale.length} item{stale.length === 1 ? '' : 's'} here {stale.length === 1 ? 'is' : 'are'}{' '}
@@ -202,7 +202,7 @@ export function OfficeDrawer() {
             In the drawer right now
           </p>
           <p className="tnum mt-1 text-[34px] font-extrabold leading-none text-[#166534]">
-            {money(meta?.total_cents ?? 0)}
+            {drawer.isError ? 'Unavailable' : drawer.isPending ? 'Loading…' : money(meta?.total_cents ?? 0)}
           </p>
           <p className="mt-1.5 text-[12.5px] text-slate-500">
             {meta?.count ?? 0} item{(meta?.count ?? 0) === 1 ? '' : 's'}
@@ -213,13 +213,13 @@ export function OfficeDrawer() {
             <div className="rounded-lg border border-slate-200 px-4 py-2">
               <p className="text-[10px] font-bold uppercase tracking-wide text-slate-500">Cash</p>
               <p className="tnum text-[17px] font-bold text-[#166534]">
-                {money(meta?.cash_cents ?? 0)}
+                {drawer.isSuccess ? money(meta?.cash_cents ?? 0) : '—'}
               </p>
             </div>
             <div className="rounded-lg border border-slate-200 px-4 py-2">
               <p className="text-[10px] font-bold uppercase tracking-wide text-slate-500">Checks</p>
               <p className="tnum text-[17px] font-bold text-[#166534]">
-                {money(meta?.check_cents ?? 0)}
+                {drawer.isSuccess ? money(meta?.check_cents ?? 0) : '—'}
               </p>
             </div>
           </div>
@@ -266,15 +266,16 @@ export function OfficeDrawer() {
         </div>
 
         {drawer.isLoading && <p className="px-5 pb-4 text-sm text-slate-500">Opening the drawer…</p>}
+        {drawer.isError && <p role="alert" className="px-5 pb-4 text-sm text-rose-700">Drawer unavailable. <button type="button" className="underline" onClick={() => drawer.refetch()}>Try again</button></p>}
 
-        {!drawer.isLoading && items.length === 0 && (
+        {drawer.isSuccess && items.length === 0 && (
           <p className="border-t border-slate-100 px-5 py-6 text-[13.5px] text-slate-500">
             The drawer is empty. Money appears here when a till is counted in, or when the office
             takes cash or a check directly.
           </p>
         )}
 
-        {items.map((i) => {
+        {drawer.isSuccess && items.map((i) => {
           const on = !!picked[i.id]
           // Where it came from. A payment tied to a job came off a truck; one
           // without is a counter payment or something out of the post.
@@ -331,7 +332,7 @@ export function OfficeDrawer() {
           )
         })}
 
-        {chosen.length > 0 && (
+        {drawer.isSuccess && chosen.length > 0 && (
           <div className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-200 bg-slate-50 px-5 py-3.5">
             <span className="text-[13px] font-semibold text-slate-600">
               {chosen.length} selected · <span className="tnum">{money(chosenTotal)}</span>
@@ -358,13 +359,15 @@ export function OfficeDrawer() {
           </span>
         </div>
 
-        {(deposits.data?.data?.length ?? 0) === 0 && (
+        {deposits.isPending && <p role="status" className="px-5 py-4 text-sm text-slate-500">Loading deposits…</p>}
+        {deposits.isError && <p role="alert" className="px-5 py-4 text-sm text-rose-700">Deposits unavailable. <button type="button" className="underline" onClick={() => deposits.refetch()}>Try again</button></p>}
+        {deposits.isSuccess && (deposits.data?.data?.length ?? 0) === 0 && (
           <p className="border-t border-slate-100 px-5 py-6 text-[13.5px] text-slate-500">
             No deposits recorded yet.
           </p>
         )}
 
-        {(deposits.data?.data ?? []).map((d) => (
+        {deposits.isSuccess && (deposits.data?.data ?? []).map((d) => (
           <div
             key={d.id}
             className="flex flex-wrap items-center gap-3 border-t border-slate-100 px-5 py-3.5"

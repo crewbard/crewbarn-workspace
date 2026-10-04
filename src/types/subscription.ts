@@ -11,6 +11,11 @@ export interface SubscriptionSummary {
   billing_mode: 'off' | 'free' | 'subscription'
   tier: 'connect' | 'hosted'
   hosted_app_allowed: boolean
+  /**
+   * The self-hosted workspace's own address. Null on the hosted plan (they
+   * use app.crewbarn.com) and null while a self-hosted site is not live yet.
+   */
+  workspace_url?: string | null
   connect_seat_cents: number
   hosted_seat_cents: number
   state: 'off' | 'active' | 'grace' | 'read_only'

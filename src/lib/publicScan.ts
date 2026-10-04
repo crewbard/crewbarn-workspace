@@ -1,15 +1,22 @@
 // Public scan API client ? Slice 3.
 //
-// DELIBERATELY separated from the auth-aware API client. This call must
-// never send Authorization or X-Act-As-Tenant headers, even by mistake;
-// the public scan endpoint is anonymous and tenant context is absent.
+// DELIBERATELY separated from the auth-aware API client. It must never
+// send a STAFF token or X-Act-As-Tenant, even by mistake: tenant context
+// is absent here and the endpoint is anonymous by default.
+//
+// The one exception is the OWNER's portal token, when this browser has
+// signed in on assets.crewbarn.com. That is what lets somebody see their
+// own private items without asking their servicer for a code. No token
+// means no header and exactly the anonymous request this always sent.
 //
 // Falls back to production API URL if VITE_API_URL is not set, so the
 // deployed Cloudflare Pages build works without env config.
 
 import type { PublicScanNode, PublicScanResponse, SecuredScanUnlock, SecuredScanUnlockResponse } from '@/types/publicScan'
 
-const API_BASE = import.meta.env.VITE_API_URL || 'https://api.crewbarn.com'
+import { getOwnerToken } from '@/lib/assetOwner'
+
+export const API_BASE = import.meta.env.VITE_API_URL || 'https://api.crewbarn.com'
 
 export class PublicScanNotFoundError extends Error {
   constructor() {
@@ -23,10 +30,21 @@ export async function getPublicScan(code: string, tenantId?: string): Promise<Pu
     ? `${API_BASE}/v1/scan/${encodeURIComponent(tenantId)}/${encodeURIComponent(code)}`
     : `${API_BASE}/v1/scan/${encodeURIComponent(code)}`
 
+  /*
+   * The owner's token, when this browser has one.
+   *
+   * Anonymous is unchanged — no token means no header and exactly the
+   * request that was sent before. What this adds is the signed-in owner
+   * seeing their own private record instead of a locked card.
+   */
+  const ownerToken = getOwnerToken()
+
   const res = await fetch(url, {
     method: 'GET',
-    // No Authorization, no credentials. This is the anonymous flow.
-    headers: { 'Accept': 'application/json' },
+    headers: {
+      Accept: 'application/json',
+      ...(ownerToken ? { Authorization: `Bearer ${ownerToken}` } : {}),
+    },
   })
 
   if (res.status === 404) {

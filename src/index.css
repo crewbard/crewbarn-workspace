@@ -17,46 +17,268 @@ html { scrollbar-gutter: stable; }
   border-radius: .5rem;
   background: repeating-linear-gradient(to bottom, #f1f5f9 0, #f1f5f9 2rem, transparent 2rem, transparent 3rem);
 }
-/* Details occupy reserved space; hover cannot resize a notification. */
+/* Toasts — docs/design/toasts. Every one is the same size.
+   Widened from 288 to 360: at 288 an incoming call wrapped its one
+   sentence onto two lines and pushed the third button onto its own row,
+   which is a lot of card for very little said. The HEIGHT is unchanged,
+   which matters — the stacking offset below is derived from it. */
 .cb-toast-stack {
   position: fixed;
   top: 5rem;
   right: 1rem;
   z-index: 200;
-  width: min(24rem, calc(100vw - 2rem));
+  width: min(22.5rem, calc(100vw - 2rem));
   max-height: calc(100dvh - 6rem);
-  overflow-y: auto;
   overscroll-behavior: contain;
-  scrollbar-gutter: stable;
   display: flex;
   flex-direction: column;
   gap: .75rem;
   pointer-events: auto;
 }
-.cb-notification {
+
+/* Newest first: producers append, so the stack is reversed for display. */
+.cb-toast-stack > * { order: 1; }
+
+/* Behind the top one: two peek, the rest wait their turn. */
+/* Card height less the 40px of the one behind that stays visible. */
+.cb-toast-stack > *:nth-child(n + 2) { margin-top: -19.25rem; }
+.cb-toast-stack > *:nth-child(2) { transform: translateY(12px) scale(.95); opacity: .96; }
+.cb-toast-stack > *:nth-child(3) { transform: translateY(24px) scale(.9); opacity: .92; }
+.cb-toast-stack > *:nth-child(n + 4) { display: none; }
+
+/* Arriving anywhere over the stack fans it out — and pauses every timer,
+   which the cards handle in JS. */
+.cb-toast-stack:hover > *,
+.cb-toast-stack:focus-within > * {
+  margin-top: 0;
+  transform: none;
+  opacity: 1;
+}
+.cb-toast-stack:hover,
+.cb-toast-stack:focus-within { overflow-y: auto; }
+.cb-toast-stack:hover > *:nth-child(n + 4),
+.cb-toast-stack:focus-within > *:nth-child(n + 4) { display: flex; }
+
+/* "+3 more", drawn from a count the stack keeps on itself. */
+.cb-toast-stack[data-extra]::after {
+  content: "+" attr(data-extra) " more";
+  align-self: center;
+  margin-top: .5rem;
+  padding: 0 .75rem;
+  height: 1.75rem;
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  background: #0F1A2E;
+  color: #fff;
+  font-size: 12px;
+  font-weight: 800;
+  box-shadow: 0 10px 20px -10px rgba(15, 26, 46, .8);
+}
+.cb-toast-stack:hover[data-extra]::after,
+.cb-toast-stack:focus-within[data-extra]::after { display: none; }
+
+.cb-toast {
   pointer-events: auto;
+  position: relative;
   flex: none;
   box-sizing: border-box;
-  height: 16rem;
-  width: 100%;
-  display: grid;
-  grid-template-rows: 2rem 3.75rem 1.5rem minmax(0, 1fr);
-  padding: .75rem 1rem;
-  border: 1px solid #e2e8f0;
-  border-top: 3px solid #e8902c;
-  border-radius: .75rem;
-  background: white;
-  box-shadow: 0 8px 24px #0f172a20;
-  color: #92400e;
+  /* Responsive, not a hard 360: the stack already shrinks on a narrow
+     screen, and a card that did not would hang off the side of it. */
+  width: min(360px, calc(100vw - 2rem));
+  /* 348 = 88 band + 72 who - 32 overlap + 156 body + 64 actions. The body
+     is what grew: seven lines of a text message rather than two. */
+  height: 348px;
+  border-radius: 22px;
+  background: #fff;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 22px 44px -18px rgba(15, 26, 46, .45), 0 2px 6px rgba(15, 26, 46, .08), 0 0 0 1px rgba(15, 26, 46, .06);
+  transition: transform .25s cubic-bezier(.2, .9, .3, 1.2), box-shadow .25s, margin .25s, opacity .25s;
+  animation: cb-toast-in .62s cubic-bezier(.2, 1.25, .3, 1) both;
 }
-.cb-notification-violet { border-top-color: #7c3aed; color: #6d28d9; }
-.cb-notification-rose { border-top-color: #e11d48; color: #be123c; }
-.cb-notification-details { overflow-y: auto; overscroll-behavior: contain; }
-@media (hover: hover) and (pointer: fine) {
-  .cb-notification-details { visibility: hidden; }
-  .cb-notification:hover .cb-notification-details,
-  .cb-notification:focus-within .cb-notification-details,
-  .cb-notification[data-expanded="true"] .cb-notification-details { visibility: visible; }
+@keyframes cb-toast-in {
+  0% { transform: translateX(115%) rotate(8deg) scale(.9); opacity: 0; }
+  100% { transform: none; opacity: 1; }
+}
+.cb-toast-out { animation: cb-toast-out .32s cubic-bezier(.5, 0, .8, .3) both; }
+@keyframes cb-toast-out { to { transform: translateX(120%) rotate(6deg); opacity: 0; } }
+
+.cb-toast-band {
+  position: relative;
+  height: 88px;
+  flex-shrink: 0;
+  padding: 12px 12px 0 14px;
+  box-sizing: border-box;
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  color: #fff;
+  overflow: hidden;
+}
+.cb-toast-band::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background-image: radial-gradient(rgba(255, 255, 255, .22) 1px, transparent 1.4px);
+  background-size: 12px 12px;
+  mask-image: linear-gradient(100deg, transparent 20%, #000 90%);
+  -webkit-mask-image: linear-gradient(100deg, transparent 20%, #000 90%);
+}
+.cb-toast-kind {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  height: 24px;
+  padding: 0 10px;
+  border-radius: 999px;
+  /* Navy rather than white-on-white: the amber and gold bands cannot carry
+     white text at 4.5:1, and one chip everywhere beats two rules. */
+  background: rgba(15, 26, 46, .3);
+  font-size: 10.5px;
+  font-weight: 800;
+  letter-spacing: .07em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+.cb-toast-when { position: relative; margin-left: auto; font-size: 11px; font-weight: 600; opacity: .85; line-height: 24px; }
+.cb-toast-close {
+  position: relative;
+  width: 26px;
+  height: 26px;
+  border: 0;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, .2);
+  color: #fff;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  padding: 0;
+}
+.cb-toast-close:hover { background: rgba(255, 255, 255, .35); }
+
+.cb-toast-who { position: relative; display: flex; align-items: flex-start; gap: 10px; margin: -32px 14px 0; text-decoration: none; }
+.cb-toast-av { position: relative; width: 60px; height: 60px; flex-shrink: 0; border-radius: 999px; border: 4px solid #fff; box-sizing: border-box; box-shadow: 0 6px 14px -6px rgba(15, 26, 46, .5); }
+.cb-toast-av > * { border-radius: 999px; }
+.cb-toast-ring { position: absolute; inset: -4px; border-radius: 999px; border: 3px solid #10B981; animation: cb-toast-ring 1.6s ease-out infinite; }
+.cb-toast-ring-two { animation-delay: .8s; }
+@keyframes cb-toast-ring { 0% { transform: scale(1); opacity: .8; } 100% { transform: scale(1.7); opacity: 0; } }
+.cb-toast-nm { min-width: 0; padding-top: 36px; display: flex; flex-direction: column; }
+.cb-toast-name { font-size: 16px; line-height: 20px; font-weight: 800; color: #0F1A2E; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+a.cb-toast-who:hover .cb-toast-name { text-decoration: underline; text-decoration-color: #E8902C; text-underline-offset: 3px; }
+.cb-toast-sub { display: flex; align-items: center; gap: 6px; font-size: 12px; line-height: 16px; color: #64748B; white-space: nowrap; overflow: hidden; }
+.cb-toast-vip { flex-shrink: 0; height: 16px; padding: 0 6px; border-radius: 999px; background: #FAEBD3; color: #9C5C14; font-size: 9.5px; font-weight: 800; letter-spacing: .06em; display: inline-flex; align-items: center; }
+
+/* Top-aligned, not centred. The card is 348 tall so a text message can
+   show seven lines; a toast with one sentence in it was getting that space
+   as a hole in the middle instead. */
+.cb-toast-body { flex-grow: 1; min-height: 0; padding: 8px 14px 0; display: flex; flex-direction: column; justify-content: flex-start; gap: 6px; font-size: 13px; line-height: 18px; color: #1E293B; overflow: hidden; }
+.cb-toast-bubble { padding: 9px 12px; border-radius: 16px 16px 16px 4px; background: #F1F5F9; font-size: 13px; line-height: 18px; color: #1E293B; }
+/* The clamp lives in here, not on the bubble: a clamped box with padding
+   clips the line after the cut halfway through, inside its own padding. */
+.cb-toast-bubble > .cb-toast-clamp7 { max-height: 126px; }
+.cb-toast-clamp1 { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.cb-toast-clamp2 { display: -webkit-box; -webkit-line-clamp: 2; line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.cb-toast-clamp3 { display: -webkit-box; -webkit-line-clamp: 3; line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+.cb-toast-clamp4 { display: -webkit-box; -webkit-line-clamp: 4; line-clamp: 4; -webkit-box-orient: vertical; overflow: hidden; }
+/* Seven lines is the whole of nearly every text somebody sends a
+   locksmith; past that the thread is a better place to read it. */
+.cb-toast-clamp7 { display: -webkit-box; -webkit-line-clamp: 7; line-clamp: 7; -webkit-box-orient: vertical; overflow: hidden; }
+.cb-toast-money { font-size: 32px; line-height: 36px; font-weight: 900; letter-spacing: -.02em; color: #047857; }
+.cb-toast-stars { display: flex; gap: 3px; color: #F59E0B; }
+
+/* Still wraps at 360, because whether three actions fit depends on what
+   they are called — "Go to customer" and "Call back" do; a longer pair
+   will not. A button that has to break its label in half is worse than
+   one on a second row, so the row breaks instead of the word. */
+.cb-toast-acts { display: flex; flex-wrap: wrap; gap: 8px; padding: 10px 14px 16px; }
+.cb-toast-acts > * {
+  height: 38px;
+  border-radius: 11px;
+  font-size: 13px;
+  font-weight: 800;
+  /* As wide as the words, never narrower. */
+  flex: 1 1 auto;
+  min-width: max-content;
+  white-space: nowrap;
+}
+
+/*
+ * Two tiers, and only two.
+ *
+ * The row above already fixes height, radius and weight, so a button
+ * dropped in here LOOKS near enough right while carrying its own
+ * colours — which is how the incoming-call toast ended up with an amber
+ * button nothing else in the app has. Amber is the VIP pill. Spelling
+ * the two tiers out here is what stops the next toast inventing a third.
+ *
+ * `--cb-act` lets one toast change the primary fill (intake is purple)
+ * without reaching for a new class or an inline shadow.
+ */
+.cb-toast-act,
+.cb-toast-act-quiet {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 0 12px;
+  text-decoration: none;
+  transition: background-color .15s ease, box-shadow .15s ease;
+  /*
+   * Its own height, radius and type rather than leaning on the row.
+   * `.cb-toast-acts > *` reaches direct children only, and Call back
+   * arrives wrapped in a span — so the SPAN got the rounded corners and
+   * the navy button sat square inside them. A class that is only right
+   * in one position is a trap for whoever uses it in the next one.
+   */
+  height: 38px;
+  border-radius: 11px;
+  font-size: 13px;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.cb-toast-act {
+  background: var(--cb-act, var(--color-navy-800, #0F1A2E));
+  color: #fff;
+}
+.cb-toast-act:hover { background: var(--cb-act-hover, var(--color-navy-700, #162038)); }
+
+/*
+ * The ring is inset rather than a border so the quiet buttons sit on
+ * exactly the same 38px as the filled one. A 1.5px border would make
+ * them a pixel shorter, which reads as a mistake nobody can name.
+ */
+.cb-toast-act-quiet {
+  background: #fff;
+  color: var(--color-navy-800, #0F1A2E);
+  /* Not --color-navy-200: that is #A8B3C8, a shade darker, and the
+     quiet buttons have always worn slate here. */
+  box-shadow: inset 0 0 0 1.5px #CBD5E1;
+}
+.cb-toast-act-quiet:hover { box-shadow: inset 0 0 0 1.5px var(--accent-500, #E8902C); }
+
+/* A toast is dismissed on a timer. Somebody driving it from the
+   keyboard has seconds, and needs to see where they are. */
+.cb-toast-act:focus-visible,
+.cb-toast-act-quiet:focus-visible {
+  outline: 2px solid var(--accent-500, #E8902C);
+  outline-offset: 2px;
+}
+
+.cb-toast-act[disabled] { cursor: wait; opacity: .6; }
+
+.cb-toast-bar { position: absolute; left: 0; right: 0; bottom: 0; height: 4px; background: rgba(15, 26, 46, .06); }
+.cb-toast-bar b { display: block; height: 100%; transform-origin: left; transition: transform .2s linear; }
+
+@media (prefers-reduced-motion: reduce) {
+  .cb-toast { animation: none; transition: none; }
+  .cb-toast-out { animation: cb-toast-fade .2s linear both; }
+  @keyframes cb-toast-fade { to { opacity: 0; } }
+  .cb-toast-ring { display: none; }
+  .cb-toast-bar b { transition: none; }
 }
 
 @theme {
@@ -71,6 +293,14 @@ html { scrollbar-gutter: stable; }
   --color-navy-700: #162038;
   --color-navy-800: #0F1A2E;
   --color-navy-900: #0A1220;
+  /*
+   * navy-950 was used in ten files and defined in none, so `bg-navy-950`
+   * produced NO background — and every one of those places pairs it with
+   * text-white, which made the selected tab, the chosen filter and the
+   * active view read as an empty white box with invisible text. Defining
+   * it is the fix for all of them at once.
+   */
+  --color-navy-950: #06090F;
 
   --color-amber-50:  #FDF7EE;
   --color-amber-100: #FAEBD3;
@@ -345,6 +575,48 @@ html[data-page-width="full"] .max-w-6xl,
 html[data-page-width="full"] .max-w-7xl {
   max-width: none;
 }
+
+/* Reading size, for the text that sets its own size in pixels.
+ *
+ * --ui-base on <html> carries the rem-based utilities. Arbitrary pixel
+ * sizes ignore it, and they are the small ones - labels, hints, badges,
+ * the text somebody on a big monitor is squinting at. Restating each one
+ * as a multiple of the same ratio makes the control mean what it says.
+ *
+ * At the default the ratio is 1, so every size below is unchanged to the
+ * pixel. These rules are deliberately outside any @layer: Tailwind's
+ * utilities live in @layer utilities, and unlayered CSS wins on layer
+ * precedence, so no !important is needed and anything that genuinely
+ * overrides a size still can.
+ *
+ * Generated from the selectors the build emits, so the list cannot drift
+ * from the classes actually in use. */
+.text-\[6px\] { font-size: calc(6px * var(--ui-ratio, 1)); }
+.text-\[8px\] { font-size: calc(8px * var(--ui-ratio, 1)); }
+.text-\[9px\] { font-size: calc(9px * var(--ui-ratio, 1)); }
+.text-\[9\.5px\] { font-size: calc(9.5px * var(--ui-ratio, 1)); }
+.text-\[10px\] { font-size: calc(10px * var(--ui-ratio, 1)); }
+.text-\[10\.5px\] { font-size: calc(10.5px * var(--ui-ratio, 1)); }
+.text-\[11px\] { font-size: calc(11px * var(--ui-ratio, 1)); }
+.text-\[11\.5px\] { font-size: calc(11.5px * var(--ui-ratio, 1)); }
+.text-\[12px\] { font-size: calc(12px * var(--ui-ratio, 1)); }
+.text-\[12\.5px\] { font-size: calc(12.5px * var(--ui-ratio, 1)); }
+.text-\[13px\] { font-size: calc(13px * var(--ui-ratio, 1)); }
+.text-\[13\.5px\] { font-size: calc(13.5px * var(--ui-ratio, 1)); }
+.text-\[14px\] { font-size: calc(14px * var(--ui-ratio, 1)); }
+.text-\[14\.5px\] { font-size: calc(14.5px * var(--ui-ratio, 1)); }
+.text-\[15px\] { font-size: calc(15px * var(--ui-ratio, 1)); }
+.text-\[15\.5px\] { font-size: calc(15.5px * var(--ui-ratio, 1)); }
+.text-\[16px\] { font-size: calc(16px * var(--ui-ratio, 1)); }
+.text-\[17px\] { font-size: calc(17px * var(--ui-ratio, 1)); }
+.text-\[19px\] { font-size: calc(19px * var(--ui-ratio, 1)); }
+.text-\[20px\] { font-size: calc(20px * var(--ui-ratio, 1)); }
+.text-\[22px\] { font-size: calc(22px * var(--ui-ratio, 1)); }
+.text-\[25px\] { font-size: calc(25px * var(--ui-ratio, 1)); }
+.text-\[26px\] { font-size: calc(26px * var(--ui-ratio, 1)); }
+.text-\[28px\] { font-size: calc(28px * var(--ui-ratio, 1)); }
+.text-\[30px\] { font-size: calc(30px * var(--ui-ratio, 1)); }
+.text-\[34px\] { font-size: calc(34px * var(--ui-ratio, 1)); }
 
 html[data-density="compact"] table > tbody > tr > td,
 html[data-density="compact"] table > thead > tr > th {

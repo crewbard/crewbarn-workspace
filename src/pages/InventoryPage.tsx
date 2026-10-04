@@ -57,6 +57,8 @@ import type {
 import { INVENTORY_LOCATION_TYPES, INVENTORY_LOCATION_TYPE_LABELS } from "@/types/inventoryLocation"
 import type { InventoryBin, InventoryBinInput } from "@/types/inventoryBin"
 import { BIN_KIND_OPTIONS } from "@/types/inventoryBin"
+import { useTheme } from '@/hooks/useTheme'
+import { EasyPageHeading } from '@/components/easy/EasyPageHeading'
 
 // ---------- Tab definitions ----------
 
@@ -75,12 +77,16 @@ const TABS: Array<{ key: TabKey; label: string }> = [
 // ---------- Page ----------
 
 export function InventoryPage() {
+  const { theme } = useTheme()
+  const easy = theme === 'easy-side' || theme === 'easy-top'
   const [searchParams, setSearchParams] = useSearchParams()
   const tabParam = searchParams.get("tab") as TabKey | null
   const activeTab: TabKey = tabParam && TABS.some(t => t.key === tabParam) ? tabParam : "locations"
 
   const setActiveTab = (tab: TabKey) => {
-    setSearchParams({ tab })
+    const next = new URLSearchParams(searchParams)
+    next.set('tab', tab)
+    setSearchParams(next)
   }
 
   // Locations data drives the Locations tab AND the tab badge count
@@ -88,14 +94,18 @@ export function InventoryPage() {
   const locationCount = locationsData?.meta?.total ?? 0
 
   return (
-    <div className="max-w-7xl mx-auto p-6 space-y-6">
+    <div className={easy ? 'w-full min-w-0 p-6 space-y-6' : 'max-w-7xl mx-auto p-6 space-y-6'}>
+      {easy && <EasyPageHeading title="Parts & inventory" description="Find stock, organize where it lives, and follow what moved. Receiving and reconciliation stay in the same workspace." />}
       <Header
+        easy={easy}
         onOpenQueue={() => setActiveTab('reconciliation')}
         defaultLocationId={locationsData?.data?.[0]?.id}
       />
       <GlobalInventorySearch onGoToTab={setActiveTab} />
-      <TabNav active={activeTab} onChange={setActiveTab} locationCount={locationCount} />
-      <TabContent active={activeTab} />
+      <div className={easy ? 'grid items-start gap-5 lg:grid-cols-[220px_minmax(0,1fr)]' : 'space-y-6'}>
+        <TabNav active={activeTab} onChange={setActiveTab} locationCount={locationCount} easy={easy} />
+        <div className={easy ? 'min-w-0' : ''}><TabContent active={activeTab} /></div>
+      </div>
     </div>
   )
 }
@@ -103,9 +113,11 @@ export function InventoryPage() {
 // ---------- Header ----------
 
 function Header({
+  easy = false,
   onOpenQueue,
   defaultLocationId,
 }: {
+  easy?: boolean
   onOpenQueue: () => void
   defaultLocationId?: string
 }) {
@@ -116,14 +128,14 @@ function Header({
   const pendingCount = queueData?.meta?.total ?? 0
 
   return (
-    <div className="flex items-start justify-between gap-6">
+    <div className={easy ? 'flex flex-wrap items-center justify-between gap-4 rounded-xl border border-slate-200 bg-white p-4' : 'flex items-start justify-between gap-6'}>
       <div>
-        <h1 className="text-3xl font-semibold text-slate-900">Inventory</h1>
+        {easy ? <h2 className="font-semibold text-slate-900">Stock operations</h2> : <h1 className="text-3xl font-semibold text-slate-900">Inventory</h1>}
         <p className="text-sm text-slate-600 mt-1">
           Where stock lives, what's in stock, what's moved.
         </p>
       </div>
-      <div className="flex gap-2 items-start flex-shrink-0">
+      <div className={easy ? 'flex flex-wrap gap-2 items-start' : 'flex gap-2 items-start flex-shrink-0'}>
         <button
           type="button"
           onClick={onOpenQueue}
@@ -159,17 +171,19 @@ function Header({
 // ---------- Tab navigation ----------
 
 function TabNav({
+  easy = false,
   active,
   onChange,
   locationCount,
 }: {
+  easy?: boolean
   active: TabKey
   onChange: (tab: TabKey) => void
   locationCount: number
 }) {
   return (
-    <div className="border-b border-slate-200">
-      <div className="flex gap-1">
+    <div className={easy ? 'rounded-xl border border-slate-200 bg-white p-2' : 'border-b border-slate-200'}>
+      <div aria-label="Inventory sections" role="group" className={easy ? 'grid grid-cols-2 gap-1 sm:grid-cols-3 lg:grid-cols-1' : 'flex gap-1'}>
         {TABS.map((tab) => {
           const isActive = tab.key === active
           const count = tab.key === "locations" ? locationCount : null
@@ -178,7 +192,8 @@ function TabNav({
               key={tab.key}
               type="button"
               onClick={() => onChange(tab.key)}
-              className={`px-4 py-2 text-sm font-medium border-b-2 ${
+              aria-pressed={isActive}
+              className={easy ? `rounded-lg px-3 py-3 text-left text-sm font-medium ${isActive ? 'bg-emerald-950 text-white' : 'text-slate-600 hover:bg-emerald-50'}` : `px-4 py-2 text-sm font-medium border-b-2 ${
                 isActive
                   ? "text-amber-600 border-amber-500"
                   : "text-slate-600 hover:text-amber-600 border-transparent"
@@ -214,7 +229,7 @@ function TabContent({ active }: { active: TabKey }) {
 // =================================================================
 
 function LocationsTab() {
-  const { data, isLoading, isError, error } = useInventoryLocations({ per_page: 200 })
+  const { data, isLoading, isFetching, isError, error, refetch } = useInventoryLocations({ per_page: 200 })
   const [editing, setEditing] = useState<InventoryLocation | null>(null)
   const [showCreate, setShowCreate] = useState(false)
 
@@ -242,6 +257,7 @@ function LocationsTab() {
         {isError && (
           <div className="px-6 py-4 text-sm text-red-700 bg-red-50">
             Failed to load locations.{error instanceof Error ? ` ${error.message}` : ""}
+            <button type="button" disabled={isFetching} className="ml-2 underline disabled:opacity-50" onClick={() => void refetch()}>Try again</button>
           </div>
         )}
 
@@ -708,10 +724,11 @@ function Field({ label, required, children }: { label: string; required?: boolea
   )
 }
 
-function ErrorBanner({ message }: { message: string }) {
+function ErrorBanner({ message, onRetry, busy = false }: { message: string; onRetry?: () => void; busy?: boolean }) {
   return (
-    <div className="p-3 bg-red-50 border border-red-100 rounded">
+    <div role="alert" className="p-3 bg-red-50 border border-red-100 rounded">
       <p className="text-sm text-red-700">{message}</p>
+      {onRetry && <button type="button" onClick={onRetry} disabled={busy} className="mt-2 text-sm text-red-700 underline disabled:opacity-50">Try again</button>}
     </div>
   )
 }
@@ -838,7 +855,7 @@ function BinsTab() {
   // ALL pages, not the first. The tree draws every branch, so a single page
   // silently hid entire locations: with 754 bins the first 200 were all one
   // location and the other three rendered empty, which read as bins vanishing.
-  const { data, isLoading, isError, error } = useAllInventoryBins({
+  const { data, isLoading, isFetching, isError, error, refetch } = useAllInventoryBins({
     location_id: filterLocationId || undefined,
     kind: filterKind || undefined,
     q: debouncedSearch || undefined,
@@ -939,7 +956,7 @@ function BinsTab() {
           </div>
         )}
 
-        <div className="px-6 py-3 border-b border-slate-100 flex gap-3 items-center">
+        <div data-easy-list-toolbar className="px-6 py-3 border-b border-slate-100 flex gap-3 items-center">
           <input
             type="search"
             value={search}
@@ -976,6 +993,7 @@ function BinsTab() {
         {isError && (
           <div className="px-6 py-4 text-sm text-red-700 bg-red-50">
             Failed to load bins.{error instanceof Error ? ` ${error.message}` : ""}
+            <button type="button" disabled={isFetching} className="ml-2 underline disabled:opacity-50" onClick={() => void refetch()}>Try again</button>
           </div>
         )}
 
@@ -1505,7 +1523,7 @@ function BinContentsModal({
   bin: InventoryBin
   onClose: () => void
 }) {
-  const { data, isLoading, isError, error } = useBinContents(bin.id)
+  const { data, isLoading, isFetching, isError, error, refetch } = useBinContents(bin.id)
   const subBins = (data?.bins ?? []).filter((b) => b.id !== bin.id)
   const units = data?.units ?? []
   const stockLevels = data?.stock_levels ?? []
@@ -1566,6 +1584,8 @@ function BinContentsModal({
         {isError && (
           <ErrorBanner
             message={`Failed to load contents.${error instanceof Error ? ` ${error.message}` : ''}`}
+            onRetry={() => void refetch()}
+            busy={isFetching}
           />
         )}
 
@@ -2436,7 +2456,7 @@ function StockLevelsTab() {
             </button>
           </div>
         )}
-        <div className="px-6 py-3 border-b border-slate-100 flex gap-3 items-center flex-wrap">
+        <div data-easy-list-toolbar className="px-6 py-3 border-b border-slate-100 flex gap-3 items-center flex-wrap">
           <input
             type="search"
             value={search}
@@ -2495,6 +2515,7 @@ function StockLevelsTab() {
         {stockQuery.isError && (
           <div className="px-6 py-4 text-sm text-red-700 bg-red-50">
             Failed to load stock levels.{stockQuery.error instanceof Error ? ` ${stockQuery.error.message}` : ""}
+            <button type="button" disabled={stockQuery.isFetching} className="ml-2 underline disabled:opacity-50" onClick={() => void stockQuery.refetch()}>Try again</button>
           </div>
         )}
 
@@ -2522,6 +2543,7 @@ function StockLevelsTab() {
                 <th className="text-left px-6 py-3 font-medium">Item</th>
                 <th className="text-left px-6 py-3 font-medium">Where</th>
                 <th className="text-right px-6 py-3 font-medium">On hand</th>
+                <th className="text-right px-6 py-3 font-medium">Should carry</th>
                 <th className="text-right px-6 py-3 font-medium">Reserved</th>
                 <th className="text-right px-6 py-3 font-medium">Available</th>
                 <th className="px-6 py-3"></th>
@@ -2583,6 +2605,23 @@ function StockLevelsTab() {
                     >
                       {formatQty(sl.quantities.qty_on_hand, sl.catalog_item?.unit_label)}
                     </button>
+                  </td>
+                  {/* Par, and how far under it. A spot with no par shows a
+                      dash rather than a zero — "nobody set one" and "carry
+                      none of these" are different answers. */}
+                  <td className="px-6 py-3 text-right tabular-nums">
+                    {sl.quantities.par_qty == null ? (
+                      <span className="text-slate-300">—</span>
+                    ) : (
+                      <span>
+                        {formatQty(sl.quantities.par_qty, sl.catalog_item?.unit_label)}
+                        {!!sl.quantities.short_by && sl.quantities.short_by > 0 && (
+                          <span className="ml-2 rounded bg-amber-100 px-1.5 py-0.5 text-[11px] font-bold text-amber-800">
+                            short {formatQty(sl.quantities.short_by, sl.catalog_item?.unit_label)}
+                          </span>
+                        )}
+                      </span>
+                    )}
                   </td>
                   <td className="px-6 py-3 text-right tabular-nums text-slate-500">
                     {formatQty(sl.quantities.qty_reserved, sl.catalog_item?.unit_label)}
@@ -2713,6 +2752,11 @@ function StockLevelFormModal({
   const [qtyReserved, setQtyReserved] = useState(
     stockLevel?.quantities.qty_reserved != null ? String(stockLevel.quantities.qty_reserved) : "0"
   )
+  // Empty string is a real value here: it means "no par", and it has to be
+  // distinguishable from "0", which is a par of none.
+  const [parQty, setParQty] = useState(
+    stockLevel?.quantities.par_qty != null ? String(stockLevel.quantities.par_qty) : ""
+  )
   const [error, setError] = useState<string | null>(null)
 
   // "Edit" button → opens the full Product Catalog edit form for the selected
@@ -2767,6 +2811,9 @@ function StockLevelFormModal({
         catalog_item_id: catalogItemId,
         qty_on_hand: Number(qtyOnHand) || 0,
         qty_reserved: Number(qtyReserved) || 0,
+        // Blank clears it. Number('') is 0, which would quietly turn "no par"
+        // into "carry none" and start reporting the spot as stocked-to-par.
+        par_qty: parQty.trim() === '' ? null : Number(parQty),
       }
       if (isEdit && stockLevel) {
         await updateMutation.mutateAsync({
@@ -2864,7 +2911,13 @@ function StockLevelFormModal({
                   {itemsQuery.isLoading && (
                     <div className="px-3 py-2 text-xs text-slate-500">Loading…</div>
                   )}
-                  {!itemsQuery.isLoading && itemResults.length === 0 && (
+                  {itemsQuery.isError && (
+                    <div role="alert" className="px-3 py-2 text-xs text-red-700">
+                      Product search could not be loaded.
+                      <button type="button" disabled={itemsQuery.isFetching} className="ml-2 underline disabled:opacity-50" onMouseDown={event => event.preventDefault()} onClick={() => void itemsQuery.refetch()}>Try again</button>
+                    </div>
+                  )}
+                  {!itemsQuery.isLoading && !itemsQuery.isError && itemResults.length === 0 && (
                     <div className="px-3 py-2 text-xs text-slate-500 flex items-center justify-between">
                       <span>No matches.</span>
                       <button
@@ -2879,7 +2932,7 @@ function StockLevelFormModal({
                       </button>
                     </div>
                   )}
-                  {itemResults.map((it) => (
+                  {!itemsQuery.isError && itemResults.map((it) => (
                     <button
                       type="button"
                       key={it.id}
@@ -3023,6 +3076,34 @@ function StockLevelFormModal({
             ? " On-hand is computed from active SN units — edit individual units to change it."
             : ""}
         </p>
+
+        {/*
+          What this spot should carry. Left blank it is not stocked here on
+          purpose and nothing reports it as short; a van only shows up on its
+          own restock list for items somebody decided it carries.
+        */}
+        <Field label={`Should carry${isCountableUnit(pickedUnit) ? '' : ` (${pickedUnit})`}`}>
+          <input
+            type="number"
+            step={qtyStepFor(pickedUnit)}
+            min="0"
+            inputMode={isCountableUnit(pickedUnit) ? 'numeric' : 'decimal'}
+            value={parQty}
+            placeholder="Leave blank if this spot does not stock it"
+            onChange={(e) => {
+              const allow = isCountableUnit(pickedUnit)
+                ? e.target.value.replace(/[^0-9]/g, '')
+                : e.target.value.replace(/[^0-9.]/g, '').replace(/(\..*?)\..*/g, '$1')
+              setParQty(allow)
+            }}
+            className="w-full text-sm px-3 py-2 border border-slate-200 rounded text-right focus:outline-none focus:border-amber-500"
+          />
+          <p className="mt-1 text-[12px] text-slate-500">
+            The number this van or shelf is meant to hold. Drop below it and it
+            shows on this location&rsquo;s restock list. Blank means no target;
+            0 means it should carry none.
+          </p>
+        </Field>
 
         {isEdit && stockLevel?.catalog_item_id && (
           <PrintQrSection stockLevel={stockLevel} />

@@ -3,6 +3,8 @@ import type { FormEvent } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link } from 'react-router-dom'
 import { apiRequest } from '@/lib/api'
+import { useTheme } from '@/hooks/useTheme'
+import { EasyPageHeading } from '@/components/easy/EasyPageHeading'
 import { tenantDate, useTenantTimezone } from '@/hooks/useTenantTime'
 import type { PaginatedResponse } from '@/types/api'
 
@@ -116,6 +118,8 @@ function downloadCsv(filename: string, headers: string[], rows: unknown[][]) {
 }
 
 export function BankMatchPage() {
+  const { theme } = useTheme()
+  const easy = theme === 'easy-side' || theme === 'easy-top'
   const queryClient = useQueryClient()
   const tenantTimezone = useTenantTimezone()
   const today = tenantDate(tenantTimezone)
@@ -505,13 +509,15 @@ export function BankMatchPage() {
   return (
     <div className="min-h-screen bg-slate-100 px-4 py-6 text-slate-950 lg:px-8">
       <div className="mx-auto w-full max-w-none space-y-6">
-        <header className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
-          <div>
+<header data-easy-accounting-header={easy || undefined} className={easy ? 'flex min-w-0 w-full flex-col items-stretch gap-4' : 'flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between'}>
+          <div className={easy ? 'min-w-0 w-full' : undefined}>
+            {easy ? <EasyPageHeading title="Bank matching" description="Import your statement, review suggested matches, then reconcile the period once the balances agree." /> : <>
             <p className="text-sm font-semibold uppercase tracking-[0.18em] text-amber-700">Accounting</p>
             <h1 className="mt-1 text-3xl font-black">Bank Match</h1>
             <p className="mt-2 max-w-3xl text-slate-600">
               Import or enter bank statement rows, then match deposits and withdrawals to CrewBarn payments, vendor bills, expenses, and purchase orders.
             </p>
+            </>}
           </div>
           <Link className="rounded-md border border-slate-300 bg-white px-4 py-2 font-semibold text-slate-700 shadow-sm" to="/accounting/bank-match">
             Back to workspace
@@ -519,9 +525,9 @@ export function BankMatchPage() {
         </header>
 
         <section className="grid gap-3 md:grid-cols-3">
-          <SummaryTile label="Rows in filter" value={String(transactions.length)} />
-          <SummaryTile label="Suggested matches" value={String(suggestedCount)} />
-          <SummaryTile label="Net filter total" value={signedDollars(total)} />
+          <SummaryTile label="Rows on this page" value={transactionsQ.isError ? 'Unavailable' : transactionsQ.isLoading ? '...' : String(transactions.length)} />
+          <SummaryTile label="Suggested matches on this page" value={transactionsQ.isError ? 'Unavailable' : transactionsQ.isLoading ? '...' : String(suggestedCount)} />
+          <SummaryTile label="Net total on this page" value={transactionsQ.isError ? 'Unavailable' : transactionsQ.isLoading ? '...' : signedDollars(total)} />
         </section>
 
         <section className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
@@ -606,6 +612,8 @@ export function BankMatchPage() {
             </div>
             {reconciliationRunsQ.isLoading ? (
               <div className="px-3 py-4 text-sm text-slate-500">Loading reconciliation runs...</div>
+            ) : reconciliationRunsQ.isError ? (
+              <div role="alert" className="p-4 text-sm text-red-700">Reconciliation runs could not be loaded. <button type="button" className="underline" onClick={() => void reconciliationRunsQ.refetch()}>Retry</button></div>
             ) : reconciliationRuns.length === 0 ? (
               <div className="px-3 py-4 text-sm text-slate-500">No saved reconciliation runs for this filter yet.</div>
             ) : (
@@ -664,11 +672,13 @@ export function BankMatchPage() {
               </p>
             </div>
             <span className="rounded-full bg-amber-50 px-3 py-1 text-sm font-bold text-amber-800">
-              {unmatchedPaymentsMeta?.total ?? unmatchedPayments.length} unmatched
+              {unmatchedPaymentsQ.isError ? 'Unavailable' : unmatchedPaymentsQ.isLoading ? 'Checking…' : `${unmatchedPaymentsMeta?.total ?? unmatchedPayments.length} unmatched`}
             </span>
           </div>
           {unmatchedPaymentsQ.isLoading ? (
             <div className="p-6 text-center text-slate-500">Checking CrewBarn payments...</div>
+          ) : unmatchedPaymentsQ.isError ? (
+            <div role="alert" className="p-4 text-sm text-red-700">Unmatched payments could not be loaded. <button type="button" className="underline" onClick={() => void unmatchedPaymentsQ.refetch()}>Retry</button></div>
           ) : unmatchedPayments.length === 0 ? (
             <div className="p-6 text-center text-slate-500">No unmatched CrewBarn payments in this filter.</div>
           ) : (
@@ -861,6 +871,8 @@ export function BankMatchPage() {
           <div className="divide-y divide-slate-100">
             {transactionsQ.isLoading ? (
               <div className="p-8 text-center text-slate-500">Loading bank rows...</div>
+            ) : transactionsQ.isError ? (
+              <div role="alert" className="p-4 text-sm text-red-700">Bank rows could not be loaded. <button type="button" className="underline" onClick={() => void transactionsQ.refetch()}>Retry</button></div>
             ) : transactions.length === 0 ? (
               <div className="p-8 text-center text-slate-500">No bank rows in this filter.</div>
             ) : transactions.map((transaction) => (

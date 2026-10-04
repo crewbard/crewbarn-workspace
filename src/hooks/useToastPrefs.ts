@@ -16,12 +16,23 @@ import { useCallback, useEffect, useState } from 'react'
  * enough on its own — it only fires in OTHER tabs, never the one that wrote.
  */
 
-export type ToastArea = 'messages' | 'calls' | 'intake'
+/*
+ * Errors are not in here on purpose: a failure that pops up is the only
+ * warning somebody gets that their work did not save, and a switch for that
+ * is a switch for losing work quietly.
+ *
+ * payments and reviews are ready ahead of the events that will fire them —
+ * the card types exist, and the moment the backend emits those events the
+ * switch is already here rather than being added in a rush afterwards.
+ */
+export type ToastArea = 'messages' | 'calls' | 'intake' | 'payments' | 'reviews'
 
 const KEY: Record<ToastArea, string> = {
   messages: 'cb.toasts.messages',
   calls: 'cb.toasts.calls',
   intake: 'cb.toasts.intake',
+  payments: 'cb.toasts.payments',
+  reviews: 'cb.toasts.reviews',
 }
 
 const CHANGED = 'cb:toast-prefs-changed'

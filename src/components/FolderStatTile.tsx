@@ -62,6 +62,7 @@ export function FolderStatTile({
   const t = TONES[tone]
   return (
     <button
+      data-easy-folder-stat={tone}
       type="button"
       onClick={onClick}
       aria-pressed={active}

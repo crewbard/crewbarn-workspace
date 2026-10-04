@@ -3,6 +3,8 @@ import type { FormEvent } from 'react'
 import { Link } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { apiRequest } from '@/lib/api'
+import { useTheme } from '@/hooks/useTheme'
+import { EasyPageHeading } from '@/components/easy/EasyPageHeading'
 import { tenantDate, useTenantTimezone } from '@/hooks/useTenantTime'
 
 type VendorBill = {
@@ -63,6 +65,8 @@ function statusLabel(status: string) {
 }
 
 export function VendorBillsPage() {
+  const { theme } = useTheme()
+  const easy = theme === 'easy-side' || theme === 'easy-top'
   const queryClient = useQueryClient()
   const tenantTimezone = useTenantTimezone()
   const today = tenantDate(tenantTimezone)
@@ -172,13 +176,15 @@ export function VendorBillsPage() {
   return (
     <div className="min-h-screen bg-slate-100 px-4 py-4 text-slate-950 sm:px-6 sm:py-6 2xl:px-8">
       <div className="mx-auto w-full max-w-none space-y-6">
-        <header className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
-          <div>
+<header data-easy-accounting-header={easy || undefined} className={easy ? 'flex min-w-0 w-full flex-col items-stretch gap-4' : 'flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between'}>
+          <div className={easy ? 'min-w-0 w-full' : undefined}>
+            {easy ? <EasyPageHeading title="Vendor bills" description="Add a bill, review its due date and balance, then record payments as they happen." /> : <>
             <p className="text-xs font-semibold uppercase tracking-wide text-amber-700">Accounting</p>
             <h1 className="mt-1 text-2xl font-semibold text-slate-900">Vendor Bills</h1>
             <p className="mt-2 max-w-3xl text-slate-600">
               Track what the company owes vendors, when bills are due, and when each bill is paid.
             </p>
+            </>}
           </div>
           <Link className="rounded-md border border-slate-300 bg-white px-4 py-2 font-semibold text-slate-700 shadow-sm" to="/accounting/expenses">
             Back to expenses
@@ -186,10 +192,10 @@ export function VendorBillsPage() {
         </header>
 
         <section className="grid gap-3 md:grid-cols-4">
-          <SummaryTile label="Bills in filter" value={String(bills.length)} />
-          <SummaryTile label="Open AP" value={dollars(openTotal)} tone="amber" />
-          <SummaryTile label="Overdue AP" value={dollars(overdueTotal)} tone="red" />
-          <SummaryTile label="Paid in filter" value={dollars(bills.reduce((sum, bill) => sum + bill.amount_paid_cents, 0))} tone="green" />
+          <SummaryTile label="Bills loaded" value={billsQ.isError ? 'Unavailable' : billsQ.isLoading ? '...' : String(bills.length)} />
+          <SummaryTile label="Open balance · loaded bills" value={billsQ.isError ? 'Unavailable' : billsQ.isLoading ? '...' : dollars(openTotal)} tone="amber" />
+          <SummaryTile label="Overdue · loaded bills" value={billsQ.isError ? 'Unavailable' : billsQ.isLoading ? '...' : dollars(overdueTotal)} tone="red" />
+          <SummaryTile label="Paid · loaded bills" value={billsQ.isError ? 'Unavailable' : billsQ.isLoading ? '...' : dollars(bills.reduce((sum, bill) => sum + bill.amount_paid_cents, 0))} tone="green" />
         </section>
 
         <section className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
@@ -252,7 +258,7 @@ export function VendorBillsPage() {
         </section>
 
         <section className="rounded-lg border border-slate-200 bg-white shadow-sm">
-          <div className="grid gap-3 border-b border-slate-200 p-4 lg:grid-cols-12">
+          <div data-easy-filter-grid className="grid gap-3 border-b border-slate-200 p-4 lg:grid-cols-12">
             <input className="rounded-md border border-slate-300 px-3 py-2 lg:col-span-4" placeholder="Search vendor, bill #, memo..." value={filters.q} onChange={(event) => setFilters((old) => ({ ...old, q: event.target.value }))} />
             <select className="rounded-md border border-slate-300 px-3 py-2 lg:col-span-2" value={filters.status} onChange={(event) => setFilters((old) => ({ ...old, status: event.target.value }))}>
               {statuses.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
@@ -266,6 +272,11 @@ export function VendorBillsPage() {
           <div className="grid gap-3 p-4 xl:grid-cols-2">
             {billsQ.isLoading ? (
               <p className="rounded-lg border border-slate-200 p-6 text-center text-slate-500 xl:col-span-2">Loading vendor bills...</p>
+            ) : billsQ.isError ? (
+              <div role="alert" className="rounded-lg border border-red-200 p-6 text-center text-red-700 xl:col-span-2">
+                Vendor bills could not be loaded.
+                <button type="button" onClick={() => void billsQ.refetch()} className="ml-3 rounded-md border border-red-300 px-3 py-2 font-semibold">Try again</button>
+              </div>
             ) : bills.length === 0 ? (
               <p className="rounded-lg border border-slate-200 p-6 text-center text-slate-500 xl:col-span-2">No vendor bills in this filter.</p>
             ) : bills.map((bill) => (
@@ -293,6 +304,7 @@ export function VendorBillsPage() {
                     <input
                       className="min-w-0 flex-1 rounded-md border border-slate-300 bg-white px-3 py-2"
                       inputMode="decimal"
+                      aria-label={`Payment amount for ${vendorLabel(bill)}, bill ${bill.bill_number || bill.id}`}
                       value={paymentByBill[bill.id] ?? ''}
                       onChange={(event) => setPaymentByBill((old) => ({ ...old, [bill.id]: event.target.value }))}
                       placeholder={String((bill.balance_cents / 100).toFixed(2))}

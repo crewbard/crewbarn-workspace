@@ -5,6 +5,8 @@ import { Link } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { API_URL, apiRequest, getActingTenant, getFranchiseActAs, getStoredToken } from '@/lib/api'
 import type { PaginatedResponse } from '@/types/api'
+import { useTheme } from '@/hooks/useTheme'
+import { EasyPageHeading } from '@/components/easy/EasyPageHeading'
 
 type Provider = 'quickbooks' | 'xero' | 'csv' | 'accountant_export'
 type MappingType = 'account' | 'tax_code' | 'payment_method' | 'item' | 'vendor' | 'customer' | 'class' | 'location' | 'tracking_category' | 'other'
@@ -61,6 +63,8 @@ function isoDate(date: Date): string {
 }
 
 export function AccountingSyncMappingsPage() {
+  const { theme } = useTheme()
+  const easy = theme === 'easy-side' || theme === 'easy-top'
   const tenantTimezone = useTenantTimezone()
   const tenantToday = tenantDate(tenantTimezone)
   const queryClient = useQueryClient()
@@ -253,16 +257,18 @@ export function AccountingSyncMappingsPage() {
   return (
     <div className="min-h-screen bg-slate-100 px-4 py-4 text-slate-950 sm:px-6 sm:py-6 2xl:px-8">
       <div className="mx-auto w-full max-w-none space-y-6">
-        <header className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
-          <div>
+<header data-easy-accounting-header={easy || undefined} className={easy ? 'flex min-w-0 w-full flex-col items-stretch gap-4' : 'flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between'}>
+          <div className={easy ? 'min-w-0 w-full' : undefined}>
+            {easy ? <EasyPageHeading title="Accounting mappings" description="Choose an export provider, match CrewBarn records to its codes, then review your mappings before exporting." /> : <>
             <p className="text-xs font-semibold uppercase tracking-wide text-amber-700">Accounting</p>
             <h1 className="mt-1 text-2xl font-semibold text-slate-900">Sync Mappings</h1>
             <p className="mt-2 max-w-3xl text-slate-600">
               Map CrewBarn accounts, tax codes, payment methods, items, vendors, and customers to accountant exports or optional accounting apps.
             </p>
+            </>}
           </div>
           <Link className="rounded-md border border-slate-300 bg-white px-4 py-2 font-semibold text-slate-700 shadow-sm" to="/accounting">
-            Accounting overview
+            Money desk
           </Link>
         </header>
 
@@ -415,6 +421,11 @@ export function AccountingSyncMappingsPage() {
               <tbody className="divide-y divide-slate-100 bg-white">
                 {mappingsQ.isLoading ? (
                   <tr><td className="px-4 py-8 text-center text-slate-500" colSpan={6}>Loading mappings...</td></tr>
+                ) : mappingsQ.isError ? (
+                  <tr><td className="px-4 py-8 text-center text-red-700" colSpan={6}>
+                    <div role="alert">Mappings could not be loaded.</div>
+                    <button type="button" onClick={() => void mappingsQ.refetch()} className="mt-2 rounded-md border border-red-300 px-3 py-2 font-semibold">Try again</button>
+                  </td></tr>
                 ) : mappings.length === 0 ? (
                   <tr><td className="px-4 py-8 text-center text-slate-500" colSpan={6}>No mappings in this filter.</td></tr>
                 ) : mappings.map((mapping) => (

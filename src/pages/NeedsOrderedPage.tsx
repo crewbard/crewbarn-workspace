@@ -10,6 +10,8 @@ import { tenantDate, useTenantTimezone } from '@/hooks/useTenantTime'
 import { ApiError } from '@/lib/api'
 import type { LowStockItem } from '@/types/lowStock'
 import type { Vendor } from '@/types/vendor'
+import { useTheme } from '@/hooks/useTheme'
+import { EasyPageHeading } from '@/components/easy/EasyPageHeading'
 
 /**
  * Standalone "Needs Ordered" report. Surfaces every catalog item whose
@@ -23,6 +25,8 @@ import type { Vendor } from '@/types/vendor'
  * Creating POs requires inventory.edit, matching the API.
  */
 export function NeedsOrderedPage() {
+  const { theme } = useTheme()
+  const easy = theme === 'easy-side' || theme === 'easy-top'
   // inventory.edit — the same permission POST /v1/purchase-orders enforces.
   // Gating on is_platform_admin meant no tenant could raise a PO from here,
   // including the owner, while the API would have accepted it.
@@ -68,14 +72,18 @@ export function NeedsOrderedPage() {
   const [creating, setCreating] = useState(false)
 
   return (
-    <div className="max-w-6xl mx-auto p-6 space-y-6">
-      <div>
+    <div className={easy ? 'w-full min-w-0 p-6 space-y-6' : 'max-w-6xl mx-auto p-6 space-y-6'}>
+      {easy ? <EasyPageHeading title="What needs ordering" description="Review low stock, choose the items and quantities you need, then create a draft purchase order. Nothing is ordered by selecting a row." /> : <div>
         <h1 className="text-3xl font-semibold text-slate-900">Needs Ordered</h1>
         <p className="text-sm text-slate-600 mt-1">
           Items at or below their reorder threshold. Tick the ones you want to
           order, adjust qty if needed, then create a draft Purchase Order.
         </p>
-      </div>
+      </div>}
+      {easy && !lowStockQuery.isLoading && !lowStockQuery.isError && <section aria-label="Reorder summary" className="grid gap-3 sm:grid-cols-2">
+        <div className="rounded-xl border border-slate-200 bg-white p-4"><p className="text-sm text-slate-500">Items at their reorder threshold</p><p className="mt-1 text-2xl font-semibold">{items.length}</p></div>
+        <div className="rounded-xl border border-slate-200 bg-white p-4"><p className="text-sm text-slate-500">Selected with a positive quantity</p><p className="mt-1 text-2xl font-semibold">{selectedCount}</p></div>
+      </section>}
 
       {lowStockQuery.isLoading && (
         <div className="bg-white border border-slate-200 rounded-xl shadow-sm p-12 text-center text-sm text-slate-500">
@@ -84,9 +92,10 @@ export function NeedsOrderedPage() {
       )}
 
       {lowStockQuery.isError && (
-        <div className="bg-white border border-red-200 rounded-xl p-6 text-sm text-red-700">
+        <div role="alert" className="bg-white border border-red-200 rounded-xl p-6 text-sm text-red-700">
           Failed to load low-stock items.
           {lowStockQuery.error instanceof Error ? ` ${lowStockQuery.error.message}` : ''}
+          <button type="button" disabled={lowStockQuery.isFetching} onClick={() => void lowStockQuery.refetch()} className="ml-2 underline disabled:opacity-50">Retry</button>
         </div>
       )}
 
@@ -98,9 +107,9 @@ export function NeedsOrderedPage() {
         </div>
       )}
 
-      {!lowStockQuery.isLoading && items.length > 0 && (
-        <div className="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden">
-          <table className="w-full text-sm">
+      {!lowStockQuery.isLoading && !lowStockQuery.isError && items.length > 0 && (
+        <div className={`bg-white border border-slate-200 rounded-xl shadow-sm ${easy ? 'overflow-x-auto' : 'overflow-hidden'}`}>
+          <table className={`w-full text-sm ${easy ? 'min-w-[760px]' : ''}`}>
             <thead className="bg-slate-50 text-xs uppercase tracking-wide text-slate-500 border-b border-slate-200">
               <tr>
                 <th className="px-4 py-3 w-10">

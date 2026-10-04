@@ -14,6 +14,7 @@ import { useTheme, type FolderLayout } from '@/hooks/useTheme'
 import { FolderBrowser, Pager, type FolderNode } from '@/components/FolderBrowser'
 import { FolderStatTile, formatFolderMoney } from '@/components/FolderStatTile'
 import { FolderLayoutSwitch } from '@/components/FolderLayoutSwitch'
+import { EasyActionCards } from '@/components/easy/EasyActionCards'
 
 // Quick-peek: a card's "Peek" opens a slide-in drawer without leaving the list.
 // Cards live deep inside the folder tree, so the open handler rides a context
@@ -55,7 +56,8 @@ const STALE_LABELS: Record<string, string> = {
 
 export function WorkOrdersPage() {
   const navigate = useNavigate()
-  const { jobView, setJobView, density, folderLayout, setFolderLayout } = useTheme()
+  const { theme, jobView, setJobView, density, folderLayout, setFolderLayout } = useTheme()
+  const easy = theme === 'easy-side' || theme === 'easy-top'
   const desktopRowPad = density === 'dense' ? 'px-4 py-2' : density === 'compact' ? 'px-4 py-2.5' : 'px-4 py-3'
   const [searchParams, setSearchParams] = useSearchParams()
   const [q, setQ] = useState('')
@@ -190,10 +192,14 @@ export function WorkOrdersPage() {
 
   return (
     <JobPeekContext.Provider value={openPeek}>
-    <div className={`mx-auto px-3 sm:px-6 py-4 sm:py-6 ${filingView ? 'max-w-[1760px]' : 'max-w-7xl'}`}>
-      <div className="flex items-center justify-between mb-4 sm:mb-6 gap-3 flex-wrap">
-        <h1 className="text-xl sm:text-2xl font-semibold text-slate-900">Jobs</h1>
-        <div className="flex items-center gap-2 flex-wrap">
+    <div className={`mx-auto px-3 sm:px-6 py-4 sm:py-6 ${easy ? 'w-full min-w-0 max-w-none' : filingView ? 'max-w-[1760px]' : 'max-w-7xl'}`}>
+      <div data-easy-jobs-header={easy ? '' : undefined} className={easy ? 'mb-6 overflow-hidden rounded-2xl border border-slate-200 bg-white' : 'flex items-center justify-between mb-4 sm:mb-6 gap-3 flex-wrap'}>
+        {easy ? <div className="bg-[var(--chrome-bg,#0F1A2E)] px-5 py-6 text-white sm:px-7 sm:py-8">
+          <p className="text-xs font-semibold uppercase tracking-widest text-white/80">Your work · from request to invoice</p>
+          <h1 className="mt-3 text-3xl font-semibold tracking-tight sm:text-4xl">Jobs</h1>
+          <p className="mt-3 max-w-2xl text-sm text-white/90">Find the job, see what it needs, and keep it moving. Start with an attention filter below or browse your existing views.</p>
+        </div> : <h1 className="text-xl sm:text-2xl font-semibold text-slate-900">Jobs</h1>}
+        <div className={easy ? 'flex flex-wrap items-center gap-2 p-4 sm:px-6' : 'flex items-center gap-2 flex-wrap'}>
           {/* Secondary actions hidden on phones — accessible via Tool Shed
               menu or the action overflow on detail pages. Keeps the
               primary "+ New Job" button reachable without scrolling. */}
@@ -226,6 +232,13 @@ export function WorkOrdersPage() {
             + Sub Job
           </Link>
           <Link
+            to="/maintenance-contracts/new"
+            className="hidden sm:inline-block px-4 py-2 text-sm font-medium border border-amber-500 text-amber-700 hover:bg-amber-50 rounded-md whitespace-nowrap"
+            title="Work agreed on a schedule — the visits it generates land on this board"
+          >
+            + Service Agreement
+          </Link>
+          <Link
             to="/jobs/new"
             data-tour="jobs-new"
             className="px-4 py-2 text-sm font-medium bg-amber-600 hover:bg-amber-700 text-white rounded-md whitespace-nowrap"
@@ -235,7 +248,27 @@ export function WorkOrdersPage() {
         </div>
       </div>
 
+      {easy && <details className="mb-5 rounded-xl border border-slate-200 bg-white p-4 lg:hidden">
+        <summary className="cursor-pointer text-sm font-semibold text-slate-700">Partner work & subcontracting</summary>
+        <nav aria-label="Partner job tools" className="mt-3 flex flex-wrap gap-2">
+          {[['/inbound-sub-jobs', 'Inbound jobs'], ['/sub-payouts', 'Sub payouts'], ['/sub-reviews', 'Sub reviews'], ['/jobs/new?kind=sub', 'New sub job']].map(([to, label]) =>
+            <Link key={to} to={to} className="rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-700 hover:bg-slate-50">{label}</Link>)}
+        </nav>
+      </details>}
+
       {/* Workflow tabs — common stages up front; full list stays in the dropdown. */}
+      {easy && <EasyActionCards actions={[
+        { key: 'past_scheduled_open', title: 'Past their date', description: 'Review jobs that need a new plan.' },
+        { key: 'unbilled_completed', title: 'Ready to bill', description: 'Review completed work before invoicing.' },
+        { key: 'needs_parts', title: 'Waiting on parts', description: 'Check what is holding up the work.' },
+        { key: 'parts_ordered', title: 'Parts ordered', description: 'Check arrivals and plan the next visit.' },
+      ].map(action => ({ ...action, active: stale === action.key, onClick: () => {
+        const next = new URLSearchParams(searchParams)
+        if (stale === action.key) next.delete('stale')
+        else next.set('stale', action.key)
+        setPage(1)
+        setSearchParams(next, { replace: true })
+      } }))} />}
       <WorkflowTabs
         tabs={jobTabs}
         active={statusId}
@@ -246,7 +279,7 @@ export function WorkOrdersPage() {
       />
 
       {/* Filters */}
-      <div className="flex items-center gap-2 sm:gap-3 mb-4 flex-wrap">
+      <div data-easy-list-toolbar className="flex items-center gap-2 sm:gap-3 mb-4 flex-wrap">
         <input
           type="search"
           value={q}
@@ -255,6 +288,7 @@ export function WorkOrdersPage() {
             setPage(1)
           }}
           placeholder="Search by title, customer, address..."
+          aria-label="Search jobs by title, customer, or address"
           className="flex-1 min-w-[180px] sm:max-w-md px-3 py-2 text-sm border border-slate-300 rounded-md focus:outline-none focus:ring-1 focus:ring-amber-500 focus:border-amber-500"
         />
         {/* This week — quick scope to jobs scheduled in the current tenant week. */}
@@ -380,6 +414,7 @@ export function WorkOrdersPage() {
               className="inline-flex h-9 items-center gap-0.5 rounded-md border border-slate-300 bg-slate-100 p-1"
               role="group"
               aria-label="Job card display"
+              data-easy-view-group
             >
               <button
                 type="button"
@@ -393,6 +428,7 @@ export function WorkOrdersPage() {
                     : 'text-slate-600 hover:bg-white hover:text-slate-900'
                 )}
                 aria-pressed={!filingView}
+                data-easy-view-option
               >
                 Cards
               </button>
@@ -408,6 +444,7 @@ export function WorkOrdersPage() {
                     : 'text-slate-600 hover:bg-white hover:text-slate-900'
                 )}
                 aria-pressed={filingView}
+                data-easy-view-option
               >
                 Files
               </button>
@@ -486,7 +523,7 @@ export function WorkOrdersPage() {
             {q || statusId ? 'No jobs match your filters.' : 'No jobs yet.'}
           </div>
         ) : (
-          items.map((wo) => (
+          items.map((wo) => easy ? <JobCard key={wo.id} wo={wo} siblings={items} onOpen={() => navigate(`/jobs/${wo.id}`)} /> : (
             <div
               key={wo.id}
               onClick={() => navigate(`/jobs/${wo.id}`)}
@@ -648,7 +685,7 @@ export function WorkOrdersPage() {
 
       {/* Pagination */}
       {meta && meta.last_page > 1 && !filingView && (
-        <div className="flex items-center justify-between mt-4 text-sm">
+        <div className="flex flex-wrap items-center justify-between gap-3 mt-4 text-sm">
           <div className="text-slate-600">
             Showing {meta.from ?? 0}–{meta.to ?? 0} of {meta.total}
           </div>
@@ -656,7 +693,7 @@ export function WorkOrdersPage() {
             <button
               type="button"
               onClick={() => setPage((p) => Math.max(p - 1, 1))}
-              disabled={meta.current_page <= 1}
+              disabled={workOrdersQuery.isFetching || meta.current_page <= 1}
               className="px-3 py-1.5 border border-slate-300 rounded-md hover:bg-slate-50 disabled:opacity-50"
             >
               Previous
@@ -667,7 +704,7 @@ export function WorkOrdersPage() {
             <button
               type="button"
               onClick={() => setPage((p) => Math.min(p + 1, meta.last_page))}
-              disabled={meta.current_page >= meta.last_page}
+              disabled={workOrdersQuery.isFetching || meta.current_page >= meta.last_page}
               className="px-3 py-1.5 border border-slate-300 rounded-md hover:bg-slate-50 disabled:opacity-50"
             >
               Next
@@ -806,7 +843,7 @@ function JobBucketFolder({
   const filterKey = JSON.stringify({ f: filters ?? {}, s: scope })
   useEffect(() => { setPage(1) }, [filterKey, payment, progress])
 
-  const { data, isFetching } = useWorkOrders({
+  const { data, isFetching, isError, refetch } = useWorkOrders({
     ...filters,
     ...scope,
     payment: payment === 'all' ? undefined : payment,
@@ -825,19 +862,19 @@ function JobBucketFolder({
     <div>
       <div className="mb-2.5 grid grid-cols-2 gap-2.5 lg:grid-cols-4">
         <FolderStatTile
-          tone="all" label="All money" count={money?.count} value={formatFolderMoney(collected + unpaid + notInvoiced)}
+          tone="all" label="All money" count={money?.count} value={money ? formatFolderMoney(collected + unpaid + notInvoiced) : 'Unavailable'}
           sublabel="Everything in this folder" active={payment === 'all'} onClick={() => setPayment('all')}
         />
         <FolderStatTile
-          tone="collected" label="Collected" count={money?.collected_count} value={formatFolderMoney(collected)}
+          tone="collected" label="Collected" count={money?.collected_count} value={money ? formatFolderMoney(collected) : 'Unavailable'}
           sublabel="Invoice balance paid in full" active={payment === 'collected'} onClick={() => setPayment('collected')}
         />
         <FolderStatTile
-          tone="unpaid" label="Unpaid balance" count={money?.unpaid_count} value={formatFolderMoney(unpaid)}
+          tone="unpaid" label="Unpaid balance" count={money?.unpaid_count} value={money ? formatFolderMoney(unpaid) : 'Unavailable'}
           sublabel="Invoiced, balance still due" active={payment === 'unpaid_balance'} onClick={() => setPayment('unpaid_balance')}
         />
         <FolderStatTile
-          tone="not_invoiced" label="Not invoiced" count={money?.not_invoiced_count} value={formatFolderMoney(notInvoiced)}
+          tone="not_invoiced" label="Not invoiced" count={money?.not_invoiced_count} value={money ? formatFolderMoney(notInvoiced) : 'Unavailable'}
           sublabel="Done or booked, no invoice yet" active={payment === 'not_invoiced'} onClick={() => setPayment('not_invoiced')}
         />
       </div>
@@ -858,7 +895,12 @@ function JobBucketFolder({
         </div>
       )}
 
-      {isFetching && jobs.length === 0 ? (
+      {isError ? (
+        <div role="alert" className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-900">
+          This job folder could not be loaded.
+          <button type="button" disabled={isFetching} className="ml-2 underline disabled:opacity-50" onClick={() => void refetch()}>Try again</button>
+        </div>
+      ) : isFetching && jobs.length === 0 ? (
         <div className={display === 'list' ? 'space-y-2.5' : gridClass}>
           {[0, 1, 2, 3].map((i) => <div key={i} className="h-40 animate-pulse rounded-lg bg-white" />)}
         </div>
@@ -919,7 +961,7 @@ function DesktopJobCards({
 
   if (isLoading) {
     return (
-      <div className="hidden md:grid grid-cols-2 xl:grid-cols-3 gap-3">
+      <div data-easy-job-grid className="hidden md:grid grid-cols-2 xl:grid-cols-3 gap-3">
         {[0, 1, 2, 3, 4, 5].map((i) => (
           <div key={i} className="h-36 bg-slate-100 rounded-lg animate-pulse" />
         ))}
@@ -939,7 +981,7 @@ function DesktopJobCards({
 
   if (!filingView) {
     return (
-      <div className="hidden md:grid grid-cols-2 xl:grid-cols-3 gap-3">
+      <div data-easy-job-grid className="hidden md:grid grid-cols-2 xl:grid-cols-3 gap-3">
         {items.map((wo) => (
           <JobCard key={wo.id} wo={wo} siblings={items} onOpen={() => openJob(wo)} />
         ))}
@@ -1068,6 +1110,8 @@ function DesktopJobCards({
 
 function JobCard({ wo, onOpen, siblings }: { wo: WorkOrder; onOpen: () => void; siblings?: WorkOrder[] }) {
   const openPeek = useJobPeek()
+  const { theme } = useTheme()
+  const easy = theme === 'easy-side' || theme === 'easy-top'
   return (
     <article
       onClick={onOpen}
@@ -1080,11 +1124,11 @@ function JobCard({ wo, onOpen, siblings }: { wo: WorkOrder; onOpen: () => void; 
       }}
       role="link"
       tabIndex={0}
-      className="group flex h-full cursor-pointer flex-col rounded-lg border border-slate-200 bg-white p-4 text-left shadow-sm transition-colors hover:border-amber-300 hover:bg-amber-50/30 focus:outline-none focus:ring-2 focus:ring-amber-500"
+      className={`group flex h-full cursor-pointer flex-col border bg-white text-left shadow-sm transition-colors focus:outline-none focus:ring-2 focus:ring-amber-500 ${easy ? 'rounded-2xl border-slate-200 p-5 hover:border-emerald-600' : 'rounded-lg border-slate-200 p-4 hover:border-amber-300 hover:bg-amber-50/30'}`}
     >
       <div className="flex items-center justify-between gap-3">
         <span className="font-mono text-[11px] text-slate-500">{wo.display_number}</span>
-        <div className="flex items-center gap-2">
+        <div className={easy ? 'flex flex-wrap items-center justify-end gap-2' : 'flex items-center gap-2'}>
           <PaymentStamp wo={wo} />
           {wo.status && <StatusPill name={wo.status.name} color={wo.status.color} />}
         </div>
@@ -1100,20 +1144,24 @@ function JobCard({ wo, onOpen, siblings }: { wo: WorkOrder; onOpen: () => void; 
         )}
         <div className="min-w-0">
           <div className="line-clamp-2 font-semibold leading-snug text-slate-900">{wo.title}</div>
-          <div className="mt-1 truncate text-xs text-slate-500">
+          <div className={easy ? 'mt-2 break-words text-sm font-medium text-slate-700' : 'mt-1 truncate text-xs text-slate-500'}>
             {wo.service_customer?.display_name ?? 'No customer'}
-            {locationLabel(wo) && <> · {locationLabel(wo)}</>}
+            {easy && wo.service_customer?.vip && <span className="ml-2 rounded bg-amber-100 px-1.5 py-0.5 text-xs text-amber-800">VIP</span>}
+            {easy && wo.request_status === 'pending' && <span className="ml-2 rounded bg-amber-100 px-1.5 py-0.5 text-xs text-amber-800">Portal request</span>}
+            {locationLabel(wo) && (easy ? <span className="mt-1 block text-xs font-normal text-slate-500">{locationLabel(wo)}</span> : <> · {locationLabel(wo)}</>)}
           </div>
         </div>
       </div>
       {/* Meta + footer pinned to the bottom (mt-auto) so the card fills a uniform
           height and Peek always lands in the same spot, whatever the title length. */}
-      <div className="mt-auto flex items-center justify-between gap-2 border-t border-slate-100 pt-3">
+      <div className={`mt-auto flex items-center justify-between gap-2 border-t border-slate-100 pt-3 ${easy ? 'rounded-lg bg-slate-50 p-3' : ''}`}>
         <div className="min-w-0 text-xs text-slate-500">
+          {easy && <div className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-slate-400">Visit & assignment</div>}
           <div className="truncate">{formatSchedule(wo)}</div>
           <div className="truncate">{wo.lead_tech?.full_name ?? 'No assigned tech'}</div>
         </div>
         <div className="text-right">
+          {easy && <div className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-slate-400">Job total</div>}
           <div className="font-mono text-sm font-semibold text-slate-900">
             {wo.money?.total_formatted ?? '$0.00'}
           </div>
@@ -1128,7 +1176,7 @@ function JobCard({ wo, onOpen, siblings }: { wo: WorkOrder; onOpen: () => void; 
       <div className="mt-3 flex items-center justify-between gap-2">
         <div className="min-w-0"><NextStepHint wo={wo} /></div>
         <div className="flex shrink-0 items-center gap-2">
-          <span className="text-xs font-semibold text-amber-700 opacity-0 transition-opacity group-hover:opacity-100">
+          <span className={`text-xs font-semibold text-amber-700 ${easy ? '' : 'opacity-0 transition-opacity group-hover:opacity-100'}`}>
             Open
           </span>
           {openPeek && (
@@ -1140,7 +1188,7 @@ function JobCard({ wo, onOpen, siblings }: { wo: WorkOrder; onOpen: () => void; 
               }}
               className="rounded border border-slate-200 px-2 py-0.5 text-xs font-semibold text-slate-600 hover:border-amber-300 hover:bg-amber-50 hover:text-amber-700"
             >
-              Peek
+              {easy ? 'Quick view' : 'Peek'}
             </button>
           )}
         </div>
@@ -1179,6 +1227,8 @@ function JobPeekDrawer({
 }) {
   const navigate = useNavigate()
   const jobs = peek?.siblings ?? []
+  const { theme } = useTheme()
+  const easy = theme === 'easy-side' || theme === 'easy-top'
   const index = peek ? jobs.findIndex((j) => j.id === peek.id) : -1
   const wo = index >= 0 ? jobs[index] : null
   const hasPrev = index > 0
@@ -1202,14 +1252,15 @@ function JobPeekDrawer({
   return createPortal(
     <div className="fixed inset-0 z-[9999] flex justify-end" role="dialog" aria-modal="true" aria-label={`Job ${wo.display_number}`}>
       <button type="button" aria-label="Close peek" onClick={onClose} className="absolute inset-0 bg-slate-900/30" />
-      <aside className="relative flex h-full w-full max-w-md flex-col bg-white shadow-2xl">
-        <div className="flex items-start justify-between gap-3 border-b border-slate-200 px-5 py-4">
+      <aside className={`relative flex h-full w-full flex-col bg-white shadow-2xl ${easy ? 'max-w-xl' : 'max-w-md'}`}>
+        <div className={`flex items-start justify-between gap-3 border-b px-5 py-4 ${easy ? 'border-emerald-900 bg-emerald-950' : 'border-slate-200'}`}>
           <div className="min-w-0">
             <div className="flex items-center gap-2">
-              <span className="font-mono text-[11px] text-slate-500">{wo.display_number}</span>
+              <span className={`font-mono text-[11px] ${easy ? 'text-emerald-200' : 'text-slate-500'}`}>{wo.display_number}</span>
               {wo.status && <StatusPill name={wo.status.name} color={wo.status.color} />}
             </div>
-            <h2 className="mt-1 text-lg font-bold leading-snug text-slate-900">{wo.title}</h2>
+            <h2 className={`mt-1 break-words text-lg font-bold leading-snug ${easy ? 'text-white' : 'text-slate-900'}`}>{wo.title}</h2>
+            {easy && <p className="mt-2 break-words text-sm text-emerald-100">{wo.service_customer?.display_name ?? 'No customer'}</p>}
           </div>
           <button type="button" onClick={onClose} aria-label="Close" className="shrink-0 rounded-md p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-700">
             <svg viewBox="0 0 20 20" fill="currentColor" className="h-5 w-5">
@@ -1225,13 +1276,18 @@ function JobPeekDrawer({
         </div>
 
         <div className="flex-1 overflow-y-auto px-5 py-4">
-          <dl className="grid grid-cols-2 gap-x-4 gap-y-4">
+          {easy && <section aria-label="Next step" className="mb-5 rounded-xl border border-amber-200 bg-amber-50 p-4">
+            <h3 className="text-sm font-semibold text-slate-900">{step?.label ?? 'Review the job'}</h3>
+            <p className="mt-1 text-xs text-slate-600">Open the full record to review details and take action. This preview does not change the job.</p>
+            <div className="mt-3 flex flex-wrap items-center gap-2"><PaymentStamp wo={wo} /><RiskBadges wo={wo} /></div>
+          </section>}
+          <dl className={easy ? 'grid grid-cols-1 gap-4 rounded-xl border border-slate-200 bg-slate-50 p-4 sm:grid-cols-2' : 'grid grid-cols-2 gap-x-4 gap-y-4'}>
             <PeekField label="Customer" value={wo.service_customer?.display_name ?? '—'} />
             <PeekField label="Scheduled" value={formatSchedule(wo)} />
             <PeekField label="Amount" value={wo.money?.total_formatted ?? '$0.00'} mono />
             <PeekField label="Lead tech" value={wo.lead_tech?.full_name ?? 'Unassigned'} />
             {wo.service_location && (
-              <div className="col-span-2">
+              <div className={easy ? 'sm:col-span-2' : 'col-span-2'}>
                 <dt className="text-[10px] font-bold uppercase tracking-wide text-slate-400">Location</dt>
                 <dd className="mt-0.5 text-sm">
                   {wo.service_location.nickname && (
@@ -1242,6 +1298,7 @@ function JobPeekDrawer({
               </div>
             )}
           </dl>
+          {easy && <CommunicationBadges wo={wo} />}
 
           {peekAddress && (
             <div className="mt-4">

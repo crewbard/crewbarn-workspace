@@ -2,6 +2,8 @@ import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { apiRequest } from '@/lib/api'
+import { useTheme } from '@/hooks/useTheme'
+import { EasyPageHeading } from '@/components/easy/EasyPageHeading'
 
 /**
  * /accounting/card-processor — every card transaction GoDaddy reported,
@@ -63,6 +65,8 @@ const when = (iso: string | null) => (iso ? new Date(iso).toLocaleString('en-US'
 const STATE_LABEL: Record<State, string> = { unmatched: 'Needs matching', matched: 'Matched', ignored: 'Ignored', reversal: 'Refunds & voids' }
 
 export function ProcessorTransactionsPage() {
+  const { theme } = useTheme()
+  const easy = theme === 'easy-side' || theme === 'easy-top'
   const qc = useQueryClient()
   const [state, setState] = useState<State>('unmatched')
   const [open, setOpen] = useState<string | null>(null)
@@ -84,11 +88,11 @@ export function ProcessorTransactionsPage() {
   const counts = d?.counts
 
   return (
-    <div className="max-w-6xl mx-auto px-6 py-8">
+    <div className={easy ? 'w-full min-w-0 px-3 py-4 sm:px-6 sm:py-6' : 'max-w-6xl mx-auto px-6 py-8'}>
       <Link to="/accounting" className="text-sm font-medium text-amber-700 hover:underline">← Accounting</Link>
-      <div className="mt-2 flex flex-wrap items-start justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-bold text-navy-900">Card processor</h1>
+<div data-easy-accounting-header={easy || undefined} className={easy ? 'flex min-w-0 w-full flex-col items-stretch gap-4' : 'mt-2 flex flex-wrap items-start justify-between gap-4'}>
+        <div className={easy ? 'min-w-0 w-full' : undefined}>
+          {easy ? <EasyPageHeading title="Card transactions" description="Review unmatched processor transactions, then use the existing matching controls to connect them to your records." /> : <h1 className="text-2xl font-bold text-navy-900">Card processor</h1>}
           <p className="mt-1 max-w-2xl text-sm text-slate-600">
             Every card transaction on your GoDaddy Payments account. Most match themselves; what's left went through
             GoDaddy without CrewBarn seeing it — attach it to an invoice, or say it isn't yours.
@@ -103,7 +107,7 @@ export function ProcessorTransactionsPage() {
           >
             {sync.isPending ? 'Syncing…' : 'Sync now'}
           </button>
-          <div className="mt-1.5">{d?.synced_at ? `Last synced ${when(d.synced_at)} · runs hourly` : d?.connected ? 'Never synced' : 'GoDaddy Payments not connected'}</div>
+          <div className="mt-1.5">{list.isError ? 'Connection status unavailable' : list.isLoading ? 'Checking connection…' : d?.synced_at ? `Last synced ${when(d.synced_at)} · runs hourly` : d?.connected ? 'Never synced' : 'GoDaddy Payments not connected'}</div>
         </div>
       </div>
 
@@ -118,9 +122,10 @@ export function ProcessorTransactionsPage() {
             key={s}
             type="button"
             onClick={() => { setState(s); setOpen(null) }}
+            aria-pressed={state === s}
             className={`rounded-full border px-3 py-1.5 text-xs font-semibold ${state === s ? 'border-slate-900 bg-slate-900 text-white' : 'border-slate-300 bg-white text-slate-700 hover:bg-slate-50'}`}
           >
-            {STATE_LABEL[s]} · {counts?.[s]?.n ?? 0}
+            {STATE_LABEL[s]} · {list.isError ? 'Unavailable' : list.isLoading ? '…' : counts?.[s]?.n ?? 0}
             {s === 'unmatched' && (counts?.unmatched?.cents ?? 0) > 0 && <span className="ml-1 opacity-70">({money(counts!.unmatched.cents)})</span>}
           </button>
         ))}
@@ -128,6 +133,10 @@ export function ProcessorTransactionsPage() {
 
       {list.isLoading ? (
         <div className="py-12 text-center text-sm text-slate-500">Loading…</div>
+      ) : list.isError ? (
+        <div role="alert" className="mt-4 rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-700">
+          Card transactions could not be loaded. <button type="button" onClick={() => void list.refetch()} className="ml-2 underline">Retry</button>
+        </div>
       ) : !d || d.data.length === 0 ? (
         <div className="mt-6 rounded-xl border-2 border-dashed border-slate-200 p-10 text-center text-sm text-slate-500">
           {state === 'unmatched' ? 'Nothing waiting. Every GoDaddy transaction is accounted for.' : `No ${STATE_LABEL[state].toLowerCase()} transactions.`}

@@ -2,6 +2,9 @@ import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useQueryClient } from '@tanstack/react-query'
 import { RecordPaymentModal } from '@/components/invoices/RecordPaymentModal'
+import { useTheme } from '@/hooks/useTheme'
+import { EasyPageHeading } from '@/components/easy/EasyPageHeading'
+import { EasyActionCards } from '@/components/easy/EasyActionCards'
 import {
   invoiceKeys,
   useInvoiceFilingSummary,
@@ -142,6 +145,8 @@ function NextStepHint({
 }
 
 export function InvoicesPage() {
+  const { theme } = useTheme()
+  const easy = theme === 'easy-side' || theme === 'easy-top'
   const navigate = useNavigate()
   const queryClient = useQueryClient()
   const [payingInvoice, setPayingInvoice] = useState<Invoice | null>(null)
@@ -236,11 +241,17 @@ export function InvoicesPage() {
 
   return (
     <div className="mx-auto w-full max-w-none px-4 py-4 sm:px-6 sm:py-6 2xl:px-8">
-      <div className="flex items-center justify-between mb-4 sm:mb-6 gap-3">
+      {easy ? <EasyPageHeading title="Invoices" description="Follow the money from draft to payment. Review what is due, find a receipt, or open an invoice to see its full history." /> : <div className="flex items-center justify-between mb-4 sm:mb-6 gap-3">
         <h1 className="text-xl sm:text-2xl font-semibold text-slate-900">Invoices</h1>
-      </div>
+      </div>}
 
       {/* Workflow tabs — live counts derived client-side from the fetched set. */}
+      {easy && <EasyActionCards label="Review your invoices" actions={[
+        { key: 'overdue', title: 'Past due', description: 'Review balances and follow-up options.' },
+        { key: 'draft', title: 'Not sent yet', description: 'Check each draft before sending.' },
+        { key: 'sent', title: 'Sent to customers', description: 'Review open invoices and payment history.' },
+        { key: 'paid', title: 'Paid', description: 'Find completed payments and receipts.' },
+      ].map(action => ({ ...action, count: statusCounts.isError ? undefined : (statusCounts.data as Record<string, number> | undefined)?.[action.key], active: bucket === action.key, onClick: () => setBucket(action.key as InvoiceBucket) }))} />}
       <WorkflowTabs
         tabs={INVOICE_TABS.map((t) => ({ ...t, count: tabCounts[t.key] ?? 0 }))}
         active={bucket}
@@ -248,7 +259,7 @@ export function InvoicesPage() {
       />
 
       {/* Search */}
-      <div className="flex items-center gap-2 sm:gap-3 mb-4">
+      <div data-easy-list-toolbar className="flex items-center gap-2 sm:gap-3 mb-4">
         <input
           type="search"
           value={search}

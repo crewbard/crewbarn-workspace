@@ -26,7 +26,7 @@ export function MutationErrorToasts() {
     <NotificationStack>
       {notices.map(n => (
         <NotificationCard key={n.id} kind="Not saved" customer="Action needs attention"
-          subtitle="Open details for the error" description={n.message} tone="rose" urgent
+          subtitle="Nothing was lost" description={n.message} type="error" urgent
           onDismiss={() => dismissMutationError(n.id)} />
       ))}
     </NotificationStack>

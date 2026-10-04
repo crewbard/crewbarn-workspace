@@ -10,6 +10,7 @@ import {
 } from '@/hooks/useEstimates'
 import { EstimateLineItemEditorLive } from '@/components/EstimateLineItemEditorLive'
 import { ConvertEstimateToJobModal } from '@/components/ConvertEstimateToJobModal'
+import { AgreementBuilderModal } from '@/components/estimates/AgreementBuilderModal'
 import { EstimateEditForm } from '@/components/estimates/EstimateEditForm'
 import { BarnCamPanel } from '@/components/BarnCamPanel'
 import { AttachmentsPanel } from '@/components/attachments/AttachmentsPanel'
@@ -21,6 +22,9 @@ import { SmsComposerModal } from '@/components/comms/SmsComposerModal'
 import { CustomerLocationStrip } from '@/components/CustomerLocationStrip'
 import { usePermissions } from '@/hooks/usePermissions'
 import { useCustomer } from '@/hooks/useCustomers'
+import { useTheme } from '@/hooks/useTheme'
+import { EasyActionCards } from '@/components/easy/EasyActionCards'
+import { PartsOrders } from '@/components/estimates/PartsOrders'
 
 type Tab = 'overview' | 'line-items' | 'edit' | 'crew-cam' | 'documents' | 'history' | 'activity'
 
@@ -34,6 +38,8 @@ const STATUS_PALETTE: Record<string, { bg: string; text: string }> = {
 }
 
 export function EstimateDetailPage() {
+  const { theme } = useTheme()
+  const easy = theme === 'easy-side' || theme === 'easy-top'
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
   const estimateQuery = useEstimate(id)
@@ -51,6 +57,7 @@ export function EstimateDetailPage() {
   const [smsEstimateOpen, setSmsEstimateOpen] = useState(false)
   const [tab, setTab] = useState<Tab>('overview')
   const [showConvertModal, setShowConvertModal] = useState(false)
+  const [agreementOpen, setAgreementOpen] = useState(false)
 
   // Deep-link from the Estimates list next-step chip (?action=convert) →
   // auto-open the convert modal (it still confirms before creating the job).
@@ -172,14 +179,14 @@ export function EstimateDetailPage() {
       {/* Header — stacks on mobile so the action button row gets its
           own line below the title block (otherwise the buttons get
           squashed against the right edge). */}
-      <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3 sm:gap-4 mb-4 sm:mb-6">
-        <div className="min-w-0">
-          <Link to="/estimates" className="text-sm text-amber-700 hover:underline">
+      <div className={easy ? 'mb-6 overflow-hidden rounded-2xl border border-slate-200 bg-white' : 'flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3 sm:gap-4 mb-4 sm:mb-6'}>
+        <div className={easy ? 'min-w-0 bg-emerald-950 p-5 sm:p-7' : 'min-w-0'}>
+          <Link to="/estimates" className={`text-sm hover:underline ${easy ? 'text-emerald-200' : 'text-amber-700'}`}>
             &larr; Back to Estimates
           </Link>
           <div className="flex items-baseline gap-2 sm:gap-3 mt-2 flex-wrap">
-            <span className="font-mono text-sm text-slate-500">{est.estimate_number}</span>
-            <h1 className="text-xl sm:text-2xl font-bold text-navy-900 break-words">
+            <span className={`font-mono text-sm ${easy ? 'text-emerald-200' : 'text-slate-500'}`}>{est.estimate_number}</span>
+            <h1 className={easy ? 'break-words text-3xl font-semibold tracking-tight text-white' : 'text-xl sm:text-2xl font-bold text-navy-900 break-words'}>
               {est.customer?.display_name ?? 'Customer'}
             </h1>
           </div>
@@ -198,7 +205,8 @@ export function EstimateDetailPage() {
         </div>
 
         {/* Lifecycle action buttons - driven by server-side can_* predicates */}
-        <div className="flex items-center gap-2 flex-wrap">
+        <div className={`flex items-center gap-2 flex-wrap ${easy ? 'p-4 sm:px-6' : ''}`}>
+          {has('contracts.edit') && has('contracts.view') && has('jobs.edit') && <button type="button" className="rounded-md border px-3 py-1.5 text-sm" onClick={() => setAgreementOpen(true)}>Service agreement</button>}
           {est.customer && (
             <button
               type="button"
@@ -286,7 +294,7 @@ export function EstimateDetailPage() {
       {/* Tabs — scroll rather than wrap at narrow widths, same as the job page
           and the cash drawer. Fewer tabs here, but the failure is identical:
           flex compresses them and multi-word labels break mid-label. */}
-      <div className="border-b border-slate-200 mb-6 overflow-x-auto">
+      {!easy && <div className="border-b border-slate-200 mb-6 overflow-x-auto">
         <nav className="flex gap-6 min-w-max">
           <TabButton active={tab === 'overview'} onClick={() => setTab('overview')}>
             Overview
@@ -312,7 +320,7 @@ export function EstimateDetailPage() {
             </TabButton>
           )}
         </nav>
-      </div>
+      </div>}
 
       {/* Persistent customer + location strip — same component used on
           WorkOrderDetailPage. Customer name links to /customers/{id}. */}
@@ -322,6 +330,15 @@ export function EstimateDetailPage() {
       />
 
       {/* Content */}
+      {easy && <EasyActionCards label="Review before your next step" actions={[
+        { key: 'overview', title: 'Check the details', description: 'Review the customer, location and totals.', active: tab === 'overview', onClick: () => setTab('overview') },
+        { key: 'line-items', title: 'Review the work', description: 'Check services, quantities and pricing.', active: tab === 'line-items', onClick: () => setTab('line-items') },
+        { key: 'edit', title: 'Edit details', description: 'Update the estimate using the existing form.', active: tab === 'edit', onClick: () => setTab('edit') },
+        { key: 'crew-cam', title: 'BarnCam', description: 'Review photos and field media.', active: tab === 'crew-cam', onClick: () => setTab('crew-cam') },
+        { key: 'documents', title: 'Check documents', description: 'Review supporting files.', active: tab === 'documents', onClick: () => setTab('documents') },
+        { key: 'history', title: 'See what happened', description: 'Review the estimate history before following up.', active: tab === 'history', onClick: () => setTab('history') },
+        ...(has('settings.view') ? [{ key: 'activity', title: 'Activity', description: 'Review recorded changes.', active: tab === 'activity', onClick: () => setTab('activity') }] : []),
+      ]} />}
       {tab === 'overview' && (
         <div className="space-y-6">
           <Card title="Customer & Location">
@@ -447,6 +464,7 @@ export function EstimateDetailPage() {
 
       {tab === 'line-items' && (
         <Card title="Line Items">
+          <PartsOrders estimate={{ id: est.id, number: est.estimate_number, title: est.title ?? null, status: est.status }} />
           <EstimateLineItemEditorLive
             estimateId={est.id}
             availableAssets={(est.covered_assets ?? []).map((a) => ({
@@ -487,6 +505,7 @@ export function EstimateDetailPage() {
           onClose={() => setShowConvertModal(false)}
         />
       )}
+      {agreementOpen && <AgreementBuilderModal estimateId={est.id} canSaveTemplates={has('templates.edit')} onClose={() => setAgreementOpen(false)} />}
 
       {emailEstimateOpen && (
       <EmailComposerModal

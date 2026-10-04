@@ -128,7 +128,7 @@ export function useUnscheduledCount() {
     queryFn: () =>
       apiRequest<{ data?: unknown[]; meta?: { total?: number } }>(
         '/v1/work-orders/unscheduled?per_page=200',
-      ).catch(() => ({ data: [] as unknown[], meta: { total: 0 } })),
+      ),
     staleTime: 60_000,
     select: (r) => r.meta?.total ?? (Array.isArray(r.data) ? r.data.length : 0),
   })

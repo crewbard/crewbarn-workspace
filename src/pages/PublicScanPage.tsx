@@ -1,6 +1,17 @@
 import { useEffect, useState } from 'react'
 import { Link, useParams, useSearchParams } from 'react-router-dom'
+import { useQueryClient } from '@tanstack/react-query'
 import { usePublicScan } from '@/hooks/usePublicScan'
+import { OwnerBar, OwnerSignInCard } from '@/components/scan/OwnerSignIn'
+import { fetchOwnerIdentity, getOwnerToken, type OwnerIdentity } from '@/lib/assetOwner'
+
+/**
+ * Where the customer portal lives, for the "Access ›" link.
+ *
+ * Its own origin: assets.crewbarn.com and portal.crewbarn.com are
+ * different sites, so this cannot be a router link.
+ */
+const PORTAL_URL = import.meta.env.VITE_PORTAL_URL || 'https://portal.crewbarn.com'
 import { PublicScanNotFoundError, getPublicScan, submitAccessRequest, unlockSecuredScan } from '@/lib/publicScan'
 import type {
   PublicScanAssetOpen,
@@ -14,6 +25,9 @@ import type {
   PublicScanReportSummary,
   PublicScanRequiredFormSummary,
   PublicScanServicer,
+  PublicScanCoverage,
+  PublicScanParts,
+  PublicServiceLogEntry,
   SecuredScanUnlock,
   ScanBreadcrumbStep,
   ScanChildEntry,
@@ -46,9 +60,63 @@ export function PublicScanPage() {
         {isLoading && <LoadingState />}
         {error instanceof PublicScanNotFoundError && <NotFoundState code={code} />}
         {error && !(error instanceof PublicScanNotFoundError) && <NetworkErrorState />}
-        {data && <NodeDispatch data={data} code={code!} tenantId={tenantId} initialAccessCode={initialAccessCode} />}
+        {data && (
+          <>
+            {/* Above everything: somebody who scanned an item and suddenly
+                sees more should know why, and be able to sign out — the
+                same browser might be a contractor's tomorrow. */}
+            <SignedInOwnerBar tenantId={tenantId} />
+            <NodeDispatch data={data} code={code!} tenantId={tenantId} initialAccessCode={initialAccessCode} />
+          </>
+        )}
       </main>
       <Footer />
+    </div>
+  )
+}
+
+/**
+ * Who is signed in on this browser, if anyone.
+ *
+ * Asks the server rather than trusting what is in storage: a token that
+ * has been revoked, or belongs to a session that has ended, must stop
+ * claiming to be somebody.
+ */
+function SignedInOwnerBar({ tenantId }: { tenantId?: string }) {
+  const [identity, setIdentity] = useState<OwnerIdentity | null>(null)
+  const queryClient = useQueryClient()
+
+  useEffect(() => {
+    let alive = true
+    const token = getOwnerToken()
+
+    if (!token) {
+      setIdentity(null)
+      return
+    }
+
+    void fetchOwnerIdentity(token).then((who) => {
+      if (alive) setIdentity(who)
+    })
+
+    return () => {
+      alive = false
+    }
+  }, [])
+
+  if (!identity) return null
+
+  return (
+    <div className="mb-4">
+      <OwnerBar
+        identity={identity}
+        scope="everything on your own equipment"
+        accessUrl={tenantId ? `${PORTAL_URL}/equipment/access?tenant=${encodeURIComponent(tenantId)}` : null}
+        onSignedOut={() => {
+          setIdentity(null)
+          void queryClient.invalidateQueries({ queryKey: ['public-scan'] })
+        }}
+      />
     </div>
   )
 }
@@ -194,16 +262,35 @@ function SecuredAssetView({
   initialAccessCode?: string
 }) {
   const [unlockedDetails, setUnlockedDetails] = useState<SecuredScanUnlock | null>(null)
+  const queryClient = useQueryClient()
 
   return (
     <div className="space-y-4">
+      {/*
+        The owner's item, first and on its own.
+
+        A private label was a dead end for the one person who should never
+        have been stopped by it: it offered a code, and the code came from
+        the servicer, who decided whether the building's owner could look
+        at their own equipment. The most likely person holding a phone at a
+        private item works in that building.
+      */}
+      <OwnerSignInCard
+        onSignedIn={() => {
+          // Re-fetch as them. The scan now carries their token, and the
+          // server decides what that entitles them to — this page never
+          // decides it locally.
+          void queryClient.invalidateQueries({ queryKey: ['public-scan'] })
+        }}
+      />
+
       <div className="bg-white border border-slate-200 rounded-xl p-6 text-center">
         <div className="text-5xl mb-3" aria-hidden="true">{"🔒"}</div>
         <h2 className="text-2xl font-semibold text-slate-900 mb-1">{name}</h2>
-        <p className="text-sm text-slate-500 mb-6">This asset is secured</p>
+        <p className="text-sm text-slate-500 mb-6">This item is private</p>
         <p className="text-sm text-slate-600 mb-6">
-          To view details about this asset, request access from the owner.
-          They'll review your request and reach out.
+          Inspector or contractor? The owner decides who can see this item.
+          Ask them, and they can let you in.
         </p>
         <AccessCodeUnlock code={code} tenantId={tenantId} initialAccessCode={initialAccessCode} onUnlocked={setUnlockedDetails} />
         {!unlockedDetails && <RequestAccessForm code={code} tenantId={tenantId} />}
@@ -228,11 +315,20 @@ function OpenAssetView({
     code: asset.code ?? code ?? null,
     is_secured: false,
     asset_type_name: asset.asset_type_name,
+    tag: asset.tag,
     path: pathFromBreadcrumb(asset.breadcrumb),
     physical: asset.physical,
     documents: asset.documents,
     photos: asset.photos,
     report: asset.report,
+    // The scanned item's own work, which only the root payload carries.
+    // Left off this list, the service history and the parts row rendered
+    // nowhere at all: the panel reads the tree entry, not the response.
+    service_log: asset.service_log,
+    parts: asset.parts,
+    coverage: asset.coverage,
+    last_serviced_at: asset.last_serviced_at,
+    open_priority: asset.open_priority,
   }
   const [selectedTreeAsset, setSelectedTreeAsset] = useState<ScanChildEntry>(scannedTreeEntry)
 
@@ -300,6 +396,9 @@ function PublicTreeAssetSummary({
   const requiredForms = asset.report?.required_forms ?? []
   const history = asset.report?.history
   const historyEvents = history?.recent_events ?? []
+  const serviceLog = asset.service_log ?? []
+  const parts = asset.parts
+  const coverage = asset.coverage ?? null
   const assetPath = asset.path ?? []
   // Compliance outranks everything else. This used to read is_secured and
   // warnings only, so an asset months past a required inspection — with no
@@ -364,8 +463,6 @@ function PublicTreeAssetSummary({
     {
       title: 'Work history',
       rows: [
-        ['Jobs', `${history?.work_order_count ?? 0} linked`],
-        ['Estimates', `${history?.estimate_count ?? 0} linked`],
         ['Inspections', `${history?.inspection_count ?? 0} linked`],
         ['Inventory parts', `${history?.inventory_count ?? 0} linked`],
         ['Required forms', requiredForms.length > 0 ? requiredForms.map((form) => form.name).join(', ') : 'None configured'],
@@ -403,11 +500,20 @@ function PublicTreeAssetSummary({
   return (
     <section className="space-y-4 min-w-0 print:space-y-3">
       {/* Compliance leads. The person holding the phone is usually an
-          inspector standing at the door, and this is the only thing they came
+          inspector standing at the item, and this is the only thing they came
           for — it used to be a small tile six stats along. */}
       {isScannedAsset && <ComplianceBanner compliance={compliance} report={asset.report} />}
 
       {isScannedAsset && asset.servicer && <ServicerCard servicer={asset.servicer} />}
+
+      {/* Somebody looks after this, and here is when they are next due.
+          The most reassuring line on the page for whoever is standing in
+          front of the equipment wondering whether anybody is on it. */}
+      {isScannedAsset && coverage && <CoverageCard coverage={coverage} />}
+
+      {/* What went on and what is still waiting, before the timeline,
+          because it is the answer to the question people actually have. */}
+      {isScannedAsset && parts && <PartsRow parts={parts} />}
 
       {isScannedAsset && asset.report?.last_inspection_id && (
         <Link
@@ -416,6 +522,10 @@ function PublicTreeAssetSummary({
         >
           Verify this record independently
         </Link>
+      )}
+
+      {isScannedAsset && (serviceLog.length > 0 || historyEvents.length > 0) && (
+        <ServiceHistory entries={serviceLog} events={historyEvents} />
       )}
 
       <div className="bg-white border border-slate-200 rounded-xl overflow-hidden print:hidden">
@@ -438,6 +548,14 @@ function PublicTreeAssetSummary({
                   </span>
                 )}
                 {asset.code && <span className="font-mono break-all">{asset.code}</span>}
+                {/* The building's own number, beside ours. Somebody
+                    standing in front of it recognises "FD-201" from the
+                    door schedule long before they recognise A-7K2M9Q. */}
+                {asset.tag && (
+                  <span className="rounded-full bg-slate-100 px-2 py-1 font-medium text-slate-600">
+                    {asset.tag}
+                  </span>
+                )}
               </div>
               {assetPath.length > 0 && (
                 <p className="mt-3 text-sm text-slate-600 break-words">
@@ -476,7 +594,7 @@ function PublicTreeAssetSummary({
           <MiniStat label="Report status" value={reportStatus} tone={reportTone} />
           <MiniStat label="Public docs" value={`${publicDocuments.length}`} />
           <MiniStat label="Photos" value={`${publicPhotos.length}`} />
-          <MiniStat label="History" value={`${history?.total_events ?? 0}`} />
+          <MiniStat label="History" value={`${history?.event_count ?? 0}`} />
           <MiniStat label="Required forms" value={`${requiredForms.length}`} tone={requiredForms.length > 0 ? 'warning' : 'ready'} />
         </div>
 
@@ -602,10 +720,9 @@ function PublicTreeAssetSummary({
             <ReportFactCard
               title="Work history"
               rows={[
-                ['Jobs / work orders', `${history?.work_order_count ?? 0}`],
-                ['Estimates', `${history?.estimate_count ?? 0}`],
+                ['Inspections', `${history?.inspection_count ?? 0}`],
                 ['Inventory changes', `${history?.inventory_count ?? 0}`],
-                ['Total events', `${history?.total_events ?? 0}`],
+                ['Events on record', `${history?.event_count ?? 0}`],
               ]}
             />
             <AssetHistoryEventsCard events={historyEvents} />
@@ -931,6 +1048,226 @@ function ComplianceBanner({
  * after "is it in date". The phone is a real tel: link because the person
  * reading it is standing in a stairwell.
  */
+/**
+ * On a service plan.
+ *
+ * The rhythm and the next visit, and nothing about what it costs. A
+ * property manager standing in front of something broken wants to know
+ * whether anybody is already coming before they pick up the phone.
+ */
+function CoverageCard({ coverage }: { coverage: PublicScanCoverage }) {
+  const bits = [coverage.how_often, coverage.next_visit ? `next visit ${coverage.next_visit}` : null]
+    .filter(Boolean)
+
+  return (
+    <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-4 sm:p-5">
+      <p className="text-[11px] font-bold uppercase tracking-[0.06em] text-emerald-700">
+        On a service plan
+      </p>
+      <p className="mt-1 text-sm font-semibold text-emerald-900 break-words">
+        {coverage.service || 'Covered by a maintenance agreement'}
+      </p>
+      {bits.length > 0 && (
+        <p className="mt-0.5 text-sm text-emerald-800">{bits.join(' · ')}</p>
+      )}
+    </div>
+  )
+}
+
+/**
+ * What went on, and what is still waiting.
+ *
+ * Deliberately two short lines rather than a table: the question is "has
+ * anything been done to this, and is anything outstanding", and a table
+ * makes somebody read to find out.
+ */
+function PartsRow({ parts }: { parts: PublicScanParts }) {
+  const replaced = parts.replaced ?? []
+  const needed = parts.needed ?? []
+
+  if (replaced.length === 0 && needed.length === 0) return null
+
+  return (
+    <div className="rounded-xl border border-slate-200 bg-white p-4 sm:p-5">
+      <p className="text-[11px] font-bold uppercase tracking-[0.06em] text-slate-500">Parts</p>
+      <div className="mt-2 space-y-2">
+        {replaced.length > 0 && (
+          <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1 text-sm">
+            <span className="font-semibold text-slate-700">Replaced</span>
+            <span className="text-slate-600 break-words">
+              {replaced.map((p) => (p.on ? `${p.name} (${p.on})` : p.name)).join(', ')}
+            </span>
+          </div>
+        )}
+        {needed.length > 0 && (
+          <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1 text-sm">
+            <span className="font-semibold text-amber-700">Needed</span>
+            <span className="text-slate-600 break-words">
+              {needed.map((p) => `${p.name} (${p.state.toLowerCase()})`).join(', ')}
+            </span>
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
+/**
+ * The part, but only when it says something the summary did not.
+ *
+ * "Economizer actuator has failed (Economizer actuator)" is the tech
+ * writing a good note and the page repeating it back at them. A quantity
+ * is always worth showing; a bare name the sentence already contains is
+ * not.
+ */
+function partDetail(entry: PublicServiceLogEntry): string | null {
+  const part = entry.part
+  if (!part) return null
+
+  const detail = [part.quantity, part.unit, part.name].filter(Boolean).join(' ')
+  if (!detail) return null
+
+  const named = part.name && (entry.summary ?? '').toLowerCase().includes(part.name.toLowerCase())
+  if (named && !part.quantity) return null
+
+  return detail
+}
+
+type VisitGroup = {
+  key: string
+  /** What the heading reads: "Oct 14, 2026". */
+  date: string
+  time: string | null
+  by: string | null
+  company: string | null
+  entries: PublicServiceLogEntry[]
+  others: { label: string; title: string; status: string | null }[]
+}
+
+/**
+ * Service history, grouped by the visit it happened on.
+ *
+ * A flat list made one visit look like six separate events, so something
+ * serviced twice a year read as a dozen callouts. Grouping by day and tech
+ * is what actually happened: somebody turned up once and did several
+ * things.
+ *
+ * Inspections and inventory installs fold into the same list, because to
+ * whoever is reading it they are all "somebody was here and did this".
+ */
+function ServiceHistory({
+  entries,
+  events,
+}: {
+  entries: PublicServiceLogEntry[]
+  events: { type: string; label?: string | null; title?: string | null; date?: string | null; status?: string | null }[]
+}) {
+  const groups = new Map<string, VisitGroup>()
+
+  const groupFor = (key: string, date: string, time: string | null, by: string | null, company: string | null) => {
+    const existing = groups.get(key)
+    if (existing) return existing
+    const made: VisitGroup = { key, date, time, by, company, entries: [], others: [] }
+    groups.set(key, made)
+    return made
+  }
+
+  for (const entry of entries) {
+    // Day AND tech: two people on site the same day is two visits, and
+    // reading them as one puts somebody else's work under a name.
+    const key = `${entry.date_key ?? entry.date ?? 'unknown'}|${entry.by ?? ''}`
+    groupFor(key, entry.date ?? 'Undated', entry.time, entry.by, entry.company).entries.push(entry)
+  }
+
+  for (const event of events) {
+    const iso = event.date ? event.date.slice(0, 10) : 'unknown'
+    const shown = event.date ? formatShortDate(event.date) : 'Undated'
+    const group = groupFor(`${iso}|`, shown, null, null, null)
+    group.others.push({
+      label: event.label || labelize(event.type),
+      title: event.title || labelize(event.type),
+      status: event.status ? labelize(event.status) : null,
+    })
+  }
+
+  // Newest first. The key starts with the property's own YYYY-MM-DD, so a
+  // string compare is a date compare without re-parsing anything.
+  const ordered = [...groups.values()].sort((a, b) => (a.key < b.key ? 1 : a.key > b.key ? -1 : 0))
+
+  return (
+    <div className="rounded-xl border border-slate-200 bg-white p-4 sm:p-5 print:hidden">
+      <p className="text-[11px] font-bold uppercase tracking-[0.06em] text-slate-500">
+        Service history
+      </p>
+      <ol className="mt-3 space-y-4">
+        {ordered.map((group) => (
+          <li key={group.key} className="border-l-2 border-slate-200 pl-3 sm:pl-4">
+            <p className="text-sm font-semibold text-slate-900 break-words">
+              {[group.date, group.by, group.time].filter(Boolean).join(' · ')}
+            </p>
+            {group.company && (
+              <p className="text-xs text-slate-500 break-words">{group.company}</p>
+            )}
+            <ul className="mt-2 space-y-2">
+              {group.entries.map((entry, index) => (
+                <li key={`e${index}`} className="text-sm text-slate-700">
+                  <span className="font-medium text-slate-600">{entry.kind}</span>
+                  {entry.summary && <span className="break-words"> — {entry.summary}</span>}
+                  {partDetail(entry) && (
+                    <span className="text-slate-500 break-words"> ({partDetail(entry)})</span>
+                  )}
+                  {entry.need && (
+                    <span className="ml-1 rounded-full bg-amber-50 px-2 py-0.5 text-xs font-medium text-amber-700">
+                      {entry.need}
+                    </span>
+                  )}
+                  {entry.priority_word && entry.priority !== 'low' && (
+                    <span className="ml-1 rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-600">
+                      {entry.priority_word}
+                    </span>
+                  )}
+                  {entry.result && (
+                    <span className="ml-1 text-xs text-slate-500">{entry.result}</span>
+                  )}
+                  {entry.skipped_because && (
+                    <span className="ml-1 text-xs text-slate-500">{entry.skipped_because}</span>
+                  )}
+                  {entry.photos && entry.photos.length > 0 && (
+                    <span className="mt-1 flex flex-wrap gap-2">
+                      {entry.photos.map((photo, i) => (
+                        <a key={i} href={photo.url} target="_blank" rel="noreferrer" className="block">
+                          <img
+                            src={photo.thumb_url || photo.url}
+                            alt={photo.phase ? `${photo.phase} photo` : 'Service photo'}
+                            loading="lazy"
+                            className="h-20 w-20 rounded-lg border border-slate-200 object-cover"
+                          />
+                          {photo.phase && (
+                            <span className="mt-0.5 block text-center text-[10px] uppercase tracking-wide text-slate-500">
+                              {photo.phase}
+                            </span>
+                          )}
+                        </a>
+                      ))}
+                    </span>
+                  )}
+                </li>
+              ))}
+              {group.others.map((other, index) => (
+                <li key={`o${index}`} className="text-sm text-slate-700">
+                  <span className="font-medium text-slate-600">{other.label}</span>
+                  <span className="break-words"> — {other.title}</span>
+                  {other.status && <span className="ml-1 text-xs text-slate-500">{other.status}</span>}
+                </li>
+              ))}
+            </ul>
+          </li>
+        ))}
+      </ol>
+    </div>
+  )
+}
+
 function ServicerCard({ servicer }: { servicer: PublicScanServicer }) {
   const tel = servicer.phone?.replace(/[^\d+]/g, '')
   return (
@@ -1488,11 +1825,17 @@ function entryFromAssetDetail(summary: ScanChildEntry, detail: PublicScanAssetOp
     name: detail.name,
     is_secured: false,
     asset_type_name: detail.asset_type_name ?? summary.asset_type_name,
+    tag: detail.tag ?? summary.tag,
     path: detail.breadcrumb ? pathFromBreadcrumb(detail.breadcrumb) : summary.path,
     physical: detail.physical,
     documents: detail.documents ?? [],
     photos: detail.photos ?? [],
     report: detail.report,
+    service_log: detail.service_log,
+    parts: detail.parts,
+    coverage: detail.coverage,
+    last_serviced_at: detail.last_serviced_at,
+    open_priority: detail.open_priority,
   }
 }
 
@@ -1647,12 +1990,21 @@ function escapeHtml(value: unknown): string {
 function escapeAttribute(value: unknown): string {
   return escapeHtml(value)
 }
+/**
+ * What a group is, in one line.
+ *
+ * "12 assets" tells a building manager what they can already see. How many
+ * have been looked at lately and how many are waiting on somebody is why
+ * they scanned the label in the lobby.
+ */
 function formatGroupSubtitle(entry: ScanChildEntry): string {
   const parts: string[] = []
   const c = entry.counts
   if (c) {
     if (c.child_groups > 0) parts.push(`${c.child_groups} sub-group${c.child_groups === 1 ? '' : 's'}`)
-    if (c.assets > 0) parts.push(`${c.assets} asset${c.assets === 1 ? '' : 's'}`)
+    if (c.assets > 0) parts.push(`${c.assets} item${c.assets === 1 ? '' : 's'}`)
+    if (c.serviced) parts.push(`${c.serviced} serviced recently`)
+    if (c.attention) parts.push(`${c.attention} need${c.attention === 1 ? 's' : ''} attention`)
   }
   return parts.join(' · ') || 'Empty group'
 }
@@ -1838,7 +2190,13 @@ function ApprovedTreeScopeNode({
   const isCurrent = entry.type === 'asset' && entry.id === selectedAssetId
   const subtitle =
     entry.type === 'group'
-      ? `${entry.counts?.assets ?? 0} assets${children.length > 0 ? ` - ${children.length} nested` : ''}`
+      ? [
+          `${entry.counts?.assets ?? 0} item${entry.counts?.assets === 1 ? '' : 's'}`,
+          entry.counts?.attention
+            ? `${entry.counts.attention} need${entry.counts.attention === 1 ? 's' : ''} attention`
+            : null,
+          children.length > 0 ? `${children.length} nested` : null,
+        ].filter(Boolean).join(' - ')
       : [entry.asset_type_name, entry.code].filter(Boolean).join(' - ') || 'Asset'
 
   return (
@@ -1903,8 +2261,6 @@ function ApprovedAssetReport({ unlocked }: { unlocked: SecuredScanUnlock }) {
         ['Path', path.length > 0 ? path.join(' > ') : 'Not grouped'],
         ['Inspection cadence', labelize(report.report?.inspection_cadence) || 'Not captured'],
         ['Next due', report.report?.next_due_at || 'Not scheduled'],
-        ['Jobs', `${history?.work_order_count ?? 0} linked`],
-        ['Estimates', `${history?.estimate_count ?? 0} linked`],
         ['Inventory parts', `${history?.inventory_count ?? 0} linked`],
         ['Required forms', requiredForms.length > 0 ? requiredForms.map((form) => form.name).join(', ') : 'None configured'],
       ],
@@ -1979,8 +2335,7 @@ function ApprovedAssetReport({ unlocked }: { unlocked: SecuredScanUnlock }) {
               ['Path', path.length > 0 ? path.join(' > ') : 'Not grouped'],
               ['Inspection cadence', labelize(report.report?.inspection_cadence) || 'Not captured'],
               ['Next due', report.report?.next_due_at || 'Not scheduled'],
-              ['Jobs / work orders', `${history?.work_order_count ?? 0}`],
-              ['Estimates', `${history?.estimate_count ?? 0}`],
+              ['Inspections', `${history?.inspection_count ?? 0}`],
               ['Inventory changes', `${history?.inventory_count ?? 0}`],
             ]}
           />
@@ -2138,7 +2493,7 @@ function RequestAccessForm({
 
       {/* The scope was approvable from day one but never askable: the public
           endpoint hardcoded item scope, so a fire marshal walking a building
-          filed one request per door. */}
+          filed one request per item. */}
       {offerWholeSite && (
         <label className="flex cursor-pointer items-start gap-2.5 rounded-lg border border-slate-200 bg-slate-50 p-3">
           <input

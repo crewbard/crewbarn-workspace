@@ -1,6 +1,8 @@
 import { useQuery } from '@tanstack/react-query'
 import { Link } from 'react-router-dom'
 import { apiRequest } from '@/lib/api'
+import { useTheme } from '@/hooks/useTheme'
+import { EasyPageHeading } from '@/components/easy/EasyPageHeading'
 
 /**
  * SubPayoutsPage — accounting ledger for sub invoices.
@@ -54,19 +56,21 @@ interface PayoutsResponse {
 }
 
 export function SubPayoutsPage() {
-  const { data, isLoading, error } = useQuery({
+  const { theme } = useTheme()
+  const easy = theme === 'easy-side' || theme === 'easy-top'
+  const { data, isLoading, error, refetch } = useQuery({
     queryKey: ['sub-payouts'],
     queryFn: () => apiRequest<PayoutsResponse>('/v1/sub-payouts'),
     refetchInterval: 60_000,
   })
 
   return (
-    <div className="max-w-6xl mx-auto px-6 py-6">
+    <div className={easy ? 'w-full min-w-0 px-3 py-4 sm:px-6 sm:py-6' : 'max-w-6xl mx-auto px-6 py-6'}>
       <div className="mb-6">
         <Link to="/jobs" className="inline-flex items-center text-sm font-medium text-amber-700 hover:text-amber-800 hover:underline mb-3">
           ← Back to Jobs
         </Link>
-        <h1 className="text-2xl font-semibold text-slate-900">Sub payouts</h1>
+        {easy ? <EasyPageHeading title="Subcontractor payouts" description="Review paid and outstanding amounts. Open Sub reviews to approve invoices or record payment." /> : <h1 className="text-2xl font-semibold text-slate-900">Sub payouts</h1>}
         <p className="text-sm text-slate-500 mt-1">
           What you've paid (and still owe) to subcontractors. Approve + mark paid happens on the
           {' '}<Link to="/sub-reviews" className="text-amber-700 hover:underline">Sub reviews</Link> page.
@@ -74,8 +78,9 @@ export function SubPayoutsPage() {
       </div>
 
       {error && (
-        <div className="text-xs bg-red-50 border border-red-200 text-red-800 rounded-md px-3 py-2 mb-4">
+        <div role="alert" className="text-xs bg-red-50 border border-red-200 text-red-800 rounded-md px-3 py-2 mb-4">
           Failed to load: {String((error as Error).message)}
+          <button type="button" onClick={() => void refetch()} className="ml-3 underline">Retry</button>
         </div>
       )}
 
@@ -83,7 +88,7 @@ export function SubPayoutsPage() {
         <div className="text-sm text-slate-500">Loading…</div>
       )}
 
-      {data && (
+      {data && !error && (
         <div className="space-y-6">
           {/* Big-number tiles */}
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">

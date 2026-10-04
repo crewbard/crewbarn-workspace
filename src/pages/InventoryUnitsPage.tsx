@@ -18,6 +18,8 @@ import type {
   InventoryUnitStatus,
 } from '@/types/inventoryUnit'
 import type { InventoryBin } from '@/types/inventoryBin'
+import { useTheme } from '@/hooks/useTheme'
+import { EasyActionCards } from '@/components/easy/EasyActionCards'
 
 /**
  * Inventory Units page — list of every SN-tracked physical instance,
@@ -40,6 +42,8 @@ const STATUSES: InventoryUnitStatus[] = [
 ]
 
 export function InventoryUnitsPage() {
+  const { theme } = useTheme()
+  const easy = theme === 'easy-side' || theme === 'easy-top'
   const [serial, setSerial] = useState('')
   const [debouncedSerial, setDebouncedSerial] = useState('')
   const [status, setStatus] = useState<InventoryUnitStatus | ''>('')
@@ -96,6 +100,12 @@ export function InventoryUnitsPage() {
       </div>
 
       {/* Filters */}
+      {easy && <EasyActionCards label="Find serialized equipment" actions={[
+        { key: 'available', title: 'Available', description: 'Find units available in stock.' },
+        { key: 'reserved', title: 'Reserved', description: 'Review units already set aside.' },
+        { key: 'installed', title: 'Installed', description: 'Find units recorded as installed.' },
+        { key: 'damaged', title: 'Damaged', description: 'Review units flagged as damaged.' },
+      ].map(action => ({ ...action, active: status === action.key, onClick: () => setStatus(status === action.key ? '' : action.key as InventoryUnitStatus) }))} />}
       <div className="bg-white border border-slate-200 rounded-xl shadow-sm p-4">
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
           <div>

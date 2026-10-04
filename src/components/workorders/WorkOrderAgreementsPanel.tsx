@@ -4,6 +4,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { apiRequest, API_URL, getStoredToken, getActingTenant } from '@/lib/api'
 import type { ApiError } from '@/lib/api'
 import { SignaturePad, type SignaturePadHandle } from '@/components/SignaturePad'
+import { useTheme } from '@/hooks/useTheme'
 
 /**
  * Service-agreements workflow on a WO. Mirrors the inspections panel
@@ -111,6 +112,10 @@ function AgreementListView({
   onOpen: (id: string) => void
 }) {
   const [showCreate, setShowCreate] = useState(false)
+  const { theme } = useTheme()
+  const easy = theme === 'easy-side' || theme === 'easy-top'
+  const [status, setStatus] = useState<AgreementStatus | ''>('')
+  const [search, setSearch] = useState('')
 
   const q = useQuery({
     queryKey: ['wo-agreements', workOrderId],
@@ -124,6 +129,8 @@ function AgreementListView({
   }
 
   const rows = q.data?.data ?? []
+  const visibleRows = easy ? rows.filter(row => (!status || row.status === status) &&
+    [row.title, row.customer_email].filter(Boolean).join(' ').toLowerCase().includes(search.trim().toLowerCase())) : rows
 
   return (
     <div className="space-y-4">
@@ -141,14 +148,28 @@ function AgreementListView({
           </button>
         </div>
 
-        {rows.length === 0 ? (
+        {easy && <div className="mb-4 space-y-3">
+          <p className="text-sm text-slate-600">Prepare an agreement, send it for the customer's signature, then counter-sign here. Open a record to review its available actions.</p>
+          <div className="flex flex-wrap gap-3">
+            <input type="search" aria-label="Search agreements" placeholder="Search title or customer email…" value={search} onChange={event => setSearch(event.target.value)} className="min-w-0 flex-1 rounded-lg border border-slate-300 px-3 py-2 text-sm" />
+            <select aria-label="Agreement status" value={status} onChange={event => setStatus(event.target.value as AgreementStatus | '')} className="rounded-lg border border-slate-300 px-3 py-2 text-sm">
+              <option value="">All statuses</option>
+              {Object.entries(STATUS_LABEL).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+            </select>
+          </div>
+        </div>}
+        {q.isError ? <div role="alert" className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">
+          Agreements could not be loaded.
+          <button type="button" disabled={q.isFetching} onClick={() => void q.refetch()} className="ml-2 underline disabled:opacity-50">Retry</button>
+        </div> : rows.length === 0 ? (
           <p className="text-xs text-slate-500 italic py-3">
             No agreements yet. Add one from a signable template — customer signs
             via email link, you counter-sign here.
           </p>
         ) : (
           <ul className="space-y-2">
-            {rows.map((a) => (
+            {visibleRows.length === 0 && <li className="py-3 text-sm text-slate-500">No agreements match these filters.</li>}
+            {visibleRows.map((a) => (
               <li key={a.id}>
                 <button
                   type="button"

@@ -37,7 +37,19 @@ export function IncomingCallToasts() {
     queryKey: RECENT_INCOMING_CALLS_QUERY_KEY,
     queryFn: () => fetchRecentIncomingCalls(MISSED_CALL_LOOKBACK_HOURS),
     enabled: canSeeIncomingCalls,
-    refetchInterval: 15000,
+    /*
+     * The FALLBACK, not the mechanism.
+     *
+     * A ringing phone reaches the toast over Reverb, below — that path is
+     * immediate. This poll exists for when the socket is down, and at 15
+     * seconds it made a dropped socket look like a slow product: the
+     * phone rings, nothing happens, and the card turns up after the call
+     * has gone to voicemail. Five seconds is still cheap (one small
+     * request, only for staff who can see calls) and bounds the worst
+     * case to something a person reads as "a moment" rather than "it
+     * didn't work".
+     */
+    refetchInterval: 5000,
   })
 
   useEffect(() => {
@@ -189,10 +201,14 @@ function IncomingCallToast({
   const phone = formatPhone(rawPhone)
   const title = customerName || callerIdName || phone || 'Unknown caller'
   return (
-    <NotificationCard kind={call.channel === 'voicemail' ? 'New voicemail' : 'Incoming call'}
+    <NotificationCard
+      type={call.channel === 'voicemail' ? 'vm' : 'call'}
+      kind={call.channel === 'voicemail' ? 'New voicemail' : 'Incoming call'}
       customer={title}
+      customerId={call.customer?.id}
+      vip={Boolean(call.customer?.vip)}
       avatar={{ id: call.customer?.id, imageUrl: call.customer?.avatar_url, preset: call.customer?.avatar_preset }}
-      subtitle={[phone, call.customer?.vip ? 'VIP' : '', call.customer?.customer_type].filter(Boolean).join(' · ')}
+      subtitle={[phone, call.customer?.customer_type].filter(Boolean).join(' · ')}
       description={call.body?.trim() || (call.customer ? 'Matched to an existing customer. Open their account or call back.' : 'No customer match yet. Open the thread to review this call.')}
       onDismiss={onHide}
       actions={<>
@@ -202,15 +218,18 @@ function IncomingCallToast({
                 customerId={call.customer?.id}
                 label="Call back"
                 onStarted={onHandled}
-                className="border-navy-900 bg-navy-900 px-3.5 py-2 text-sm text-white shadow-sm hover:bg-navy-800"
+                /*
+                 * The wrapper is the flex child here, not the button, so
+                 * the row's sizing has to land on it and the button then
+                 * fills it. Without this the one button that can fail is
+                 * also the one that comes out a different height.
+                 */
+                wrapperClassName="flex-1 min-w-max"
+                className="cb-toast-act w-full h-full"
               />
             ) : null}
             {call.customer && canViewCustomers ? (
-              <Link
-                to={`/customers/${call.customer.id}`}
-                onClick={onHandled}
-                className="rounded-md border border-amber-300 bg-amber-50 px-3.5 py-2 text-sm font-semibold text-amber-900 shadow-sm hover:bg-amber-100"
-              >
+              <Link to={`/customers/${call.customer.id}`} onClick={onHandled} className="cb-toast-act-quiet">
                 Go to customer
               </Link>
             ) : null}
@@ -218,7 +237,7 @@ function IncomingCallToast({
               <Link
                 to={`/communications?conversation=${encodeURIComponent(call.conversation_id)}`}
                 onClick={onHandled}
-                className="rounded-md border border-slate-300 bg-white px-3.5 py-2 text-sm font-medium text-slate-700 shadow-sm hover:bg-slate-50"
+                className="cb-toast-act-quiet"
               >
                 Open thread
               </Link>

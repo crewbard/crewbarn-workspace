@@ -1,5 +1,10 @@
 import { useMemo, useState } from 'react'
+import { useQuery } from '@tanstack/react-query'
+import { useMutation, useQueryClient } from '@tanstack/react-query'
+import { apiRequest } from '@/lib/api'
 import { useNavigate } from 'react-router-dom'
+import { useTheme } from '@/hooks/useTheme'
+import { EasyActionCards } from '@/components/easy/EasyActionCards'
 import { useEstimates } from '@/hooks/useEstimates'
 import { useJobStatuses } from '@/hooks/useJobStatuses'
 import { useIntakePendingCount } from '@/hooks/useIntakePendingCount'
@@ -10,6 +15,7 @@ import type { WorkOrder } from '@/types/workOrder'
 import type { AttentionItem } from '@/types/dashboard'
 import { StickyNoteStrip, StickyNoteContextMenu } from '@/components/dashboard/StickyNoteStrip'
 import { CrewRightNowPanel } from '@/components/dashboard/CrewRightNowPanel'
+import { SupervisedProjectsPanel } from '@/components/dashboard/SupervisedProjectsPanel'
 import { IncomingRequestsPanel } from '@/components/dispatch/IncomingRequestsPanel'
 import { IncomingEstimateRequestsPanel } from '@/components/dispatch/IncomingEstimateRequestsPanel'
 import {
@@ -28,6 +34,25 @@ import {
 } from '@/hooks/useDashboard'
 
 /** "14:30" / "14:30:00" → "2:30 pm". Falls back to the raw value. */
+type NeedsQuoteVisit = {
+  work_order_id: string
+  job_number: number | null
+  title: string | null
+  customer: string | null
+  property: string
+  visited_at: string | null
+  /** The fee already covers the visit, so nothing else prompts a look. */
+  covered_by_agreement: boolean
+  worst_priority: 'critical' | 'high' | 'medium' | 'low'
+  item_count: number
+  items: {
+    entry_id: string
+    what: string | null
+    priority: string | null
+    asset: { id: string; name: string; asset_code: string | null; scan_url: string | null } | null
+  }[]
+}
+
 function fmtTime(t: string | null | undefined): string {
   if (!t) return ''
   const m = /^(\d{1,2}):(\d{2})/.exec(t)
@@ -103,6 +128,8 @@ function StatusPill({ w }: { w: WorkOrder }) {
 
 export function OpsTab() {
   const navigate = useNavigate()
+  const { theme } = useTheme()
+  const easy = theme === 'easy-side' || theme === 'easy-top'
   const jobsQ = useTodayJobs()
   const spotlightQ = useDashboardSpotlight()
   const unscheduledQ = useUnscheduledCount()
@@ -110,6 +137,45 @@ export function OpsTab() {
   const rxQ = useReceivables()
   const callsQ = useUnansweredCalls()
   const estQ = useEstimates({ status: 'sent', per_page: 50 })
+
+  /*
+   * Visits a tech left work on that nobody has priced.
+   *
+   * Refetched on the same rhythm as the rest of the board rather than
+   * live: a need logged an hour ago is still a need in five minutes, and
+   * this is a worklist, not an alert.
+   */
+  const needsQuoteQ = useQuery({
+    queryKey: ['visits-needing-quote'],
+    queryFn: () => apiRequest<{ data: NeedsQuoteVisit[]; meta: { visits: number; items: number } }>(
+      '/v1/visits-needing-quote',
+    ),
+    staleTime: 60_000,
+  })
+  const qc = useQueryClient()
+  const [quoteError, setQuoteError] = useState<string | null>(null)
+
+  /*
+   * Build the draft from what the tech logged, then open it.
+   *
+   * This used to drop the user on the job and leave them to work out
+   * what to quote from a service log, which is how a need reaches the
+   * end of the month unquoted.
+   */
+  const quote = useMutation({
+    mutationFn: (workOrderId: string) =>
+      apiRequest<{ data: { estimate_id: string } }>(
+        `/v1/work-orders/${workOrderId}/quote-needs`,
+        { method: 'POST' },
+      ),
+    onSuccess: (res) => {
+      void qc.invalidateQueries({ queryKey: ['visits-needing-quote'] })
+      navigate(`/estimates/${res.data.estimate_id}`)
+    },
+    onError: (e: Error) => setQuoteError(e.message),
+  })
+
+  const needsQuote = needsQuoteQ.data?.data ?? []
   const intakeCount = useIntakePendingCount()
   const permissions = usePermissions()
   const canViewTimeOff = !permissions.isLoading && permissions.has(PERM.STAFF_VIEW)
@@ -187,6 +253,20 @@ export function OpsTab() {
         setCtxPos({ x: e.clientX, y: e.clientY })
       }}
     >
+      {easy && permissions.has(PERM.JOBS_VIEW) && <EasyActionCards label="Your workday" actions={[
+        { key: 'jobs', title: 'Find a job', description: 'Search jobs and open the customer, schedule, and work details.', onClick: () => navigate('/jobs') },
+        { key: 'parts', title: 'Waiting on parts', description: 'Review jobs flagged as needing parts.', count: staleQ.isSuccess ? staleQ.data.needs_parts.count : undefined, onClick: () => navigate('/jobs?stale=needs_parts') },
+        { key: 'billing', title: 'Ready for billing', description: 'Review completed, unbilled jobs before invoicing.', count: staleQ.isSuccess ? staleQ.data.unbilled_completed.count : undefined, onClick: () => navigate('/jobs?stale=unbilled_completed') },
+      ]} />}
+      {[jobsQ, unscheduledQ, staleQ, rxQ, callsQ, estQ, spotlightQ].some(query => query.isError) &&
+        <div role="alert" className="rounded-xl border border-amber-300 bg-amber-50 p-4 text-sm text-amber-900">
+          Some dashboard information could not be loaded. Totals and attention items may be incomplete.
+          <button type="button" className="ml-2 underline font-semibold" onClick={() => {
+            for (const query of [jobsQ, unscheduledQ, staleQ, rxQ, callsQ, estQ, spotlightQ]) {
+              if (query.isError) void query.refetch()
+            }
+          }}>Retry failed sections</button>
+        </div>}
       {/* Stat cards */}
       <div data-tour="dash-stats" className="grid grid-cols-2 lg:grid-cols-5 gap-3">
         <StatCard
@@ -194,6 +274,7 @@ export function OpsTab() {
           value={String(stats.total)}
           sub={`${stats.done} done · ${stats.remaining} remaining`}
           loading={jobsQ.isLoading}
+          error={jobsQ.isError}
         />
         <StatCard
           label="Unscheduled"
@@ -203,6 +284,7 @@ export function OpsTab() {
           action={unscheduled > 0 ? { label: 'Schedule now →', to: '/dispatch' } : undefined}
           onNavigate={navigate}
           loading={unscheduledQ.isLoading}
+          error={unscheduledQ.isError}
         />
         <StatCard
           label="Unanswered calls"
@@ -212,6 +294,7 @@ export function OpsTab() {
           action={{ label: 'Open inbox →', to: '/communications' }}
           onNavigate={navigate}
           loading={callsQ.isLoading}
+          error={callsQ.isError}
         />
         <StatCard
           label="Ready to invoice"
@@ -229,6 +312,7 @@ export function OpsTab() {
           }
           onNavigate={navigate}
           loading={staleQ.isLoading}
+          error={staleQ.isError}
         />
         <StatCard
           label="AI Intake"
@@ -244,6 +328,9 @@ export function OpsTab() {
       {ctxPos && (
         <StickyNoteContextMenu pos={ctxPos} onClose={() => setCtxPos(null)} />
       )}
+      {/* Renders nothing for anybody who sees every job. */}
+      <SupervisedProjectsPanel />
+
       <CrewRightNowPanel />
       {/* Customer requests from the portal / marketplace: the same panels
           dispatch shows, so a request is seen wherever the office starts
@@ -345,7 +432,7 @@ export function OpsTab() {
       )}
 
       {/* Bottom row */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-3">
+      <div data-easy-ops-grid className="grid grid-cols-1 lg:grid-cols-3 gap-3">
         {/* Today's schedule */}
         <Panel
           title="Today's schedule"
@@ -390,10 +477,106 @@ export function OpsTab() {
           )}
         </Panel>
 
+        {/* Visits waiting on a price.
+            Its own panel rather than a line inside Needs attention: a
+            tech logged work and drove away, and if nobody prices it the
+            need sits on the item until somebody scans its label months
+            later. That is a different job from "this job is stale". */}
+        <Panel
+          title="Waiting on a quote"
+          to="/jobs"
+          toLabel="view all →"
+          navigate={navigate}
+          tour="dash-needs-quote"
+        >
+          {needsQuoteQ.isPending ? (
+            <Empty>Loading…</Empty>
+          ) : needsQuoteQ.isError ? (
+            <Empty>Could not load visits waiting on a quote.</Empty>
+          ) : needsQuote.length === 0 ? (
+            <Empty>Nothing is waiting on a price.</Empty>
+          ) : (
+            <ul className="space-y-2 overflow-y-auto">
+              {quoteError && (
+                <li className="rounded-lg border border-rose-200 bg-rose-50 px-2.5 py-2 text-xs font-medium text-rose-800">
+                  {quoteError}
+                </li>
+              )}
+              {needsQuote.slice(0, 6).map((visit) => (
+                <li key={visit.work_order_id} className="rounded-lg border border-slate-200 p-2.5">
+                  <div className="flex flex-wrap items-baseline justify-between gap-2">
+                    <button
+                      type="button"
+                      onClick={() => navigate(`/jobs/${visit.work_order_id}`)}
+                      className="text-sm font-semibold text-navy-800 hover:underline text-left"
+                    >
+                      {visit.customer || 'Customer'}
+                    </button>
+                    {visit.worst_priority === 'critical' && (
+                      <span className="rounded-full bg-red-50 px-2 py-0.5 text-[11px] font-semibold text-red-700">
+                        Critical
+                      </span>
+                    )}
+                    {visit.worst_priority === 'high' && (
+                      <span className="rounded-full bg-amber-50 px-2 py-0.5 text-[11px] font-semibold text-amber-800">
+                        High
+                      </span>
+                    )}
+                  </div>
+                  <p className="text-xs text-slate-600">
+                    {visit.property}
+                    {visit.property && ' — '}
+                    {visit.item_count} item{visit.item_count === 1 ? '' : 's'} need
+                    {visit.item_count === 1 ? 's' : ''} parts
+                  </p>
+                  {visit.covered_by_agreement && (
+                    /* The one most likely to be missed: the agreement's
+                       fee covers the visit, so the job never reaches an
+                       invoice and nothing else prompts a look. */
+                    <p className="text-[11px] text-slate-500">On a service plan — the visit itself is covered</p>
+                  )}
+                  <div className="mt-1.5 flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setQuoteError(null)
+                        quote.mutate(visit.work_order_id)
+                      }}
+                      disabled={quote.isPending}
+                      className="rounded-md border border-amber-300 bg-amber-50 px-2 py-1 text-xs font-semibold text-amber-900 hover:bg-amber-100 disabled:opacity-60"
+                    >
+                      {quote.isPending && quote.variables === visit.work_order_id
+                        ? 'Building…'
+                        : 'Quote the parts'}
+                    </button>
+                    {visit.items[0]?.asset?.scan_url && (
+                      <a
+                        href={visit.items[0].asset!.scan_url!}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="rounded-md border border-slate-300 px-2 py-1 text-xs font-medium text-slate-700 hover:bg-slate-50"
+                      >
+                        {/* Pricing without looking at what has already
+                            been done to the thing is pricing work
+                            somebody may have done last month. */}
+                        Full record →
+                      </a>
+                    )}
+                  </div>
+                </li>
+              ))}
+            </ul>
+          )}
+        </Panel>
+
         {/* Needs attention */}
         <Panel title="Needs attention" to="/jobs" toLabel="view all →" navigate={navigate} tour="dash-attention">
           {attention.length === 0 ? (
-            <Empty>You're all caught up. Nothing needs attention.</Empty>
+            <Empty>{[unscheduledQ, staleQ, rxQ, estQ, timeOffQ].some(query => query.isError)
+              ? 'Attention items are incomplete. Retry the unavailable sections.'
+              : [unscheduledQ, staleQ, rxQ, estQ].some(query => query.isLoading) || (canViewTimeOff && timeOffQ.isLoading)
+                ? 'Checking what needs attention…'
+                : "You're all caught up. Nothing needs attention."}</Empty>
           ) : (
             <ul className="space-y-1">
               {attention.map((a) => (
@@ -480,6 +663,7 @@ function StatCard({
   action,
   onNavigate,
   loading,
+  error,
 }: {
   label: string
   value: string
@@ -488,16 +672,17 @@ function StatCard({
   action?: { label: string; to: string }
   onNavigate?: (to: string) => void
   loading?: boolean
+  error?: boolean
 }) {
   return (
     <div className="bg-white border border-slate-200 rounded-xl shadow-sm px-4 py-3">
       <div className="text-xs font-medium text-slate-500">{label}</div>
-      {loading ? (
+      {error ? <p className="mt-1 text-sm text-amber-800">Unavailable</p> : loading ? (
         <div className="mt-1 h-7 w-12 bg-slate-100 rounded animate-pulse" />
       ) : (
         <div className={`mt-0.5 text-3xl font-bold tabular-nums ${valueClass}`}>{value}</div>
       )}
-      <div className="mt-1 text-xs text-slate-500 truncate">{sub}</div>
+      <div className="mt-1 text-xs text-slate-500 truncate">{error ? 'Retry to refresh this section' : loading ? 'Loading…' : sub}</div>
       {action && (
         <button
           type="button"

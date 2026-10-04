@@ -2,6 +2,10 @@ import { useMemo, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { useWarranties, useVoidWarranty, useClaimWarranty } from '@/hooks/useWarranties'
 import type { WarrantyRow, WarrantyStatus } from '@/lib/warranties'
+import { useTheme } from '@/hooks/useTheme'
+import { EasyPageHeading } from '@/components/easy/EasyPageHeading'
+import { EasyActionCards } from '@/components/easy/EasyActionCards'
+import { CONNECT_URL } from '@/lib/workspaceScope'
 
 /**
  * Warranties list — full read-only browse view. Filterable by:
@@ -14,6 +18,8 @@ import type { WarrantyRow, WarrantyStatus } from '@/lib/warranties'
  * deferred to round 3 extended-warranty work.
  */
 export function WarrantiesPage() {
+  const { theme } = useTheme()
+  const easy = theme === 'easy-side' || theme === 'easy-top'
   const [params, setParams] = useSearchParams()
   const status = (params.get('status') as WarrantyStatus | null) ?? null
   const customerId = params.get('customer_id') ?? undefined
@@ -27,7 +33,7 @@ export function WarrantiesPage() {
   const voidMutation = useVoidWarranty()
   const claimMutation = useClaimWarranty()
 
-  const { data, isLoading, isError, error } = useWarranties({
+  const { data, isLoading, isError, error, refetch } = useWarranties({
     status: status ?? undefined,
     customer_id: customerId,
     asset_id: assetId,
@@ -75,29 +81,36 @@ export function WarrantiesPage() {
   }
 
   return (
-    <div className="max-w-6xl mx-auto px-6 py-8">
-      <div className="flex items-center justify-between mb-6 flex-wrap gap-3">
-        <div>
-          <h1 className="text-2xl font-bold text-navy-900">Warranties</h1>
+    <div className={easy ? 'w-full min-w-0 px-3 py-4 sm:px-6 sm:py-6' : 'max-w-6xl mx-auto px-6 py-8'}>
+      <div className={easy ? 'mb-6 w-full min-w-0' : 'flex items-center justify-between mb-6 flex-wrap gap-3'}>
+        <div className={easy ? 'w-full min-w-0' : undefined}>
+          {easy ? <EasyPageHeading title="Warranties" description="Find a customer's coverage, check expiry dates, and open the source invoice. Claim and void actions keep their existing confirmations." /> : <h1 className="text-2xl font-bold text-navy-900">Warranties</h1>}
           <p className="text-sm text-slate-600 mt-1">
-            Coverage rows written when an invoice is sent. Read-only here —
+            Coverage rows written when an invoice is sent;
             warranty issuance is automatic. Configure rules in{' '}
-            <Link to="/settings/warranty" className="text-amber-700 hover:underline">
-              Settings → Warranty
-            </Link>
+            <a href={new URL('/tool-shed/warranty-settings', CONNECT_URL).href} target="_blank" rel="noopener noreferrer" className="text-amber-700 hover:underline">
+              CrewBarn Connect → Warranty settings (new tab)
+            </a>
             .
           </p>
         </div>
       </div>
+      {easy && <EasyActionCards label="Review coverage" actions={[
+        { key: 'all', title: 'All coverage', description: 'Browse all statuses with your current customer and asset filters.', active: status === null, onClick: () => setStatusFilter(null) },
+        { key: 'active', title: 'Active coverage', description: 'Find coverage still in effect.', active: status === 'active', onClick: () => setStatusFilter('active') },
+        { key: 'expired', title: 'Expired coverage', description: 'Review warranties past their coverage period.', active: status === 'expired', onClick: () => setStatusFilter('expired') },
+        { key: 'claimed', title: 'Claimed coverage', description: 'Review recorded warranty claims.', active: status === 'claimed', onClick: () => setStatusFilter('claimed') },
+      ]} />}
 
       {/* Filters */}
-      <div className="bg-white border border-slate-200 rounded-lg p-4 mb-4 flex flex-wrap items-end gap-3">
-        <div className="flex-1 min-w-[200px]">
+      <div data-easy-list-toolbar className={easy ? 'bg-white border border-slate-200 rounded-lg p-4 mb-4 grid min-w-0 gap-3' : 'bg-white border border-slate-200 rounded-lg p-4 mb-4 flex flex-wrap items-end gap-3'}>
+        <div className={easy ? 'min-w-0' : 'flex-1 min-w-[200px]'}>
           <label className="block text-xs font-medium text-slate-700 mb-1 uppercase tracking-wide">
             Search
           </label>
           <input
             type="search"
+            aria-label="Search warranties"
             placeholder="Customer, item, asset, invoice #…"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
@@ -108,7 +121,7 @@ export function WarrantiesPage() {
           <label className="block text-xs font-medium text-slate-700 mb-1 uppercase tracking-wide">
             Status
           </label>
-          <div className="inline-flex rounded-md border border-slate-300 overflow-hidden text-xs">
+          <div className={easy ? 'flex w-fit max-w-full flex-wrap rounded-md border border-slate-300 text-xs' : 'inline-flex rounded-md border border-slate-300 overflow-hidden text-xs'}>
             {([null, 'active', 'expired', 'voided', 'claimed'] as const).map((s) => {
               const label = s ?? 'All'
               const active = status === s
@@ -117,6 +130,7 @@ export function WarrantiesPage() {
                   key={String(s)}
                   type="button"
                   onClick={() => setStatusFilter(s)}
+                  aria-pressed={active}
                   className={`px-3 py-2 capitalize ${
                     active ? 'bg-amber-500 text-white font-medium' : 'bg-white hover:bg-slate-50 text-slate-700'
                   }`}
@@ -160,9 +174,10 @@ export function WarrantiesPage() {
         </div>
       )}
       {isError && (
-        <div className="bg-red-50 border border-red-200 rounded-lg p-4 text-sm text-red-700">
+        <div role="alert" className="bg-red-50 border border-red-200 rounded-lg p-4 text-sm text-red-700">
           Failed to load warranties.
           {error instanceof Error ? ` ${error.message}` : ''}
+          <button type="button" className="ml-3 underline" onClick={() => void refetch()}>Retry</button>
         </div>
       )}
       {!isLoading && !isError && filtered.length === 0 && (

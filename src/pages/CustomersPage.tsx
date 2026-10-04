@@ -7,9 +7,11 @@ import { Input } from '@/components/ui/Input'
 import { WorkflowTabs } from '@/components/lists/WorkflowTabs'
 import { RowChevron } from '@/components/lists/RowChevron'
 import { useTheme, type FolderLayout } from '@/hooks/useTheme'
+import { EasyPageHeading } from '@/components/easy/EasyPageHeading'
 import { FolderBrowser, type FolderNode } from '@/components/FolderBrowser'
 import { FolderLayoutSwitch } from '@/components/FolderLayoutSwitch'
 import type { Customer, CustomerType } from '@/types/customer'
+import { Modal } from '@/components/ui/Modal'
 
 // Type-based workflow tabs (accurate via the existing server filter). VIP /
 // Recurring / Balance-Due / Open-Work tabs with live counts land in the next
@@ -185,7 +187,7 @@ function CustomerFolderContents({
   // we never sit past the last page.
   useEffect(() => { setPage(1) }, [letter, customerType, search])
 
-  const { data, isFetching } = useCustomers({
+  const { data, isFetching, isError, refetch } = useCustomers({
     filing_letter: letter,
     customer_type: customerType || undefined,
     q: search || undefined,
@@ -199,6 +201,9 @@ function CustomerFolderContents({
   // Cap at 4 cards per row; step down on narrower widths.
   const gridClass = 'grid gap-3 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4'
 
+  if (isError) {
+    return <div role="alert" className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm">This customer folder could not be loaded. <button type="button" className="underline" onClick={() => refetch()}>Try again</button></div>
+  }
   if (isFetching && customers.length === 0) {
     return (
       <div className={display === 'list' ? 'space-y-2.5' : gridClass}>
@@ -298,7 +303,9 @@ function DesktopCustomerCards({
 export function CustomersPage() {
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
-  const { customerView, setCustomerView, density, folderLayout, setFolderLayout } = useTheme()
+  const { theme, customerView, setCustomerView, density, folderLayout, setFolderLayout } = useTheme()
+  const easy = theme === 'easy-side' || theme === 'easy-top'
+  const [preview, setPreview] = useState<Customer | null>(null)
   // Filter / search / sort state
   const [search, setSearch] = useState(() => searchParams.get('q')?.trim() ?? '')
   const [typeFilter, setTypeFilter] = useState<CustomerType | ''>('')
@@ -308,7 +315,7 @@ export function CustomersPage() {
     customerView === 'files'
       || (typeof window !== 'undefined' && window.localStorage.getItem('crewbarn:customer-filing-view') === 'true'),
   )
-  const { data, isLoading, isError, error } = useCustomers({
+  const { data, isLoading, isFetching, isError, error, refetch } = useCustomers({
     q: search || undefined,
     customer_type: typeFilter || undefined,
     // The main query supplies the A–Z counts; each open folder fetches its own
@@ -331,9 +338,9 @@ export function CustomersPage() {
           AppLayout already wraps every authenticated page. */}
 
       {/* Page content */}
-      <main className={`mx-auto px-3 sm:px-6 py-4 sm:py-8 ${filingView ? 'max-w-[1760px]' : 'max-w-7xl'}`}>
+      <main className={`mx-auto px-3 sm:px-6 py-4 sm:py-8 ${easy ? 'w-full' : filingView ? 'max-w-[1760px]' : 'max-w-7xl'}`}>
         {/* Page header */}
-        <div className="flex items-center justify-between mb-4 sm:mb-6 gap-3">
+        {easy ? <EasyPageHeading title="Customers" description="Find the people and businesses you work with. Open a customer to see their jobs, locations, conversations, and billing." actions={<Link to="/customers/new"><Button data-tour="customers-new">+ New customer</Button></Link>} /> : <div className="flex items-center justify-between mb-4 sm:mb-6 gap-3">
           <div className="min-w-0">
             <h1 className="text-xl sm:text-2xl font-bold text-navy-800">Customers</h1>
             <p className="text-sm text-navy-500 mt-1">
@@ -345,14 +352,15 @@ export function CustomersPage() {
           <Link to="/customers/new" className="shrink-0">
             <Button data-tour="customers-new">+ New</Button>
           </Link>
-        </div>
+        </div>}
+        {easy && !isError && directoryTotal !== undefined && <p className="mb-4 text-sm text-slate-500">{directoryTotal.toLocaleString()} {directoryTotal === 1 ? 'customer' : 'customers'}</p>}
 
         {/* Workflow tabs — faster than a dropdown, makes the page feel alive.
             Live counts (by type) come from the index endpoint's tab_counts. */}
         <WorkflowTabs
           tabs={CUSTOMER_TABS.map((t) => ({
             ...t,
-            count: data?.tab_counts
+            count: !isError && data?.tab_counts
               ? data.tab_counts[t.key === '' ? 'all' : t.key] ?? 0
               : undefined,
           }))}
@@ -364,7 +372,7 @@ export function CustomersPage() {
         />
 
         {/* Search bar */}
-        <div className="bg-white rounded-lg border border-navy-100 p-4 mb-6 flex gap-3 flex-wrap">
+        <div data-easy-list-toolbar className="bg-white rounded-lg border border-navy-100 p-4 mb-6 flex gap-3 flex-wrap">
           <div className="flex-1 min-w-[200px]">
             <Input
               type="search"
@@ -394,6 +402,7 @@ export function CustomersPage() {
                     : 'text-navy-600 hover:bg-white hover:text-navy-900'
                 )}
                 aria-pressed={!filingView}
+                data-easy-view-option
               >
                 Cards
               </button>
@@ -409,6 +418,7 @@ export function CustomersPage() {
                     : 'text-navy-600 hover:bg-white hover:text-navy-900'
                 )}
                 aria-pressed={filingView}
+                data-easy-view-option
               >
                 Files
               </button>
@@ -431,13 +441,14 @@ export function CustomersPage() {
 
         {/* Error state */}
         {isError && (
-          <div className="bg-red-50 border border-red-200 rounded-lg p-4 text-sm text-danger">
+          <div role="alert" className="bg-red-50 border border-red-200 rounded-lg p-4 text-sm text-danger">
             Failed to load customers: {(error as Error)?.message ?? 'Unknown error'}
+            <button type="button" className="ml-3 underline" onClick={() => refetch()}>Try again</button>
           </div>
         )}
 
         {/* Empty state */}
-        {data && data.data.length === 0 && (
+        {!isError && data && data.data.length === 0 && (
           <div className="bg-white rounded-lg border border-navy-100 p-12 text-center">
             <p className="text-navy-500 mb-4">
               {search || typeFilter
@@ -452,6 +463,16 @@ export function CustomersPage() {
           </div>
         )}
 
+        {easy && !filingView && !isError && data && data.data.length > 0 && <section aria-label="Customer directory" className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
+          {data.data.map(customer => <article key={customer.id} className="min-w-0 space-y-2">
+            <CustomerCard customer={customer} onOpen={() => setPreview(customer)} />
+            <div className="flex justify-between gap-3 px-2 text-sm">
+              <button type="button" onClick={() => setPreview(customer)} className="text-slate-600 underline" aria-label={`Quick look at ${customer.display_name}`}>Quick look</button>
+              <Link to={`/customers/${customer.id}`} className="font-semibold text-amber-800">Open account →</Link>
+            </div>
+          </article>)}
+        </section>}
+        <div hidden={(easy && !filingView) || isError}>
         {/* Mobile cards — single tappable block per customer. Lifetime
             value gets a prominent right-side number; type/industry +
             last-contact stack as a meta line. */}
@@ -620,8 +641,9 @@ export function CustomersPage() {
         )}
 
         {/* Pagination */}
-        {data && !filingView && data.meta.last_page > 1 && (
-          <div className="flex items-center justify-between mt-6 px-1">
+        </div>
+        {!isError && data && !filingView && data.meta.last_page > 1 && (
+          <div data-easy-pager className="flex flex-wrap items-center justify-between gap-3 mt-6 px-1">
             <div className="text-sm text-navy-500">
               Showing {data.meta.from}–{data.meta.to} of {data.meta.total}
             </div>
@@ -630,7 +652,7 @@ export function CustomersPage() {
                 variant="secondary"
                 size="sm"
                 onClick={() => setPage((p) => Math.max(1, p - 1))}
-                disabled={page <= 1}
+                disabled={isFetching || page <= 1}
               >
                 Previous
               </Button>
@@ -641,7 +663,7 @@ export function CustomersPage() {
                 variant="secondary"
                 size="sm"
                 onClick={() => setPage((p) => Math.min(data.meta.last_page, p + 1))}
-                disabled={page >= data.meta.last_page}
+                disabled={isFetching || page >= data.meta.last_page}
               >
                 Next
               </Button>
@@ -649,6 +671,22 @@ export function CustomersPage() {
           </div>
         )}
       </main>
+      {easy && preview && <Modal isOpen onClose={() => setPreview(null)} title={preview.display_name} subtitle="Customer quick look">
+        <Modal.Body>
+          <div className="flex items-center gap-4">
+            <Avatar name={preview.display_name} colorKey={preview.id} preset={preview.avatar_preset} imageUrl={preview.avatar_url} size={48} />
+            <div><p className="capitalize">{preview.customer_type}{preview.vip ? ' · VIP' : ''}</p><p className="text-sm text-slate-500">{preview.account_number ? `Account #${preview.account_number}` : 'No account number'}</p></div>
+          </div>
+          {(preview.tags ?? []).length > 0 && <p className="mt-4 text-sm font-medium">{preview.tags.join(' · ')}</p>}
+          <CustomerActivityChips c={preview} />
+          <dl className="mt-5 grid gap-4 sm:grid-cols-2">
+            <div><dt className="text-sm text-slate-500">Email</dt><dd className="break-words">{preview.email || 'Not provided'}</dd></div>
+            <div><dt className="text-sm text-slate-500">Last contact</dt><dd>{relativeTime(preview.last_contact_at)}</dd></div>
+          </dl>
+          <p className="mt-5 text-sm text-slate-500">Open the account for estimates, jobs, invoices, contacts, and conversations. This preview does not change any records.</p>
+        </Modal.Body>
+        <Modal.Footer><button type="button" onClick={() => setPreview(null)} className="rounded-lg border px-4 py-2">Back to customers</button><Link to={`/customers/${preview.id}`} className="rounded-lg bg-amber-400 px-4 py-2 font-semibold">Open account →</Link></Modal.Footer>
+      </Modal>}
     </div>
   )
 }

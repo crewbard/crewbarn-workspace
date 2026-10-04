@@ -81,6 +81,7 @@ interface ModulesResponse {
   data: {
     toggleable: string[]
     disabled_modules: string[]
+    disabled_modules_catalog?: string[]
     /** The server's catalog (App\Services\Modules\ModuleCatalog). Absent on an old cached snapshot. */
     catalog?: CatalogRow[]
   }
@@ -121,9 +122,7 @@ export function useModuleVisibility(): ModuleVisibility {
   const query = useQuery({
     queryKey: ['settings-modules'],
     queryFn: async () => {
-      const res = await apiRequest<ModulesResponse>('/v1/settings/modules').catch(
-        () => ({ data: { toggleable: [], disabled_modules: [] } }) as ModulesResponse,
-      )
+      const res = await apiRequest<ModulesResponse>('/v1/settings/modules')
       writeSnapshot('settings-modules', res)
       return res
     },
@@ -133,7 +132,7 @@ export function useModuleVisibility(): ModuleVisibility {
     placeholderData: () => readSnapshot<ModulesResponse>('settings-modules'),
   })
 
-  const disabled = new Set<string>(query.data?.data.disabled_modules ?? [])
+  const disabled = new Set<string>(query.data?.data.disabled_modules_catalog ?? query.data?.data.disabled_modules ?? [])
   const catalog = query.data?.data.catalog
 
   const isModuleEnabled = (key: string) => !disabled.has(key)

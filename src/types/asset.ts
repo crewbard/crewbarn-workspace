@@ -48,6 +48,16 @@ export interface Asset {
   tenant_id: string
   name: string
   asset_code: string | null
+  /** The number the building itself uses: FD-201, RTU-3. */
+  tag?: string | null
+  /**
+   * Where this item's public record lives.
+   *
+   * Built server-side by the same builder that prints the labels, so a
+   * link from inside the app cannot point somewhere a scanned sticker
+   * does not.
+   */
+  scan_url?: string | null
 
   asset_type_id: string
   asset_type: AssetTypeMini | null
@@ -77,6 +87,16 @@ export interface Asset {
   // SLICE-FUTURE (inspections)
   inspection_cadence: InspectionCadence | null
   next_inspection_due_at: string | null
+
+  /**
+   * When somebody first confirmed this thing is really here.
+   *
+   * Set the moment a condition is recorded against it in the field,
+   * which is the one event meaning a person stood in front of it. Null
+   * on anything the tree builder invented from a sentence that nobody
+   * has walked yet, and those go onto Schedule As and get billed for.
+   */
+  verified_at?: string | null
 
   /** Server-computed: "Door 4B at Memorial Hospital" */
   display_label: string

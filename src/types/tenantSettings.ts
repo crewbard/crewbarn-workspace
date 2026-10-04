@@ -68,6 +68,7 @@ export interface InventorySettings {
    * or any tracked location; the stock-unit fingerprint logs the true source.
    */
   inventory_require_van_stock_for_job_use: boolean
+  inventory_locked_to_controllers: boolean
 
   /**
    * Tenant-wide visibility for SN-tracking UI. When false (default),

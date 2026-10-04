@@ -27,14 +27,20 @@ import { ThemeProvider } from '@/hooks/useTheme'
 import { DeleteConfirmProvider } from '@/components/DeleteConfirmProvider'
 import { StepUpProvider } from '@/components/StepUpProvider'
 import { ProtectedRoute } from '@/components/ProtectedRoute'
+
 import { HomeRoute } from '@/components/HomeRoute'
+
 import { AppLayout } from '@/components/layout/AppLayout'
+
 import { LoginPage } from '@/pages/LoginPage'
 import { AssetAccessLandingPage } from '@/pages/AssetAccessLandingPage'
+import { DownloadPage } from '@/pages/DownloadPage'
 import { ForgotPasswordPage } from '@/pages/ForgotPasswordPage'
 import { ResetPasswordPage } from '@/pages/ResetPasswordPage'
+
 import { PublicScanPage } from '@/pages/PublicScanPage'
 import { PublicVerifyPage } from '@/pages/PublicVerifyPage'
+import { PublicReportPage } from '@/pages/PublicReportPage'
 import { DashboardPage } from '@/pages/DashboardPage'
 import { CustomersPage } from '@/pages/CustomersPage'
 import { CustomerCreatePage } from '@/pages/CustomerCreatePage'
@@ -45,18 +51,12 @@ import { TasksPage } from '@/pages/TasksPage'
 import { WorkOrderDetailPage } from '@/pages/WorkOrderDetailPage'
 import { SubReviewsPage } from '@/pages/SubReviewsPage'
 import { SubPayoutsPage } from '@/pages/SubPayoutsPage'
-import { SubcontractorsPage } from '@/pages/SubcontractorsPage'
+
 import { InboundSubJobsPage } from '@/pages/InboundSubJobsPage'
 const AccountingPage = lazy(() => import('@/pages/AccountingPage').then((m) => ({ default: m.AccountingPage })))
 import { MoneyDeskPage } from '@/pages/MoneyDeskPage'
 import { CashRegisterPage } from '@/pages/CashRegisterPage'
-import {
-  BankMatchWorkspacePage,
-  CustomerCreditsWorkspacePage,
-  ExpensesWorkspacePage,
-  InventoryCostWorkspacePage,
-  PayrollWorkspacePage,
-} from '@/pages/AccountingWorkspacePages'
+import { BankMatchWorkspacePage, CustomerCreditsWorkspacePage, ExpensesWorkspacePage, InventoryCostWorkspacePage, PayrollWorkspacePage } from '@/pages/AccountingWorkspacePages'
 import { CashDrawerPage } from '@/pages/CashDrawerPage'
 import { ExpenseRegisterPage } from '@/pages/ExpenseRegisterPage'
 import { VendorBillsPage } from '@/pages/VendorBillsPage'
@@ -81,59 +81,32 @@ import { SchedulePage } from '@/pages/SchedulePage'
 import { DispatchPage } from '@/pages/DispatchPage'
 import { RouteHistoryPage } from '@/pages/RouteHistoryPage'
 import { FieldReviewPage } from '@/pages/FieldReviewPage'
-const ToolShedPage = lazy(() => import('@/pages/ToolShedPage').then((m) => ({ default: m.ToolShedPage })))
-const ToolShedPlaceholderPage = lazy(() => import('@/pages/ToolShedPlaceholderPage').then((m) => ({ default: m.ToolShedPlaceholderPage })))
-const SettingsWarrantyPage = lazy(() => import('@/pages/SettingsWarrantyPage').then((m) => ({ default: m.SettingsWarrantyPage })))
 const SettingsAppearancePage = lazy(() => import('@/pages/SettingsAppearancePage').then((m) => ({ default: m.SettingsAppearancePage })))
-const SettingsModulesPage = lazy(() => import('@/pages/SettingsModulesPage').then((m) => ({ default: m.SettingsModulesPage })))
 import { FranchiseDashboardPage } from '@/pages/FranchiseDashboardPage'
-import { FranchiseSupportPage } from '@/pages/FranchiseSupportPage'
-import { TerritoriesPage } from '@/pages/TerritoriesPage'
-import { OnboardingPage } from '@/pages/OnboardingPage'
-import { CustomDocumentsPage } from '@/pages/CustomDocumentsPage'
-import TemplateEditorPage from '@/pages/TemplateEditorPage'
-import { CustomFieldsPage } from '@/pages/CustomFieldsPage'
-import { HiringPage } from '@/pages/HiringPage'
-import { JobStatusesPage } from '@/pages/JobStatusesPage'
-import { JobTypesPage } from '@/pages/JobTypesPage'
-const SettingsBrandPage = lazy(() => import('@/pages/SettingsBrandPage').then((m) => ({ default: m.SettingsBrandPage })))
-const SettingsWebhooksPage = lazy(() => import('@/pages/SettingsWebhooksPage').then((m) => ({ default: m.SettingsWebhooksPage })))
-const SettingsPricingPage = lazy(() => import('@/pages/SettingsPricingPage').then((m) => ({ default: m.SettingsPricingPage })))
-import { CompanyCostModelPage } from '@/pages/CompanyCostModelPage'
-import { ConnectedAppsPage } from '@/pages/ConnectedAppsPage'
-import { AuditLogPage } from '@/pages/AuditLogPage'
-import { ServiceLocationsPage } from '@/pages/ServiceLocationsPage'
-import { TagsPage } from '@/pages/TagsPage'
-const SettingsCompanyPage = lazy(() => import('@/pages/SettingsCompanyPage').then((m) => ({ default: m.SettingsCompanyPage })))
-const SettingsPaymentTypesPage = lazy(() => import('@/pages/SettingsPaymentTypesPage').then((m) => ({ default: m.SettingsPaymentTypesPage })))
+
+import MaintenanceContractsPage from '@/pages/MaintenanceContractsPage'
+import { NewServiceAgreementPage } from '@/pages/NewServiceAgreementPage'
+import MaintenanceContractDetailPage from '@/pages/MaintenanceContractDetailPage'
+
 import { MyAccountPage } from '@/pages/MyAccountPage'
 import { AiConnectorsPage } from '@/pages/AiConnectorsPage'
 import { OauthAuthorizePage } from '@/pages/OauthAuthorizePage'
-import { DeletePermissionsPage } from '@/pages/DeletePermissionsPage'
+
 import { CompanySecureFilesPage } from '@/pages/CompanySecureFilesPage'
-const SettingsPreferencesPage = lazy(() => import('@/pages/SettingsPreferencesPage').then((m) => ({ default: m.SettingsPreferencesPage })))
-import { AutomationsHubPage } from '@/pages/AutomationsHubPage'
-import { CustomerTypesPage } from '@/pages/CustomerTypesPage'
-import { IntegrationsOverviewPage } from '@/pages/IntegrationsOverviewPage'
-import { ApiTokensPage } from '@/pages/ApiTokensPage'
-import { ApiEndpointsPage } from '@/pages/ApiEndpointsPage'
+
 import { BetaApplyPage } from '@/pages/BetaApplyPage'
-import { UsageStatsPage } from '@/pages/UsageStatsPage'
+
 import { TimeOffPage } from '@/pages/TimeOffPage'
-import { DataExportPage } from '@/pages/DataExportPage'
-import { RolesPermissionsPage } from '@/pages/RolesPermissionsPage'
-import { StaffCrewsPage } from '@/pages/StaffCrewsPage'
+
 import { AcceptInvitePage } from '@/pages/AcceptInvitePage'
 import { SignDocumentPage } from '@/pages/SignDocumentPage'
 import SignAgreementPage from '@/pages/SignAgreementPage'
 import { RequirePermission } from '@/components/RequirePermission'
 import { WarrantiesPage } from '@/pages/WarrantiesPage'
+const BoardApp = lazy(() => import('@/board/BoardApp').then((m) => ({ default: m.BoardApp })))
 import { InventoryPage } from '@/pages/InventoryPage'
 import { AssetsPage } from '@/pages/AssetsPage'
-import { AssetAccessRequestsPage } from '@/pages/AssetAccessRequestsPage'
-import { CompanyAssetsPage } from '@/pages/CompanyAssetsPage'
-import { AssetTypesPage } from '@/pages/AssetTypesPage'
-import { VendorsPage } from '@/pages/VendorsPage'
+
 import { PurchaseOrdersPage } from '@/pages/PurchaseOrdersPage'
 import { NeedsOrderedPage } from '@/pages/NeedsOrderedPage'
 import { InventoryMovementsPage } from '@/pages/InventoryMovementsPage'
@@ -148,18 +121,17 @@ import { AssetBatchLabelsPage } from '@/pages/AssetBatchLabelsPage'
 import { AssetGroupLabelsPage } from '@/pages/AssetGroupLabelsPage'
 import { CatalogItemLabelsPage } from '@/pages/CatalogItemLabelsPage'
 import { InventoryReturnLabelsPage } from '@/pages/InventoryReturnLabelsPage'
-import { TaxClassesPage } from '@/pages/TaxClassesPage'
-import { PaymentTermsPage } from '@/pages/PaymentTermsPage'
-import { ImportWizardPage } from '@/pages/ImportWizardPage'
+
 import { QuickBooksCallbackPage } from '@/pages/QuickBooksCallbackPage'
 import { GoDaddyCallbackPage } from '@/pages/GoDaddyCallbackPage'
-import { ServiceCatalogPage } from '@/pages/ServiceCatalogPage'
-import { ProductCatalogPage } from '@/pages/ProductCatalogPage'
-import { CatalogCategoriesPage } from '@/pages/CatalogCategoriesPage'
-import { ProductCategoriesPage } from '@/pages/ProductCategoriesPage'
 
 const isAssetAccessHost =
   typeof window !== 'undefined' && window.location.hostname === 'assets.crewbarn.com'
+
+function ExternalAppRedirect({ origin }: { origin: string }) {
+  window.location.replace(origin + window.location.pathname + window.location.search + window.location.hash)
+  return null
+}
 
 const queryClient = new QueryClient({
   /**
@@ -202,6 +174,37 @@ const queryClient = new QueryClient({
   },
 })
 
+/**
+ * crewbarn.tv gets the wall, and nothing else.
+ *
+ * Decided before the router, the auth provider and the layout, because
+ * the board is none of those things: no sidebar, no signed-in account, no
+ * navigation. A television is a screen the whole office reads, not a page
+ * somebody uses, so it does not get the app wrapped around it.
+ *
+ * /tv on the ordinary host renders the same thing, so the board can be
+ * worked on without a second machine and a real television.
+ */
+const BOARD_HOSTS = ['crewbarn.tv', 'www.crewbarn.tv']
+const isBoard =
+  BOARD_HOSTS.includes(window.location.hostname.toLowerCase()) ||
+  window.location.pathname === '/tv' ||
+  // /tv/preview/{id} is the same screen, drawn from a signed-in session
+  // instead of a device token, so somebody can see what a television is
+  // showing without standing in front of it.
+  window.location.pathname.startsWith('/tv/preview/')
+
+if (isBoard) {
+  createRoot(document.getElementById('root')!).render(
+    <StrictMode>
+      <ErrorBoundary>
+        <Suspense fallback={null}>
+          <BoardApp />
+        </Suspense>
+      </ErrorBoundary>
+    </StrictMode>,
+  )
+} else {
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <ErrorBoundary>
@@ -224,10 +227,17 @@ createRoot(document.getElementById('root')!).render(
             <Route path="/reset-password/:token" element={<ResetPasswordPage />} />
             {/* Public: "test the app with your crew" — invite requests. */}
             <Route path="/beta" element={<BetaApplyPage />} />
+            {/* connect.crewbarn.com/download — the open-source work dashboard's
+                front door. Public: deciding whether to self-host should not
+                need an account. */}
+            <Route path="/download" element={<DownloadPage />} />
             <Route path="/scan/:code" element={<PublicScanPage />} />
             <Route path="/scan/:tenantId/:code" element={<PublicScanPage />} />
             {/* Public, no auth — an AHJ types a record number off paperwork. */}
             <Route path="/verify/:recordId" element={<PublicVerifyPage />} />
+            {/* The report, public. Short path because it is read off
+                paper and typed by hand. */}
+            <Route path="/r/:tenantId/:reportNumber" element={<PublicReportPage />} />
             <Route path="/accept-invite/:token" element={<AcceptInvitePage />} />
             <Route path="/sign/:token" element={<SignDocumentPage />} />
             <Route path="/sign-agreement/:token" element={<SignAgreementPage />} />
@@ -295,6 +305,12 @@ createRoot(document.getElementById('root')!).render(
               }
             />
 
+            {/* connect.crewbarn.com — the account console. Its own shell
+                (a light rail, not the work nav), so these sit OUTSIDE
+                AppLayout rather than inside it. */}
+            {/* The website builder is full screen — no rail, no top bar — so it
+                sits outside AppLayout like the Connect shell does. */}
+
             {/* Authenticated routes — share AppLayout (TopBar + SubNav) */}
             <Route
               element={
@@ -340,7 +356,6 @@ createRoot(document.getElementById('root')!).render(
               <Route path="/accounting/sync-mappings" element={<RequirePermission permission="revenue.view"><AccountingSyncMappingsPage /></RequirePermission>} />
               {/* Legacy /money paths → /accounting (kept for old bookmarks). */}
               <Route path="/money/pending" element={<Navigate to="/accounting" replace />} />
-              <Route path="/tool-shed/subcontractors" element={<RequirePermission permission="jobs.view"><SubcontractorsPage /></RequirePermission>} />
 
               {/* Customers */}
               <Route path="/customers" element={<RequirePermission permission="customers.view"><CustomersPage /></RequirePermission>} />
@@ -357,8 +372,6 @@ createRoot(document.getElementById('root')!).render(
               <Route path="/dispatch/field-review" element={<RequirePermission permission="jobs.view"><FieldReviewPage /></RequirePermission>} />
               <Route path="/dispatch/route-history" element={<RequirePermission permission="jobs.view"><RouteHistoryPage /></RequirePermission>} />
               <Route path="/franchises" element={<RequirePermission permission="franchises.view"><FranchiseDashboardPage /></RequirePermission>} />
-              <Route path="/franchise-support" element={<RequirePermission permission="settings.view"><FranchiseSupportPage /></RequirePermission>} />
-              <Route path="/tool-shed/territories" element={<RequirePermission permission="settings.view"><TerritoriesPage /></RequirePermission>} />
               <Route path="/money" element={<Navigate to="/accounting" replace />} />
 
               {/* Estimates - top-level routes */}
@@ -386,16 +399,9 @@ createRoot(document.getElementById('root')!).render(
               {/* Tool Shed — single wildcard handles all placeholder items */}
               {/* Real Tool Shed pages — must come BEFORE the wildcard
                   /tool-shed/:slug below, otherwise the placeholder catches them. */}
-              <Route path="/tool-shed" element={<RequirePermission permission="settings.view"><ToolShedPage /></RequirePermission>} />
-              <Route path="/tool-shed/custom-fields" element={<RequirePermission permission="settings.view"><CustomFieldsPage /></RequirePermission>} />
-              <Route path="/tool-shed/job-statuses" element={<RequirePermission permission="settings.view"><JobStatusesPage /></RequirePermission>} />
-              <Route path="/tool-shed/job-types" element={<RequirePermission permission="settings.view"><JobTypesPage /></RequirePermission>} />
-              <Route path="/tool-shed/brand" element={<RequirePermission permission="settings.edit"><SettingsBrandPage /></RequirePermission>} />
-              <Route path="/tool-shed/audit-log" element={<RequirePermission permission="settings.view"><AuditLogPage /></RequirePermission>} />
-              <Route path="/tool-shed/service-locations" element={<RequirePermission permission="customers.view"><ServiceLocationsPage /></RequirePermission>} />
-              <Route path="/tool-shed/tags" element={<RequirePermission permission="settings.view"><TagsPage /></RequirePermission>} />
-              <Route path="/tool-shed/company-info" element={<RequirePermission permission="settings.view"><SettingsCompanyPage /></RequirePermission>} />
-              <Route path="/tool-shed/payment-types" element={<RequirePermission permission="settings.view"><SettingsPaymentTypesPage /></RequirePermission>} />
+              {/* Google sends the browser here after the shop grants access.
+                  The path is registered in the Google console, so it is part of
+                  the integration rather than a detail. */}
               {/* Personal account security (2FA) — per-USER login setting.
                   Account-scoped path (/me/*), reached from the account menu. */}
               <Route path="/me/account" element={<MyAccountPage />} />
@@ -403,30 +409,18 @@ createRoot(document.getElementById('root')!).render(
               <Route path="/oauth/authorize" element={<OauthAuthorizePage />} />
               {/* Tenant Security & 2FA — personal enrollment (real tenant users)
                   + tenant 2FA policy. Reached from the Tool Shed. */}
-              <Route path="/tool-shed/delete-permissions" element={<DeletePermissionsPage />} />
               <Route path="/tool-shed/company-files" element={<RequirePermission permission="company.secure_files.list"><CompanySecureFilesPage /></RequirePermission>} />
-              <Route path="/tool-shed/preferences" element={<RequirePermission permission="settings.view"><SettingsPreferencesPage /></RequirePermission>} />
-              <Route path="/tool-shed/automations" element={<RequirePermission permission="settings.view"><AutomationsHubPage /></RequirePermission>} />
-              <Route path="/tool-shed/customer-types" element={<RequirePermission permission="customers.view"><CustomerTypesPage /></RequirePermission>} />
-              <Route path="/tool-shed/integrations" element={<RequirePermission permission="settings.view"><IntegrationsOverviewPage /></RequirePermission>} />
-              <Route path="/tool-shed/api-tokens" element={<RequirePermission permission="settings.edit"><ApiTokensPage /></RequirePermission>} />
               {/* Static docs, but Tool Shed is sign-in only — and it belongs inside the app chrome. */}
-              <Route path="/tool-shed/api-endpoints" element={<RequirePermission permission="settings.view"><ApiEndpointsPage /></RequirePermission>} />
 
-              <Route path="/tool-shed/usage" element={<RequirePermission permission="settings.view"><UsageStatsPage /></RequirePermission>} />
-              <Route path="/tool-shed/time-off" element={<TimeOffPage />} />
               <Route path="/my-time-off" element={<TimeOffPage />} />
-              <Route path="/tool-shed/data-export" element={<RequirePermission permission="settings.edit"><DataExportPage /></RequirePermission>} />
-              <Route path="/tool-shed/webhooks" element={<RequirePermission permission="settings.edit"><SettingsWebhooksPage /></RequirePermission>} />
-              <Route path="/tool-shed/pricing" element={<RequirePermission permission="catalog.view"><SettingsPricingPage /></RequirePermission>} />
-              <Route path="/tool-shed/cost-model" element={<RequirePermission permission="revenue.view"><CompanyCostModelPage /></RequirePermission>} />
-              <Route path="/tool-shed/connected-apps" element={<RequirePermission permission="settings.view"><ConnectedAppsPage /></RequirePermission>} />
+              {/* Where the Print Bridge's own window tells people to go. */}
               <Route path="/tool-shed/appearance" element={<RequirePermission permission="settings.view"><SettingsAppearancePage /></RequirePermission>} />
-              <Route path="/tool-shed/modules" element={<RequirePermission permission="settings.edit"><SettingsModulesPage /></RequirePermission>} />
-              <Route path="/tool-shed/inventory-settings" element={<Navigate to="/inventory?tab=settings" replace />} />
-              <Route path="/tool-shed/warranty-settings" element={<RequirePermission permission="settings.view"><SettingsWarrantyPage /></RequirePermission>} />
-              <Route path="/onboarding" element={<RequirePermission permission="settings.view"><OnboardingPage /></RequirePermission>} />
-              <Route path="/tool-shed/:slug" element={<ToolShedPlaceholderPage />} />
+
+              {/* One setting per page (docs/design/connect/README.md). These
+                  sit ALONGSIDE the pages above, not instead of them: the long
+                  pages also hold connection cards and other settings, and
+                  removing those to make room would take away working
+                  features. Settings move across one at a time. */}
 
               {/* Inventory, catalog, and legacy settings redirects. Visible settings
                   pages now live under Tool Shed; old /settings/* URLs are kept
@@ -435,11 +429,7 @@ createRoot(document.getElementById('root')!).render(
               <Route path="/inventory/movements" element={<RequirePermission permission="inventory.view"><InventoryMovementsPage /></RequirePermission>} />
               <Route path="/inventory/reconciliations" element={<RequirePermission permission="inventory.view"><InventoryReconciliationsPage /></RequirePermission>} />
               <Route path="/inventory/units" element={<RequirePermission permission="inventory.view"><InventoryUnitsPage /></RequirePermission>} />
-              <Route path="/company-assets" element={<RequirePermission permission="assets.view"><CompanyAssetsPage /></RequirePermission>} />
               <Route path="/assets" element={<RequirePermission permission="assets.view"><AssetsPage /></RequirePermission>} />
-              <Route path="/asset-access-requests" element={<RequirePermission permission="assets.view"><AssetAccessRequestsPage /></RequirePermission>} />
-              <Route path="/asset-types" element={<RequirePermission permission="assets.view"><AssetTypesPage /></RequirePermission>} />
-              <Route path="/vendors" element={<RequirePermission permission="inventory.view"><VendorsPage /></RequirePermission>} />
               <Route path="/purchase-orders" element={<RequirePermission permission="inventory.view"><PurchaseOrdersPage /></RequirePermission>} />
               <Route path="/purchase-orders/needs-ordered" element={<RequirePermission permission="inventory.view"><NeedsOrderedPage /></RequirePermission>} />
               <Route path="/purchase-orders/new" element={<RequirePermission permission="inventory.edit"><PurchaseOrderCreatePage /></RequirePermission>} />
@@ -447,29 +437,124 @@ createRoot(document.getElementById('root')!).render(
               {/* /assets/:id/labels, /inventory-bins/:id/labels, and
                   /purchase-orders/:id/labels are mounted ABOVE this
                   block so they bypass AppLayout (no chrome in print). */}
-              <Route path="/settings/inventory" element={<Navigate to="/inventory?tab=settings" replace />} />
-              <Route path="/settings/communication" element={<Navigate to="/tool-shed/communication" replace />} />
-              <Route path="/settings/integrations" element={<Navigate to="/tool-shed/storage-maps" replace />} />
-              <Route path="/settings/warranty" element={<Navigate to="/tool-shed/warranty-settings" replace />} />
-              <Route path="/settings/ai" element={<Navigate to="/tool-shed/ai" replace />} />
-              <Route path="/custom-documents" element={<RequirePermission permission="templates.view"><CustomDocumentsPage /></RequirePermission>} />
-              <Route path="/custom-documents/:tab/:id" element={<RequirePermission permission="templates.view"><TemplateEditorPage /></RequirePermission>} />
-              <Route path="/tool-shed/roles" element={<RequirePermission permission="staff.view"><RolesPermissionsPage /></RequirePermission>} />
-              <Route path="/tool-shed/staff" element={<RequirePermission permission="staff.view"><StaffCrewsPage /></RequirePermission>} />
-              <Route path="/tool-shed/hiring" element={<RequirePermission permission="staff.view"><HiringPage /></RequirePermission>} />
+              {/* Two segments, so it cannot be mistaken for the editor's
+                  /custom-documents/:tab/:id. */}
+              <Route path="/maintenance-contracts" element={<RequirePermission permission="contracts.view"><MaintenanceContractsPage /></RequirePermission>} />
+              {/* Before /:id, or "new" is read as a contract id. */}
+              <Route path="/maintenance-contracts/new" element={<RequirePermission permission="contracts.edit"><NewServiceAgreementPage /></RequirePermission>} />
+              <Route path="/maintenance-contracts/:id" element={<RequirePermission permission="contracts.view"><MaintenanceContractDetailPage /></RequirePermission>} />
               {/* Legacy /email-templates redirects into the Email tab of Custom Documents. */}
               <Route path="/email-templates" element={<Navigate to="/custom-documents" replace />} />
               <Route path="/warranties" element={<RequirePermission permission="warranties.view"><WarrantiesPage /></RequirePermission>} />
-              <Route path="/catalog/tax-classes" element={<RequirePermission permission="catalog.view"><TaxClassesPage /></RequirePermission>} />
-              <Route path="/tool-shed/payment-terms" element={<RequirePermission permission="invoices.view"><PaymentTermsPage /></RequirePermission>} />
-              <Route path="/tool-shed/import" element={<RequirePermission permission="settings.view"><ImportWizardPage /></RequirePermission>} />
               <Route path="/oauth/quickbooks" element={<RequirePermission permission="settings.view"><QuickBooksCallbackPage /></RequirePermission>} />
               <Route path="/oauth/godaddy" element={<RequirePermission permission="settings.edit"><GoDaddyCallbackPage /></RequirePermission>} />
-              <Route path="/catalog/services" element={<RequirePermission permission="catalog.view"><ServiceCatalogPage /></RequirePermission>} />
-              <Route path="/catalog/products" element={<RequirePermission permission="catalog.view"><ProductCatalogPage /></RequirePermission>} />
-              <Route path="/catalog/categories" element={<RequirePermission permission="catalog.view"><CatalogCategoriesPage /></RequirePermission>} />
-              <Route path="/catalog/product-categories" element={<RequirePermission permission="catalog.view"><ProductCategoriesPage /></RequirePermission>} />
             </Route>
+
+              <Route path="/sign-up" element={<ExternalAppRedirect origin="https://connect.crewbarn.com" />} />
+              <Route path="/verify-signup" element={<ExternalAppRedirect origin="https://connect.crewbarn.com" />} />
+              <Route path="/connect" element={<ExternalAppRedirect origin="https://connect.crewbarn.com" />} />
+              <Route path="/connect/:section" element={<ExternalAppRedirect origin="https://connect.crewbarn.com" />} />
+              <Route path="/website-builder" element={<ExternalAppRedirect origin="https://connect.crewbarn.com" />} />
+              <Route path="/tool-shed/subcontractors" element={<ExternalAppRedirect origin="https://connect.crewbarn.com" />} />
+              <Route path="/franchise-support" element={<ExternalAppRedirect origin="https://connect.crewbarn.com" />} />
+              <Route path="/tool-shed/territories" element={<ExternalAppRedirect origin="https://connect.crewbarn.com" />} />
+              <Route path="/tool-shed" element={<ExternalAppRedirect origin="https://connect.crewbarn.com" />} />
+              <Route path="/tool-shed/custom-fields" element={<ExternalAppRedirect origin="https://connect.crewbarn.com" />} />
+              <Route path="/tool-shed/job-statuses" element={<ExternalAppRedirect origin="https://connect.crewbarn.com" />} />
+              <Route path="/tool-shed/job-types" element={<ExternalAppRedirect origin="https://connect.crewbarn.com" />} />
+              <Route path="/tool-shed/brand" element={<ExternalAppRedirect origin="https://connect.crewbarn.com" />} />
+              <Route path="/tool-shed/website" element={<ExternalAppRedirect origin="https://connect.crewbarn.com" />} />
+              <Route path="/tool-shed/google-reviews" element={<ExternalAppRedirect origin="https://connect.crewbarn.com" />} />
+              <Route path="/settings/google-reviews/connected" element={<ExternalAppRedirect origin="https://connect.crewbarn.com" />} />
+              <Route path="/tool-shed/payments" element={<ExternalAppRedirect origin="https://connect.crewbarn.com" />} />
+              <Route path="/tool-shed/cloudflare" element={<ExternalAppRedirect origin="https://connect.crewbarn.com" />} />
+              <Route path="/tool-shed/customer-app" element={<ExternalAppRedirect origin="https://connect.crewbarn.com" />} />
+              <Route path="/tool-shed/subscription" element={<ExternalAppRedirect origin="https://connect.crewbarn.com" />} />
+              <Route path="/tool-shed/self-hosted" element={<ExternalAppRedirect origin="https://connect.crewbarn.com" />} />
+              <Route path="/tool-shed/audit-log" element={<ExternalAppRedirect origin="https://connect.crewbarn.com" />} />
+              <Route path="/tool-shed/service-locations" element={<ExternalAppRedirect origin="https://connect.crewbarn.com" />} />
+              <Route path="/tool-shed/tags" element={<ExternalAppRedirect origin="https://connect.crewbarn.com" />} />
+              <Route path="/tool-shed/company-info" element={<ExternalAppRedirect origin="https://connect.crewbarn.com" />} />
+              <Route path="/tool-shed/payment-types" element={<ExternalAppRedirect origin="https://connect.crewbarn.com" />} />
+              <Route path="/me/security" element={<ExternalAppRedirect origin="https://connect.crewbarn.com" />} />
+              <Route path="/tool-shed/security" element={<ExternalAppRedirect origin="https://connect.crewbarn.com" />} />
+              <Route path="/tool-shed/delete-permissions" element={<ExternalAppRedirect origin="https://connect.crewbarn.com" />} />
+              <Route path="/tool-shed/encryption" element={<ExternalAppRedirect origin="https://connect.crewbarn.com" />} />
+              <Route path="/tool-shed/preferences" element={<ExternalAppRedirect origin="https://connect.crewbarn.com" />} />
+              <Route path="/tool-shed/automations" element={<ExternalAppRedirect origin="https://connect.crewbarn.com" />} />
+              <Route path="/tool-shed/automations/build" element={<ExternalAppRedirect origin="https://connect.crewbarn.com" />} />
+              <Route path="/tool-shed/automations/build/:id" element={<ExternalAppRedirect origin="https://connect.crewbarn.com" />} />
+              <Route path="/tool-shed/automations/reminders" element={<ExternalAppRedirect origin="https://connect.crewbarn.com" />} />
+              <Route path="/tool-shed/customer-types" element={<ExternalAppRedirect origin="https://connect.crewbarn.com" />} />
+              <Route path="/tool-shed/integrations" element={<ExternalAppRedirect origin="https://connect.crewbarn.com" />} />
+              <Route path="/tool-shed/api-tokens" element={<ExternalAppRedirect origin="https://connect.crewbarn.com" />} />
+              <Route path="/tool-shed/api-endpoints" element={<ExternalAppRedirect origin="https://connect.crewbarn.com" />} />
+              <Route path="/tool-shed/usage" element={<ExternalAppRedirect origin="https://connect.crewbarn.com" />} />
+              <Route path="/tool-shed/time-off" element={<ExternalAppRedirect origin="https://connect.crewbarn.com" />} />
+              <Route path="/tool-shed/data-export" element={<ExternalAppRedirect origin="https://connect.crewbarn.com" />} />
+              <Route path="/tool-shed/gps" element={<ExternalAppRedirect origin="https://connect.crewbarn.com" />} />
+              <Route path="/tool-shed/marketplace" element={<ExternalAppRedirect origin="https://connect.crewbarn.com" />} />
+              <Route path="/tool-shed/partner-connections" element={<ExternalAppRedirect origin="https://connect.crewbarn.com" />} />
+              <Route path="/tool-shed/label-printer" element={<ExternalAppRedirect origin="https://connect.crewbarn.com" />} />
+              <Route path="/tool-shed/shop-tv" element={<ExternalAppRedirect origin="https://connect.crewbarn.com" />} />
+              <Route path="/tool-shed/webhooks" element={<ExternalAppRedirect origin="https://connect.crewbarn.com" />} />
+              <Route path="/tool-shed/pricing" element={<ExternalAppRedirect origin="https://connect.crewbarn.com" />} />
+              <Route path="/tool-shed/cost-model" element={<ExternalAppRedirect origin="https://connect.crewbarn.com" />} />
+              <Route path="/tool-shed/connected-apps" element={<ExternalAppRedirect origin="https://connect.crewbarn.com" />} />
+              <Route path="/tool-shed/modules" element={<ExternalAppRedirect origin="https://connect.crewbarn.com" />} />
+              <Route path="/tool-shed/inventory-settings" element={<ExternalAppRedirect origin="https://connect.crewbarn.com" />} />
+              <Route path="/tool-shed/communication" element={<ExternalAppRedirect origin="https://connect.crewbarn.com" />} />
+              <Route path="/tool-shed/communication/transcription" element={<ExternalAppRedirect origin="https://connect.crewbarn.com" />} />
+              <Route path="/tool-shed/storage-maps" element={<ExternalAppRedirect origin="https://connect.crewbarn.com" />} />
+              <Route path="/tool-shed/warranty-settings" element={<ExternalAppRedirect origin="https://connect.crewbarn.com" />} />
+              <Route path="/tool-shed/ai/provider" element={<ExternalAppRedirect origin="https://connect.crewbarn.com" />} />
+              <Route path="/tool-shed/ai/key" element={<ExternalAppRedirect origin="https://connect.crewbarn.com" />} />
+              <Route path="/tool-shed/ai/allowed" element={<ExternalAppRedirect origin="https://connect.crewbarn.com" />} />
+              <Route path="/tool-shed/ai/learning" element={<ExternalAppRedirect origin="https://connect.crewbarn.com" />} />
+              <Route path="/tool-shed/ai/memory" element={<ExternalAppRedirect origin="https://connect.crewbarn.com" />} />
+              <Route path="/tool-shed/ai/voice" element={<ExternalAppRedirect origin="https://connect.crewbarn.com" />} />
+              <Route path="/tool-shed/ai/activity" element={<ExternalAppRedirect origin="https://connect.crewbarn.com" />} />
+              <Route path="/tool-shed/settings-location" element={<ExternalAppRedirect origin="https://connect.crewbarn.com" />} />
+              <Route path="/tool-shed/payments/card-processor" element={<ExternalAppRedirect origin="https://connect.crewbarn.com" />} />
+              <Route path="/tool-shed/payments/bank-transfer" element={<ExternalAppRedirect origin="https://connect.crewbarn.com" />} />
+              <Route path="/tool-shed/payments/watch-bank" element={<ExternalAppRedirect origin="https://connect.crewbarn.com" />} />
+              <Route path="/tool-shed/communication/email" element={<ExternalAppRedirect origin="https://connect.crewbarn.com" />} />
+              <Route path="/tool-shed/warranty-settings/expiring" element={<ExternalAppRedirect origin="https://connect.crewbarn.com" />} />
+              <Route path="/tool-shed/communication/twilio" element={<ExternalAppRedirect origin="https://connect.crewbarn.com" />} />
+              <Route path="/tool-shed/communication/twilio/setup" element={<ExternalAppRedirect origin="https://connect.crewbarn.com" />} />
+              <Route path="/tool-shed/preferences/reminders" element={<ExternalAppRedirect origin="https://connect.crewbarn.com" />} />
+              <Route path="/tool-shed/preferences/cash-collection" element={<ExternalAppRedirect origin="https://connect.crewbarn.com" />} />
+              <Route path="/tool-shed/preferences/contract-invoices" element={<ExternalAppRedirect origin="https://connect.crewbarn.com" />} />
+              <Route path="/tool-shed/preferences/stalled-jobs" element={<ExternalAppRedirect origin="https://connect.crewbarn.com" />} />
+              <Route path="/tool-shed/preferences/video-length" element={<ExternalAppRedirect origin="https://connect.crewbarn.com" />} />
+              <Route path="/tool-shed/preferences/auto-check-in" element={<ExternalAppRedirect origin="https://connect.crewbarn.com" />} />
+              <Route path="/tool-shed/service-agreements" element={<ExternalAppRedirect origin="https://connect.crewbarn.com" />} />
+              <Route path="/tool-shed/ai" element={<ExternalAppRedirect origin="https://connect.crewbarn.com" />} />
+              <Route path="/onboarding" element={<ExternalAppRedirect origin="https://connect.crewbarn.com" />} />
+              <Route path="/tool-shed/:slug" element={<ExternalAppRedirect origin="https://connect.crewbarn.com" />} />
+              <Route path="/company-assets" element={<ExternalAppRedirect origin="https://connect.crewbarn.com" />} />
+              <Route path="/asset-access-requests" element={<ExternalAppRedirect origin="https://connect.crewbarn.com" />} />
+              <Route path="/asset-types" element={<ExternalAppRedirect origin="https://connect.crewbarn.com" />} />
+              <Route path="/vendors" element={<ExternalAppRedirect origin="https://connect.crewbarn.com" />} />
+              <Route path="/settings/inventory" element={<ExternalAppRedirect origin="https://connect.crewbarn.com" />} />
+              <Route path="/settings/communication" element={<ExternalAppRedirect origin="https://connect.crewbarn.com" />} />
+              <Route path="/settings/integrations" element={<ExternalAppRedirect origin="https://connect.crewbarn.com" />} />
+              <Route path="/settings/warranty" element={<ExternalAppRedirect origin="https://connect.crewbarn.com" />} />
+              <Route path="/settings/ai" element={<ExternalAppRedirect origin="https://connect.crewbarn.com" />} />
+              <Route path="/custom-documents" element={<ExternalAppRedirect origin="https://connect.crewbarn.com" />} />
+              <Route path="/custom-documents/new-form" element={<ExternalAppRedirect origin="https://connect.crewbarn.com" />} />
+              <Route path="/custom-documents/:tab/:id" element={<ExternalAppRedirect origin="https://connect.crewbarn.com" />} />
+              <Route path="/tool-shed/roles" element={<ExternalAppRedirect origin="https://connect.crewbarn.com" />} />
+              <Route path="/tool-shed/staff" element={<ExternalAppRedirect origin="https://connect.crewbarn.com" />} />
+              <Route path="/tool-shed/hiring" element={<ExternalAppRedirect origin="https://connect.crewbarn.com" />} />
+              <Route path="/catalog/tax-classes" element={<ExternalAppRedirect origin="https://connect.crewbarn.com" />} />
+              <Route path="/tool-shed/payment-terms" element={<ExternalAppRedirect origin="https://connect.crewbarn.com" />} />
+              <Route path="/tool-shed/import" element={<ExternalAppRedirect origin="https://connect.crewbarn.com" />} />
+              <Route path="/catalog/services" element={<ExternalAppRedirect origin="https://connect.crewbarn.com" />} />
+              <Route path="/catalog/products" element={<ExternalAppRedirect origin="https://connect.crewbarn.com" />} />
+              <Route path="/catalog/categories" element={<ExternalAppRedirect origin="https://connect.crewbarn.com" />} />
+              <Route path="/reference-cards" element={<ExternalAppRedirect origin="https://connect.crewbarn.com" />} />
+              <Route path="/catalog/product-categories" element={<ExternalAppRedirect origin="https://connect.crewbarn.com" />} />
 
             {/* Catch-all: redirect unmatched routes to dashboard */}
             <Route path="*" element={<Navigate to="/" replace />} />
@@ -484,3 +569,4 @@ createRoot(document.getElementById('root')!).render(
     </ErrorBoundary>
   </StrictMode>
 )
+}

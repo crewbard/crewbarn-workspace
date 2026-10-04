@@ -7,6 +7,7 @@ import {
   useDeleteCatalogItem,
 } from "@/hooks/useCatalogItems"
 import { useProductCatalogCategories } from "@/hooks/useProductCatalogCategories"
+import { leaveOnEscape, useSearchShortcut } from "@/hooks/useSearchShortcut"
 import { useTaxClasses } from "@/hooks/useTaxClasses"
 import { useAllInventoryBins } from "@/hooks/useInventoryBins"
 import { useStockLevels } from "@/hooks/useInventoryStockLevels"
@@ -206,6 +207,9 @@ function PageHeader({
   onNew: () => void
   canEdit: boolean
 }) {
+  // "/" from anywhere on the page jumps here.
+  const searchBox = useSearchShortcut<HTMLInputElement>()
+
   return (
     <div className="space-y-4">
       <div className="flex items-start justify-between gap-6">
@@ -225,13 +229,26 @@ function PageHeader({
           </button>
         )}
       </div>
-      <input
-        type="search"
-        value={search}
-        onChange={(e) => onSearchChange(e.target.value)}
-        placeholder="Search products by name, SKU, or part number..."
-        className="w-full text-sm px-4 py-2.5 border border-slate-200 rounded-md focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500"
-      />
+      <div className="relative">
+        <input
+          ref={searchBox}
+          onKeyDown={leaveOnEscape}
+          type="search"
+          value={search}
+          onChange={(e) => onSearchChange(e.target.value)}
+          placeholder="Search products by name, SKU, or part number..."
+          aria-keyshortcuts="/"
+          className="peer w-full text-sm pl-4 pr-10 py-2.5 border border-slate-200 rounded-md focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500"
+        />
+        {/* The key, where the eye already is. Gone once you are in the box. */}
+        <kbd
+          aria-hidden
+          title="Press / to search"
+          className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 rounded border border-slate-300 bg-slate-50 px-1.5 font-mono text-[11px] leading-5 text-slate-500 peer-focus:hidden"
+        >
+          /
+        </kbd>
+      </div>
     </div>
   )
 }

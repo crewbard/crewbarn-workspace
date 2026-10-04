@@ -1,9 +1,11 @@
 import { useEffect, useState } from 'react'
+import type { ReactNode } from 'react'
 import { useTheme, type AppTheme } from '@/hooks/useTheme'
 import { CHROME_COLORS, chromeHex, isCustomChromeColor } from '@/lib/chromeColors'
 import { ACCENT_COLORS, accentBase } from '@/lib/accentColors'
 import { TEXT_SCALES, UI_FONTS, ensureUiFontLoaded, uiFontStack, type TextScale } from '@/lib/uiFonts'
 import { SettingsSectionNav, settingsSectionFromHash, updateSettingsSectionHash } from '@/components/settings/SettingsSectionNav'
+import { IconLayoutSidebar, IconPalette, IconTypography } from '@tabler/icons-react'
 
 /**
  * Tool Shed → Appearance.
@@ -23,19 +25,27 @@ import { SettingsSectionNav, settingsSectionFromHash, updateSettingsSectionHash 
 type AppearanceSection = 'layout' | 'color' | 'font'
 
 const appearanceSections = [
-  { id: 'layout', label: 'Layout', description: 'Top bar, side bar, or rail', group: 'Workspace' },
-  { id: 'color', label: 'Color', description: 'Brand accent and navigation color', group: 'Branding' },
-  { id: 'font', label: 'Font', description: 'Typeface and text size', group: 'Branding' },
-] satisfies Array<{ id: AppearanceSection; label: string; description: string; group: string }>
+  { id: 'layout', label: 'Layout', description: 'Top bar, side bar, or rail', group: 'Workspace', icon: <IconLayoutSidebar size={18} stroke={1.8} /> },
+  { id: 'color', label: 'Color', description: 'Brand accent and navigation color', group: 'Branding', icon: <IconPalette size={18} stroke={1.8} /> },
+  { id: 'font', label: 'Font', description: 'Typeface and text size', group: 'Branding', icon: <IconTypography size={18} stroke={1.8} /> },
+] satisfies Array<{ id: AppearanceSection; label: string; description: string; group: string; icon: ReactNode }>
 
 interface LayoutOption {
-  value: 'top' | 'side' | 'rail'
+  value: 'top' | 'side' | 'rail' | 'easy-side' | 'easy-top'
   theme: AppTheme
   name: string
   blurb: string
 }
 
 const LAYOUTS: LayoutOption[] = [
+  {
+    value: 'easy-side', theme: 'easy-side', name: 'Easy · Side bar (preview)',
+    blurb: 'Optional Easy foundation with a side menu. Existing working pages are retained while the guided page designs are built.',
+  },
+  {
+    value: 'easy-top', theme: 'easy-top', name: 'Easy · Top bar (preview)',
+    blurb: 'Optional Easy foundation with a top menu. Existing working pages are retained while the guided page designs are built.',
+  },
   {
     value: 'top',
     theme: 'classic',
@@ -75,8 +85,8 @@ export function SettingsAppearancePage() {
   const chrome = chromeHex(chromeColor)
   const customColor = isCustomChromeColor(chromeColor) ? chromeColor : chrome
   const contrastOk = contrastRatio(chrome, '#ffffff') >= 4.5
-  const activeLayout: 'top' | 'side' | 'rail' =
-    theme === 'pro' ? 'side' : theme === 'rail' ? 'rail' : 'top'
+  const activeLayout: LayoutOption['value'] =
+    theme === 'easy-side' || theme === 'easy-top' ? theme : theme === 'pro' ? 'side' : theme === 'rail' ? 'rail' : 'top'
   const [activeSection, setActiveSection] = useState<AppearanceSection>(() => settingsSectionFromHash(appearanceSections, 'layout'))
 
   // Preload the typeface options while the Font section is open so each font
@@ -88,7 +98,7 @@ export function SettingsAppearancePage() {
   function applyLayout(option: LayoutOption) {
     setTheme(option.theme)
     // Sensible defaults per shell; each user's list-view choice is left alone.
-    if (option.value === 'top') {
+    if (option.value === 'top' || option.value === 'easy-top') {
       setDensity('comfortable')
       setPageWidth('centered')
     } else {
@@ -107,7 +117,7 @@ export function SettingsAppearancePage() {
         </p>
       </header>
 
-      <div className="grid items-start gap-6 lg:grid-cols-[250px_minmax(0,1fr)]">
+      <div className="grid items-start gap-6 grid-cols-1">
         <SettingsSectionNav
           active={activeSection}
           items={appearanceSections}
@@ -141,7 +151,7 @@ export function SettingsAppearancePage() {
                         active ? 'border-amber-500 bg-amber-50/60' : 'border-slate-200 bg-white hover:border-slate-300',
                       ].join(' ')}
                     >
-                      <LayoutPreview kind={opt.value} chrome={chrome} />
+                      <LayoutPreview kind={opt.value === 'easy-side' ? 'side' : opt.value === 'easy-top' ? 'top' : opt.value} chrome={chrome} />
                       <div className="mt-3 flex items-center justify-between">
                         <span className="text-sm font-semibold text-navy-900">{opt.name}</span>
                         {active ? (

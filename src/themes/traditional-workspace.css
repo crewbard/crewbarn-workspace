@@ -1,0 +1,285 @@
+/* Work surfaces only: Easy, Connect and portals retain their presentation. */
+[data-traditional-chrome] :where(a, button):focus-visible {
+  outline: 2px solid white;
+  outline-offset: -3px;
+}
+/* The Pro brand must fit a fixed-width sidebar even for long company names. */
+[data-traditional-chrome] [data-sidebar-brand] {
+  height: auto;
+  min-height: 3.5rem;
+  padding-block: 0.75rem;
+}
+[data-traditional-chrome] [data-sidebar-brand] > a {
+  flex-wrap: wrap;
+  min-width: 0;
+}
+[data-traditional-chrome] [data-sidebar-brand] > a > span:last-child {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+[data-traditional-chrome] nav > a > span.flex-1 {
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+/* Rail icon targets grow with the selected reading size, not just pixel labels. */
+nav[data-traditional-chrome] {
+  width: 4.25rem;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+nav[data-traditional-chrome] > button {
+  width: 3.5rem;
+  flex-shrink: 0;
+}
+[data-traditional-subnav] > div:first-child {
+  height: auto;
+  min-height: 2.75rem;
+  flex-wrap: wrap;
+  padding-block: 0.25rem;
+}
+[data-traditional-subnav] :where(a, button):focus-visible {
+  outline: 2px solid var(--accent-500, #e8902c);
+  outline-offset: -2px;
+}
+[data-traditional-subnav] a[aria-current='page'] {
+  background-color: var(--accent-50, #fdf7ee);
+}
+[data-traditional-subnav] > .absolute {
+  max-width: calc(100vw - 3rem);
+}
+[data-traditional-more] {
+  max-height: 65dvh;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+[data-traditional-more] a {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+@media (max-width: 480px) {
+  [data-traditional-more] {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+[data-traditional-workspace] [data-work-table-scroll] {
+  min-width: 0;
+  max-width: 100%;
+  overscroll-behavior-x: contain;
+  border-radius: var(--work-radius);
+}
+[data-traditional-workspace] [data-work-table-scroll] thead {
+  color: #475569;
+  background-color: #f8fafc;
+}
+[data-traditional-workspace] [data-work-table-scroll] th {
+  font-weight: 600;
+}
+/* An inset ring keeps keyboard position visible without replacing status colors. */
+[data-traditional-workspace] [data-work-table-scroll] tbody tr:focus-within {
+  outline: 2px solid var(--accent-500, #e8902c);
+  outline-offset: -2px;
+}
+[data-traditional-workspace] [data-easy-filter-grid] {
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 12rem), 1fr));
+  width: 100%;
+  min-width: 0;
+}
+[data-traditional-workspace] [data-easy-filter-grid] > * {
+  grid-column: auto;
+  min-width: 0;
+}
+[data-traditional-workspace] [data-easy-filter-grid] :where(input, select, button) {
+  min-width: 0;
+  max-width: 100%;
+  border-radius: 0.5rem;
+}
+[data-traditional-workspace] [data-easy-folder-tree] {
+  container: traditional-folder / inline-size;
+  min-width: 0;
+}
+@container traditional-folder (max-width: 48rem) {
+  [data-easy-folder-tree] > div {
+    flex-direction: column;
+  }
+  [data-easy-folder-sidebar] {
+    width: 100%;
+    border-right-width: 0;
+    border-bottom-width: 1px;
+  }
+  [data-easy-folder-sidebar] > ul {
+    max-height: 15rem;
+  }
+}
+
+/* Dialogs retain their existing focus trap, dismissal rules and submit handlers. */
+[data-traditional-workspace] [data-work-dialog] {
+  min-width: 0;
+  max-height: 90dvh;
+  border-radius: var(--work-radius);
+}
+[data-traditional-workspace] [data-work-dialog-header] {
+  flex-shrink: 0;
+  background-color: #f8fafc;
+  border-top-left-radius: inherit;
+  border-top-right-radius: inherit;
+}
+[data-traditional-workspace] [data-work-dialog-header] h2 {
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+[data-traditional-workspace] [data-work-dialog-header] > button {
+  min-width: 2.75rem;
+  min-height: 2.75rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 0.5rem;
+}
+[data-traditional-workspace] [data-work-dialog-body] {
+  min-width: 0;
+  min-height: 0;
+  overscroll-behavior: contain;
+}
+[data-traditional-workspace] [data-work-dialog-footer] :where(button, a) {
+  max-width: 100%;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+/* Folder selection follows the chosen accent without recoloring money statuses. */
+[data-traditional-workspace] [data-easy-view-group] {
+  height: auto;
+  max-width: 100%;
+  flex-wrap: wrap;
+  border-radius: 0.625rem;
+}
+[data-traditional-workspace] [data-easy-view-option] {
+  min-height: 2.25rem;
+  white-space: normal;
+}
+[data-traditional-workspace] [data-easy-folder-choice][aria-pressed='true'],
+[data-traditional-workspace] [data-easy-folder-choice][aria-expanded='true'] {
+  background-color: var(--accent-50, #fdf7ee);
+  color: var(--accent-900, #78350f);
+}
+[data-traditional-workspace] [data-easy-folder-choice]:focus-visible {
+  outline-offset: -3px;
+}
+/* Place the ring inside the folder face so horizontal scrollers cannot clip it. */
+[data-traditional-workspace] [data-easy-folder-tab]:focus-visible {
+  outline: none;
+}
+[data-traditional-workspace] [data-easy-folder-tab]:focus-visible > span:last-child {
+  outline: 2px solid var(--accent-500, #e8902c);
+  outline-offset: -3px;
+}
+[data-traditional-workspace] [data-easy-folder-heading] {
+  flex-wrap: wrap;
+}
+[data-traditional-workspace] [data-easy-folder-heading] > :first-child {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+[data-traditional-workspace] [data-easy-folder-money] > div {
+  min-width: min(100%, 9.375rem);
+  overflow-wrap: anywhere;
+}
+
+/* Dashboard toolbar wraps independently of saved card sizes and drag ordering. */
+[data-traditional-workspace] [data-easy-board-controls],
+[data-traditional-workspace] [data-easy-period-controls],
+[data-traditional-workspace] [data-tour='dash-range'] {
+  flex-wrap: wrap;
+  min-width: 0;
+  max-width: 100%;
+}
+[data-traditional-workspace] [data-easy-widget-grid] > div {
+  min-width: 0;
+}
+[data-traditional-workspace] [data-tour='dash-stats'] {
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 12rem), 1fr));
+}
+@media (prefers-reduced-motion: reduce) {
+  [data-traditional-workspace] [data-easy-folder-tab] > span {
+    transition: none;
+    transform: none;
+    translate: none;
+  }
+  [data-traditional-workspace] [data-easy-view-option],
+  [data-traditional-workspace] [data-workflow-tabs] > button {
+    transition: none;
+  }
+}
+[data-traditional-workspace] {
+  min-width: 0;
+  --work-radius: 0.75rem;
+  --work-shadow: 0 2px 8px rgb(15 23 42 / 4%);
+}
+[data-traditional-workspace='pro'] {
+  --work-radius: 0.875rem;
+  --work-shadow: 0 3px 12px rgb(15 23 42 / 5%);
+}
+[data-traditional-workspace='rail'] { --work-radius: 0.625rem; }
+[data-traditional-workspace] :where(section, article, div).bg-white.border.rounded-lg,
+[data-traditional-workspace] :where(section, article, div).bg-white.border.rounded-xl {
+  border-radius: var(--work-radius);
+  box-shadow: var(--work-shadow);
+}
+[data-traditional-workspace] input[type='search'] {
+  border-radius: 0.625rem;
+  background-color: #f8fafc;
+}
+[data-traditional-workspace] :where(button, a, input, select, textarea):focus-visible {
+  outline: 2px solid var(--accent-500, #e8902c);
+  outline-offset: 2px;
+}
+[data-traditional-workspace] [data-workflow-tabs] {
+  flex-wrap: wrap;
+  gap: 0.375rem;
+  padding-block: 0.25rem;
+}
+[data-traditional-workspace] [data-workflow-tabs] > button {
+  min-height: 2.75rem;
+  border-radius: 0.5rem 0.5rem 0 0;
+}
+[data-traditional-workspace] [data-workflow-tabs] > button[aria-pressed='true'] {
+  background-color: var(--accent-50, #fdf7ee);
+  color: var(--accent-900, #78350f);
+  border-bottom-color: var(--accent-500, #e8902c);
+}
+[data-traditional-workspace] [data-workflow-tabs] > button[aria-pressed='true'] > span { color: inherit; }
+
+/* Shared hooks carry no behavior. Keep compact layouts while allowing wrap. */
+[data-traditional-workspace] [data-easy-list-toolbar] {
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  min-width: 0;
+}
+[data-traditional-workspace] [data-easy-list-toolbar] > * {
+  min-width: 0;
+  max-width: 100%;
+}
+[data-traditional-workspace] [data-easy-list-toolbar] > input,
+[data-traditional-workspace] [data-easy-list-toolbar] > .flex-1 {
+  flex-basis: 16rem;
+}
+[data-traditional-workspace] [data-easy-list-toolbar] .inline-flex {
+  flex-wrap: wrap;
+}
+[data-traditional-workspace] [data-easy-list-toolbar] :where(select, input:not([type='checkbox']):not([type='radio'])) {
+  max-width: 100%;
+  border-radius: 0.5rem;
+}
+[data-traditional-workspace] [data-easy-pager] {
+  row-gap: 0.75rem;
+}
+[data-traditional-workspace] [data-easy-pager] > div:last-child {
+  flex-wrap: wrap;
+}
+[data-traditional-workspace] [data-easy-pager] button {
+  border-radius: 0.5rem;
+}
+[data-traditional-workspace] [data-easy-pager] button:not(:disabled):hover {
+  border-color: var(--accent-500, #e8902c);
+  background-color: var(--accent-50, #fdf7ee);
+}

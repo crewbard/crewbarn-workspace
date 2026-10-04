@@ -67,6 +67,11 @@ export const NAV_CATEGORIES: NavCategory[] = [
         items: [
           { to: '/jobs', label: 'Jobs', requires: PERM.JOBS_VIEW, badge: 'jobs' },
           { to: '/estimates', label: 'Estimates', requires: PERM.JOBS_VIEW },
+          // Next to Estimates because it is the same kind of thing: a
+          // promise of work that turns into jobs. The pages and the API
+          // shipped before this line existed, so the only way in was to
+          // type the URL.
+          { to: '/maintenance-contracts', label: 'Contracts', requires: 'contracts.view' },
           { to: '/tasks', label: 'Tasks', requires: PERM.TASKS_VIEW },
           { to: '/sub-reviews', label: 'Sub reviews', badge: 'subReviews' },
           { to: '/inbound-sub-jobs', label: 'Inbound sub jobs', badge: 'inbound' },
@@ -148,6 +153,7 @@ export const NAV_CATEGORIES: NavCategory[] = [
         items: [
           { to: '/tool-shed/company-files', label: 'Company files' },
           { to: '/custom-documents', label: 'Custom documents', requires: PERM.TEMPLATES_VIEW },
+          { to: '/reference-cards', label: 'Reference cards', requires: PERM.CATALOG_VIEW },
           { to: '/tool-shed/import', label: 'Import', requires: PERM.SETTINGS_VIEW },
           { to: '/tool-shed/data-export', label: 'Data export', requires: PERM.SETTINGS_VIEW },
         ],
@@ -184,7 +190,7 @@ export const NAV_CATEGORIES: NavCategory[] = [
           // The Tool Shed keeps its own index — forty-odd settings pages do not
           // belong flattened into a flyout, and it is already organised.
           { to: '/tool-shed', label: 'All settings', end: true, requires: PERM.SETTINGS_VIEW },
-          { to: '/tool-shed/company-info', label: 'Company info', requires: PERM.SETTINGS_VIEW },
+          { to: '/tool-shed/company-info', label: 'Company info', requires: 'settings_company.view' },
           { to: '/tool-shed/integrations', label: 'Integrations', requires: PERM.SETTINGS_VIEW },
           { to: '/me/account', label: 'My account' },
         ],

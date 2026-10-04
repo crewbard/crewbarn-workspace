@@ -1,4 +1,5 @@
-import { useMemo } from 'react'
+import { useMemo, useState } from 'react'
+import { useTheme } from '@/hooks/useTheme'
 import { useQuery } from '@tanstack/react-query'
 import { apiRequest } from '@/lib/api'
 import type {
@@ -48,6 +49,10 @@ function fmt(iso: string | null | undefined): string {
 }
 
 export function WorkOrderHistoryPanel({ wo }: { wo: WorkOrder }) {
+  const { theme } = useTheme()
+  const easy = theme === 'easy-side' || theme === 'easy-top'
+  const [filter, setFilter] = useState('all')
+  const [search, setSearch] = useState('')
   const visitsQ = useQuery({
     queryKey: ['wo-visits', wo.id],
     queryFn: () => apiRequest<{ data: WorkOrderVisit[] }>(`/v1/work-orders/${wo.id}/visits`),
@@ -190,6 +195,22 @@ export function WorkOrderHistoryPanel({ wo }: { wo: WorkOrder }) {
     return out.sort((a, b) => new Date(b.at).getTime() - new Date(a.at).getTime())
   }, [wo, visitsQ.data, sigsQ.data, extQ.data, attachQ.data])
 
+  const sources = [visitsQ, sigsQ, extQ, attachQ]
+  const loading = sources.some(query => query.isLoading)
+  const failed = sources.filter(query => query.isError)
+  const filters = [
+    { key: 'all', label: 'All activity', kinds: [] },
+    { key: 'work', label: 'Job & visits', kinds: ['created', 'status-first', 'on-site', 'completed', 'check-in', 'check-out'] },
+    { key: 'signature', label: 'Signatures', kinds: ['signature'] },
+    { key: 'billing', label: 'Billing approvals', kinds: ['nte-requested', 'nte-reviewed'] },
+    { key: 'attachment', label: 'Files', kinds: ['attachment'] },
+  ]
+  const selected = filters.find(item => item.key === filter) ?? filters[0]
+  const visibleEntries = easy ? entries.filter(entry =>
+    (filter === 'all' || selected.kinds.includes(entry.kind)) &&
+    [entry.title, entry.detail, entry.meta].filter(Boolean).join(' ').toLowerCase().includes(search.trim().toLowerCase())
+  ) : entries
+
   return (
     <section className="bg-white border border-slate-200 rounded-xl p-5">
       <h3 className="text-sm font-semibold text-slate-700 uppercase tracking-wider mb-1">
@@ -201,23 +222,40 @@ export function WorkOrderHistoryPanel({ wo }: { wo: WorkOrder }) {
         edit audit log is on the roadmap.
       </p>
 
-      {entries.length === 0 && (
+      {easy && <div className="mb-4 space-y-3">
+        <div role="group" aria-label="Filter job history" className="flex flex-wrap gap-2">
+          {filters.map(item => <button type="button" key={item.key} aria-pressed={filter === item.key}
+            onClick={() => setFilter(item.key)}
+            className={`rounded-full border px-3 py-2 text-sm ${filter === item.key ? 'border-slate-900 bg-slate-900 text-white' : 'border-slate-200 text-slate-700 hover:bg-slate-50'}`}>{item.label}</button>)}
+        </div>
+        <input type="search" aria-label="Search loaded job history" placeholder="Search loaded activity…" value={search}
+          onChange={event => setSearch(event.target.value)} className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" />
+        <p className="text-xs text-slate-500">Showing {visibleEntries.length} of {entries.length} loaded events.</p>
+      </div>}
+      {loading && <p role="status" className="mb-3 text-sm text-slate-500">Loading job history…</p>}
+      {failed.length > 0 && <div role="alert" className="mb-4 rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">
+        Some history could not be loaded. Events below may be incomplete.
+        <button type="button" disabled={failed.some(query => query.isFetching)} onClick={() => { for (const query of failed) void query.refetch() }}
+          className="ml-2 font-semibold underline disabled:opacity-50">Retry</button>
+      </div>}
+      {!loading && !failed.length && entries.length === 0 && (
         <p className="text-sm text-slate-500 italic">No activity yet.</p>
       )}
 
       <ol className="space-y-3">
-        {entries.map((e, i) => (
+        {easy && entries.length > 0 && visibleEntries.length === 0 && <li className="text-sm text-slate-500">No loaded activity matches these filters.</li>}
+        {visibleEntries.map((e, i) => (
           <li
             key={`${e.kind}-${i}`}
             className={`pl-4 border-l-4 ${e.color ?? 'border-l-slate-200'}`}
           >
-            <div className="flex items-baseline gap-2">
+            <div className="flex flex-wrap items-baseline gap-2">
               <span className="text-base leading-none">{e.icon}</span>
               <span className="text-sm font-medium text-slate-900">{e.title}</span>
               {e.meta && <span className="text-[11px] text-slate-500">· {e.meta}</span>}
             </div>
             {e.detail && (
-              <p className="text-xs text-slate-600 mt-1 whitespace-pre-wrap">{e.detail}</p>
+              <p className="text-xs text-slate-600 mt-1 whitespace-pre-wrap break-words">{e.detail}</p>
             )}
             <p className="text-[11px] text-slate-400 mt-1">{fmt(e.at)}</p>
           </li>

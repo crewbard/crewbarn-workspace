@@ -10,6 +10,7 @@ import { useAuth } from '@/hooks/useAuth'
 import { MarkerClusterer } from '@googlemaps/markerclusterer'
 import { toHexColor } from '@/lib/statusColor'
 import { JobTypeChip } from '@/components/JobTypeChip'
+import { Modal } from '@/components/ui/Modal'
 import { IncomingRequestsPanel } from '@/components/dispatch/IncomingRequestsPanel'
 import { IncomingEstimateRequestsPanel } from '@/components/dispatch/IncomingEstimateRequestsPanel'
 
@@ -436,6 +437,8 @@ export function DispatchPage() {
         <button
           type="button"
           onClick={() => setMobileView('roster')}
+          aria-pressed={mobileView === 'roster'}
+          data-easy-view-option
           className={`flex-1 py-2.5 text-sm font-medium border-b-2 ${
             mobileView === 'roster'
               ? 'border-amber-500 text-navy-900'
@@ -447,6 +450,8 @@ export function DispatchPage() {
         <button
           type="button"
           onClick={() => setMobileView('map')}
+          aria-pressed={mobileView === 'map'}
+          data-easy-view-option
           className={`flex-1 py-2.5 text-sm font-medium border-b-2 ${
             mobileView === 'map'
               ? 'border-amber-500 text-navy-900'
@@ -504,7 +509,8 @@ export function DispatchPage() {
               Technicians ({techs.length})
             </div>
             {board.isLoading && <p className="text-xs text-slate-400 italic">Loading…</p>}
-            {!board.isLoading && techs.length === 0 && (
+            {board.isError && <p role="alert" className="text-xs text-rose-700">Dispatch data unavailable. <button type="button" onClick={() => board.refetch()} className="underline">Try again</button></p>}
+            {board.isSuccess && techs.length === 0 && (
               <p className="text-xs text-slate-400 italic">No staff accounts found.</p>
             )}
             <ul className="space-y-1.5">
@@ -517,6 +523,15 @@ export function DispatchPage() {
                   <li
                     key={t.id}
                     onClick={() => focusOnTech(t.id)}
+                    role="button"
+                    tabIndex={0}
+                    aria-label={`Locate technician on map: ${t.name}`}
+                    onKeyDown={(event) => {
+                      if (event.key === 'Enter' || event.key === ' ') {
+                        event.preventDefault()
+                        focusOnTech(t.id)
+                      }
+                    }}
                     onContextMenu={(e) => {
                       e.preventDefault()
                       setPingMenu({ x: e.clientX, y: e.clientY, tech: t })
@@ -577,13 +592,13 @@ export function DispatchPage() {
           {/* Unassigned jobs */}
           <section className="px-4 py-3 border-t border-slate-100">
             <div className="text-[10px] uppercase tracking-wide text-slate-500 font-semibold mb-2">
-              Unassigned today ({unassigned.length})
+              Unassigned today ({board.isSuccess ? unassigned.length : '—'})
             </div>
-            {unassigned.length === 0 && (
+            {board.isSuccess && unassigned.length === 0 && (
               <p className="text-xs text-slate-400 italic">Every job today has a tech. 🎉</p>
             )}
             <ul className="space-y-1.5">
-              {unassigned.map((j) =>
+              {board.isSuccess && unassigned.map((j) =>
                 j.kind === 'estimate' ? (
                   // Assessments assign a tech on the estimate itself — the
                   // suggest-tech modal is work-order-only, so route there.
@@ -901,31 +916,15 @@ export function SuggestTechModal({
   }
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4" onClick={onClose}>
-      <div
-        className="bg-white rounded-xl shadow-2xl w-full max-w-md max-h-[85vh] flex flex-col"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="px-5 py-3 border-b border-slate-200 flex items-baseline justify-between gap-3">
-          <div className="min-w-0">
-            <h2 className="text-base font-semibold text-navy-900 truncate">
-              Suggest a tech
-            </h2>
-            <p className="text-[11px] text-slate-500 truncate">
-              {wo
-                ? `${wo.title || `WO ${wo.display_number ?? ''}`}${wo.address ? ` · ${wo.address}` : ''}`
-                : 'Loading…'}
-            </p>
-          </div>
-          <button onClick={onClose} className="text-slate-400 hover:text-slate-700 text-lg shrink-0">
-            ✕
-          </button>
-        </div>
-
-        <div className="px-5 py-3 overflow-y-auto">
+    <Modal isOpen onClose={onClose} title="Suggest a tech" size="sm"
+      subtitle={wo ? `${wo.title || `WO ${wo.display_number ?? ''}`}${wo.address ? ` · ${wo.address}` : ''}` : 'Loading…'}>
+        <Modal.Body>
           {suggest.isLoading && <p className="text-sm text-slate-500">Ranking technicians…</p>}
           {suggest.isError && (
-            <p className="text-sm text-red-700">{(suggest.error as Error).message}</p>
+            <div role="alert" className="text-sm text-red-700">
+              Could not load technician suggestions.
+              <button type="button" onClick={() => { void suggest.refetch() }} disabled={suggest.isFetching} className="ml-2 underline disabled:opacity-50">Retry</button>
+            </div>
           )}
 
           {wo && !wo.has_location && (
@@ -935,12 +934,12 @@ export function SuggestTechModal({
             </div>
           )}
 
-          {!suggest.isLoading && suggestions.length === 0 && (
+          {suggest.isSuccess && suggestions.length === 0 && (
             <p className="text-sm text-slate-500 italic">No technicians on the roster.</p>
           )}
 
           <ul className="space-y-1.5">
-            {ranked.map((s, i) => (
+            {suggest.isSuccess && ranked.map((s, i) => (
               <li
                 key={s.account_id}
                 className={[
@@ -993,11 +992,11 @@ export function SuggestTechModal({
           </ul>
 
           {assign.isError && (
-            <p className="text-xs text-red-700 mt-2">{(assign.error as Error).message}</p>
+            <p role="alert" className="text-xs text-red-700 mt-2">{(assign.error as Error).message}</p>
           )}
-        </div>
+        </Modal.Body>
 
-        <div className="px-5 py-2.5 border-t border-slate-200 bg-slate-50 rounded-b-xl flex items-center justify-between">
+        <Modal.Footer className="justify-between">
           <span className="text-[11px] text-slate-500">
             Ranked by distance + availability
           </span>
@@ -1007,9 +1006,8 @@ export function SuggestTechModal({
           >
             Open job →
           </Link>
-        </div>
-      </div>
-    </div>
+        </Modal.Footer>
+    </Modal>
   )
 }
 

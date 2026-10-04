@@ -1,0 +1,43 @@
+/* Presentation only. Keep all inbox controls, handlers and thread components.
+   Scope to this page, not the theme on html: Connect and portals are unaffected. */
+[data-easy-comms] {
+  background: #f1f5f9;
+  padding: 12px;
+}
+[data-easy-comms] > .grid {
+  gap: 12px;
+}
+[data-easy-comms] > .grid > aside,
+[data-easy-comms] > .grid > main {
+  border: 1px solid #e2e8f0;
+  border-radius: 16px;
+  background: white;
+  /* Do not clip menus, date pickers, customer/job selectors or focus rings. */
+  box-shadow: 0 2px 8px rgb(15 23 42 / 4%);
+}
+[data-easy-comms] > .grid > aside > :first-child {
+  border-radius: 16px 16px 0 0;
+  padding: 16px;
+}
+[data-easy-comms] input[type='search'] {
+  border-radius: 10px;
+  min-height: 42px;
+  background: #f8fafc;
+}
+[data-easy-comms] button:focus-visible,
+[data-easy-comms] a:focus-visible {
+  outline: 2px solid var(--accent-500, #e8902c);
+  outline-offset: 2px;
+}
+[data-easy-comms] > .grid > aside:first-child button {
+  min-height: 40px;
+  border-radius: 10px;
+}
+@media (min-width: 1024px) {
+  [data-easy-comms] > .grid {
+    grid-template-columns: 13rem minmax(17rem, 22rem) minmax(0, 1fr);
+  }
+}
+@media (max-width: 639px) {
+  [data-easy-comms] { padding: 6px; }
+}

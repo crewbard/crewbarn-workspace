@@ -69,11 +69,14 @@ export interface PublicScanRequiredFormSummary {
   export_formats: string[]
 }
 export interface PublicScanReportHistorySummary {
-  estimate_count: number
-  work_order_count: number
+  // No estimate or work-order counts: they are commercial facts, and a
+  // public asset record says what was done to the thing, not what anybody
+  // was quoted. See PublicScanResource and NoMoneyTest.
   inventory_count: number
   inspection_count: number
-  total_events: number
+  /** Public service-log entries. A visit is history too. */
+  service_count?: number
+  event_count: number
   recent_events?: PublicScanReportHistoryEvent[]
 }
 
@@ -112,6 +115,8 @@ export interface ScanChildEntry {
   is_secured: boolean
   /** Only present when type=asset */
   asset_type_name?: string | null
+  /** The number the building itself uses: FD-201, RTU-3. */
+  tag?: string | null
   /** Asset location inside the public tree, e.g. Building A > Floor 1. */
   path?: string[]
   /** Only present on public, non-secured asset entries. */
@@ -120,6 +125,10 @@ export interface ScanChildEntry {
   counts?: {
     child_groups: number
     assets: number
+    /** Serviced in the last few months. */
+    serviced?: number
+    /** Something urgent still open, or an inspection already past due. */
+    attention?: number
   }
   /** Public QR-safe documents visible without secured access. */
   documents?: PublicScanDocumentSummary[]
@@ -127,6 +136,18 @@ export interface ScanChildEntry {
   photos?: PublicScanPhotoSummary[]
   /** Public QR-safe report readiness summary. */
   report?: PublicScanReportSummary
+  /**
+   * Only on the asset that was actually scanned.
+   *
+   * The tree carries identity and enough to navigate; loading every
+   * item's service history to draw a list of names would be one query
+   * per row on a page anybody can reach with a phone camera.
+   */
+  service_log?: PublicServiceLogEntry[]
+  parts?: PublicScanParts
+  coverage?: PublicScanCoverage | null
+  last_serviced_at?: string | null
+  open_priority?: string | null
   /** Only present on nested tree entries returned from an asset scan. */
   children?: ScanChildEntry[]
   /** Who maintains this asset — company, phone, licence. */
@@ -140,6 +161,69 @@ export interface PublicScanPhysical {
   model: string | null
   serial_number: string | null
   install_date: string | null  // ISO date YYYY-MM-DD
+}
+
+/**
+ * One thing that was done, as a stranger may read it.
+ *
+ * The server builds this field by field — it is never a model serialised
+ * whole. Nothing here is money, a job number or a customer's name, and the
+ * tech is a first name and an initial.
+ */
+export interface PublicServiceLogEntry {
+  /** "Oct 14, 2026", already in the property's own timezone. */
+  date: string | null
+  /** The same day as YYYY-MM-DD, for grouping a visit without re-parsing. */
+  date_key: string | null
+  time: string | null
+  /** Work done, Part replaced, Part needed, Something found, Could not service. */
+  kind: string
+  summary: string | null
+  result: string | null
+  /** "Marcus W." */
+  by: string | null
+  company: string | null
+  part?: {
+    name: string
+    quantity: string | null
+    unit: string | null
+    removed: string | null
+  }
+  /** Where a needed part has got to. Never says it was quoted. */
+  need?: string
+  priority?: string
+  priority_word?: string
+  skipped_because?: string
+  /** Only the photos a tech ticked to share. */
+  photos?: PublicServicePhoto[]
+}
+
+export interface PublicServicePhoto {
+  url: string
+  thumb_url: string | null
+  /** 'before' | 'after' | null — the pair is the point. */
+  phase: string | null
+}
+
+/** What went on, and what is still waiting. Names and dates, never prices. */
+export interface PublicScanParts {
+  replaced: { name: string; on: string | null }[]
+  needed: { name: string; state: string; priority: string | null }[]
+}
+
+/**
+ * On a service plan.
+ *
+ * The plan's rhythm and the next visit, so somebody standing in front of
+ * the equipment knows it is looked after. Never the fee: what the customer
+ * pays is between them and their shop.
+ */
+export interface PublicScanCoverage {
+  service: string | null
+  /** "Every 3 months" */
+  how_often: string | null
+  /** "Jan 14, 2027" */
+  next_visit: string | null
 }
 
 export interface PublicScanAssetSecured {
@@ -156,6 +240,8 @@ export interface PublicScanAssetOpen {
   code: string | null
   is_secured: false
   asset_type_name?: string | null
+  /** The number the building itself uses: FD-201, RTU-3. */
+  tag?: string | null
   physical: PublicScanPhysical
   breadcrumb?: ScanBreadcrumbStep[]
   selected_asset_id?: string
@@ -163,6 +249,13 @@ export interface PublicScanAssetOpen {
   documents?: PublicScanDocumentSummary[]
   photos?: PublicScanPhotoSummary[]
   report?: PublicScanReportSummary
+  /** What was done to it, newest first. Empty when the owner hides it. */
+  service_log?: PublicServiceLogEntry[]
+  parts?: PublicScanParts
+  coverage?: PublicScanCoverage | null
+  last_serviced_at?: string | null
+  /** The worst open flag on this thing: critical, high, medium, low. */
+  open_priority?: string | null
   /** Who maintains this asset — company, phone, licence. */
   servicer?: PublicScanServicer | null
 }

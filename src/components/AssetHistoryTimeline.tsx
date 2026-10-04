@@ -41,9 +41,9 @@ export function AssetHistoryTimeline({ assetId }: { assetId: string }) {
   if (!events || events.length === 0) {
     return (
       <div className="text-sm text-slate-500 italic px-2 py-4 text-center">
-        No history yet. Quotes and work orders that reference this asset,
-        plus components installed via the inventory bridge, will appear
-        here as they happen.
+        No history yet. Quotes and jobs that reference this item, parts
+        installed against it, and anything a tech logs or notes on site
+        will appear here as it happens.
       </div>
     )
   }
@@ -57,6 +57,25 @@ export function AssetHistoryTimeline({ assetId }: { assetId: string }) {
       ))}
     </ul>
   )
+}
+
+/** One glyph per kind, so the column reads without being read. */
+const LOG_ICONS: Record<string, string> = {
+  note: '📝',
+  work: '🔧',
+  part_replaced: '✅',
+  part_needed: '📦',
+  finding: '⚠️',
+  skipped: '⏭️',
+}
+
+const LOG_LABELS: Record<string, string> = {
+  note: 'Note',
+  work: 'Work done',
+  part_replaced: 'Part fitted',
+  part_needed: 'Part needed',
+  finding: 'Fault raised',
+  skipped: 'Skipped',
 }
 
 function EventRow({ event }: { event: AssetHistoryEvent }) {
@@ -83,6 +102,56 @@ function EventRow({ event }: { event: AssetHistoryEvent }) {
           {event.description && event.description !== verb + ' component' && (
             <div className="text-xs text-slate-500 mt-0.5">{event.description}</div>
           )}
+        </div>
+        <div className="text-xs text-slate-500 flex-shrink-0">{dateLabel}</div>
+      </div>
+    )
+  }
+
+  if (event.type === 'service_log') {
+    /*
+     * A note reads differently from the rest and should look it. The
+     * others are an account of work; a note is somebody telling the next
+     * person something, and burying it among line items is how it stops
+     * being read.
+     */
+    const isNote = event.kind === 'note'
+    const parent = event.parent
+    return (
+      <div className={'flex items-start gap-3 px-3 py-2.5' + (isNote ? ' bg-amber-50/60' : '')}>
+        <div className="text-xl flex-shrink-0">{LOG_ICONS[event.kind] ?? '📝'}</div>
+        <div className="min-w-0 flex-1">
+          <div className="text-sm text-slate-900">{event.description}</div>
+          {event.details && (
+            <div className="text-xs text-slate-600 mt-0.5 whitespace-pre-wrap">{event.details}</div>
+          )}
+          <div className="text-xs text-slate-500 mt-0.5 flex items-center gap-2 flex-wrap">
+            <span>{LOG_LABELS[event.kind] ?? event.kind}</span>
+            {event.part_name && (
+              <>
+                <span className="text-slate-300">·</span>
+                <span>{event.part_name}</span>
+              </>
+            )}
+            {/*
+              Said plainly, because the person reading this is deciding
+              whether the customer has seen it too.
+            */}
+            {event.visibility === 'internal' && (
+              <>
+                <span className="text-slate-300">·</span>
+                <span className="text-slate-500">Not shown to the customer</span>
+              </>
+            )}
+            {parent && (
+              <>
+                <span className="text-slate-300">·</span>
+                <Link to={`/jobs/${parent.id}`} className="text-amber-700 hover:underline">
+                  Job {parent.display_number ?? parent.number}
+                </Link>
+              </>
+            )}
+          </div>
         </div>
         <div className="text-xs text-slate-500 flex-shrink-0">{dateLabel}</div>
       </div>

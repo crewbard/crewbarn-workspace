@@ -35,7 +35,12 @@ interface Visit {
   check_in_at: string | null
   check_out_at: string | null
   auto_checked_in: boolean | null
-  tech?: { name: string | null; email: string | null } | null
+  /*
+   * display_name, not name. accounts has no name column — a person's
+   * name is on tenant_admin_accounts — so `name` was always undefined
+   * and every visit fell through to the email or the word "Tech".
+   */
+  tech?: { display_name: string | null; email: string | null } | null
 }
 
 type Row =
@@ -198,7 +203,7 @@ export function WorkOrderStatusHistory({
                   </div>
                   <div className="mt-0.5 flex items-center flex-wrap gap-x-2 text-[11px] text-slate-500">
                     <span className="font-medium text-slate-700">
-                      {row.v.tech?.name ?? row.v.tech?.email ?? 'Tech'}
+                      {row.v.tech?.display_name ?? row.v.tech?.email ?? 'Tech'}
                     </span>
                     <span>·</span>
                     <span>{row.v.auto_checked_in ? 'auto GPS check-in' : 'manual check-in'}</span>

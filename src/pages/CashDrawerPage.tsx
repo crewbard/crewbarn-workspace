@@ -5,6 +5,9 @@ import { apiRequest } from '@/lib/api'
 import { useInvoices } from '@/hooks/useInvoices'
 import { MiniBarChart } from '@/components/dashboard/MiniBarChart'
 import { paymentMethodLabel } from '@/lib/paymentMethod'
+import { useTheme } from '@/hooks/useTheme'
+import { EasyPageHeading } from '@/components/easy/EasyPageHeading'
+import { EasyCashCount } from '@/components/easy/EasyCashCount'
 
 /**
  * Cash drawer — queue of tech-collected payments waiting for a
@@ -83,6 +86,12 @@ function SummaryCard({ label, children }: { label: string; children: React.React
   )
 }
 
+function QueryRead({ query, children }: { query: { isPending: boolean; isError: boolean; refetch: () => unknown }; children: React.ReactNode }) {
+  if (query.isError) return <div role="alert" className="text-sm text-rose-700">Unavailable. <button type="button" onClick={() => query.refetch()} className="underline">Retry</button></div>
+  if (query.isPending) return <p role="status" className="text-sm text-slate-500">Loading…</p>
+  return <>{children}</>
+}
+
 // AR aging bucket colors: current → 90+ (calm to alarming).
 const AGING_COLORS = ['#3b82f6', '#f59e0b', '#f97316', '#fb7185', '#ef4444']
 interface TechRegisterRow {
@@ -122,6 +131,8 @@ function methodBucket(method: string): 'cash' | 'check' | 'card' | 'other' {
 }
 
 export function CashDrawerPage() {
+  const { theme } = useTheme()
+  const easy = theme === 'easy-side' || theme === 'easy-top'
   const [tab, setTab] = useState<'pending' | 'received' | 'voided' | 'disputed' | 'all'>('pending')
 
   const q = useQuery({
@@ -145,12 +156,6 @@ export function CashDrawerPage() {
 
   const rows = q.data?.data ?? []
   const ledgerRows = allPaymentsQ.data?.data ?? rows
-  const totalPending = useMemo(
-    () => ledgerRows
-      .filter((row) => row.status === 'pending_turnover')
-      .reduce((acc, r) => acc + r.amount_cents, 0),
-    [ledgerRows],
-  )
 
   // Open NET-term balances per lead tech — display only in the register;
   // NET money is invoiced + collected by the office, never drawer-received.
@@ -310,43 +315,53 @@ export function CashDrawerPage() {
 
   return (
     <div className="mx-auto w-full max-w-none px-4 py-4 sm:px-6 sm:py-6 2xl:px-8">
-      <div className="mb-4 sm:mb-6">
+      {easy ? <EasyPageHeading title="Cash drawer" description="Count physical cash, then review the payment turnover below. Confirm only money you have actually received." /> : <div className="mb-4 sm:mb-6">
         <h1 className="text-xl sm:text-2xl font-semibold text-slate-900">Cash drawer</h1>
         <p className="text-sm text-slate-500 mt-1">
           Track cash/checks held by tech, confirm field collections, and audit voided payments.
         </p>
-      </div>
+      </div>}
+
+      {easy && <EasyCashCount />}
 
       {/* Summary cards */}
+      <p className="mb-3 text-xs text-slate-500">Payment and invoice summaries below cover loaded records, not an audited full-ledger balance. Open the reports for complete period review.</p>
       <div className="grid grid-cols-2 lg:grid-cols-5 gap-3 mb-6">
         <SummaryCard label="Owed to us">
+          <QueryRead query={invoicesQ}>
           <div className={`text-2xl font-mono font-bold ${summary.owedCents === 0 ? 'text-emerald-600' : 'text-amber-700'}`}>
             ${dollars(summary.owedCents)}
           </div>
           <div className="text-xs text-slate-500 mt-0.5">
             {summary.owedCents === 0
-              ? 'All paid up ✓'
+              ? 'No balance in loaded invoices'
               : `${summary.unpaidCount} unpaid invoice${summary.unpaidCount === 1 ? '' : 's'}`}
           </div>
+          </QueryRead>
         </SummaryCard>
 
         <SummaryCard label="Received">
+          <QueryRead query={receivedQ}>
           <div className="text-2xl font-mono font-bold text-slate-900">${dollars(summary.receivedCents)}</div>
           <div className="text-xs text-slate-500 mt-0.5">
             {summary.lastReceivedAt ? `Last received ${fmtDate(summary.lastReceivedAt)}` : 'None yet'}
           </div>
+          </QueryRead>
         </SummaryCard>
 
         <SummaryCard label="Voided">
+          <QueryRead query={voidedQ}>
           <div className={`text-2xl font-mono font-bold ${summary.voidedCents > 0 ? 'text-rose-600' : 'text-slate-400'}`}>
             ${dollars(summary.voidedCents)}
           </div>
           <div className="text-xs text-slate-500 mt-0.5">
             {summary.voidedCount} payment{summary.voidedCount === 1 ? '' : 's'}
           </div>
+          </QueryRead>
         </SummaryCard>
 
         <SummaryCard label="Invoices">
+          <QueryRead query={invoicesQ}>
           <div className="flex items-baseline gap-4">
             <div>
               <div className="text-2xl font-bold text-amber-700">{summary.unpaidCount}</div>
@@ -360,6 +375,7 @@ export function CashDrawerPage() {
           <Link to="/accounting/invoices" className="text-xs text-amber-700 hover:underline mt-1 inline-block">
             View all →
           </Link>
+          </QueryRead>
         </SummaryCard>
 
         {/* Sales tax — previous month owed; click → full report. */}
@@ -370,11 +386,11 @@ export function CashDrawerPage() {
           <div className="text-[10px] uppercase tracking-wide text-slate-500 font-semibold">
             Sales tax · {lastMonth.label}
           </div>
-          <div className={`text-2xl font-mono font-bold mt-1 ${salesTaxCents > 0 ? 'text-amber-700' : 'text-emerald-600'}`}>
-            ${dollars(salesTaxCents)}
+          <div className="text-2xl font-mono font-bold mt-1 text-slate-900">
+            {salesTaxQ.isError ? 'Unavailable' : salesTaxQ.isPending ? 'Loading…' : '$' + dollars(salesTaxCents)}
           </div>
           <div className="text-xs text-slate-500 mt-0.5">
-            {salesTaxCents > 0 ? 'Owed last month · report →' : 'Nothing owed · report →'}
+            Tax collected last month · review report →
           </div>
         </Link>
       </div>
@@ -385,21 +401,21 @@ export function CashDrawerPage() {
           <div className="text-[10px] uppercase tracking-wide text-slate-500 font-semibold mb-2">
             Receivables aging (days past due)
           </div>
-          {charts.aging.every((a) => a.cents === 0) ? (
-            <div className="text-sm text-slate-400 py-10 text-center">Nothing outstanding ✓</div>
+          <QueryRead query={invoicesQ}>{charts.aging.every((a) => a.cents === 0) ? (
+            <div className="text-sm text-slate-400 py-10 text-center">No outstanding balance in loaded invoices</div>
           ) : (
             <MiniBarChart data={charts.aging} height={160} colorAt={(i) => AGING_COLORS[i] ?? '#94a3b8'} />
-          )}
+          )}</QueryRead>
         </div>
         <div className="bg-white border border-slate-200 rounded-xl p-4">
           <div className="text-[10px] uppercase tracking-wide text-slate-500 font-semibold mb-2">
             Received by payment type
           </div>
-          {charts.methods.length === 0 ? (
+          <QueryRead query={receivedQ}>{charts.methods.length === 0 ? (
             <div className="text-sm text-slate-400 py-10 text-center">No received payments yet</div>
           ) : (
             <MiniBarChart data={charts.methods} height={160} color="#10b981" />
-          )}
+          )}</QueryRead>
         </div>
       </div>
 
@@ -435,16 +451,17 @@ export function CashDrawerPage() {
         </nav>
       </div>
 
-      {tab === 'pending' && rows.length > 0 && (
+      {tab === 'pending' && q.isSuccess && rows.length > 0 && (
         <div className="bg-amber-50 border border-amber-200 rounded-lg px-4 py-3 mb-4 text-sm text-amber-900">
-          <strong>${dollars(totalPending)}</strong> across {rows.length} payment
+          <strong>${dollars(rows.reduce((sum, row) => sum + row.amount_cents, 0))}</strong> across {rows.length} payment
           {rows.length === 1 ? '' : 's'} waiting for turnover.
         </div>
       )}
 
-      <TechRegisterSummary rows={techRegisterRows} />
+      <QueryRead query={allPaymentsQ}><QueryRead query={netBalancesQ}><TechRegisterSummary rows={techRegisterRows} /></QueryRead></QueryRead>
 
       {q.isLoading && <div className="text-sm text-slate-500">Loading…</div>}
+      {q.isError && <div role="alert" className="rounded-lg border border-red-200 bg-red-50 p-4">Payments could not be loaded. <button type="button" className="underline" onClick={() => q.refetch()}>Try again</button></div>}
 
       {q.isSuccess && rows.length === 0 && (
         <div className="bg-white border border-slate-200 rounded-xl p-8 text-center text-sm text-slate-500">
@@ -461,7 +478,7 @@ export function CashDrawerPage() {
       )}
 
       <div className="space-y-3">
-        {rows.map((r) => (
+        {!q.isError && rows.map((r) => (
           <PaymentCard key={r.id} payment={r} />
         ))}
       </div>

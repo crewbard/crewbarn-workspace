@@ -5,6 +5,8 @@ import { useVendors } from '@/hooks/useVendors'
 import { ApiError } from '@/lib/api'
 import { tenantDate, useTenantTimezone } from '@/hooks/useTenantTime'
 import type { PurchaseOrderInput } from '@/types/purchaseOrder'
+import { useTheme } from '@/hooks/useTheme'
+import { EasyPageHeading } from '@/components/easy/EasyPageHeading'
 
 /**
  * Purchase order create — header-only flow. Line items are added on the
@@ -12,6 +14,8 @@ import type { PurchaseOrderInput } from '@/types/purchaseOrder'
  * picked from existing vendors; create-vendor flow lives at /vendors.
  */
 export function PurchaseOrderCreatePage() {
+  const { theme } = useTheme()
+  const easy = theme === 'easy-side' || theme === 'easy-top'
   const navigate = useNavigate()
   const vendorsQuery = useVendors({ active: true, per_page: 200 })
   const createMutation = useCreatePurchaseOrder()
@@ -76,12 +80,12 @@ export function PurchaseOrderCreatePage() {
 
   return (
     <div className="max-w-3xl mx-auto px-6 py-6">
-      <div className="mb-6">
+      {easy ? <EasyPageHeading title="Start a purchase order" description="Choose the vendor and delivery details first. Save the draft, then add its items on the next screen." /> : <div className="mb-6">
         <h1 className="text-2xl font-semibold text-slate-900">New Purchase Order</h1>
         <p className="text-sm text-slate-600 mt-1">
           Create a draft PO. You'll add line items on the next screen.
         </p>
-      </div>
+      </div>}
 
       <form
         onSubmit={handleSubmit}
@@ -90,6 +94,10 @@ export function PurchaseOrderCreatePage() {
         <Field label="Vendor" required error={serverErrors.vendor_id?.[0]}>
           {vendorsQuery.isLoading ? (
             <div className="text-sm text-slate-500">Loading vendors…</div>
+          ) : vendorsQuery.isError ? (
+            <div role="alert" className="text-sm text-red-700">Vendors could not be loaded.
+              <button type="button" disabled={vendorsQuery.isFetching} onClick={() => void vendorsQuery.refetch()} className="ml-2 underline disabled:opacity-50">Retry</button>
+            </div>
           ) : vendors.length === 0 ? (
             <div className="text-sm text-amber-700">
               No vendors yet.{' '}
@@ -105,6 +113,7 @@ export function PurchaseOrderCreatePage() {
           ) : (
             <select
               value={form.vendor_id}
+              aria-label="Vendor"
               onChange={(e) => set('vendor_id', e.target.value)}
               className={inputClass()}
               required

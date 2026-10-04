@@ -1,5 +1,7 @@
 import { useEffect } from 'react'
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { useAuth } from '@/hooks/useAuth'
+import { getRealtimeEcho, resolveTenantId } from '@/lib/realtimeEcho'
 import { apiRequest } from '@/lib/api'
 
 /**
@@ -22,6 +24,8 @@ export interface CustomFieldDef {
   options: Array<{ value: string; label: string }>
   default_value: string | null
   required: boolean
+  required_before_invoice?: boolean
+  customer_ids?: string[]
   placeholder: string | null
   help_text: string | null
   sort_order: number
@@ -49,20 +53,41 @@ export function CustomFieldsSection({
   entityId,
   values,
   onChange,
+  customerIds = [],
+  requirement = 'all',
 }: {
   entityType: 'work_order' | 'customer' | 'asset'
   /** When set, also seed the values from /v1/custom-fields/values for editing existing rows. */
   entityId?: string | null
   values: CustomValues
   onChange: (next: CustomValues) => void
+  customerIds?: Array<string | null | undefined>
+  requirement?: 'all' | 'required' | 'optional'
 }) {
   // Definitions (always fetched). When entityId is set, also fetch
+  const { account } = useAuth()
+  const tenantId = resolveTenantId(account)
+  const queryClient = useQueryClient()
+  useEffect(() => {
+    if (!tenantId) return
+    const echo = getRealtimeEcho(account)
+    if (!echo) return
+    const channel = echo.private(`tenant.${tenantId}.custom-fields`)
+    const changed = () => { void queryClient.invalidateQueries({ queryKey: ['custom-fields'] }) }
+    channel.listen('.custom-fields.changed', changed)
+    return () => { channel.stopListening('.custom-fields.changed', changed) }
+  }, [tenantId, account, queryClient])
   // existing values to pre-populate the form on edit.
   const defs = useQuery({
-    queryKey: ['custom-fields', entityType],
+    queryKey: ['custom-fields', entityType, 'active', [...new Set(customerIds.filter(Boolean))].sort()],
     queryFn: () =>
       apiRequest<{ data: CustomFieldDef[] }>(`/v1/custom-fields?entity_type=${entityType}&active=true`),
-    staleTime: 60_000,
+    // Connect can update definitions on a different origin. Re-fetch only
+    // definitions; parent-owned draft values are never reset by this query.
+    staleTime: 0,
+    refetchOnWindowFocus: 'always',
+    refetchOnMount: 'always',
+    refetchOnReconnect: 'always',
   })
   const existing = useQuery({
     queryKey: ['custom-field-values', entityType, entityId],
@@ -104,7 +129,10 @@ export function CustomFieldsSection({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [existing.data])
 
-  const fields = defs.data?.data ?? []
+  const fields = (defs.data?.data ?? []).filter(field =>
+    (entityType !== 'work_order' || !field.customer_ids?.length || field.customer_ids.some(id => customerIds.includes(id)))
+    && (requirement === 'all' || (requirement === 'required' ? !!(field.required || field.required_before_invoice) : !(field.required || field.required_before_invoice))))
+  if (defs.isError && !defs.data) return <p role="alert" className="p-3 text-sm text-red-700">Custom fields could not be loaded. <button type="button" className="underline" onClick={() => void defs.refetch()}>Retry</button> before relying on this form.</p>
   if (defs.isLoading) {
     return (
       <div className="p-3 text-xs text-slate-500 italic">Loading custom fields…</div>
@@ -120,11 +148,13 @@ export function CustomFieldsSection({
 
   return (
     <div className="space-y-3">
+      {defs.isError && <p role="alert" className="text-sm text-amber-800">Could not check for field changes. Your entries are preserved. <button type="button" className="underline" onClick={() => void defs.refetch()}>Retry</button></p>}
       {fields.map((f) => (
         <div key={f.id}>
           <label className="block text-xs font-medium text-slate-700 mb-1 uppercase tracking-wide">
             {f.label}
             {f.required && <span className="text-red-600 ml-0.5">*</span>}
+            {f.required_before_invoice && <span className="ml-2 rounded bg-amber-50 px-2 py-0.5 text-[10px] font-semibold normal-case text-amber-800">Required before invoicing</span>}
             <span className="ml-2 font-mono text-[10px] text-slate-400 normal-case tracking-normal">
               {f.merge_tag}
             </span>

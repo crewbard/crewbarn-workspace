@@ -4,8 +4,10 @@ import { useQuery } from '@tanstack/react-query'
 import { QRCodeCanvas } from 'qrcode.react'
 import { getAssetGroup, getAssetGroupQrCode } from '@/lib/assetGroups'
 import { printLabelPdf, type PdfLabel } from '@/lib/pdfLabels'
+import { LabelStudio } from '@/components/labels/LabelStudio'
+import type { LabelFaceData } from '@/components/labels/LabelFace'
 import { downloadLabelPng } from '@/lib/pngLabels'
-import { isWebBluetoothSupported, printLabelsViaBluetooth } from '@/lib/escposBluetooth'
+import { printLabelsViaBluetooth } from '@/lib/escposBluetooth'
 import type { ThermalSizeKey } from '@/lib/thermalLabels'
 
 /**
@@ -21,13 +23,6 @@ import type { ThermalSizeKey } from '@/lib/thermalLabels'
  * format with a big quiet-zone QR, where an asset sticker defaults to a 2×1
  * thermal. Same PDF, PNG and Bluetooth paths underneath.
  */
-
-const PLACARD_SIZES: { key: ThermalSizeKey; label: string; hint: string }[] = [
-  { key: 'sheet', label: 'Letter sheet', hint: 'Print, laminate, mount in a lobby' },
-  { key: 'full', label: 'Full page', hint: 'One giant QR — scannable across a lobby' },
-  { key: '4x6', label: '4 × 6', hint: 'Thermal — riser rooms, plant rooms' },
-  { key: '2x1', label: '2 × 1', hint: 'Thermal — small areas, cabinets' },
-]
 
 export function AssetGroupLabelsPage() {
   const { id } = useParams<{ id: string }>()
@@ -77,6 +72,18 @@ export function AssetGroupLabelsPage() {
     ]
   }, [group, scanUrl, code])
 
+  /**
+   * A placard's face: the company across the top, a huge QR, and the line
+   * telling somebody what to do with it.
+   */
+  const faces: LabelFaceData[] = labels.map((l) => ({
+    qrValue: l.qrValue,
+    name: l.title,
+    code: code ?? undefined,
+    note: l.subtitle,
+    path: undefined,
+  }))
+
   function setParam(key: string, value: string | null) {
     const np = new URLSearchParams(search)
     if (value === null) np.delete(key)
@@ -100,99 +107,39 @@ export function AssetGroupLabelsPage() {
         }
       `}</style>
 
-      <div className="no-print flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 bg-slate-100 px-6 py-3">
-        <div>
-          <div className="text-sm font-medium text-slate-800">Placard — {group.name}</div>
-          <div className="text-xs text-slate-500">Ctrl+P to print, or use a button</div>
-        </div>
-
-        <div className="flex flex-wrap items-center gap-2">
-          <div className="inline-flex overflow-hidden rounded-md border border-slate-300 text-xs">
-            {PLACARD_SIZES.map((s) => (
-              <button
-                key={s.key}
-                type="button"
-                title={s.hint}
-                onClick={() => setParam('size', s.key === 'sheet' ? null : s.key)}
-                className={`px-3 py-1.5 font-medium ${
-                  size === s.key ? 'bg-slate-900 text-white' : 'bg-white text-slate-700'
-                }`}
-              >
-                {s.label}
-              </button>
-            ))}
-          </div>
-
-          <label className="flex items-center gap-1.5 text-xs text-slate-600">
-            Copies
-            <input
-              type="number"
-              min={1}
-              max={50}
-              value={copies}
-              onChange={(e) => setParam('copies', e.target.value)}
-              className="w-16 rounded border border-slate-300 px-2 py-1"
-            />
-          </label>
-
-          <button
-            type="button"
-            onClick={() => window.print()}
-            className="rounded-md bg-slate-900 px-3 py-1.5 text-xs font-semibold text-white"
-          >
-            Print
-          </button>
-          {size !== 'sheet' && (
-            <button
-              type="button"
-              onClick={() =>
-                printLabelPdf({
-                  labels,
-                  thermalSize: size as ThermalSizeKey,
-                  copies,
-                  filename: `${group.name}-placard.pdf`,
-                })
-              }
-              className="rounded-md border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700"
-            >
-              PDF
-            </button>
-          )}
-          <button
-            type="button"
-            onClick={() =>
-              void downloadLabelPng({
-                label: labels[0],
-                thermalSize: size,
-                filename: `${group.name}-placard.png`,
-              })
-            }
-            className="rounded-md border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700"
-          >
-            PNG
-          </button>
-          {isWebBluetoothSupported() && size !== 'sheet' && (
-            <button
-              type="button"
-              disabled={btBusy}
-              onClick={async () => {
-                setBtBusy(true)
-                setBtError(null)
-                try {
-                  await printLabelsViaBluetooth({ labels, thermalSize: size, copies })
-                } catch (e) {
-                  setBtError((e as Error).message || 'Bluetooth print failed.')
-                } finally {
-                  setBtBusy(false)
-                }
-              }}
-              className="rounded-md border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 disabled:opacity-50"
-            >
-              {btBusy ? 'Printing…' : 'Bluetooth'}
-            </button>
-          )}
-        </div>
-      </div>
+      <LabelStudio
+        backTo={{ href: `/asset-groups/${id}`, label: group.name }}
+        faces={faces}
+        size={size}
+        onSize={(next) => setParam('size', next === 'sheet' ? null : next)}
+        copies={copies}
+        onCopies={(n) => setParam('copies', n === 1 ? null : String(n))}
+        gap={0}
+        onGap={() => {}}
+        onPrint={() => {
+          // A placard on a roll goes through the PDF; on paper it is the
+          // browser's print, the same split as everywhere else.
+          if (size === 'sheet') window.print()
+          else void printLabelPdf({ labels, thermalSize: size, copies })
+        }}
+        busy={btBusy ? 'Sending to the printer…' : null}
+        onBluetooth={async () => {
+          setBtError(null)
+          setBtBusy(true)
+          try {
+            await printLabelsViaBluetooth({ labels, thermalSize: size, copies })
+          } catch (err) {
+            setBtError(err instanceof Error ? err.message : String(err))
+          } finally {
+            setBtBusy(false)
+          }
+        }}
+        onDownloadImage={() => {
+          const first = labels[0]
+          if (first) void downloadLabelPng({ label: first, thermalSize: size, filename: `${group.name}.png` })
+        }}
+        error={btError}
+      />
 
       {btError && (
         <div className="no-print border-b border-rose-200 bg-rose-50 px-6 py-2 text-xs text-rose-700">

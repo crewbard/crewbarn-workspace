@@ -2,7 +2,13 @@ import { useEffect, useMemo, useState } from 'react'
 import type { ReactNode } from 'react'
 import { Link } from 'react-router-dom'
 import { ToastPrefToggle } from '@/components/ToastPrefToggle'
+import { PERM, usePermissions } from '@/hooks/usePermissions'
 import { IconRefresh } from '@tabler/icons-react'
+import { IntakePhotos } from '@/components/ai/IntakePhotos'
+import { VehicleKeyLink } from '@/components/VehicleKeyOverlay'
+import { ReferencedText } from '@/components/ReferencedText'
+import { IntakeFollowUp } from '@/components/ai/IntakeFollowUp'
+import { IntakeReplies } from '@/components/ai/IntakeReplies'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { listCatalogItems } from '@/lib/catalogItems'
 import type { CatalogItem } from '@/types/catalogItem'
@@ -21,11 +27,12 @@ import {
 } from '@/lib/comms'
 import { relativeTime } from '@/components/comms/ConversationThread'
 
-type DraftStatus = 'pending' | 'reviewed' | 'failed' | 'dismissed' | 'all'
+type DraftStatus = 'pending' | 'reviewed' | 'approved' | 'failed' | 'dismissed' | 'all'
 
 const STATUS_FILTERS: Array<{ id: DraftStatus; label: string }> = [
   { id: 'pending', label: 'Pending' },
   { id: 'reviewed', label: 'Reviewed' },
+  { id: 'approved', label: 'Approved' },
   { id: 'failed', label: 'Failed' },
   { id: 'dismissed', label: 'Dismissed' },
   { id: 'all', label: 'All' },
@@ -33,14 +40,15 @@ const STATUS_FILTERS: Array<{ id: DraftStatus; label: string }> = [
 
 const QUEUE_KEY = ['ai-intake-drafts', 'intake'] as const
 
-export function AiIntakeQueuePage() {
+export function AiIntakeQueuePage({ embedded = false }: { embedded?: boolean }) {
   const queryClient = useQueryClient()
   const [status, setStatus] = useState<DraftStatus>('pending')
   const [selectedId, setSelectedId] = useState<string | null>(null)
+  const [page, setPage] = useState(1)
 
   const query = useQuery({
-    queryKey: [...QUEUE_KEY, status],
-    queryFn: () => listAiIntakeDrafts({ status, profile: 'intake', perPage: 50 }),
+    queryKey: [...QUEUE_KEY, status, page],
+    queryFn: () => listAiIntakeDrafts({ status, profile: 'intake', perPage: 50, page }),
     // New drafts arrive live over Reverb (IntakeToasts invalidates this key);
     // this poll is just a backstop + a focus refetch. Overrides the app-wide
     // refetchOnWindowFocus:false.
@@ -50,6 +58,12 @@ export function AiIntakeQueuePage() {
   })
 
   const drafts = query.data?.data ?? []
+  useEffect(() => {
+    if (query.data && page > Math.max(1, query.data.last_page)) {
+      setPage(Math.max(1, query.data.last_page))
+      setSelectedId(null)
+    }
+  }, [query.data, page])
   const selected = useMemo(
     () => drafts.find((draft) => draft.id === selectedId) ?? drafts[0] ?? null,
     [drafts, selectedId],
@@ -71,11 +85,11 @@ export function AiIntakeQueuePage() {
   })
 
   return (
-    <div className="flex h-[calc(100vh-5rem)] flex-col bg-slate-50">
+    <div className={embedded ? 'flex min-w-0 flex-col overflow-hidden rounded-2xl border border-slate-200 bg-slate-50' : 'flex h-[calc(100vh-5rem)] flex-col bg-slate-50'}>
       <div className="border-b border-slate-200 bg-white px-6 py-4">
         <div className="flex flex-wrap items-end justify-between gap-3">
           <div>
-            <h1 className="text-2xl font-semibold text-navy-900">Intake Queue</h1>
+            <h1 className="text-2xl font-semibold text-navy-900">{embedded ? 'Hands-on intake training' : 'Intake Queue'}</h1>
             <p className="text-sm text-slate-500">
               Review AI-extracted service intake messages before creating jobs or estimates.
             </p>
@@ -83,22 +97,25 @@ export function AiIntakeQueuePage() {
           <div className="flex items-center gap-3">
             <ToastPrefToggle area="intake" label="New intake" />
             <div className="text-xs text-slate-400">
-              {query.data?.total ?? drafts.length} draft{(query.data?.total ?? drafts.length) === 1 ? '' : 's'}
+              {query.isSuccess ? (query.data?.total ?? drafts.length) : '—'} draft{(query.data?.total ?? drafts.length) === 1 ? '' : 's'}
             </div>
           </div>
         </div>
       </div>
 
-      <div className="min-h-0 flex-1 grid grid-cols-1 lg:grid-cols-[25rem_1fr]">
-        <aside className="min-h-0 border-r border-slate-200 bg-white">
+      <div className={`min-h-0 flex-1 grid grid-cols-1 ${embedded ? '' : 'lg:grid-cols-[25rem_1fr]'}`}>
+        <aside className={`${selectedId && !query.isError ? (embedded ? 'hidden' : 'hidden lg:block') : ''} min-h-0 border-r border-slate-200 bg-white`}>
           <div className="border-b border-slate-100 p-3">
-            <div className="grid grid-cols-5 gap-1 rounded-lg bg-slate-100 p-1">
+            <div className="grid grid-cols-3 gap-1 rounded-lg bg-slate-100 p-1 sm:grid-cols-6">
               {STATUS_FILTERS.map((item) => (
                 <button
                   key={item.id}
                   type="button"
+                  aria-pressed={status === item.id}
+                  data-easy-view-option
                   onClick={() => {
                     setStatus(item.id)
+                    setPage(1)
                     setSelectedId(null)
                   }}
                   className={`rounded-md px-2 py-1.5 text-xs font-semibold transition-colors ${
@@ -113,9 +130,11 @@ export function AiIntakeQueuePage() {
             </div>
           </div>
 
-          <div className="h-[calc(100%-3.75rem)] overflow-y-auto">
+          <div className={embedded ? 'max-h-[36rem] overflow-y-auto' : 'h-[calc(100%-8rem)] overflow-y-auto'}>
             {query.isLoading ? (
               <ListSkeleton />
+            ) : query.isError ? (
+              <div role="alert" className="p-4 text-sm text-red-700">Intake drafts could not be loaded. <button type="button" onClick={() => { void query.refetch() }} disabled={query.isFetching} className="underline disabled:opacity-50">Retry</button></div>
             ) : drafts.length === 0 ? (
               <div className="p-6 text-center text-sm text-slate-400">
                 No {status === 'all' ? 'intake' : status} drafts right now.
@@ -131,11 +150,15 @@ export function AiIntakeQueuePage() {
               ))
             )}
           </div>
+          {query.data && <nav aria-label="Intake queue pages" className="flex flex-wrap items-center justify-between gap-2 border-t border-slate-200 p-3 text-xs"><button type="button" disabled={page <= 1 || query.isFetching} onClick={() => { setPage(value => value - 1); setSelectedId(null) }} className="rounded-lg border border-slate-300 px-3 py-2 font-semibold disabled:opacity-40">← Previous</button><span role="status">Page {page} of {Math.max(1, query.data.last_page)} · {query.data.total} drafts</span><button type="button" disabled={page >= query.data.last_page || query.isFetching} onClick={() => { setPage(value => value + 1); setSelectedId(null) }} className="rounded-lg border border-slate-300 px-3 py-2 font-semibold disabled:opacity-40">Next →</button></nav>}
         </aside>
 
-        <main className="hidden min-w-0 overflow-y-auto lg:block">
-          {selected ? (
+        <main className={`${selectedId && !query.isError ? '' : 'hidden'} min-w-0 overflow-y-auto ${embedded ? '' : 'lg:block'}`}>
+          <button type="button" onClick={() => setSelectedId(null)} className={`m-3 min-h-11 rounded-lg border border-slate-300 px-4 text-sm ${embedded ? '' : 'lg:hidden'}`}>← Back to intake</button>
+          {(dismissMutation.isError || reopenMutation.isError || retryMutation.isError) && <p role="alert" className="m-3 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">The action could not be completed. Please try again.</p>}
+          {selected && !query.isError ? (
             <DraftDetail
+              key={selected.id}
               draft={selected}
               dismissing={dismissMutation.isPending}
               reopening={reopenMutation.isPending}
@@ -181,6 +204,7 @@ function DraftRow({
     <button
       type="button"
       onClick={onClick}
+      aria-pressed={active}
       className={`w-full border-b border-slate-100 px-4 py-3 text-left transition-colors hover:bg-slate-50 ${
         active ? 'border-l-4 border-l-amber-500 bg-amber-50 pl-3' : ''
       }`}
@@ -246,6 +270,7 @@ function DraftDetail({
   const warnings = Array.isArray(extracted.warnings)
     ? extracted.warnings.filter((warning): warning is string => typeof warning === 'string')
     : []
+  const converted = draft.status === 'approved' || Boolean(draft.created_work_order_id)
   const createPath = draft.classification === 'estimate'
     ? `/estimates/new?ai_intake_draft_id=${encodeURIComponent(draft.id)}`
     : `/jobs/new?ai_intake_draft_id=${encodeURIComponent(draft.id)}`
@@ -258,7 +283,7 @@ function DraftDetail({
             <h2 className="text-xl font-semibold text-navy-900">{detailTitle(draft)}</h2>
             <StatusBadge status={draft.status} />
             {draft.classification && <Pill>{draft.classification}</Pill>}
-            {typeof draft.confidence === 'number' && <Pill>{Math.round(draft.confidence * 100)}% confidence</Pill>}
+            {typeof draft.confidence === 'number' && <Pill>{Math.round(draft.confidence * 100)}% extraction confidence · not readiness</Pill>}
           </div>
           <div className="mt-1 text-sm text-slate-500">
             {sourceLine(draft)}
@@ -273,7 +298,7 @@ function DraftDetail({
               Open thread
             </Link>
           )}
-          {draft.status === 'dismissed' ? (
+          {converted ? null : draft.status === 'dismissed' ? (
             <button
               type="button"
               onClick={onReopen}
@@ -292,7 +317,7 @@ function DraftDetail({
               {dismissing ? 'Dismissing...' : 'Dismiss'}
             </button>
           )}
-          {draft.status === 'failed' ? (
+          {converted ? (draft.created_work_order_id ? <Link to={`/jobs/${encodeURIComponent(draft.created_work_order_id)}`} className="rounded-lg bg-navy-900 px-4 py-2 text-sm font-semibold text-white">Open approved job →</Link> : <span className="text-sm text-slate-500">Already approved</span>) : draft.status === 'failed' ? (
             <button
               type="button"
               onClick={onRetry}
@@ -302,16 +327,20 @@ function DraftDetail({
               <IconRefresh size={16} aria-hidden="true" />
               {retrying ? 'Queuing retry...' : 'Retry AI extraction'}
             </button>
-          ) : (
+          ) : draft.status === 'pending' || draft.status === 'reviewed' ? (
             <Link
               to={createPath}
               className="rounded-md bg-amber-500 px-3.5 py-2 text-sm font-semibold text-white shadow-sm hover:bg-amber-600"
             >
               {draft.classification === 'estimate' ? 'Create estimate' : 'Create job'}
             </Link>
-          )}
+          ) : null}
         </div>
       </div>
+
+      <IntakeTrainingReview draft={draft} />
+      <IntakeFollowUp key={draft.id} draft={draft} />
+      <IntakeReplies key={`replies:${draft.id}`} draft={draft} />
 
       {draft.error && (
         <div className="mt-4 rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">
@@ -349,7 +378,19 @@ function DraftDetail({
                 document before ordering.
               </p>
             )}
-            <Field label="Vehicle" value={[vehicle.year, vehicle.make, vehicle.model, vehicle.trim].map(stringValue).filter(Boolean).join(' ')} />
+            <Field label="Vehicle">
+              {/*
+                The keys, parts and tools for this vehicle, one click
+                from the draft. Linked from the extracted fields rather
+                than from the sentence they came out of.
+              */}
+              <VehicleKeyLink
+                make={stringValue(vehicle.make)}
+                model={[vehicle.model, vehicle.trim].map(stringValue).filter(Boolean).join(' ')}
+                year={stringValue(vehicle.year)}
+                label={[vehicle.year, vehicle.make, vehicle.model, vehicle.trim].map(stringValue).filter(Boolean).join(' ')}
+              />
+            </Field>
             <Field label="Stock" value={stringValue(vehicle.stock_number)} />
             <Field label="Plate" value={stringValue(vehicle.license_plate)} />
             <Field label="Key / fob" value={keyFobSummary(keyFob)} multiline />
@@ -381,7 +422,9 @@ function DraftDetail({
             <Field label="Service" value={stringValue(job.requested_service)} />
             <Field label="Priority" value={stringValue(job.priority)} />
             <Field label="Requested" value={[job.requested_date, job.requested_time].map(stringValue).filter(Boolean).join(' ')} />
-            <Field label="Scope" value={stringValue(job.description) || stringValue(estimate.scope)} multiline />
+            <Field label="Scope" multiline>
+              <ReferencedText text={stringValue(job.description) || stringValue(estimate.scope)} />
+            </Field>
           </InfoSection>
 
           <InfoSection title="Service Address">
@@ -390,36 +433,8 @@ function DraftDetail({
             <Field label="Vehicle notes" value={stringValue(location.vehicle_location_notes)} multiline />
           </InfoSection>
 
-          {/* The AI's reading of a photo is in the transcript, but a locksmith
-              deciding what to put on the truck wants to see the lock, not a
-              description of it. Thumbnails open full size in a new tab. */}
-          {(draft.comms_message?.media_urls?.length ?? 0) > 0 && (
-            <InfoSection title="Photos sent">
-              <div className="flex flex-wrap gap-2">
-                {draft.comms_message!.media_urls.map((url, i) => (
-                  <a
-                    key={url}
-                    href={url}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="block overflow-hidden rounded-lg border border-slate-200 hover:border-amber-400"
-                  >
-                    <img
-                      src={url}
-                      alt={`Attachment ${i + 1}`}
-                      loading="lazy"
-                      className="h-28 w-28 bg-slate-50 object-cover"
-                      // Video and audio come down the same MMS pipe and will
-                      // never render as an <img>; hide rather than show a
-                      // broken-image icon that reads as a bug.
-                      onError={(e) => { e.currentTarget.parentElement!.style.display = 'none' }}
-                    />
-                  </a>
-                ))}
-              </div>
-            </InfoSection>
-          )}
 
+          <IntakePhotos key={draft.id} draftId={draft.id} />
           <InfoSection title="Transcript">
             <div className="whitespace-pre-wrap text-sm leading-6 text-slate-700">
               {draft.transcript_text || 'No transcript text.'}
@@ -445,7 +460,61 @@ function DraftDetail({
  * Remount with key={draft.id} at the callsite — otherwise a half-typed
  * correction would follow you onto the next draft you click.
  */
+function IntakeTrainingReview({ draft }: { draft: AiIntakeDraft }) {
+  const review = objectValue(draft.extracted_json?._human_review)
+  const history = Array.isArray(review.history) ? review.history.map(objectValue).slice().reverse() : []
+  const approved = draft.status === 'approved' || Boolean(draft.created_work_order_id)
+  const labels: Record<string, string> = {
+    proposed_customer_json: 'Customer details', proposed_location_json: 'Service address',
+    proposed_job_json: 'Job details', proposed_estimate_json: 'Estimate details',
+    matched_customer_id: 'Customer match', matched_location_id: 'Location match',
+    classification: 'Request type', confidence: 'Confidence value',
+    parts_correction: 'Parts correction',
+    photo_annotation: 'Photo identification',
+  }
+  const fields = Array.isArray(review.edited_fields) ? review.edited_fields.filter((field): field is string => typeof field === 'string') : []
+  const actionLabels: Record<string, string> = {
+    reviewed: 'Intake reviewed', dismissed: 'Intake set aside',
+    job_created_by_human: 'Job created by a person',
+    parts_corrected_locally: 'Parts corrected · this intake only',
+    photo_identified: 'Photo identified · this intake only',
+    photo_lesson_saved: 'Photo identified · lasting lesson saved',
+    parts_corrected_and_remembered: 'Parts corrected · lasting lesson saved',
+  }
+  const date = typeof review.reviewed_at === 'string' ? new Date(review.reviewed_at) : null
+  const recordedAt = date && !Number.isNaN(date.getTime()) ? date.toLocaleString() : null
+  return <section aria-label="Intake training review" className="my-5 overflow-hidden rounded-2xl border border-slate-200 bg-white">
+    <div className="flex flex-wrap items-start justify-between gap-3 bg-navy-900 p-5 text-white">
+      <div><p className="text-xs font-semibold uppercase tracking-wide text-amber-300">Teach CBI · Intake</p><h3 className="mt-1 text-lg font-bold">{approved ? 'Approved by your team' : draft.status === 'dismissed' ? 'Set aside by your team' : 'Your review comes first'}</h3><p className="mt-2 max-w-2xl text-sm leading-relaxed text-slate-300">Check the original message, correct the details, then choose whether to create the job. Extraction confidence is not permission to act.</p></div>
+      <span className="rounded-full border border-white/20 px-3 py-1 text-xs font-semibold">Human-controlled workflow</span>
+    </div>
+    <div className="grid gap-4 p-5 md:grid-cols-3">
+      <div><h4 className="text-sm font-bold text-navy-900">1 · Check the source</h4><p className="mt-2 text-sm text-slate-600">Compare the customer’s request with the proposed details. Resolve missing or uncertain information.</p></div>
+      <div><h4 className="text-sm font-bold text-navy-900">2 · Correct this intake</h4><p className="mt-2 text-sm text-slate-600">Corrections apply to this request. Lasting CBI rules require training permission and a separate teaching action.</p></div>
+      <div><h4 className="text-sm font-bold text-navy-900">3 · Approve the work</h4><p className="mt-2 text-sm text-slate-600">Job creation stays a human decision. No automatic customer follow-up is enabled by this review.</p></div>
+    </div>
+    <div className="border-t border-slate-100 px-5 py-4">
+      <p className="text-sm font-semibold text-navy-900">{recordedAt ? `Latest recorded review · ${recordedAt}` : 'No review evidence recorded yet'}</p>
+      {fields.length > 0 && <div className="mt-2 flex flex-wrap gap-2">{fields.map(field => <span key={field} className="rounded-full bg-amber-50 px-3 py-1 text-xs font-semibold text-amber-800">{labels[field] ?? field.replaceAll('_', ' ')}</span>)}</div>}
+      <p className="mt-2 text-xs leading-relaxed text-slate-500">{fields.length ? 'These areas were edited during review. ' : ''}Recent history retains up to 50 events, starting when history recording was deployed. It is not a permanent audit trail or an agreement score.</p>
+      {history.length > 0 && <details className="mt-4 rounded-xl border border-slate-200 p-4">
+        <summary className="cursor-pointer text-sm font-semibold text-navy-900">Recent review history · {history.length} recorded events</summary>
+        <ol className="mt-3 max-h-80 space-y-3 overflow-y-auto">
+          {history.map((event, index) => <li key={index} className="border-t border-slate-100 pt-3 text-sm">
+            <p className="font-semibold text-slate-800">{actionLabels[stringValue(event.action)] ?? (stringValue(event.action).replaceAll('_', ' ') || 'Review')}</p>
+            <p className="mt-1 break-words text-xs text-slate-500">{stringValue(event.reviewed_at)} · Reviewer: {stringValue(event.actor_id) || 'Not recorded'}</p>
+            <p className="mt-1 text-xs text-slate-600">{Array.isArray(event.edited_fields) && event.edited_fields.length ? event.edited_fields.filter((field): field is string => typeof field === 'string').map(field => labels[field] ?? field.replaceAll('_', ' ')).join(', ') : 'No field changes recorded for this action.'}</p>
+          </li>)}
+        </ol>
+      </details>}
+    </div>
+  </section>
+}
+
 function PartCorrection({ draft }: { draft: AiIntakeDraft }) {
+  const permissions = usePermissions()
+  const canTeach = permissions.has(PERM.AI_TRAIN)
+  const [remember, setRemember] = useState(false)
   const queryClient = useQueryClient()
   const parts = objectValue(objectValue(draft.extracted_json ?? {}).parts)
   const saved = objectValue(parts.shop_correction)
@@ -491,6 +560,7 @@ function PartCorrection({ draft }: { draft: AiIntakeDraft }) {
   const mutation = useMutation({
     mutationFn: () => correctAiIntakePart(draft.id, {
       parts: selected,
+      remember: remember && canTeach,
       decider: decider.trim() || null,
       notes: notes.trim() || null,
     }),
@@ -498,11 +568,13 @@ function PartCorrection({ draft }: { draft: AiIntakeDraft }) {
       void queryClient.invalidateQueries({ queryKey: QUEUE_KEY })
       // New parts mean new stock, a different truck, possibly a different tech.
       void queryClient.invalidateQueries({ queryKey: availabilityKey(draft.id) })
+      void queryClient.invalidateQueries({ queryKey: ['photo-training-history', draft.id] })
       reset()
     },
   })
 
   function reset() {
+    setRemember(false)
     setOpen(false)
     setSelected([])
     setPart('')
@@ -561,7 +633,7 @@ function PartCorrection({ draft }: { draft: AiIntakeDraft }) {
             ) : null}
 
             <div className="mt-2 text-xs text-emerald-700">
-              CBI learned this — the next call about this vehicle will use it.
+              {saved.memory_id ? 'Saved as CBI knowledge for future matching.' : 'Corrected for this intake only. No new lasting knowledge was saved.'}
             </div>
           </div>
 
@@ -598,7 +670,7 @@ function PartCorrection({ draft }: { draft: AiIntakeDraft }) {
     )
   }
 
-  const canSave = selected.length > 0 && !mutation.isPending
+  const canSave = selected.length > 0 && !mutation.isPending && draft.supports_local_correction === true
 
   return (
     <form
@@ -870,6 +942,12 @@ function PartCorrection({ draft }: { draft: AiIntakeDraft }) {
         />
       </div>
 
+      <div className="rounded-xl border border-amber-200 bg-amber-50 p-4">
+        {!draft.supports_local_correction && <p role="alert" className="mb-3 text-sm text-amber-900">Update the API and refresh this intake before saving. The older API does not support the “fix only” choice.</p>}
+        <label className="flex items-start gap-3 text-sm font-semibold text-navy-900"><input type="checkbox" checked={remember && canTeach} disabled={!canTeach || mutation.isPending} onChange={e => setRemember(e.target.checked)} className="mt-1" />Also teach CBI this correction</label>
+        <p className="mt-2 text-xs text-slate-600">{canTeach ? 'Off fixes only this intake. On saves these parts, fit conditions, and notes as confirmed knowledge for future matching. It does not grant permission to order parts or create jobs automatically.' : 'You can correct this intake. An owner must grant “Can train and correct CBI” before you can save lasting knowledge.'}</p>
+        {remember && canTeach && <div className="mt-3 rounded-lg bg-white p-3 text-sm"><strong>CBI will remember</strong><p className="mt-1">{selected.map(part => part.label).join(' · ')}</p>{decider.trim() && <p className="mt-1">Which one applies: {decider.trim()}</p>}{notes.trim() && <p className="mt-1 whitespace-pre-wrap">{notes.trim()}</p>}<p className="mt-2 text-xs text-slate-500">Saved with this intake as its source.</p></div>}
+      </div>
       {mutation.isError ? (
         <div className="text-xs text-red-600">
           Couldn&apos;t save that correction. Try again.
@@ -882,7 +960,7 @@ function PartCorrection({ draft }: { draft: AiIntakeDraft }) {
           disabled={!canSave}
           className="rounded-md bg-navy-900 px-3 py-1.5 text-xs font-medium text-white disabled:opacity-50"
         >
-          {mutation.isPending ? 'Saving…' : `Save + teach CBI${selected.length > 1 ? ` (${selected.length})` : ''}`}
+          {mutation.isPending ? 'Saving…' : remember && canTeach ? 'Fix it and remember' : 'Just fix this intake'}
         </button>
         <button
           type="button"
@@ -1020,12 +1098,19 @@ function InfoSection({ title, children }: { title: string; children: ReactNode }
   )
 }
 
-function Field({ label, value, mono, multiline }: { label: string; value?: string | null; mono?: boolean; multiline?: boolean }) {
+function Field({ label, value, mono, multiline, children }: {
+  label: string
+  value?: string | null
+  mono?: boolean
+  multiline?: boolean
+  /* Rendered in place of the plain value, for a field that links. */
+  children?: React.ReactNode
+}) {
   return (
     <div className="grid gap-1 sm:grid-cols-[8rem_1fr]">
       <div className="text-xs font-medium uppercase tracking-wide text-slate-400">{label}</div>
       <div className={`${mono ? 'font-mono' : ''} ${multiline ? 'whitespace-pre-wrap' : ''} text-sm text-slate-700`}>
-        {value || <span className="text-slate-400">Not captured</span>}
+        {children ?? value ?? <span className="text-slate-400">Not captured</span>}
       </div>
     </div>
   )

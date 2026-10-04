@@ -1,13 +1,1532 @@
 {
   "releases": [
     {
+      "version": "2026-10-04b",
+      "items": [
+        "Call transcription has a Test saved key button. It checks that the key for the service you chose is accepted, without transcribing anything, and tells you plainly if it was pasted wrong or revoked."
+      ]
+    },
+    {
+      "version": "2026-10-04a",
+      "items": [
+        "Call transcription can now use AssemblyAI, on your own AssemblyAI account: Tool Shed → Communication → Call transcription. It is the recommended choice. On real service calls it kept the office and the caller apart more cleanly and wrote part numbers and prices as digits.",
+        "OpenAI stays available. Your OpenAI key is still what CBI voice commands use, whichever you choose for calls. AssemblyAI deletes each recording and transcript on its side as soon as CrewBarn has read them."
+      ]
+    },
+    {
+      "version": "2026-10-03s",
+      "items": [
+        "Call transcription uses OpenAI only. Deepgram is no longer offered: a business that had chosen it now transcribes through OpenAI, with the OpenAI key under Tool Shed → Communication → Call transcription.",
+        "The green part-number chips beside spelled-out numbers are gone. Transcripts show what was transcribed, with nothing added. Calls transcribed before this keep their words as they were."
+      ]
+    },
+    {
+      "version": "2026-10-03r",
+      "items": [
+        "Card numbers read out on recorded calls are no longer kept. The card number, expiry date and security code are taken out of the transcript before it is saved, and before CBI uses it to draft a job. Card numbers texted in are taken out the same way.",
+        "Calls and texts saved before this are being cleaned the same way. The call recordings themselves are not changed, so take card payments with a payment link or the card reader rather than over a recorded line.",
+        "CBI can list your estimates again, and its \"how long ago\" counts for stale jobs are no longer negative."
+      ]
+    },
+    {
+      "version": "2026-10-03q",
+      "items": [
+        "A catalog now downloads once per device. After that it opens straight from the device, with no waiting on a 60 MB download each time.",
+        "Up to about 600 MB of catalogs are kept per browser, and the ones opened longest ago make room first. In the customer portal, a catalog you stop sharing is cleared from the customer's device the next time they look at your catalogs."
+      ]
+    },
+    {
+      "version": "2026-10-03p",
+      "items": [
+        "Tapping a part number in a catalog now brings the price printed on its row. On an estimate that is the sell price for anything you don't carry; parts you carry keep your own price.",
+        "Set your discount from a vendor once (list less 50%, for example) in the order panel, and catalog prices become your cost on purchase orders. Draft orders re-cost straight away.",
+        "Build several codes into one line: press Start a build, name it, then tap the set, its finish and its style on the page and add choices like the handing or backset. It goes on the order and the estimate as one line, priced as its pieces, with the pieces listed under it.",
+        "When the catalog prints how to order (Function + Product Code + Finish, for example), that shows beside the build as a checklist.",
+        "Customers can build their own in the portal the same way, and see the catalog prices of what they picked. When you make the estimate, a build comes in as one line at the catalog price.",
+        "Finish and style codes in brackets, like (US4) or (AS), can now be tapped, and each part gets just its own words from the table instead of the whole row."
+      ]
+    },
+    {
+      "version": "2026-10-03o",
+      "items": [
+        "Share a catalog with your customers: each PDF on a reference card now has a Share with customers switch. It starts off, and only the catalogs you switch on are shared.",
+        "Your customers see a Catalogs tab on your page in the customer portal. They can page through the book with its sections and Find, tap part numbers to add them to an order, add lines in their own words, and send it to you.",
+        "Orders from customers appear at the top of the Estimates page, and the bell tells you when one comes in. Create estimate makes a draft for that customer in one click: parts you carry come in at your price, anything else comes in with the customer's words and the catalog page, ready for you to price. Or decline it with a reason the customer sees.",
+        "Customers see each order they sent as Sent, Estimate ready or Declined."
+      ]
+    },
+    {
+      "version": "2026-10-03n",
+      "items": [
+        "Four-digit product codes in a catalog, like 7108 or 3311, can now be clicked onto an order. Any three- or four-digit number under a Product Code, Part # or SKU column heading counts too.",
+        "Prices, years, page ranges like 10-23 and phone numbers are left alone."
+      ]
+    },
+    {
+      "version": "2026-10-03m",
+      "items": [
+        "A catalog that prints its section names on the edge of every page now gets those as its tabs: one per section, in the book's own words, from the first page of the section to the index at the back.",
+        "A contents page set in two columns is read column by column, and lines like \"Pages 28–37\" on a what's-new page are no longer taken for a contents page.",
+        "Tabs are now read from the whole of a book up to 400 pages, so sections near the back of a long price book are found too."
+      ]
+    },
+    {
+      "version": "2026-10-03l",
+      "items": [
+        "A big PDF now shows how far its download has got while it opens: a bar, the percentage, and \"Downloading 23.4 of 61.6 MB\". Closing it partway stops the download."
+      ]
+    },
+    {
+      "version": "2026-10-03k",
+      "items": [
+        "PDFs on reference cards can now be up to 150 MB, up from 25 MB, so a manufacturer's full price book goes on in one piece instead of split into sections."
+      ]
+    },
+    {
+      "version": "2026-10-03j",
+      "items": [
+        "Approving an estimate now sets its in-stock parts aside for the job. They stay on the shelf but stop counting as available, so the same parts cannot be promised to the next customer. Parts that arrive on the estimate's own order are set aside the same way.",
+        "Stock everywhere shows what is held and for which job: \"0 available · 2 on hand · 2 held for jobs\", with the job on hover.",
+        "The Line Items tab on an estimate and on its job shows each part as held, on order, used or short. When more stock comes in, Hold from stock sets it aside. Let go returns held parts to stock, with a reason.",
+        "Held parts are let go by themselves when the job is completed or cancelled, or the estimate is declined, expires or is replaced, and each one fitted or issued on the job comes off what is held.",
+        "Sending a purchase order to the vendor is now its own permission, \"Send purchase orders to vendors\", the Inventory level Edit + send orders in Roles & Permissions. Everyone who could send orders before still can. Anyone who builds estimates can still put parts on a draft order for the office to send."
+      ]
+    },
+    {
+      "version": "2026-10-03i",
+      "items": [
+        "Alt C (Option C on a Mac) opens your catalogs from anywhere in CrewBarn and Connect, or click the book next to search. Every PDF on your reference cards is listed, the ones you opened last at the top, and each one opens at the page you left it on. Catalogs also show up in Ctrl K search.",
+        "Page numbers in a catalog now match the printed book. When the PDF counts a cover the book does not, page 13 in the viewer is page 13 in the book, typing 13 goes there, and the tabs and Find results use the same numbers.",
+        "Order parts while you read a catalog. Press Order in the viewer, pick a vendor, then click a part number on the page, use + Order on a Find result, or type a number. It goes on a draft purchase order, and every line shows what you already have: available, on hand, on order, and on other drafts.",
+        "A part number you already carry is matched to your own item, at your cost, however the dashes are written. One you do not carry can be made into a catalog item from the order line.",
+        "Fold the order down to a bar to keep reading; it stays with you page to page and from one catalog to the next, and the next order from the same catalog goes to the same vendor.",
+        "Order from a catalog for an estimate: on the estimate's Line Items tab, press Order from a catalog. Each part goes on the estimate at its sell price and on that estimate's order only for what your shelves cannot cover. The order waits for the customer to approve, closes itself if they decline or it expires, moves to the new version if the estimate is revised, and follows the job when it becomes one.",
+        "Ordering before the customer approves takes a reason, which stays on the order. If they change their mind after it was sent, the order says so, and you can keep the parts as stock or cancel it with the vendor.",
+        "Purchase orders now show the estimate or job they are for, and each line shows its part number and the catalog page it came from."
+      ]
+    },
+    {
+      "version": "2026-10-03h",
+      "items": [
+        "Press / anywhere on the Product Catalog or Service Catalog to jump straight into its search box. Escape leaves it. A / typed inside another field stays where you typed it.",
+        "The Find button in a PDF on a reference card now shows its shortcut, Ctrl F (⌘F on a Mac)."
+      ]
+    },
+    {
+      "version": "2026-10-03g",
+      "items": [
+        "Part numbers spelled out on a call now show as the number they spell. \"R as in Robert, g four six zero one two two\" gets a chip reading RG460122 right after the words, and \"nine five four four zero, s as in Sam, nine six one zero\" gets 95440S9610. Click the chip to copy it.",
+        "Phone numbers read out digit by digit show the same way, as (321) 555-1212.",
+        "The transcript itself is never changed: the words stay exactly as they were heard, and the chip sits beside them.",
+        "Vehicle and reference-card links in a note typed on an iPhone now land on the right words. An apostrophe earlier in the note used to shift them a couple of letters to the right."
+      ]
+    },
+    {
+      "version": "2026-10-03f",
+      "items": [
+        "Find in a PDF on a reference card: press Find, or Ctrl F, and type a part number, a model or a name. Every page is searched as you type, matches are lit up on the page, and Enter goes to the next one.",
+        "Part numbers match however they are typed: 95440S9610 finds 95440-S9610, and the other way round.",
+        "A PDF of two or three pages now opens flat, side by side, instead of a cover on its own and then the back on its own."
+      ]
+    },
+    {
+      "version": "2026-10-03e",
+      "items": [
+        "A PDF on a reference card now gets tabs from its own contents page when it has one. A catalogue whose contents is a table, with names down the side and sections across the top, gets a tab for each name and one for each section, coloured by section, and each opens the right page even when the printed page numbers run ahead of the file.",
+        "With no contents page, the tabs come from the headings: the biggest text on each page, ignoring the header and footer printed on every page.",
+        "Bookmarks that are only the print shop's file names are no longer used as tabs.",
+        "When there are lots of tabs, they sit across the edge with short names instead of running down it, so twenty-odd still fit and can be read.",
+        "Open Tabs in the viewer to see every set of tabs the PDF offers, and pick another if the first guess is not the one you want. Tabs you save always win."
+      ]
+    },
+    {
+      "version": "2026-10-03d",
+      "items": [
+        "Company settings are sorted into ten areas now. Customers & sites, Catalog & inventory and CBI AI have their own, instead of being scattered through the others.",
+        "Each area shows its settings in groups, each with an icon and one line about what it does, and the chips across the top jump to a group. Home lists every area with its groups; tap a group to land on it.",
+        "A setting page now says what it is at the top and shows the other settings in the same group, so the next thing you want is one tap away.",
+        "Reference cards are in the settings menu under Catalog & inventory › Reference. That is where you write a card and add its PDFs.",
+        "A new reference card stays open after you save it, with Add a PDF right there. Before, you had to close it and open it again to find where files go.",
+        "The links for When pay is earned, Vacation earned and Clock in and out by GPS open the right part of Shop rules. They used to open Outbound sender."
+      ]
+    },
+    {
+      "version": "2026-10-03c",
+      "items": [
+        "Reference cards can carry PDFs now — a manual, an install guide, a supplier's catalogue, up to 25 MB each. Add them from the card's Edit screen; they save as soon as they upload.",
+        "A PDF opens as a book rather than a long scroll: the cover on its own, then two pages side by side, and the page turns when you go forward. Arrow keys work, and so does a swipe on a phone, where it shows one page at a time.",
+        "Coloured tabs run down the edge like a printed catalogue's index tabs, and each one opens the book at its chapter. A PDF with bookmarks gets tabs straight away; open Tabs in the viewer to rename them, recolour them, or add your own at the page you are on.",
+        "Links inside the PDF work — a contents page that jumps to a section jumps there.",
+        "Files are private to your shop unless you tick that one may be shared. Even then, other shops only see it if CrewBarn approves the card for everyone, so a supplier's catalogue you keep for yourself stays yours."
+      ]
+    },
+    {
+      "version": "2026-10-03b",
+      "items": [
+        "The vehicle reference has a second source. Under the library's answer there is now a Lishi guide section: what the 2024 guide prints for that vehicle and year, cars and motorcycles both, with the readers, the try-out set and the page number to turn to.",
+        "Each row says whether the two sources agree. Where they do not, both stay on screen and neither is quietly swapped for the other — the vehicle in front of you settles it. Spelling is not counted as disagreement: an O printed for a zero, or the two halves of a tool written in the other order, still reads as agreeing.",
+        "Where the library had nothing, the guide fills the gap, and the card asks who on your team is carrying that tool. Vehicles the library never covered, newer models especially, now get the guide's answer instead of only No match."
+      ]
+    },
+    {
+      "version": "2026-10-03a",
+      "items": [
+        "When the key reference has nothing for a vehicle's year, it now just says No match instead of a paragraph about the book.",
+        "Under that, it checks your own shelf. If you have a part labelled for that vehicle, it shows with how many you hold — and one whose label names the year is marked as being for this exact vehicle rather than a near guess. Something you bought for that job beats a row from a neighbouring year.",
+        "Writing down what a vehicle takes now offers every row the card shows. It used to offer seven of the fifteen, so you could read a blank transponder number or a programming tool and had no way to record one.",
+        "You can add rows of your own, with your own titles, for anything the book has no column for. They show on the card under the book's rows, marked as yours, so nobody mistakes them for what the catalogue printed."
+      ]
+    },
+    {
+      "version": "2026-10-02c",
+      "items": [
+        "New: reference cards, under Files. Write down what your shop knows, pick the words that should open it, and it opens wherever those words turn up — a job description, a note, a call transcript. Nothing about it assumes a trade: it holds whatever the subject needs.",
+        "Spelling is forgiving on purpose. Write the word once and HU-101 finds HU101, SmartKey finds smart key. It stops there: one wrong character still misses, and a word never opens a card from inside a longer one, so a card on “key” stays shut on “monkey”.",
+        "Cards can have tabs. A card about a real thing gets long, and the thing somebody wanted ends up below the fold — so give it Specs, Parts, Manual, Gotchas, whatever it needs. Sections you leave untabbed sit above the tabs and stay put, because “what is this” belongs on every tab rather than hidden behind one.",
+        "You can fix a card where you found it. The Edit button is on the card itself, so a wrong line gets corrected in the job you were reading, not on a settings screen you have to go and find.",
+        "Retiring a card asks for no password and no reason, because it is undoable: it stops opening, stays in your list under Retired, and comes back whole when you bring it back."
+      ]
+    },
+    {
+      "version": "2026-10-02b",
+      "items": [
+        "The reference now opens down the side of the screen instead of over the middle of it. Whatever you opened it from — the transcript, the job, the message thread — stays visible beside it, which is the whole point of having a reference open.",
+        "When more than one answer fits a vehicle, those answers are tabs now rather than one stacked under the other. Only one of them is the vehicle in front of you, and stacked it was too easy to read the wrong one. The question that tells them apart sits right under the tabs.",
+        "Tool coverage now says whose list it is. The book names its own publisher's tools and is silent about everybody else's — Autel and Xhorse handle most of these vehicles — so a tool missing from the list is not a tool that cannot do the job. Those fields are editable, so you can write down what actually works for your shop.",
+        "If your inventory has a photo of a part the card names, you now see it — beside the answer, and on the shelf line. Most people recognise a part by sight long before they recognise it by number."
+      ]
+    },
+    {
+      "version": "2026-10-02a",
+      "items": [
+        "Vehicles named in a job description or a call transcript are now links. Click one and the key reference opens on that exact year, make and model.",
+        "The card leads with the answer that decides the job: whether a programmer is needed at all, and the one question worth asking the caller when it does. Under it are the part numbers, the tools the job names, who on your team is carrying them, and what is on the shelf.",
+        "Everything on the card can be corrected. Catalogues are wrong sometimes and the person who finds out is the tech standing at the vehicle, so an edit takes effect for your shop straight away — nobody waits on a review to get a part number that works.",
+        "A corrected value never looks like the book printed it. It is badged, and what the book said stays visible underneath, so the next person can see somebody changed it and why.",
+        "If something is wrong for everybody and not just you, tick the box when you save it and it comes to us for review. We approve it before it reaches any other shop. Your own correction keeps working whichever way that goes."
+      ]
+    },
+    {
+      "version": "2026-10-01j",
+      "items": [
+        "New on the Payroll page: Check before posting. It shows what the period would pay, worked out exactly the way the posted run works it out, and changes nothing.",
+        "Top of it is the warning that matters: jobs finished in this period that have never been invoiced. Those pay nobody, because a job reaches nobody’s pay until it is billed. It lists them with links so you can go and fix them — and it warns rather than blocks, so a bookkeeping gap is never why somebody is paid late.",
+        "Then every person and what they are owed: wage, commission, bonus, tips, vacation and the total, in dollars.",
+        "The figures were already being worked out — there was simply no screen, so the one check meant to happen before payroll could only happen after it."
+      ]
+    },
+    {
+      "version": "2026-10-01i",
+      "items": [
+        "Payroll figures now come back in dollars and cents as well as pennies. Nobody checking a pay run should have to divide 2650 by a hundred in their head to see $26.50.",
+        "The exact pennies are still there underneath and are still what the money is built from — that is what keeps it exact. The dollars are for reading.",
+        "Rounding is written down and locked: half a cent and above goes up, below it goes down. .005 favours the business, .004 favours the tech or the customer. That is the tax rule.",
+        "There is now a test that fails if anybody switches it to the other kind of rounding, the kind that sends 2.5 to 2. The two agree three times in four, so it would otherwise stay hidden until a penalty notice turned up."
+      ]
+    },
+    {
+      "version": "2026-10-01h",
+      "items": [
+        "A card tip has its own processing fee, and it is now kept separate from the fee on the rest of the bill.",
+        "Only the bill’s share comes off the job. $1,000 of work plus a $100 tip at 3% is a $33 fee: $30 against the job, $3 against the tip — so the profit is $970, and a tech’s commission no longer shrinks because a customer tipped them.",
+        "New setting: who carries the fee on the tip. By default the shop does and the tip is paid whole, which is how it already worked.",
+        "If you switch it to the tip, only the tip’s own share is taken — never a share of the fee on the whole bill. The screen warns that California, Maine, Massachusetts and Delaware prohibit the deduction entirely, and that federal rules bar it if it would take somebody below minimum wage.",
+        "Payslips now show what the processor took out of tips, whoever ends up carrying it."
+      ]
+    },
+    {
+      "version": "2026-10-01g",
+      "items": [
+        "Fixed, and this one matters: somebody who clocked hours but led no jobs got no payroll row at all. Not paid short — not paid. Anybody with hours on the clock now gets a row.",
+        "Card processing fees now come off the profit before commission, the same as parts. Paying 3% to the processor and 40% on the gross was commission on money you never had.",
+        "Tips go to the person they were left for, in full. No percentage taken, nothing deducted, and to the account on the payment rather than whoever led the job. They land in the run the payment came in.",
+        "Commission and the vacation percentage now come off the same figure, so 40% commission plus 0.05% vacation really is 40.05% of the profit on the job. Vacation used to be worked out from a number that still had the sales tax in it.",
+        "New: hourly and salaried staff bank vacation by the hour they work, instead of a percentage of a job that was never theirs. Set your days per year in Company Preferences → the default is 10, the US average after a year of service.",
+        "The screen shows what your number works out to per hour worked, so you can check it against an offer letter."
+      ]
+    },
+    {
+      "version": "2026-10-01f",
+      "items": [
+        "Commission is now taken from the profit on a job: everything the job sold for before tax, less what the parts cost you.",
+        "A $50 part sold at $100, a $120 service call and an hour at $95 is $315 before tax. Take off the $50 the part cost and the tech earns their percentage of $265.",
+        "Labour is not taken off. The hour on the invoice is what the job sold — deducting the wage you paid for it would shrink a tech’s commission by the amount they just earned. Only parts and a sub’s price come off.",
+        "Sales tax is out of every commission basis. It is money you hold for the state, so nobody earns a percentage of it. If a customer part-pays, only the share that was not tax counts.",
+        "A job sold under the cost of its parts pays no commission rather than a negative one. That is a job to go and fix, not a debt to take out of somebody’s wages.",
+        "The tech performance report and the payroll run now work this out the same way, so the figure you check beforehand is the figure that posts."
+      ]
+    },
+    {
+      "version": "2026-10-01e",
+      "items": [
+        "“Commission on a tech’s own jobs” in Company Preferences now actually does something. It had been saved and ignored, so payroll came out the same whichever way you set it.",
+        "Set it to “when the job is finished and invoiced” and commission is owed as soon as the job is billed. Set it to “when the customer has paid” and the job waits, then lands in the run the money arrived in — a job finished in March and paid in May pays in May, and only once.",
+        "The supervision bonus keeps its own separate setting, so you can bill-and-pay commission while holding bonuses until the money is in.",
+        "Separately, each person’s payroll card still sets what the percentage is taken from: what the job sold for, what was left after parts, or what the customer actually paid.",
+        "A completed job that has not been invoiced no longer pays commission. There was a case where it paid on the job’s own total, which no customer had been shown. The payroll preview already lists closed-but-unbilled jobs so you can fix them before a run."
+      ]
+    },
+    {
+      "version": "2026-10-01d",
+      "items": [
+        "New in Company Preferences → GPS check-in: “Only keep location during working hours”. Set the hours and the days, and anything recorded outside them is discarded.",
+        "Off by default, so nothing changes unless you turn it on.",
+        "Why it is there: background tracking runs from when a tech starts sharing until they sign out, and nobody signs out at night. The notice on their phone said “while you’re on the clock”, which was not the whole story. It now says what is actually happening, whichever way you set this.",
+        "Overnight hours work. A shift that starts on a selected day is kept through to the stop time next morning, so a Friday night crew finishing Saturday at 2am needs Friday ticked.",
+        "A phone that was out of signal all afternoon still uploads that afternoon when it reconnects in the evening — fixes are judged on when they were taken, not when they arrived."
+      ]
+    },
+    {
+      "version": "2026-10-01c",
+      "items": [
+        "The buttons on the incoming-call pop-up now match the rest of the app. The cream “Go to customer” was the loudest thing on the card and the second most useful, and that shade means VIP everywhere else.",
+        "Same shape, same height, same corners across every pop-up — call, message and intake. Only the fill says which button is the one to press.",
+        "The Call back button was coming out with square corners inside a rounded slot. Fixed.",
+        "Calls page rows got the same treatment, and every one of those buttons now shows a ring when you tab to it."
+      ]
+    },
+    {
+      "version": "2026-10-01b",
+      "items": [
+        "The equipment builder is on the web now, not just the phone — which is where the customer's spreadsheet actually is.",
+        "Paste their schedule into it and every number on the rows is kept. Describe the property instead if you have no list.",
+        "It shows what it filled in for you before you create anything, and asks when something would change the layout.",
+        "Change a draft in words — “add a roof hatch to each stair” — and the corrections you already made by hand stay put."
+      ]
+    },
+    {
+      "version": "2026-10-01a",
+      "items": [
+        "The equipment builder can read a pasted schedule — a spreadsheet, a hardware list, the item index off a set of drawings. Paste the rows and it keeps every number on them.",
+        "Those numbers are the point: the one stencilled on the frame and printed on the drawings is what your customer says on the phone. Describing the building as a sentence threw them away and made up labels instead.",
+        "A row with no number still gets created. Schedules have gaps, and a gap is usually something real that nobody numbered.",
+        "Reading the same schedule twice still creates it once.",
+        "The equipment builder now tells you what it filled in for you. “I assumed 2 stairwells per floor” shows above the rows, before you press create.",
+        "And it asks when something would change the layout — tap an answer and build again. At most three questions, and only ones whose answer changes the result.",
+        "You can now change a draft in words instead of starting over: “add a roof hatch to each stair”, “floor 4 has no units”. Corrections you already made by hand stay put.",
+        "If a change comes back with far fewer rows than it started with, it says so before you create."
+      ]
+    },
+    {
+      "version": "2026-09-30g",
+      "items": [
+        "Fixed: somebody limited to one territory was only limited on the dispatch board. They could still open and edit every job in the company from the jobs page. Territory limits now apply everywhere.",
+        "Jobs at an address no territory covers stay visible to everyone — an untagged property is nobody's ground, and hiding it means it never gets booked.",
+        "Roles can now be set to “Their territories” for job visibility: the jobs at properties in the territories assigned to them, plus their own and their team's wherever those are.",
+        "Owner and Admin always see every job. That can no longer be narrowed by a role edit or a personal override — what an admin may DO is still whatever their role grants.",
+        "Assigning yourself territories is a filter, not a limit, unless your role says “Their territories”.",
+        "New on the dashboard and the phone: My supervised projects — open work on your ground that you are not doing yourself, with how many have nobody going and how many are past due.",
+        "It stays out of your own schedule on purpose, and it does not show for anyone who already sees every job.",
+        "Jobs and estimates can now name a project manager — who is answerable for it going right, which on a bigger job is not the person turning the screwdriver.",
+        "Leave it empty and the lead tech holds it. Reassign the job and that follows, so nobody is left holding a job they are no longer on.",
+        "A project manager does not need the phone app. An office person can hold a job.",
+        "Whoever holds a job can open it, even if they are not working it — otherwise being made answerable for something means nothing.",
+        "Needs Attention now says who is answerable for each job, so you can see who to chase without opening forty of them.",
+        "Payroll can now be previewed before it posts, and the preview warns about jobs that finished in the period with no invoice on them — those pay nobody, and the warning is where the person running payroll actually is.",
+        "It warns; it never blocks. A bookkeeping gap should not be why somebody is paid late.",
+        "Jobs now record who supervised them at the moment they finish and get invoiced, so redrawing a territory later cannot rewrite who was owed what.",
+        "Supervision bonus: set a percentage per person and a foreman earns a share of the work done on his ground. It is a bonus on top of his pay, so a salaried foreman earns it too.",
+        "It pays on what the job LEFT — after parts, subcontractors, and the hours clocked on that job. Never on the cost of the job.",
+        "You choose when pay is earned, separately for commission and for the bonus: when the job is finished, or when the customer's money arrives.",
+        "A job that lost money pays no bonus and takes none back off the others.",
+        "The supervision percentage is on the payroll profile now, and the two “when pay is earned” choices are in Settings › Preferences."
+      ]
+    },
+    {
+      "version": "2026-09-30f",
+      "items": [
+        "On the phone, adding equipment to a job is now tick-several-then-Add. It used to add one per tap, which meant six taps were six calls to the server — slow on a bad signal, and no way to change your mind halfway.",
+        "The picker searches by the number on the thing itself, not just the name CrewBarn gave it.",
+        "It also flags anything nobody has confirmed on site, before it goes on a job.",
+        "Estimates on the phone now have an Equipment section. A quote can say which things it is for, not just what it costs — and what you name there lands on the job when the customer says yes.",
+        "Logging a part on the phone now searches your catalogue and shows what is on your own van, so you can see whether you can fit it today or it needs ordering.",
+        "You can still just type a part the catalogue has never heard of — it saves either way, and it works with no signal.",
+        "Picking a stocked part moves no stock. That still happens when the work is done.",
+        "Estimate lines on the phone can say which piece of equipment they are for, and the line list shows it. A quote covering eight items with twenty lines was unreadable without it.",
+        "Adding a product to a quote searches the catalogue the same way the job's part picker does."
+      ]
+    },
+    {
+      "version": "2026-09-30e",
+      "items": [
+        "You can write a note on a piece of equipment now, and it stays. The old notes box was one field that the next person to open the form wrote over; this keeps a history, dated and signed.",
+        "Notes stay with your team unless you tick “Show this to the customer” — nothing appears on the customer's page or behind a scanned label.",
+        "Techs can note an item while walking a property, straight from the list, and it works with no signal.",
+        "An item's Service history now shows what techs actually logged and noted on site, not just quotes, invoices and parts.",
+        "The baseline condition on a service plan now fills itself from the survey, so what an item was like when it came under cover is on the agreement instead of blank."
+      ]
+    },
+    {
+      "version": "2026-09-30d",
+      "items": [
+        "Equipment records now say whether anybody has actually seen the item. The tree builder creates items from a description, and until a tech walks the building every one of them is a guess.",
+        "An item is marked confirmed the moment a tech records its condition in the field — nothing extra to tap.",
+        "Items you already have a service log or inspection for were marked confirmed using the date of that first visit, not today's date."
+      ]
+    },
+    {
+      "version": "2026-09-30c",
+      "items": [
+        "Fixed: running the asset tree builder twice on a property created the whole building again — a hundred items became two hundred rows, each with its own label, and no way to tell which of a pair you were looking at.",
+        "It now skips anything already on file, matching on the name and the number the building uses.",
+        "The preview says what it would actually add before you press create: “12 new, 88 already there”.",
+        "Adding a floor later still works — only the new floor is created."
+      ]
+    },
+    {
+      "version": "2026-09-30b",
+      "items": [
+        "Customers can now ask up to three companies for a service plan at once, from the marketplace — a third option beside “Get an estimate first” and “Request service”.",
+        "They set the schedule as part of asking: how often, best days, time of day, months they are closed.",
+        "When you win one, it arrives in your Plan requests tab with that schedule already on it, and Start proposal builds the draft agreement from it — the same as a request made to you directly.",
+        "The other companies are marked lost automatically, as they already are for estimates."
+      ]
+    },
+    {
+      "version": "2026-09-30a",
+      "items": [
+        "Fixed: a paid invoice still printed “Total due $150.00” with a Scan-to-pay code under it, on a page stamped PAID. It now shows what was paid and a balance of zero, and the payment code is replaced with “Paid in full”.",
+        "That applies to your existing invoice templates as well as new ones — nothing to re-seed.",
+        "Fixed: the Bill to block was blank when no address was ticked as the customer's main one. It now falls back to their only address. A customer with one address has a main one whether or not anyone ticked the box.",
+        "Part-paid invoices now show what came off and what is left, rather than the full amount."
+      ]
+    },
+    {
+      "version": "2026-09-29z",
+      "items": [
+        "Fixed: emailing an invoice failed with “Class App\\Services\\TenantSetting not found”, on the web and in the app. A missing import — it crashed every time, and had nothing to do with the automation switch.",
+        "The red automation switch does not touch manual sends. It is only wired into the automation engine and the scheduled reminders; sending an invoice by hand was never gated.",
+        "Fixed: Receive payment said “No invoices yet” on a job whose invoice was already paid in full. It now names the invoice and says nothing is outstanding.",
+        "Portal invites had the same missing import and would have failed the same way."
+      ]
+    },
+    {
+      "version": "2026-09-29y",
+      "items": [
+        "“Quote the parts” on the dashboard now builds the estimate instead of dropping you on the job. It reads what the tech logged, writes one line per part needed, and opens the draft.",
+        "Every line says which item it is for — “RTU-1 — Drive belt” rather than a part number — and the lines stay in the order the tech met them walking the property.",
+        "Nothing is priced. The draft is yours to price and send.",
+        "Once quoted, those needs come off the Waiting on a quote panel, so one visit cannot be quoted twice.",
+        "Customers reading an estimate now see it grouped by item, on phone and desktop. Labour and call-out lines stay ungrouped, because they belong to the whole job."
+      ]
+    },
+    {
+      "version": "2026-09-29x",
+      "items": [
+        "Customers get two new tabs on your company page: Equipment — everything you have on file at their properties, when it was last serviced, and anything waiting on parts — and Service plan, showing what their plan covers and when you are next due.",
+        "Each item links to its full record rather than repeating it, so there is one set of rules about what a customer may see.",
+        "A plan's price is not shown there. That belongs on their invoices, not in a second place it can be wrong.",
+        "Techs now have a camera on every row of the walk-through, as well as inside the condition form — walking a property is look, snap, move on, and opening a form to take a picture means fewer pictures."
+      ]
+    },
+    {
+      "version": "2026-09-29w",
+      "items": [
+        "Customer job pages no longer show your tech's GPS coordinates or how far from the property they checked in. That is a record of where an employee was standing, and the customer is a third party to it — and \"distance from site: 340m\" reads as an accusation you end up explaining.",
+        "Photos you share with a customer no longer carry the coordinates of where they were taken. Your own screens still show all of it.",
+        "In its place, the customer now sees What was done: the service log for that job, item by item. Entries a tech marked internal never appear.",
+        "Techs can take photos while walking a property. They attach to the item, not the job, and queue with no signal like the rest of the walk-through."
+      ]
+    },
+    {
+      "version": "2026-09-29v",
+      "items": [
+        "Customers can now ask you for a service plan from their portal, and they set the schedule themselves: how often, best days, time of day, and which months they are closed.",
+        "New Plan requests tab on Service agreements, with a count of what is waiting. It shows the whole schedule they asked for, not just how often.",
+        "Start proposal builds the draft agreement with that schedule already on it — properties, covered equipment and rhythm — so nobody re-types it. The draft is unpriced and unsigned; you price it and send it.",
+        "Asking for everything at a property stays open on purpose: equipment added later is picked up when each visit is booked, rather than being frozen to the list on the day they asked.",
+        "Declining asks you for a reason, and the customer sees it."
+      ]
+    },
+    {
+      "version": "2026-09-29u",
+      "items": [
+        "Fixed: the Download button on Settings → Label printer showed a page of text reading \"Authentication required\" instead of downloading the Print Bridge. The button is fixed; nothing about your setup needs changing.",
+        "If the download cannot be fetched, the page now says so where the button is, rather than sending you to a blank page."
+      ]
+    },
+    {
+      "version": "2026-09-29t",
+      "items": [
+        "Techs can now take before-and-after photos while logging an item on the app, and they attach to that item rather than to the job — so they are still there a year later when somebody reads the item's own record.",
+        "Photos queue with no signal. A tech in a basement takes the picture, walks on, and it sends itself once there is a bar.",
+        "Each set has a 'Let the customer see these' switch, OFF by default. Nothing reaches the public record unless the tech ticked it.",
+        "Customer portal: a new Equipment menu, where a customer decides who can see their equipment records — another company, an inspector, or nobody. It was already built; there was no way in."
+      ]
+    },
+    {
+      "version": "2026-09-29s",
+      "items": [
+        "The red automation switch now pauses automatic customer emails, customer texts and external webhooks only. Staff notifications keep working.",
+        "Manual sends, incoming messages and internal work remain available. Your saved ON/OFF setting is unchanged; missed customer messages do not catch up on resume.",
+        "Improved spacing around the automation switch on Job statuses."
+      ]
+    },
+    {
+      "version": "2026-09-29r",
+      "items": [
+        "New dashboard panel: Waiting on a quote. Every visit where a tech logged parts that nobody has priced yet, worst first.",
+        "Each one has Quote the parts, and a link straight to that item's full record — so you can see what has already been done to it before you price more work on it.",
+        "Visits under a service plan are flagged, because they are the ones that get missed: the plan covers the visit, so the job never reaches an invoice and nothing else prompts a look.",
+        "Once something is quoted it leaves the panel. A list that keeps showing priced work is a list people stop opening."
+      ]
+    },
+    {
+      "version": "2026-09-29q",
+      "items": [
+        "Fixed: a scheduled visit on a property arrived with an EMPTY equipment list unless somebody had ticked items onto the agreement by hand. The tech had nothing to log against, and the visit then reported that nothing was serviced.",
+        "A plan on a property now covers what is at the property, read when the visit is booked — so equipment added in March is on the June visit without anybody remembering to add it.",
+        "If you did tick a specific list, that is still taken at its word. Three of forty means three.",
+        "Equipment you retired from a plan stays off, even if it was the only thing on the list."
+      ]
+    },
+    {
+      "version": "2026-09-29pa",
+      "items": [
+        "Job statuses now has one red ON/OFF switch for automatic outbound emails, texts and webhooks, including staff notifications.",
+        "Manual sends, incoming messages, clocking and internal work keep working while automatic outbound is OFF. Individual automation settings are preserved.",
+        "Turning outbound automation back ON does not replay missed messages. Nothing is switched off automatically: a company administrator controls the switch."
+      ]
+    },
+    {
+      "version": "2026-09-29p",
+      "items": [
+        "A service plan can now say WHEN it suits the customer, not just how often: best days of the week, time of day, and months they are closed.",
+        "Visits land on a preferred day by moving forward, never earlier — turning up before you were due is its own problem.",
+        "A month they are closed pushes the visit to the day they reopen, not to the same date a month later.",
+        "The rhythm itself never drifts. \"Every 3 months on a Tuesday\" stays on its quarter instead of walking a few days later each visit.",
+        "When a visit is booked, the time of day rides along, so the job reaches the board with a start time instead of a gap for a dispatcher to guess at."
+      ]
+    },
+    {
+      "version": "2026-09-29o",
+      "items": [
+        "The incoming-call card is wider, so the caller's details and the buttons stop wrapping onto extra rows.",
+        "If the live connection drops, the card now catches up within about five seconds instead of fifteen — long enough that a ringing phone looked like nothing was happening."
+      ]
+    },
+    {
+      "version": "2026-09-29n",
+      "items": [
+        "A customer's equipment is now grouped by the property it is at, so \"which of these is at Harbor Point\" stops being something you answer by scanning a list.",
+        "Every item has a Public record link that opens exactly what somebody scanning its label would see.",
+        "Each property says when another CrewBarn company already keeps equipment records there, with a button to ask the owner for access rather than building a second list of the same equipment.",
+        "That notice appears only when there is something to say. It never names the other company or what they hold — that is what access is for.",
+        "Customers get a Service companies section in their portal: who is asking, who has access, with Allow, Decline and Take access back. Past decisions are kept so you can see you once allowed somebody, and when you stopped."
+      ]
+    },
+    {
+      "version": "2026-09-29m",
+      "items": [
+        "When another CrewBarn company already keeps equipment records at a property you service, the location now says so — and gives you a button to ask the property owner for access.",
+        "That is all you see until they say yes: that records exist. Not whose, not how many, not what.",
+        "The property owner decides, in their portal, not the company that built the records. They can allow, decline, set an end date, or take access back later.",
+        "Your own customers are unaffected — your equipment records are yours and always were.",
+        "Addresses are matched the way a person would read them, so \"418 Riverside Ave\" and \"418 RIVERSIDE AVENUE\" are one building. A suite number is kept, because Suite 200 and Suite 210 are not.",
+        "Existing properties need one run of Property matching in the admin maintenance panel before they can be matched."
+      ]
+    },
+    {
+      "version": "2026-09-29l",
+      "items": [
+        "Equipment built with the AI tree builder now gets the same A-XXXXXX code as everything else, so every label in a building looks alike and every scan link works the same way.",
+        "The numbering you typed is not lost — it becomes the item's tag, which is the number your customer's own paperwork uses.",
+        "That tag shows beside the code on the public page, on the item's record, and in an agreement's Schedule A, so somebody checking a schedule against their own equipment list recognises their own reference.",
+        "If you did not give a numbering scheme, the item simply has no tag rather than an invented one that looks like a customer reference."
+      ]
+    },
+    {
+      "version": "2026-09-29k",
+      "items": [
+        "A contract visit can no longer be completed while covered items have no service record. Marking one skipped with a reason is a fine answer and takes one tap; saying nothing is not.",
+        "The refusal names the items rather than just saying no, and the crew app shows the same list before the tech presses Complete.",
+        "You can switch this off per shop, but it starts on — you should not have to opt in to not misreporting what was serviced.",
+        "New Equipment tab on an agreement: everything it covers, where, when it was last serviced, what is still outstanding, and when each item joined the plan.",
+        "Equipment taken off a plan stays on the list, greyed, with the date. \"We took that out in August\" is exactly what somebody asks in November.",
+        "Each visit now expands to show what was done to each item, in the tech's own words."
+      ]
+    },
+    {
+      "version": "2026-09-29j",
+      "items": [
+        "Finishing a contract job now closes the visit it was booked for, so the plan advances and the next sweep does not book it again.",
+        "The visit records what happened to each item — done, skipped, left not working, or not there — taken from the service log, so nobody fills in a close-out screen twice.",
+        "An item with nothing logged against it is never recorded as done. A visit where four of eleven were logged says four.",
+        "It matches your own completing status by what it DOES, not what it is called, so renaming a status in settings cannot quietly break it.",
+        "The next visit's job now arrives listing what the last visit could not finish, worst first, so a part waiting since October is not found again in January."
+      ]
+    },
+    {
+      "version": "2026-09-29i",
+      "items": [
+        "A visit can now be issued as a report with its own number: one page per item, what was done, what was replaced, what it still needs, and the photos your tech shared.",
+        "It reads from the service log, so nobody retypes anything. A part still waiting on approval says exactly that — never what it was quoted at.",
+        "Like every report, it is frozen when you issue it. Work logged on a later visit does not change a report the customer already has.",
+        "Internal notes never reach it, even if the report was built from a list that included one.",
+        "An item the owner has marked private drops off the public copy, and the page says how many were left out.",
+        "A visit spread over two days now says so instead of showing the first day only."
+      ]
+    },
+    {
+      "version": "2026-09-29h",
+      "items": [
+        "Service agreements now carry a Schedule A: every covered item by ID, what it is, where, which service and how often — each ID linking to that item's record.",
+        "An item you have marked private shows only its ID and name on the schedule. No maker, no model, no location. Nobody gets a shopping list out of a document you emailed.",
+        "Retiring an item takes it off the next schedule you send. It stays in the agreement's history.",
+        "Contract terms — notice to cancel, response time, labour and after-hours rates, parts discount — fall back to your shop defaults and can be overridden per agreement.",
+        "Terms you have not set print as a visible blank if the agreement needs them, and drop out entirely if they are optional, so you never send a sentence with a hole in it.",
+        "When AI drafts an agreement it is now editing a real base document built from your trade, and the draft is refused if it drops the schedule, types an equipment ID, or invents a price or a date.",
+        "On Add missing templates, the starters that have updates now have a Review them now button instead of telling you to go and find another button."
+      ]
+    },
+    {
+      "version": "2026-09-29g",
+      "items": [
+        "Two new agreement templates: Repair agreement for a one-visit job, and Project agreement for phased work with milestone payments. Both fill themselves in from the job and its approved estimate.",
+        "An agreement lists the equipment the job covers, each with its ID and a link to its record, so a year later you can prove what was in scope.",
+        "Terms you settle once with your lawyer — warranty length, late fee, deposit percentage, insurance limit, your state and any required notices — now live in settings instead of being retyped per job.",
+        "A deposit is worked out to the exact cent, and the agreement states the balance. With no deposit set, it simply says payment is due on completion.",
+        "Anything you have not filled in prints as a blank line rather than a guess. A made-up warranty length reads exactly like an agreed one, so we never invent them.",
+        "Agreements are their own kind of document now, so Send agreement offers agreements and not job sheets."
+      ]
+    },
+    {
+      "version": "2026-09-29f",
+      "items": [
+        "Scanning a label now shows what was actually done to that piece of equipment: every visit, grouped by the day and the tech who came, with what they did, what they replaced and what it still needs.",
+        "Photos a tech marks as shareable show on that record, labelled before and after. Nothing is published unless somebody ticks it.",
+        "Equipment on a service plan says so on its public page, with how often it is visited and when the next visit is due. Never what the plan costs.",
+        "The owner controls each part separately. The work history, the photos and the plan details can each be switched off without hiding the rest of the record.",
+        "A property's groups now say how many items were serviced recently and how many need attention, instead of only how many there are.",
+        "Fixed: invoice, work-order and estimate templates always printed a second page, even when the whole document was one line. There was a forced page break sitting in front of the line items.",
+        "Fixed: the signature line on seeded agreements printed a stray bit of code where a dash should be. If your templates are unedited, Starter wording in the admin maintenance panel corrects them.",
+        "Fixed: an item's public page could fail to load entirely if a photo link could not be built. The words load now and the picture is simply left out."
+      ]
+    },
+    {
+      "version": "2026-09-29e",
+      "items": [
+        "A part a tech flagged now follows its quote by itself: approved when the customer approves, and closed when somebody logs fitting it. Nobody has to update the item's record by hand.",
+        "A repair job made from a parts quote now arrives with the equipment already on it, so the tech has something to log against.",
+        "Turning a quote down leaves the item still saying it needs the part — it just stops anyone chasing a quote that was declined.",
+        "Fitting one part closes one need. Two of the same part flagged on one item are still two parts."
+      ]
+    },
+    {
+      "version": "2026-09-29d",
+      "items": [
+        "Parts a tech finds on a maintenance visit can now be quoted in one press. It builds a separate estimate — the visit itself stays covered by the plan — with a line per part, each attached to the item it is for.",
+        "The quote reads worst first, so a safety item is at the top rather than wherever it happened to be typed.",
+        "A part cannot end up on the bill twice, however many times the button is pressed.",
+        "If the customer's plan includes a parts discount it comes off automatically, to the exact cent.",
+        "A new Parts needed list shows everything outstanding across every job, worst first — the question no single job can answer."
+      ]
+    },
+    {
+      "version": "2026-09-29c",
+      "items": [
+        "A private label is no longer a dead end for the person who owns the building. Scanning one now offers “Is this your building? Sign in with portal login” — the same login they use for their invoices, no second account.",
+        "Signed in, they see everything on their own equipment with no code and no expiry, and a green bar says whose account they are in with a way to sign out. The same browser might be a contractor’s tomorrow.",
+        "Their whole property reads as theirs, so the list beside an item they are reading no longer shows a private label on equipment they own.",
+        "Somebody given access to one item still gets one item. Being let into one item is not being let into the building.",
+        "Nothing changes for anyone scanning off the street."
+      ]
+    },
+    {
+      "version": "2026-09-29b",
+      "items": [
+        "Your customers can now see their own equipment. Signed into the portal, scanning one of their own private items shows the whole record — no access code, no 24-hour expiry. It is their building.",
+        "They control who else gets in: give someone access to one item, an area or a whole property, with or without an end date, and take it back the moment they want to.",
+        "Every look at a private record is written down — who, when, and how they were entitled to — and the owner can see that list.",
+        "Nothing changes for anyone scanning a sticker off the street; they see exactly what they saw before.",
+        "Who approves an access request is now a setting. Your workspace keeps deciding exactly as it does today unless you hand it to the customer."
+      ]
+    },
+    {
+      "version": "2026-09-29a",
+      "items": [
+        "Fixed: the public page for a piece of equipment was showing estimate numbers, whether the estimate was approved, and the wording of billing lines — to anyone who scanned the sticker. A competitor standing in front of it could see what you had quoted for it.",
+        "Public asset pages now show only what was done to the thing: parts fitted with their serial, and inspection verdicts. No quotes, no job billing lines, no counts of either.",
+        "A test now walks every public page and fails on anything that looks commercial, so this cannot come back by accident."
+      ]
+    },
+    {
+      "version": "2026-09-28x",
+      "items": [
+        "You can now issue one report for a whole property instead of handing somebody forty separate ones. It has its own number, one verdict for the building, and a single list of what needs fixing across every item — most urgent first, each line saying which item.",
+        "The verdict is the worst item, not an average. Thirty-nine sound ones do not offset the one that has failed.",
+        "The report is frozen when you issue it. An inspection done next week does not change a report you handed over today, which is what makes it usable as evidence.",
+        "Rolling up a property inspected every quarter shows its current state — the latest inspection of each item, not the same item four times.",
+        "Private items are left out rather than blocking the whole report, and the page says how many were withheld.",
+        "You can record who was given a copy, so 'did the fire marshal ever get it' is not somebody's memory."
+      ]
+    },
+    {
+      "version": "2026-09-28w",
+      "items": [
+        "Everything a report says needs fixing is now a tracked item with a deadline, instead of a line on a document nobody can act on. Life-safety issues are due the same day, 30-day items thirty days from the inspection, and the rest by the next visit.",
+        "Quote the fixes builds one estimate with a line per outstanding item, each attached to the item it is for — so nothing gets missed retyping the list.",
+        "The report itself says where each fix got to: Quoted, Approved, Fixed, or Waived. A customer reading it a month later stops chasing work already in hand.",
+        "An item past its fix-by date now shows the asset as overdue on its public page, even if the next inspection is not due for months. An inspection being in date says when something was last looked at, not that it is in order.",
+        "Waiving something needs a reason, and it stays on the record."
+      ]
+    },
+    {
+      "version": "2026-09-28v",
+      "items": [
+        "Inspection and service reports now have a page a customer can open: the verdict in plain words, what needs fixing with a date against each one, and everything that was checked.",
+        "Each finding says why it matters, not just what is wrong — so a property manager can tell a torn smoke seal from a missing sign without calling you.",
+        "Every report gets a number like R-26-00418 that somebody can read off paper and type in to check the report is genuine. It is on the page next to a Verify button.",
+        "Reports for items marked private are not published. The page says the owner keeps it private and shows nothing else — not the name, not the findings.",
+        "The page prints properly, because inspectors carry paper."
+      ]
+    },
+    {
+      "version": "2026-09-28ua",
+      "items": [
+        "Job statuses now use the available page width and group active statuses into Not started, Working, Waiting and Done. The main menu stays in place.",
+        "Switch between Stages and Rules, see tech-app actions and Ready to invoice badges, and add a status directly to its stage. Existing editors remain available.",
+        "This release changes presentation only. It does not activate customer messages, change delivery settings, or add drag-and-drop yet."
+      ]
+    },
+    {
+      "version": "2026-09-28u",
+      "items": [
+        "Already have the agreement on paper? Upload the signed contract on a new service agreement and CrewBarn reads the services, how often each one happens, the fee and the term off it — then fills the form in for you to check.",
+        "It will not guess. Anything the contract does not actually say comes back blank and is listed as something you have to fill in, because a made-up billing day reads exactly like an agreed one.",
+        "The customer and the properties are never matched for you. It shows you what the contract says and you pick the records yourself.",
+        "Nothing is saved until you walk through all four steps and press the button, the same as an agreement you typed in by hand.",
+        "Fixed: Draft one for me has never actually drafted anything. It was calling a piece of code that does not exist, and the failure looked exactly like the AI being unavailable — so it quietly handed back the generic starter contract every time."
+      ]
+    },
+    {
+      "version": "2026-09-28t",
+      "items": [
+        "A service can now list the equipment it covers — the actual units, gates or machines — ticked from the properties on the agreement. A year later the record says which of the eleven were serviced, instead of just a job title.",
+        "When a visit goes on the board, its job arrives carrying only the equipment at that property. A visit to one building does not turn up with another building's equipment on it.",
+        "Fixed: attaching equipment to a job has never actually worked. The permission rule behind it referred to a setting the app does not use, so every attempt was refused with nothing on screen to say so. It works now, on jobs and estimates too.",
+        "The customer box on a new agreement is wider, and long names in the search results wrap instead of being cut off. Two customers whose names differed only past the cut both showed as the same thing, which made picking between them a guess."
+      ]
+    },
+    {
+      "version": "2026-09-28s",
+      "items": [
+        "How often is a plain list now — Every week, Every 2 weeks, Every month, Every 3 months, Once a year — instead of a box with a number in it. “Every 1 month” read like the 1 might be a day. Anything unusual is still possible under Custom.",
+        "Each service has a What this involves box. It goes into the agreement, so the customer reads what they are actually buying instead of just a service name."
+      ]
+    },
+    {
+      "version": "2026-09-28r",
+      "items": [
+        "Setting up a service agreement is four short steps now — who it is for, what you will do, the money, and the paperwork — instead of one long page. You can jump back to any step from the row at the top.",
+        "Beside it, a panel that fills in as you go: how many jobs the agreement books in its first year, what it bills, each service's visit count, and the dates of the first visits.",
+        "Those numbers come from the same scheduler that will actually book the work, so what you see before you agree is what you get after. A quarterly lock service and seasonal grounds care at one property previews as 46 jobs and $7,200 — and creates exactly that."
+      ]
+    },
+    {
+      "version": "2026-09-28q",
+      "items": [
+        "Service agreements can be signed now. Send to sign emails the customer a link; when they sign, the agreement starts itself and the visit dates go on straight away.",
+        "They signed on paper does the same thing for the ones signed at a kitchen table, which is most of them.",
+        "The wording is frozen the moment you send it, so editing the document afterwards cannot change what the customer signed.",
+        "Before the four pages, the customer sees a short summary of what they are agreeing to: what is covered, how often, the fee and the term.",
+        "While it is waiting to be signed it books nothing and bills nothing, and the page says so."
+      ]
+    },
+    {
+      "version": "2026-09-28p",
+      "items": [
+        "A service agreement now has tabs: Overview, Visits, Billing and History. All of it was already being recorded and none of it was on screen — so you could not see when you are next there, whether they have paid, or what has happened.",
+        "Overview shows the next five visits with the property and whether each is on the board yet, and what has been billed, paid and what is next.",
+        "Visits lists the whole year with a link to the job each one became. Billing lists every period with its invoice. History reads in plain sentences instead of event codes.",
+        "The status says what it means: Not started, Running, Paused — with a line telling you that a not-started or paused agreement books no visits and bills nothing. Start it and Pause are right there, and starting one places its dates straight away."
+      ]
+    },
+    {
+      "version": "2026-09-28o",
+      "items": [
+        "A job booked by a service agreement now says so at the top, in green: covered, do not collect payment for the visit, with a link to the agreement.",
+        "Its invoice button reads Invoice extra work, and asks you once before it goes ahead — so billing a covered visit is a decision rather than an accident."
+      ]
+    },
+    {
+      "version": "2026-09-28n",
+      "items": [
+        "Draft one for me now writes a real agreement instead of a few generic lines. It is told what you just set up — the customer, the properties, each service and how often it happens including the seasonal changes, the fee and the term — and writes them into the wording.",
+        "You get eleven proper sections, and a table of the services with their real rhythms.",
+        "Two lists you can edit before it writes: what is included in the fee, and what is charged separately. They come pre-filled with what is true of any plan, and they become their own sections in the agreement — the ones every argument about a service plan is really about.",
+        "Nothing is invented for something you did not say. Anything unanswered stays a blank for you or your lawyer, because a made-up notice period reads exactly like an agreed one."
+      ]
+    },
+    {
+      "version": "2026-09-28m",
+      "items": [
+        "Jobs booked by a service agreement now say so, and CrewBarn stops you invoicing one twice. The fee already covers the visit — pressing Invoice job on it used to charge the customer a second time with nothing on screen to warn you.",
+        "If the tech found extra work on a covered visit you can still bill for that: you are asked once, told which agreement covers the visit, and then it goes through.",
+        "The customer box on a new service agreement is a search now, not a list of every customer you have. Type a name or account number. There is a + New customer button beside it if they are not in there yet, and their first property is ready to tick without a reload."
+      ]
+    },
+    {
+      "version": "2026-09-28l",
+      "items": [
+        "One agreement can now cover more than one service. Servicing the locks every quarter and cutting the grass weekly in summer and every other week in winter is ONE agreement with two services — add them with + Add another service, and each keeps its own rhythm and seasons.",
+        "New agreements can be started, not just saved. Until now everything you created sat as a draft, and a draft books no visits, no jobs and no invoices — so nothing you set up ever happened. Start the agreement puts it live and places the visit dates straight away; Save as a draft still leaves it parked.",
+        "You can say who looks after an agreement. They get the renewal reminders, and they are the lead on any job it books that has no tech of its own.",
+        "Job type no longer quietly defaults on every new service, which is how everything ended up booking the first kind of job in your list."
+      ]
+    },
+    {
+      "version": "2026-09-28k",
+      "items": [
+        "How often now reads the way you would say it: “Normally every week”, then “But from November to March, every 2 weeks”. Underneath, it writes the whole schedule back to you as a sentence — so you can read what you are about to promise instead of working it out from dropdowns.",
+        "The everyday rhythm can no longer be deleted by accident, which used to leave an agreement that only visited in winter.",
+        "No more “every 1 months”.",
+        "The old four-field new-contract box is gone. Everything goes through the full form, which asks for the properties and the service as well."
+      ]
+    },
+    {
+      "version": "2026-09-28j",
+      "items": [
+        "Drafting a contract now shows you what it wrote. It used to close the box and quietly attach the thing — you never saw the document. You get it on screen, then Attach it or Open and edit.",
+        "Tool Shed → Service Agreements can write your terms into the agreement instead of leaving blanks. Tell it what you cover, what you do not, your cancellation and payment terms, and those go into the wording. Anything you leave empty stays an honest blank — nothing is invented.",
+        "New: upload the agreement you already use — a PDF or a photo of the paper copy — and CrewBarn reads it into an editable draft, turning the per-customer parts into fill-ins. Read it against the original before you use it; it is a machine reading your paperwork. Needs AI switched on.",
+        "How often now takes as many rhythms as the work really has — weekly all year, every two weeks November to March, quarterly, whatever it is. A season can run backwards through the year end, and where two overlap the seasonal one wins. You no longer have to say “every 1 month” and fix it on the next screen.",
+        "The new service agreement form is full width with the same header as New Job, instead of a narrow column.",
+        "Maintenance contracts is now called Service agreements throughout, and New contract takes you to the full form rather than the four-field one."
+      ]
+    },
+    {
+      "version": "2026-09-28i",
+      "items": [
+        "The new service agreement form now shows each property's actual address instead of “Unnamed property”, and looks like the rest of CrewBarn.",
+        "You can attach the contract the customer signs, right on the form — pick one you already have, or press Draft one for me and CrewBarn writes it while you wait.",
+        "That opens over the form rather than sending you somewhere else, with the plain warning that CrewBarn is not a law firm and a lawyer needs to read it before you send it. You get an editable draft, switched off until you turn it on.",
+        "Service agreements is now one of the areas you can switch off in Modules, like Warranties or Subcontracting. Off means it disappears from your menus — nothing you have already agreed is touched."
+      ]
+    },
+    {
+      "version": "2026-09-28h",
+      "items": [
+        "Fixed: the new service agreement links did not appear for anyone using the Easy layout — which has its own menus, and had never heard of contracts. Jobs now lists Service agreements and New service agreement alongside the rest, and there is a + Service Agreement button next to + New Job."
+      ]
+    },
+    {
+      "version": "2026-09-28g",
+      "items": [
+        "Service agreements have their own form now, and you can start one from wherever you happen to be: the + button, the Jobs tab, the Estimates tab, or straight off a property on a customer's record.",
+        "Starting one from a property fills the customer and that address in for you.",
+        "The form asks for the whole thing in one go — who it is for, which properties, what you will do and how often, the fee and the term. The old one asked for four fields and no service, which produced an agreement that looked signed and did nothing, because a service with no rhythm never books a visit.",
+        "Pick several properties and each one gets its own visit and its own job, which the form tells you as you tick them."
+      ]
+    },
+    {
+      "version": "2026-09-28f",
+      "items": [
+        "New page: Tool Shed → Service Agreements. CrewBarn can now write you a service agreement to start from — the wording a customer signs before you begin work on a schedule. It comes out as an ordinary draft document you can edit, preview and send.",
+        "It could do this before, but there was nowhere to click. The page is the part that was missing.",
+        "Before it writes anything you read what CrewBarn is and is not doing, and type that you understand. CrewBarn is not a law firm, and a generated agreement needs a lawyer's eye before it goes to a customer — that note is printed on the document itself, so it survives being emailed or exported.",
+        "You can record who reviews your agreements, so the draft has somewhere to go. If you do not have anyone yet, the page suggests the kinds of place worth trying and why.",
+        "There is a slot for their API key, stored encrypted. Nothing sends to it yet — no legal service is connected to CrewBarn and we are not going to pretend otherwise. It is there so that when there is one worth using, your key is already where it belongs."
+      ]
+    },
+    {
+      "version": "2026-09-28e",
+      "items": [
+        "Contracts now write next year's agreement for you. As one comes up for renewal you get the next term ready to read — same services, same rhythms, same properties, starting the day the old one ends — with the price already at whatever increase you set.",
+        "It arrives as a draft, so you can change the price or anything else before you activate it. A contract set to renew automatically goes live on its own instead, so the billing never stops.",
+        "There is a Renew button's worth of it on demand too, if you would rather not wait for the overnight run.",
+        "The increase applies to the line rates as well as the overall fee, so the two do not drift apart.",
+        "A renewal is a new agreement linked back to the one it replaces, rather than the old one having its dates pushed out. Last year's prices, invoices and visits stay attached to last year, so you can still see what you charged.",
+        "A contract set to renew automatically that had already run past its end now gets picked up and renewed, instead of sitting there looking live while billing nothing.",
+        "Fixed: the renewal price could come out a cent low on certain increases — $1.00 at 2.5% worked out to $1.02 instead of $1.03."
+      ]
+    },
+    {
+      "version": "2026-09-28d",
+      "items": [
+        "Two new things you can build an automation on: a contract coming up for renewal, and a contract running out. Pick them in the automation builder like any other moment — email the customer their agreement is due, tell the office when one lapses, whatever suits.",
+        "How far ahead the renewal notice goes out is set per contract, so a big agreement can warn you three months out while a small one warns you a week out.",
+        "Contract wording now fills in properly on those messages — the agreement's name, its dates, what it covers and the fee. They would otherwise have gone out with those spots blank.",
+        "A contract whose term has ended now moves itself to Expired instead of sitting in your list looking live while doing nothing. One set to renew automatically is left alone rather than being closed behind your back.",
+        "No new visit reminder, on purpose: contract visits become ordinary jobs, and your job reminders already cover those. Adding another would have messaged the customer twice about the same visit."
+      ]
+    },
+    {
+      "version": "2026-09-28c",
+      "items": [
+        "New setting: whether contract invoices wait for you. Contracts raise their own invoices when each billing period starts — you can now have those count straight away instead of sitting as drafts for somebody to open. Tool Shed → Whether contract invoices wait for you.",
+        "Off to begin with, so nothing changes on your books unless you ask. With fifty agreements that is fifty invoices a month to open, which is what the switch is for.",
+        "Either way nothing is emailed to a customer. Sending an invoice is still something you do.",
+        "If anything goes wrong counting one, it falls back to a draft you can issue with one click rather than being lost, and the contract's history says what happened.",
+        "Fixed, and it affects ordinary invoices too: issuing an invoice now records it in your books in the same single step. Before, if the bookkeeping entry failed the invoice still went out as issued with nothing behind it — a gap you would only find at the end of the quarter."
+      ]
+    },
+    {
+      "version": "2026-09-28b",
+      "items": [
+        "Contracts can now bill on a set day of the month. Put 1 in Billing day and every contract invoices on the 1st, whatever date it was signed — so a customer with several agreements gets them together instead of scattered through the month.",
+        "The short first stretch is charged by the day, not as a whole period. A contract signed on the 20th that bills on the 1st pays for those twelve days of the month and no more, and the invoice line says “part period” so the smaller figure explains itself.",
+        "The same goes at the other end: a contract that finishes mid-month is only charged to the day it finishes.",
+        "A part stretch that works out to nothing does not raise an invoice at all.",
+        "Monthly contracts only — a day of the month does not mean anything to a weekly one, so those still run from the date the contract started. And a billing day of 31 falls on the 30th in a month that has no 31st, rather than skipping."
+      ]
+    },
+    {
+      "version": "2026-09-28a",
+      "items": [
+        "Maintenance contracts now raise their own invoices. Every period that has begun gets a draft invoice for the contract fee, with the dates it covers written on the line — the visits themselves are never invoiced separately, because the fee already covers them.",
+        "They arrive as drafts, not as something already sent. Nothing reaches a customer until you open the invoice and issue it.",
+        "A period is billed once and only once. Two runs at the same moment cannot both raise it, and a run that fails part way leaves no half-made invoice behind — the period simply stays owed and is tried again.",
+        "Tax follows the contract if you have set one on it, otherwise the customer's usual rate, otherwise your shop's default.",
+        "A contract signed with a start date well in the past catches up a year at a time rather than filling your invoice list in one go, and tells you how many periods are still to come.",
+        "Fortnightly and weekly agreements bill correctly. Two periods inside one month are two invoices — an earlier version could only record one a month and would have quietly billed those customers short."
+      ]
+    },
+    {
+      "version": "2026-09-27u",
+      "items": [
+        "Maintenance contract visits now turn into real scheduled jobs on their own. Anything due in the next two weeks lands on the board and in the tech app like any other job, with the right kind of work, the right property and the line's tech already on it.",
+        "A job keeps the date the visit was due, not the day it was created — so a visit picked up late still reads as the day it was meant to happen.",
+        "A visit becomes a job once and only once. It cannot be booked twice even if two runs overlap, so nobody gets sent to work somebody has already done.",
+        "If one service cannot be booked — its kind of job has been deleted, say — that visit alone is skipped and stays waiting for the next run. The rest of the week still gets booked, and the reason is written to the contract's log.",
+        "Contracts now has a menu entry, under Work. The pages were there but you had to know the address."
+      ]
+    },
+    {
+      "version": "2026-09-27t",
+      "items": [
+        "Maintenance contracts now place their visit dates. Each service books its own schedule at each property, and where a rhythm changes with the season the dates follow it — the step is always taken from the last visit, so the turn of a season never doubles a visit or leaves a gap.",
+        "Run it as often as you like: a second run fills forward from the last visit rather than starting again, and places nothing if there is nothing left to place. Nothing becomes a job or an invoice at this stage.",
+        "Platform admin can preview a tenant's schedule without writing anything."
+      ]
+    },
+    {
+      "version": "2026-09-27s",
+      "items": [
+        "New section: Maintenance contracts. Work you have agreed to do on a schedule, with each service on the contract keeping its own rhythm.",
+        "A rhythm can change with the season. Every week April to October and every other week November to March is one service, not two contracts. The year is drawn across twelve months so you can see the seasons meet — and it tells you if they don't, naming the month nothing covers.",
+        "Each service books its own kind of job, so different trades land on the board as different work rather than one blurred “maintenance”.",
+        "Generating a service agreement now asks you to acknowledge, once, that CrewBarn is not a law firm and the result needs a lawyer's eye before you send it. It suggests where to take it, and the draft carries the note on the document itself."
+      ]
+    },
+    {
+      "version": "2026-09-27r",
+      "items": [
+        "Templates & forms has a new stage on the Journey board: On contract. Maintenance agreements get their own moments — contract signed, visit coming up, visit report — alongside the job ones.",
+        "Four new starter templates to go with them: a maintenance agreement with the covered services and how often each one happens, a visit report, and a visit reminder by email and text.",
+        "New things you can put on a document: the contract name, its term, who supervises it, what it covers and how often, the fee and how it is billed, and the next visit date."
+      ]
+    },
+    {
+      "version": "2026-09-27q",
+      "items": [
+        "Forms built with Make a form now leave out a field that does not apply, instead of printing its code. A statement for a customer with no parent account used to read “Sub-customer name: {{sub_customer.name}}” — on the document the customer receives. The label goes with it.",
+        "Date of service now sits in the header on work orders and receipts, where it is a real line, rather than being described as a column of a table that only statements have."
+      ]
+    },
+    {
+      "version": "2026-09-27p",
+      "items": [
+        "New: Make a form. Pick a form you know, tap the fields you want on it, choose a colour and a name, and it builds a branded document — with a live preview the whole way and no merge tags to learn. Find it on Templates & forms.",
+        "Fixed: whatever you had selected — a view, a channel filter, a tab — was drawn as an empty white box with the label invisible. A colour used in ten places across CrewBarn had never been defined.",
+        "Fixed: filtering the journey board to Documents hid every document you had written yourself. Your own templates now filter along with everything else instead of disappearing.",
+        "Job stages and By channel now speak the same language as the rest of the page: green means it sends, and status reads \"In use\" or \"Off\" instead of a dot you had to decode. The raw merge-tag column is gone — it was code, on the one page that promises you never have to read it."
+      ]
+    },
+    {
+      "version": "2026-09-27o",
+      "items": [
+        "Two new things you can put on a document: the customer's Account #, and the Sub-customer name — the unit or property the work was done for, when that customer sits under a parent account. The parent (who gets billed) and the sub-customer (where the work happened) can now both appear on the same statement line."
+      ]
+    },
+    {
+      "version": "2026-09-27n",
+      "items": [
+        "Templates & forms now opens on the Journey board for everyone. If you had used the page before, it kept showing you whichever view you last had — so the new one was there but you never landed on it. You still get all four views; the switch is under the heading.",
+        "Fixed the view switch sitting on top of the Draft with AI and New template buttons on the job-stages view.",
+        "The update card no longer asks you to reload for changes and then list none. When a release has no notes of its own it shows the most recent ones instead, labelled as such."
+      ]
+    },
+    {
+      "version": "2026-09-27m",
+      "items": [
+        "New template now asks what the moment is and how it goes out before what to start from — and if you already have one for that moment, it says so and offers to open it instead of quietly adding a second. Start from CBI, CrewBarn's version, a copy of one of yours, or blank.",
+        "Fixed: two updates could share a version number, and when that happened the update card hid one of them — so notes were written that nobody could read."
+      ]
+    },
+    {
+      "version": "2026-09-27l",
+      "items": [
+        "Templates & forms has a List view: every template once, with the moment it belongs to and what the customer sees first. Copies fold into their template and show as a count, so the list never repeats the same thing five times. Search looks inside the message, not just the name, and there is a Show archived toggle.",
+        "Fixed: statement templates could not be previewed at all. Opening Preview — or picking Sample data — asked you to choose a job billed to a commercial customer and stopped there, which is impossible when you are just laying the form out. It now shows sample figures and says so, and still uses the real account balances when you pick a qualifying job."
+      ]
+    },
+    {
+      "version": "2026-09-27k",
+      "items": [
+        "Templates & forms opens on a new Journey board: one card per moment a customer hears from you, in the order a job actually happens, with a chip per channel showing whether it sends, is switched off, or does not exist yet. Pick any moment to see what the customer gets. The job-stage and by-channel views are still there — the switch is at the top right.",
+        "Fixed the duplicate templates. Renaming a template made CrewBarn stop recognising it, so the next \"Add missing CrewBarn templates\" added the original back — again and again. Separately, seeding could re-add the entire library in one go, which is where the runs of five identical names came from. Both are fixed, so no new copies will appear.",
+        "For the copies you already have: a banner now says how many there are, and \"Clean them up\" puts the versions side by side so you choose which one customers get. The rest are archived, not deleted, and can be brought back.",
+        "Fixed an editor showing [object Object] instead of your message when the content came from AI, a starter, or an extracted design."
+      ]
+    },
+    {
+      "version": "2026-09-27j",
+      "items": [
+        "Required custom fields appear below the document shortcuts and above Job Basics. Optional custom fields remain below Line Items. Required includes fields required on the form or before invoicing."
+      ]
+    },
+    {
+      "version": "2026-09-27i",
+      "items": [
+        "Job Custom fields now appear directly below the document shortcuts and above Job Basics, open by default, so customer-specific VIN, PO and WO fields are easier to find."
+      ]
+    },
+    {
+      "version": "2026-09-27h",
+      "items": [
+        "Fixed: turning on a customer's monthly statement stopped you saving that customer at all. Any edit — phone number, address, payment terms — came back \"not authorized\" with nothing to say why. Ordinary edits now save normally while statements are running. Changing the statement's own day, recipients or subject still asks you to pause it first, and now says so instead of failing silently.",
+        "Creating a job from a call for someone who is not a customer yet now needs permission to add customers, not just to create jobs. It makes a customer record, so it asks for the same permission that adding one by hand does."
+      ]
+    },
+    {
+      "version": "2026-09-27g",
+      "items": [
+        "Custom-field saves now notify open forms to reload field definitions without a page refresh. Create, edit, activate, deactivate and delete changes use a tenant-scoped event, not periodic polling. Returning to the tab also checks for changes; entered values stay intact."
+      ]
+    },
+    {
+      "version": "2026-09-27f",
+      "items": [
+        "Job custom fields can now be included in invoice email subjects and at the top of invoice email bodies, following the selected-customer rules. Missing subject values block sending. Customer subjects already using the field tag are not duplicated.",
+        "The template builder now lists statement table, total due and currency tags. Default value help explains why VIN, PO and WO defaults should usually stay blank."
+      ]
+    },
+    {
+      "version": "2026-09-27e",
+      "items": [
+        "Customer Tax & Billing now puts Statement send day directly below payment terms, with a link to choose the customer's statement template. Unsaved changes are checked before leaving.",
+        "Customer Templates now includes Create templates in Connect, opening in a separate tab. Automatic statement sending remains off."
+      ]
+    },
+    {
+      "version": "2026-09-27d",
+      "items": [
+        "Customer statements: set a monthly day, recipients and subject under customer Tax & Billing. Open the saved customer, then Records → Invoices → Preview statement for the PDF pack, delivery history and monthly enable/pause controls. Fixed the enable/pause request. Automatic sending remains off system-wide.",
+        "Statement packs put the statement first, followed by unpaid invoices including overdue balances, without changing NET due dates. Customer-specific fields and invoice email subjects support references such as PO and WO; statement templates are available per customer.",
+        "CBI photo research uses web research before checking inventory and offers possible matches, not confirmed fitment. Photo guidance adapts to the subject; locksmith VIN research uses decoded vehicle details for possible keys."
+      ]
+    },
+    {
+      "version": "2026-09-27c",
+      "items": [
+        "Call recordings now play from CrewBarn's own storage instead of fetching from the phone provider every time. They load faster, they keep working after the provider's temporary link expires, and they are still there when the provider's retention window closes.",
+        "Fixed recordings not downloading in the phone app. The app was being redirected to the provider and the hand-off failed there; it now gets the audio from CrewBarn directly. This also stopped the app's login token being passed to the phone provider on every play.",
+        "Recordings from before this change are pulled across in the background, oldest first."
+      ]
+    },
+    {
+      "version": "2026-09-27b",
+      "items": [
+        "Teach CBI now shows the photos that came WITH the request you are looking at, not every photo that customer has ever sent. A dealer who texts you every week was stacking months of unrelated pictures above the one being taught. Photos sent within half an hour of the request stay together, so a picture and the message describing it are not split up. “Show the whole conversation” is still one click away.",
+        "The intake approval text now appears in the customer's thread, so their reply of APPROVED sits under the question instead of arriving on its own."
+      ]
+    },
+    {
+      "version": "2026-09-27a",
+      "items": [
+        "New contact checkbox: Approves intake. When someone texts work to your intake number, the contacts you tick get a text from that same number saying who sent it and what they asked for, with “Reply APPROVED to authorize it”. Their reply marks the intake approved and records their name against it. Nothing is scheduled by a text — someone still opens the queue and turns it into a job.",
+        "The wording is yours to change: Templates now includes “Intake approval request (text)”.",
+        "Approves intake is separate from Intake / bill-to on purpose. Bill-to says which customer an incoming number belongs to; Approves intake says whose yes counts. The front desk that sends the work is often not the person who signs for it.",
+        "Fixed: when two customers shared a phone number, an incoming intake could be attributed to either of them and not always the same one. It now resolves the same way every time."
+      ]
+    },
+    {
+      "version": "2026-09-26zz",
+      "items": [
+        "New under Inventory Settings: Lock the store. Off (how it works today) a tech scans any part straight onto their van. On, only the staff you give Edit inventory to can move stock — they transfer it to a tech's van and the tech scans each item in to confirm they got it. Scanning still does the moving either way; this decides who gets to decide.",
+        "Under lock, a tech scanning something nobody sent them is told to ask the office rather than being left guessing, and the app counts down how many are left on the transfer as they scan.",
+        "A transfer that is part-scanned can no longer also be accepted in one go — that would have moved the same items twice. Whoever starts scanning finishes scanning."
+      ]
+    },
+    {
+      "version": "2026-09-26zy",
+      "items": [
+        "Techs can load their own van. Settings → My stock shows what is on board with targets and what is short, and Check in scans parts straight on — the camera stays open so a whole pile goes on in one go. Nobody at the shop has to raise a transfer or approve it: the QR label is on one physical item and cannot be scanned without holding it, so the scan itself records what moved and where it came from.",
+        "Transfer requests are still there for the other case — asking for something you do not have in your hand, which a scan cannot do."
+      ]
+    },
+    {
+      "version": "2026-09-26zx",
+      "items": [
+        "Vans and shelves can be told what they should carry. Inventory → Stock has a new “Should carry” column and field: set the number a van or shelf is meant to hold and it shows “short 3” the moment it drops below. Leave it blank and that spot is not stocked with the item on purpose — nothing reports it as short. Blank and 0 are different: 0 means it should carry none.",
+        "Techs get My van stock in the app: what their own truck is short of, worst first, with an Ask button that requests the restock from the shop. The old low-stock list adds every location together, so a van could be empty while the shop held fifty and nothing looked wrong.",
+        "Fixed: techs could not raise, accept, reject or cancel a stock transfer request, even though the whole point of the request is that the truck's tech consents to stock arriving or leaving. Who may act on a transfer is unchanged — only the person it is addressed to can accept or reject it, and accepting still means scanning each unit."
+      ]
+    },
+    {
+      "version": "2026-09-26zw",
+      "items": [
+        "A tech is never blocked from using a part that is in front of them. Shop stock, warehouse stock, their own van or another tech's van all go on the job — every stocked item carries a QR fingerprint and has to be scanned, so CrewBarn already records which physical unit was used, where it came from, who took it and which job it went on.",
+        "New under Inventory Settings: Watch van stock. With it on, a tech using a part out of another tech's van raises a transfer request to put one back from the shop, addressed to the van's tech to confirm when it arrives. Several parts off the same van become one request, not several.",
+        "Vans and shelves can now be told what they are supposed to carry. If the tech who took the part is set to carry that part on their own van, the restock request says so — their van was empty when it should not have been."
+      ]
+    },
+    {
+      "version": "2026-09-26zv",
+      "items": [
+        "Tool Shed dropdown now lists permitted tools alongside Connect, respecting module and settings access. Fixed overflowing toolbar view switches. Job and estimate descriptions search products and services as you type. CBI navigation groups training, skills and setup."
+      ]
+    },
+    {
+      "version": "2026-09-26zu",
+      "items": [
+        "CBI can find a call without you knowing whose it is. Ask for a person, a business name, an account number or a phone number in any format, and it searches all of them; if the name is not a customer it looks for it inside the call transcripts instead, and tells you that is what it did. When one name matches two customers it now says so rather than answering about whichever came first.",
+        "Ask CBI for the words spoken on a call — \"find the call about the broken deadbolt\" — and it searches the transcripts themselves.",
+        "New Messages permission under Roles & Permissions. It opens the company message inbox and is on for owners and admins; turn it on for other roles as you like. Reading the messages on a job you are assigned to is unchanged and needs nothing new."
+      ]
+    },
+    {
+      "version": "2026-09-26zt",
+      "items": [
+        "Folder tabs now use aligned cards with slim status-color accents, clearer selection and stable hover behavior."
+      ]
+    },
+    {
+      "version": "2026-09-26zs",
+      "items": [
+        "Route History includes active staff with app access, not only field technicians. Replay shows clickable job dots for the selected person's scheduled jobs overlapping the date and hour window, with customer names and links to job details. Existing viewing permissions still apply."
+      ]
+    },
+    {
+      "version": "2026-09-26zr",
+      "items": [
+        "CBI skills now separate available training from planned responsibilities with distinct icons and counts. Invoice learning has a dedicated screen showing saved source settings and direct access to invoice-sourced knowledge; it does not enable automatic billing."
+      ]
+    },
+    {
+      "version": "2026-09-26zq",
+      "items": [
+        "Teach CBI now explains hands-on training, supervised drafts and the remaining independent-task work in a three-stage overview. Connection setup collapses when configured to leave more room for training.",
+        "Review conversation photos without closing CBI: use Previous, Next or thumbnails. Teaching notes show saved/unsaved state, an Undo option and a character count. Switching photos or closing asks before discarding edits; saving locks navigation until complete."
+      ]
+    },
+    {
+      "version": "2026-09-26zp",
+      "items": [
+        "Drag zoomed CBI photos with your mouse to pan in any direction. Grab/grabbing cursors show when panning is available. Touch scrolling and scrollbars remain available."
+      ]
+    },
+    {
+      "version": "2026-09-26zo",
+      "items": [
+        "CBI photo details can look up manufacturer phone numbers and addresses with a cited source and lookup date. Confirm the manufacturer name before searching. Requires an active Anthropic connection; missing or unsourced contact details are not guessed."
+      ]
+    },
+    {
+      "version": "2026-09-26zn",
+      "items": [
+        "CBI photo details now include zoom up to 4x, contrast adjustment and Reset. Scroll or swipe around enlarged photos while keeping AI details and teaching notes alongside. Adjustments do not change the original image."
+      ]
+    },
+    {
+      "version": "2026-09-26zm",
+      "items": [
+        "Conversation photos now have a clickable AI badge that opens the photo, AI description, suggested match and teaching notes together. Removed the separate stack of photo teaching boxes. Editing still requires Teach CBI permission; multi-photo message analysis is clearly labeled."
+      ]
+    },
+    {
+      "version": "2026-09-26zl",
+      "items": [
+        "Staff can receive separate Company Info and Shop Rules access. Hidden and view-only choices are enforced by the API and shared Connect navigation. Reminder and automation changes, including test-send, now require edit access and respect Shop Rules restrictions. Workspace tool visibility no longer depends on permission to read Shop Rules."
+      ]
+    },
+    {
+      "version": "2026-09-26zk",
+      "items": [
+        "Warranty settings now support employee-specific hidden, view-only and edit access, with separate API read/write checks. Staff uses the same access selector for Modules and Warranty settings. Existing broad access is preserved until explicitly overridden."
+      ]
+    },
+    {
+      "version": "2026-09-26zj",
+      "items": [
+        "Modules is the first setting with explicit employee access: follow settings permissions, hidden, view only, or edit. Modules editing is enforced by the API; navigation configuration remains readable by staff so workspace menus can render. Requires matching API and frontend deployment."
+      ]
+    },
+    {
+      "version": "2026-09-26zi",
+      "items": [
+        "View-settings staff can inspect Modules. Presets, switches and saving require Edit settings, matching existing API protection."
+      ]
+    },
+    {
+      "version": "2026-09-26zh",
+      "items": [
+        "Sidebar and mobile Tool Shed menus now share the main menu's visibility rules, including workspace settings placement. Navigation uses the precise module keys instead of legacy grouped names."
+      ]
+    },
+    {
+      "version": "2026-09-26zg",
+      "items": [
+        "Staff personal permissions now include clear area-level selectors for no view/edit access, view only, or view and edit. These use existing role overrides and API permissions; special actions remain separately controlled. Individual-setting permissions are not yet available."
+      ]
+    },
+    {
+      "version": "2026-09-26zf",
+      "items": [
+        "Disabled Franchise and communication modules now stay out of desktop and mobile navigation. Quick-create links and the CBI header follow module visibility, failed refreshes no longer overwrite saved module settings, and Connect waits for a confirmed access decision."
+      ]
+    },
+    {
+      "version": "2026-09-26ze",
+      "items": [
+        "Invoice AI learning can now compare billed work with up to 20 explicitly job-linked messages and their human photo teaching notes. Existing AI and invoice-learning settings still apply. Photos and storage URLs are not sent; unrelated customer conversations are excluded."
+      ]
+    },
+    {
+      "version": "2026-09-26zd",
+      "items": [
+        "Each dashboard module now has a distinct, recognizable icon in the same consistent style: dispatch, invoices, inventory, payroll, staff, CBI and more. Module settings and behavior are unchanged."
+      ]
+    },
+    {
+      "version": "2026-09-26zc",
+      "items": [
+        "Conversation photos now have per-photo finish and AI teaching notes for staff with Teach AI permission. Notes do not confirm a catalog match, and memory creation follows existing learning settings. Requires the matching API update. Invoice-to-conversation learning is not included yet."
+      ]
+    },
+    {
+      "version": "2026-09-26zb",
+      "items": [
+        "Crew right now now uses the newest GPS fix instead of letting an old live event override newer server data. GPS refreshes every 30 seconds as a fallback; the header shows the last successful check rather than a live clock."
+      ]
+    },
+    {
+      "version": "2026-09-26za",
+      "items": [
+        "Intake now has a read-only newer-customer-messages panel. It shows up to 20 inbound messages after the source message from the same conversation, without marking them read or changing a job. Replies still require human review."
+      ]
+    },
+    {
+      "version": "2026-09-26z",
+      "items": [
+        "Saved intake follow-ups can now be reviewed in their original conversation and explicitly loaded into the message composer. Recipient and conversation checks precede loading; nothing sends automatically. Existing composer text and attachments require confirmation before replacement."
+      ]
+    },
+    {
+      "version": "2026-09-26y",
+      "items": [
+        "Missing-details drafts can now be saved with the intake without sending. Revision checks reject stale overwrites, and saving records an audit event. New AI extraction cannot overwrite a saved human follow-up draft. Requires the latest API."
+      ]
+    },
+    {
+      "version": "2026-09-26x",
+      "items": [
+        "Intake now includes a manual missing-details draft helper: choose questions, edit wording, copy it and open the original conversation. Nothing sends automatically, and drafts are not saved when you leave the intake view."
+      ]
+    },
+    {
+      "version": "2026-09-26w",
+      "items": [
+        "Human intake-to-job approval now records the reviewer and linked job in durable training history. The approval record shares the job transaction, so an audit failure rolls back the database changes."
+      ]
+    },
+    {
+      "version": "2026-09-26v",
+      "items": [
+        "Intake review history now records durable before/after details for ordinary edits and dismissals. An audit failure rolls back the review change. These records do not teach a lasting rule or grant CBI authority."
+      ]
+    },
+    {
+      "version": "2026-09-26u",
+      "items": [
+        "Intake teaching history now includes durable before/after parts corrections and saved lessons alongside photo teaching. Audit failures roll back the correction and lesson together. Earlier corrections are not backfilled."
+      ]
+    },
+    {
+      "version": "2026-09-26t",
+      "items": [
+        "CBI setup now saves the AI master switch separately from provider settings, warns before resuming enabled tasks, and shows unsaved switch changes. Connection-test results are hidden when their tested form values change."
+      ]
+    },
+    {
+      "version": "2026-09-26s",
+      "items": [
+        "CBI AI now shows an activation checklist with direct links to provider setup, the AI master switch and Modules. Saved configuration is distinguished from a live connection test, and hiding CBI from menus is distinguished from pausing AI tasks."
+      ]
+    },
+    {
+      "version": "2026-09-26r",
+      "items": [
+        "Teach CBI photos: Measure & identify adds human-calibrated ruler measurements, inch/metric conversion and physical diameter/thread-pitch entries to your identification draft. Photo estimates require a clear same-plane reference; automatic perspective correction and thread-size recognition are not yet available."
+      ]
+    },
+    {
+      "version": "2026-09-26q",
+      "items": [
+        "App Layout moved to your avatar menu, under Layout preview. It sets how CrewBarn looks for you in this browser, not for the company, so it no longer sits in the Tool Shed among settings an owner changes for everybody.",
+        "The Modules builder now shows where each module appears — which work bar items and which Tool Shed pages it takes with it when you switch it off.",
+        "Marketplace Listing, Customer App and Your website now actually disappear when their module is switched off. Those three switches previously changed no menu at all."
+      ]
+    },
+    {
+      "version": "2026-09-26p",
+      "items": [
+        "Photo teaching now records durable before/after identification and saved lessons, with a paginated trainer-only history. Requires the photo audit database migration and API deployment. Earlier events are not backfilled; other CBI actions are not yet covered."
+      ]
+    },
+    {
+      "version": "2026-09-26o",
+      "items": [
+        "Teach CBI intake now shows attachments from the matching conversation and refreshes for new photos. Authorized trainers can identify a photo and separately save an explicit reusable lesson. Conversation matching does not automatically associate photos with a job."
+      ]
+    },
+    {
+      "version": "2026-09-26n",
+      "items": [
+        "Connect settings: Label Printer and Company Files now appear in Connect. Both existed in the Tool Shed but were filed in no Connect section, so they were missing from the settings list entirely.",
+        "CBI AI now hides itself when CBI is switched off in your work dashboard, the same way every other module hides its own pages. It used to stay visible and report an active connection while the Ask CBI button was gone from the crew app."
+      ]
+    },
+    {
+      "version": "2026-09-26m",
+      "items": [
+        "CBI reminder history: open the related invoice in your hosted or self-hosted work dashboard. Draft text is explicitly labeled as a stored excerpt, not a sent message or necessarily the complete draft."
+      ]
+    },
+    {
+      "version": "2026-09-26l",
+      "items": [
+        "CBI payment reminders now shows recent draft excerpts, failures and skipped runs on the skill page. The API filters activity by task before applying the limit. Draft preparation is clearly distinguished from sending."
+      ]
+    },
+    {
+      "version": "2026-09-26k",
+      "items": [
+        "Crew right now: action buttons now reserve their full label width. Message and Assign job no longer squeeze their words onto multiple lines."
+      ]
+    },
+    {
+      "version": "2026-09-26j",
+      "items": [
+        "CBI AI page: if CBI is switched off in your work dashboard, the page now says so and links you straight to the switch. It used to show a green Active connection while the Ask CBI button was missing from every phone — those are two different switches."
+      ]
+    },
+    {
+      "version": "2026-09-26i",
+      "items": [
+        "Teach CBI: Payment reminders now has its own skill screen with the existing draft toggle, overdue-day schedule and local drafting hour. It keeps human review explicit and does not enable automatic sending."
+      ]
+    },
+    {
+      "version": "2026-09-26h",
+      "items": [
+        "API Endpoint Guide: added Accounting, Bank feed, Subcontractors and Hiring. That is 63 more endpoints written up with what you can send, what comes back, and which permission each one needs.",
+        "Accounting covers the chart of accounts, journal entries, the financial statements and period closes. Bank feed covers matching transactions to invoices and expenses, splitting them, and importing a statement CSV. Nothing else in the guide changed."
+      ]
+    },
+    {
+      "version": "2026-09-26g",
+      "items": [
+        "CBI knowledge: Edit opens and focuses the rule editor, Forget asks for confirmation and reports failures, and search filters have accessible labels. Removing knowledge does not remove source records or undo past actions."
+      ]
+    },
+    {
+      "version": "2026-09-26f",
+      "items": [
+        "Teach CBI → What CBI knows: confirmed knowledge is grouped into responsive category cards with amber accents. The teaching form collapses when browsing and opens when editing a rule. Existing filters and controls remain available."
+      ]
+    },
+    {
+      "version": "2026-09-26e",
+      "items": [
+        "Connect settings: replaced the inner sidebar with horizontal section buttons and a small-screen dropdown across CBI, communications, payments, integrations, appearance, preferences, marketplace and documents. Your main Connect sidebar stays in place; content uses the full row below the section navigation."
+      ]
+    },
+    {
+      "version": "2026-09-26d",
+      "items": [
+        "Teach CBI → Is this right?: compact review counts, a side queue on wide screens, and side-by-side suggestion/source reading on large displays. Existing approval and correction behavior is unchanged."
+      ]
+    },
+    {
+      "version": "2026-09-26c",
+      "items": [
+        "Teach CBI overview: a compact teaching entry and real review counts now lead into a responsive responsibility grid. Removed duplicate setup panels and nested card containers; task controls and review links stay available."
+      ]
+    },
+    {
+      "version": "2026-09-26b",
+      "items": [
+        "CBI AI layout: removed the narrow 1,080px page cap so training uses the available workspace. Navigation is more compact, the connection banner is smaller, and guided setup stays on the provider page instead of crowding every training screen."
+      ]
+    },
+    {
+      "version": "2026-09-26a",
+      "items": [
+        "Update prompt: Reload now requests a fresh page while keeping your current page and settings tab. Save unfinished edits before reloading.",
+        "CBI AI → Teach CBI: review intake, review suggested knowledge, and see each responsibility's current limits from one place.",
+        "Train intake: choose hands-on preparation on request or automatic drafts for human review. These modes do not authorize automatic job creation or customer messages. The API and queue workers must be updated to use this control.",
+        "Parts corrections: choose a local fix or, with training permission, save a lasting CBI lesson. The correction and lesson save together.",
+        "Intake review now shows up to 50 recent events, including local fixes and remembered corrections. This is recent history, not a permanent audit log or readiness score.",
+        "Intake retries now protect reviewed drafts, job links, human corrections and review history from late AI results and queue failures."
+      ]
+    },
+    {
+      "version": "2026-09-25a",
+      "items": [
+        "You can hang a television on the shop wall and put today on it. Settings → Shop TV gives the screen a six-character code, you type that code in once from here, and the TV shows your jobs from then on. No password goes near the television, and nobody standing in your shop can get into CrewBarn from it.",
+        "The board is yours to arrange. Drag cards around the TV picture, pull a corner to make one bigger, right-click to add or take one off — and every one of those can also be done with the buttons underneath, so it works on a tablet at the counter. Each card shows your real jobs and crew while you arrange it, not a grey box.",
+        "You can build more than one board and have the television take turns through them on a timer you set. A new board starts from a layout rather than an empty grid — Dispatch, Crew wall, Office, Worth chasing (quiet customers, approved estimates, parts you are waiting on), Just a clock, or blank — and each board tab shows a small picture of its own arrangement.",
+        "How it looks is picked from pictures rather than lists: dark, light or high contrast shown in their real colours, text size shown at its real size, and the size of your TV drawn to scale from 32″ to 98″ so the letters come out the same height on the wall whichever screen you hung.",
+        "You are not asked what resolution the TV is any more. The screen reports it when it checks in, and CrewBarn uses the extra room on a bigger one by itself.",
+        "Money is kept off the television by default. Nothing you have not ticked will show a figure to a customer standing in your shop.",
+        "Each screen’s card shows a small picture of what is actually on that television, whether it is awake, how big it is and whether money is showing — and “See what it shows” opens the real board in a tab, so you can check a wall without walking over to it.",
+        "Fixed: on a day with nothing booked the television showed a built-in layout instead of the board you arranged, and then dropped the cards in it that had nothing to say — so a seven-card board came out as two tiles. Your arrangement now always shows, empty cards included, exactly as the designer draws it.",
+        "The designer draws a television now — bezel, stand, and the picture in the background colour you actually picked, so choosing Light no longer shows white cards on a dark wall. Under it sits the size, resolution and grid, and “Preview full screen” opens the real board.",
+        "The settings that change how the TV looks — size, screen, background, text — now sit in a column beside the picture, so you can change one and watch the cards change without scrolling. Timing, moments and the money switch stay in the row underneath.",
+        "The map on the TV now draws the area you work in even when nobody is out, with a line over it saying so, instead of replacing the whole map with a sentence.",
+        "A board with no techs on it now says why — no staff have app access and the field-technician flag yet — instead of “Nobody on the roster”, which read like a fault.",
+        "The Dispatch board a new screen starts from now includes what is stuck as well as what is booked: overdue and stalled work, jobs waiting on parts, and customers who have gone quiet. A shop that works from a pile of open jobs rather than booking the day ahead was getting a wall of empty cards.",
+        "Fixed: big figures on short cards were cut off on the television — “0 going now” sliced in half at the bottom of a card that looked fine in the designer. The figure is now sized for the card it is in, by the same rule in both places.",
+        "The Google Maps setup page now lists the wall board’s addresses. crewbarn.tv is a different top-level domain, so no crewbarn.com wildcard reaches it — miss it and every map works except the one on the TV.",
+        "Fixed: on a day with nothing booked the crew card listed everyone as “off today” and pinned them to the bottom of an empty card — while the band above it said “2 techs free”. A tech with nothing booked on an empty day is available, and the card now says so.",
+        "List cards show more when they are bigger. Up next, Needs a hand, Gone quiet and Estimates used to show a fixed two or three rows however tall you made the card.",
+        "A card holding more than it can show now takes turns through the rest instead of stopping at the third row — Gone quiet, Up next, Needs a hand and Estimates. You set how long each page holds, per screen, under “Long lists”. Set it to Never and a card shows what fits and stops.",
+        "Two new cards for the wall, both grouped by person: “Gone quiet, by tech” puts stalled jobs under whoever leads them — worst first, with unassigned work as its own row — and “To do, by tech” shows everybody’s open tasks with a count of who is overdue. A pile says the shop has a problem; a name says whose.",
+        "You can now switch company settings on or off per person. Staff → someone → “Company settings” decides whether connect.crewbarn.com opens for them at all; what they can change once inside is still their role and permissions. Nobody loses access on this release — everyone who could sign in still can until you turn someone off.",
+        "Fixed: the Portal buttons on Staff went nowhere when you opened Staff from connect.crewbarn.com. The employee portal only exists on the main app, so they now cross to it in a new tab and leave your settings page where it was.",
+        "New wall card: “Today, hour by hour” — a lane for each tech, a block for each job at its real time window, and a glowing line showing where now is. Finished jobs fade and strike through so the wall reads as progress; the job in progress glows. The hours shown are the day’s own, so a 9-to-3 day fills the card instead of floating in an empty 6am-to-8pm scale.",
+        "The wall can have something behind it: snowfall over a ridge, rain, a fireplace with embers, ocean swell, or drifting light in a rainforest. Pick one under “Behind the board”. Drawn by the television itself, so there is no video to buffer and nothing extra to download.",
+        "New card: Weather — the next few hours and any warning worth knowing, from the same forecast the morning huddle reads. Needs your company address set.",
+        "You can put your own video or photo behind a wall board — pick “Your own” under Behind the board and upload an MP4, WebM, JPG or PNG up to 40MB. It plays muted and on a loop, because a browser will not start sound by itself and an unattended TV cannot tap its own screen.",
+        "Behind the board now offers real footage alongside the painted scenes — pick one under “Or a real one”. These are backdrops CrewBarn provides, so there is nothing to upload and nothing to store in your own space. Your own uploads still work exactly as before.",
+        "You can now switch Ask CBI on or off for one person. Settings → Modules still turns it on or off for the whole shop; the new switch on each staff member takes one person out from under that. Nobody loses CBI on this release — it is only off for someone you switch off.",
+        "The “Hey CrewBarn” voice settings no longer ask for a Picovoice key. They never needed to — the speech model is built into the crew app and runs on the phone with no signal and nothing sent anywhere. All that is left is the on/off switch."
+      ]
+    },
+    {
+      "version": "2026-09-23b",
+      "items": [
+        "Automations is now a list of plain sentences instead of a dashboard. Every automatic message CrewBarn sends reads like “1 day before a job, text the customer a reminder”, with a switch beside it. Before, the same rules were spread over five tabs and some of them were labelled things like “invoice.paid → send_email”.",
+        "Everything is in one scrolling list, grouped by when it happens: before the job, when a job’s status changes, on the job using GPS, after the job and getting paid, bringing customers back, your own rules, and your other apps. Search it, or narrow it to Customers, Techs, Office or Other apps.",
+        "Things you could turn on but have not sit in the same list, marked as suggestions with a Turn on button. One click creates the rule, and a green bar with an Undo appears in case it was the wrong one.",
+        "Click any row and the panel on the right shows the actual message — drawn as a text, an email or a phone-app alert — plus where the rule is stored, when it last ran, and who it did not reach and why. Rules you built yourself also get a Send me a test button.",
+        "A “Ready to send” row across the top tells you at a glance whether texting, email, templates, reminders and GPS are set up. Anything not ready is amber and links straight to the page that fixes it. This replaces the old setup checklist and template-readiness cards.",
+        "Build your own is now one page: a sentence with blanks. “When [you finish a job], wait [1 hour], then [text] [the customer] using [the friendly default].” Tap a blank, pick from the choices, and the next blank opens. The old Customize drawer and the three-step wizard are both gone — this does what they did, in one screen.",
+        "Reminders have their own page and are drawn on a job day: customers on the top row, techs on the bottom, from a day before through the start to half an hour after. Each rule is a pin you click to change. Two reminders going out eleven minutes apart is now something you can see rather than something you work out.",
+        "The reminder rules moved out of Shop Rules onto that timeline. Shop Rules keeps the master switch and quiet hours, and links across — the same rules, one place to edit them.",
+        "The GPS rules that ride on auto check-in — the left-site reminder, the dispatcher alert and the late-arrival warning — now say so plainly instead of showing a switch. They never had one of their own; they run while auto check-in is on. Their numbers are nudged with + and − in the panel.",
+        "Two things the backend stores but does not run yet — making a PDF on a status change, and calling another app from one — are marked COMING SOON rather than looking turned on.",
+        "The Autopilot card at the top of Automations now counts what actually went out: how many messages CrewBarn sent for you this week, how many are waiting to go, and how many did not send — that last one clicks through to the reason. The count is real; the hours-saved line beside it says \"about\" because it is two minutes a message, which is a guess.",
+        "Text pop-ups show the whole message. They were cut off after two lines, with a third line sliced through the middle so you got the greeting and none of the job — \"Good morning Another one for you Noah Stansbury 2022 Jeep grand…\" and then nothing useful. The card is taller now and fits seven lines, which is the whole of nearly every text. Anything longer ends with an ellipsis on a clean line instead of half a row of letters.",
+        "Payment received pop-ups are live. The card was designed but nothing was behind it — now the moment a payment is recorded, anyone who can see invoices gets it, with the amount, who paid, how, and which job. It fires wherever the money came from: a tech taking a card in a driveway, the customer portal at midnight, a terminal on the counter, or the hourly card-processor sync. Switch it off under toast settings if you would rather not know until morning.",
+        "Messages are unread per person now. Before, the first one of you to open a thread marked it read for everybody — so the rest of the office lost the unread mark on a message nobody else had seen. Your Unread list, your Needs action count and the bold rows are yours.",
+        "And the thread tells you who has picked it up. Beside each message, in the space next to it, you now see \"Read by\" and the names of whoever in the office has read that far — you included. Nobody is told they read their own text.",
+        "Your Google reviews can come into CrewBarn. Connect your Google Business Profile once under Tool Shed → Google reviews and your reviews are pulled in hourly — you can read them and reply to them without opening another tab, and the reply posts to Google as your business.",
+        "Which means the New review pop-up finally works. It only fires for a review that arrived after you connected, so connecting does not set off one pop-up for every review you have ever had.",
+        "Fixed: the towns you type into \"Where do you work?\" now actually get used. They were only being filed as search keywords — the town pages were written from towns you already had customers in, so a brand-new shop asked for three town pages and got none, and the \"areas we serve\" line on the site listed ZIP codes instead of town names.",
+        "You can change the towns you cover after setup. The Service area screen has the same county picker the first-time setup uses, and what you pick is what your site says it covers. Before, that list was fixed the day the site was made.",
+        "About and Contact can be edited at last. Every site gets four pages nobody asked for — About, Contact, a services overview and the customer portal page — and the builder could change every page on your site except those. There is an \"About & contact\" screen now. They are a fixed set, so there is no Add button pretending you could have two About pages.",
+        "You can look at your website before anybody else can. \"See it first\" on the Go live screen opens your real site in a new tab — the same pages a customer gets, not a mock-up — while it is still switched off. The link only works for you and stops working after half an hour. Before this, the first time you saw your own site was the moment it went public.",
+        "You can start over. \"You already have a website\" used to be the end of the road: the setup questions were unreachable once a site existed, so a draft you did not like meant editing every page by hand. There is a Start over option now that asks first and tells you exactly what goes — every word — and what stays: your pictures, colours, logo and web address.",
+        "\"Write this one for me\" is on every service, town and blog page in the builder. The AI wrote your site once at setup and then went quiet — so adding a ninth service afterwards meant writing it yourself, on the screen whose whole point is that you do not have to. Your heading stays; everything under it is replaced.",
+        "Label pages remember your label size. Every labels screen opened on \"Sheet\" and you picked your thermal size again every single time — on every page, every print. It now opens on whatever you printed last, remembered per computer, so the shop PC with the 2x1 printer and the laptop that prints Avery sheets each open on the right one.",
+        "Bluetooth label printing stopped asking which printer on every label. It opened the device chooser for each print, so a run of forty asset labels meant picking the same printer forty times. It now reconnects to the one you already allowed, and only asks when there is nothing to reconnect to.",
+        "Real Avery sheets are in the label sizes now — 5160, 5161, 5163 and 5167 — and they use Avery’s own measurements, so the labels land on the die-cuts instead of near them. The layout used to work out its own grid and centre it on the page, which is right for blank stock you cut yourself and wrong for every pre-cut sheet made.",
+        "Fixed a label size that told you the wrong thing to buy: the 2.25″ × 1.25″ option said “Avery 5160”. Avery 5160 is 2⅝″ × 1″, thirty to a sheet — so anybody who bought 5160 on the strength of that printed a layout that missed every label on it. That option is now marked generic, and real 5160 is its own choice.",
+        "Every labels page has a “Coming out the wrong size?” panel with the Windows setup, written for the person standing at the printer holding a bad sheet. It gives different advice for thermal printers and for die-cut sheets, because they fail for different reasons — and it includes the shortcut that removes the print dialog entirely.",
+        "Bin labels have a new label studio: a picture of exactly what will come out, next to the questions in plain words — what gets a label, what you are printing on, how many, and what fits on that size. It replaces a toolbar of dropdowns whose real problem was never finding the control, it was not knowing what would come out until it came out. The other label pages follow.",
+        "The label studio is on every labels page that prints QR codes: assets, a batch of assets, building placards, bins, purchase order lines and catalog items. Same screen on all of them — a picture of what will come out, beside the questions in plain words.",
+        "And what prints now matches what you see. The preview and the printer draw the same face from the same fields: a big QR, the name in heavy type, the code in a typewriter font, a solid black tag for what it is, and a pin for where it lives. The PDF used to draw its own thing, close in spirit and different on paper.",
+        "Label printing no longer leaves a PDF tab open behind every print, and it now works with the silent-printing shortcut. Labels used to open in a new tab that printed itself — which meant a shop that set Chrome up to skip the print dialog still got the dialog for every single label, the one thing they set it up to avoid.",
+        "New: Tool Shed → Label Printer. Install the small CrewBarn Print Bridge on a shop computer and labels go straight to a printer you pick — no Windows print window, and nothing resizing your 2x1 on the way. It is optional: without it printing works exactly as it does today. A browser cannot choose a printer on its own, which is the only reason this exists.",
+        "Once a computer has the Print Bridge connected, the Print button on every labels page sends straight to the printer you picked — no print window, nothing resizing your labels. It says which printer underneath, and there is a link to use the print window instead if you want it for one job. Sticker sheets still go through the print window, because a sheet is a page and only a label can be sent as one.",
+        "Fixed the incoming-call pop-up when a caller is a known customer. Three buttons — Call back, Go to customer, Open thread — did not fit across the card: every label broke in half and the last one ran off the edge. They wrap onto a second row now. The pop-up also had a hole in the middle, left over from making the card taller so text messages fit.",
+        "The Label Printer page now shows a checksum for the Print Bridge download, with the one-line PowerShell command to check it against. Windows warns about the Print Bridge because it is not signed, and “click Run anyway” is a lot to ask without a way to prove the file is the one CrewBarn built — now there is one.",
+        "Label Printer is in the Tool Shed in the app, not in Connect. Pairing a printer is remembered by the browser you pair it in, and a printer is a physical thing on one desk — so it is set up in the place the printing happens. Set up on Connect, the workspace would not have seen it and labels would have quietly kept going through the Windows print window.",
+        "If you have arranged your own Tool Shed cards, settings added in later releases now show up on the grid instead of hiding in Customize. Cards you took off stay off — the layout now remembers what it has already offered you, so it can tell \"you removed this\" apart from \"this did not exist yet\".",
+        "Zebra label printers work now. CrewBarn sends ZPL to a Zebra and ESC/POS to everything else, and works out which from the printer's name — there is a “what it speaks” box on the Label Printer page if the guess is wrong. Before, a Zebra was sent something it does not understand and simply did nothing, which looks exactly like a cable that has fallen out.",
+        "Website builder, the towns you cover: each town now says whether it has a page of its own, and one tap makes it — with the town, state and web address already filled in. Before, the list of towns and the pages written for those towns were two separate lists that never spoke, so giving Palm Bay a page meant typing “Palm Bay” into a box directly under a list that already said Palm Bay. A page whose town is not on your list is now pointed out instead of just sitting there.",
+        "Reading size now moves all of the text. Under Tool Shed → App Layout, Large and Extra large used to grow the ordinary text and leave the small labels, hints and badges exactly where they were — which made a big monitor look messier rather than easier to read. Nearly two thousand bits of small text were setting their own size and ignoring the setting; they follow it now. If you have not picked a size, nothing changes by a single pixel.",
+        "New: a TV board for the shop wall. Open crewbarn.tv on any smart TV, type the code it shows into Tool Shed → Shop TV, and the whole office can see where the crew is, what is booked, what has gone quiet, approved estimates waiting to be scheduled, and what is stuck on parts. Build several boards and set how often it moves between them. Dark, light or high-contrast. Nothing is ever typed on the television, and money stays off the screen unless you turn it on — with it off the figures never leave CrewBarn, so there is nothing there for a customer in your shop to read.",
+        "Shop TV boards are arranged by dragging. Tool Shed → Shop TV shows a television-shaped box with the same grid the wall uses: drag a card to move it, drag its corner to resize, or make one fill the whole screen. Cards will not land on top of each other. Build several boards, set how long each stays up, and choose how one gives way to the next — fade, slide, or a straight cut."
+      ]
+    },
+    {
+      "version": "2026-09-23a",
+      "items": [
+        "Website builder: “What kind of work do you do?” really does start filled in with the trade you picked at signup now. It was announced yesterday and never actually worked — the box was built a split second before your details arrived, so it filled itself in from nothing.",
+        "Website builder: “Where do you work?” can fill itself in from your county. Search the county you cover and tap the towns from the list instead of typing them — biggest first, and only the ones you tap are added, because a county holds more towns than anybody works in.",
+        "Website builder: a Pictures screen for your main photo, your logo and your site icon — the little icon on the browser tab. All three were only changeable on the old website page before. The preview shows where each one lands, and your logo is used as the site icon until you upload one.",
+        "Side menus everywhere got a redesign. Every row in a settings menu, in Connect and in the employee portal now carries a small picture, so you find “Service area” or “Team security” by shape instead of reading eight lines of grey text. The one you have open is a filled tile and a warm card rather than a thin line down the side. The portal’s emoji are gone — they came out differently on every phone.",
+        "Fixed: a call from a number CrewBarn does not recognise showed a circle with “(5” in it — the app was reading a phone number as if it were somebody’s name and taking their initials. Unknown callers now get a phone icon. Named customers and staff are unchanged.",
+        "The API endpoint guide (Developers → API guide) has been rebuilt to look like the rest of CrewBarn instead of a separate dark-themed product, and two things in it were wrong: it offered an endpoint that was never built, and the sample command you copy had stray characters in it that stopped it running. Both fixed, and a new check now fails if the guide ever describes an endpoint the API does not serve.",
+        "Website builder: the main picture, logo and site icon can now be added straight from “Pick how it looks”, instead of only from Pictures two steps later. A photo across the top IS how your site looks, so being sent hunting for it was backwards. Same three uploads either way — add one in one place and it is there in the other.",
+        "Fixed: on connect.crewbarn.com, clicking an email or document template did nothing — the list had moved to Connect and the editor behind it had not, so every row opened an address that was not there. Templates open again.",
+        "Payments settings now has a side menu — Stripe, GoDaddy, bank transfers and the watched bank account are four screens instead of one long scroll, so you only see the one you came for.",
+        "Templates & Forms: the three kinds of template are a side menu now instead of tabs above a long table. Tabs scrolled off the moment you started reading and left you in a list with no sign of which one you were in.",
+        "Your Company Cost Model now actually does something. The markup you set is offered when you price a new part, a catalog part that never got a price now goes onto an estimate at cost-plus-markup instead of $0, and an estimate under your minimum service call says so before it goes out. Nothing is ever overwritten — a price you typed stays the price you typed.",
+        "Website builder: Pages, Services, Service area and Blog are built — they were the four marked “soon”. Edit the words on your home page, add a page per service and per town you cover, and write posts, all with saving that happens by itself. Pictures per page and raw HTML are still on the older website page.",
+        "Fixed: your logo now appears on your website. The Logo tool always said it goes on your website, invoices and quotes — but the site header wrote your company name as text and only used the logo for the browser-tab icon. Shops with no logo still show their name, exactly as before.",
+        "Your website can have its own logo now. One logo used to serve invoices, quotes, texts and the website, and the mark that prints well on an invoice is often the wrong shape for a website header. Under Pictures there is a Website logo you can set separately — leave it empty and the site keeps using your main logo.",
+        "The website builder now only holds website things. Your business logo — the one on invoices and the customer portal — is set under Brand & Logo, not in here, and the logo maker asks whether a logo you draw is for the website or for everything.",
+        "Your website colour and your invoice colour were always separate settings, but the colour screen claimed they were one and showed an invoice and a text message changing colour when neither would. It now says what it does, and offers a button to copy the colour onto your paperwork if you do want them matching.",
+        "Fixed, and only shipped this morning: editing your home page’s headline in the new Pages screen saved but changed nothing on the live site — it was writing to a field the website does not read. Headline, the line under it, and the blocks further down now all go where the site looks.",
+        "Cloudflare: once your file storage bucket exists, the page says “R2 storage active” and names it, instead of offering to set one up with an unticked box that read as if storage was off.",
+        "Go live now shows whether Cloudflare is connected, with a link to connect it if not — it is what using your own web address goes through, and the screen used to say nothing about it. And a domain you have already connected is recognised: if it is waiting on DNS the page says so instead of asking whether you want your own address.",
+        "Tester accounts get the whole product now. Being a tester used to mean bring-your-own everything — CrewBarn-managed storage, maps and phone numbers were off the table, so trying a feature meant setting up an account somewhere else first. The beta agreement is unchanged; the floating walkthrough is gone.",
+        "Pop-up alerts redesigned. Every one is now the same square with a coloured band that tells you what it is before you read it — a call, a text, a voicemail, an email, an intake. Everything is visible without hovering, the customer is up front, and there is a button for the next step plus Open thread. Hovering the stack pauses every timer so nothing disappears while you are reading it.",
+        "Website builder: a new “Why they pick you” screen — your Google rating and review count, how fast you answer, a line a customer actually said, a switch to show your own job photos instead of stock pictures, and the questions people ask on the phone. If you chose the Trust-first home page, this is what fills the strip that was empty.",
+        "More of the old website settings are in the builder now: the small line above your headline and the second button (both on the home page screen), a switch for a map of your service area, and the Google verification code that proves the site is yours.",
+        "The website builder now asks what you want before it writes. Tell it about your shop in your own words — what to say, what not to mention — choose how many service pages, town pages and blog posts you get, and let it pick a colour that suits your trade. It used to write five service pages and three posts, always, with no idea what you wanted said."
+      ]
+    },
+    {
       "version": "2026-09-22a",
       "items": [
-        "Tool Shed \u2192 Modules is now a builder: tick the parts of CrewBarn this shop actually uses and everything else leaves the navigation, the Tool Shed and the phone apps \u2014 for everyone here, not just you. 22 areas instead of the old four, each showing what it unlocks. Start from a preset (Scheduling & billing, Dispatch-heavy, Office only, Parts & stock, Everything) and change anything after. Turning things off doesn\u2019t change your bill \u2014 CrewBarn is priced per person who signs in; this changes what your app looks like, not what it costs",
-        "Modules that need each other say so before you find out the hard way: switching off Inventory also removes Purchasing, Accounting takes Payroll with it, and a module whose requirement is off can\u2019t be ticked until you turn that back on",
-        "Self-hosted CrewBarn \u2192 Quick setup: fixed three things that could stall a deploy. Cloudflare won\u2019t let our link pre-select the Pages permission, so the page now shows the three permission rows your token needs and marks the one to add by hand \u2014 and a token without it is refused when you paste it, instead of failing minutes later mid-deploy",
-        "Quick setup: a subdomain is no longer reported as \u201calready taken\u201d because of a wildcard DNS record \u2014 that made every name you tried look used. When something genuinely is on that address the message now names it (including \u201cthat\u2019s your CrewBarn website\u201d) and says what to do",
-        "Quick setup: the \u201cOpen it (first time)\u201d link now waits until Cloudflare has finished issuing the certificate, so clicking it can\u2019t land on a timeout that looks like a broken deploy \u2014 and the link survives a server cache clear instead of disappearing",
+        "Website builder: “What kind of work do you do?” starts filled in with the trade you picked when you signed up. Change it if you want to say it differently — it just is not a blank box any more.",
+        "Connect: “Open CrewBarn” now goes to your own domain if you run CrewBarn on one, whatever plan you are on. It used to only do that on the self-hosted plan, which meant anyone who had not subscribed yet was still sent to app.crewbarn.com.",
+        "Setup step “Maps and address lookup” now fills your domain in from the Cloudflare account you already connected, instead of asking you to type it again. Change it if your customers use a different address.",
+        "Fixed, and worth knowing if you set up a Google Maps key from Connect recently: the website addresses to copy into Google were taken from whichever CrewBarn page you were on. From connect.crewbarn.com that produced the settings console — which is not where maps run. Restricting your key to that list would have switched maps off in the app. It now lists app.crewbarn.com, and your own domain if you self-host.",
+        "Fixed a dead end in AI setup: you picked Claude, pressed “Set up the key”, and the key screen sent you back to pick an AI — because the pick was still sitting unsaved behind a Save button. Picking now saves straight away, says so, and takes you on to the key. There is an Undo if you picked the wrong one, and the key setup has a Cancel on every step instead of only the first.",
+        "The staff list is easier to read. It was an eight-column table with about a dozen things crammed into every row; it is a list of people now — initials, name, role, then their contact line, then the field rules. Everything that was there is still there and still one click. Two changes you will notice: the rules say ✓ or ○ instead of being struck through in tiny grey, and rows no longer all shout “ACTIVE” — only the ones that need you do, so “Invite sent” and “No longer here” actually stand out.",
+        "Staff → Pay is rebuilt. It used to show all eighteen boxes whatever you picked, so somebody on a flat hourly rate was asked for a commission percentage, a commission basis and a parts cap. Now you pick how they are paid first and only the rest that applies shows. “A cut of what” says what each option means — what the job sold for, what was left after parts, or what the customer actually paid — because that last difference decides who carries an unpaid invoice. And the worked example starts filled in from their own normal week, so it shows what a week costs you straight away instead of after you fill five boxes.",
+        "Setup step “Where your photos and maps come from”: instead of making a bucket and an API token yourself and copying four values across, you paste one Cloudflare token and CrewBarn makes the bucket and fills the keys in. The same token is what gives your website its own web address and lets you run CrewBarn on your own domain later — one connection, three jobs. Typing the values in by hand is still there, folded away, for a bucket you already have.",
+        "Payments is being split up. “Let customers pay by bank transfer” and “Watch your bank for payments” are now their own pages, each saying what actually happens — including that “I've sent it” is a promise, not a payment, and the invoice stays unpaid until the money lands. And the question everyone asks about the bank connection is answered before it is asked: Stripe does the connecting and nothing else, no Stripe account, no money through them, read-only.",
+        "New page: “Where your email comes from” — the one part of the phone/text/email screen every shop needs. It now says what it is for (keeping your quotes out of the junk folder) and what happens if you skip it, instead of telling you what “most tenants” should do.",
+        "The AI settings page is now seven focused pages instead of one screen with six tabs: which AI does the thinking, your key, what it is allowed to do, what it picks up as you work, what it has learned, talking to CBI, and what it has been doing. The old page still opens if you have it bookmarked.",
+        "“What AI has learned” is a queue with two answers. Anything waiting on you comes first with “That is right” and “No, drop it”, and you can see the call or note it read before deciding. What it is already using is listed underneath, so “what does it think it knows about my shop” has an answer you can read — and delete.",
+        "“What AI has been doing” puts the money first: what the last twenty jobs cost on your own AI account, and how many did not work. Each line says what it was in plain words rather than a task code.",
+        "Setup step “Get your crew in”: roles are cards that say what each person will be able to see, not a dropdown. And after you send an invite it tells you plainly whether the email actually went — if it did not, it says the invite is fine and gives you the link to text them, instead of burying that in a sentence.",
+        "Setup step “Let AI help”: no more model dropdown on the first screen you ever see — CrewBarn uses the recommended one unless you open “Choose a specific model”. The second key box only appears when it would do something, and there is one button to finish the step instead of four things competing to be pressed.",
+        "Connect: the “Open CrewBarn” button now goes to YOUR CrewBarn. On the self-hosted plan it used to point at app.crewbarn.com, which is the one address that plan cannot open — so it goes to your own domain instead. If your site is still being set up it says so rather than sending you to a certificate error.",
+        "Setup steps “Your tools, trucks and software” and “What you keep on the shelf” are a tick-list instead of a spreadsheet. A row is a tick and a name; quantities, part numbers and reorder levels fold away until you want them. Tick all / Clear at the top, and a count of what is ticked.",
+        "Setup step “Make it look like your shop” now shows a sketch of an invoice beside the form that fills in as you type — your name, your logo, your colour, on the thing a customer actually keeps. And if something required is missing it says which document needs it (“We need a phone number. It goes on everything a customer gets, so they can ring you back.”) rather than “add your company phone before saving this gate”.",
+        "Setup step “Where your photos and maps come from” is two plain choices instead of nine boxes: use your own Cloudflare and Google accounts, or let CrewBarn handle it. Pick your own and you get the actual clicks to make on their websites, in order, before any box appears — and if you miss one, it names the one you missed.",
+        "Setup checklist: a step you cannot open yet now says “Finish the steps above first — this one opens as soon as they are done”, and one already finished says “This one is done. You can come back and change it whenever you like” — instead of talking about gates and tenants.",
+        "New page: what AI is allowed to do. One screen with the master switch and every job AI could help with, each saying in plain words what it does — and, new, whether it would actually work with the AI you have set up. A job switched on that cannot run now says so in the row (“needs an OpenAI key”) instead of looking identical to one that works. While AI is asleep the whole list is dimmed and says why.",
+        "The setup checklist reads like English now. Twelve steps rewritten — “Where your photos and maps come from” instead of “Choose data ownership”, “Your tools, trucks and software” instead of “Seed tools, software and trucks”, and no more “seed data”, “this gate” or “smoke test core workflows”. Back and Skip are quiet links now so the button that actually finishes the step is the one that stands out.",
+        "Setting up your AI key is now a guided three-step: what it will do and what it will not, then exactly where to get the key from that company — the menu clicks, and the warning that they only show it to you once — then a check that it actually works before anything is switched on. A passing check does not turn AI on; that stays a separate, deliberate tick, so “I was only testing” is never why a bill starts.",
+        "The setup checklist is easier on the eyes. The step list is a list again instead of twelve look-alike boxes, each of which used to show its own name and a number that disagreed with it. Progress says “3 of 12 done” instead of “25%”. The three facts at the top of each step no longer look like buttons. And choosing your AI is four cards that say what each one is good at, not a dropdown hiding three of them.",
+        "The Tool Shed is a lot shorter. Company settings are now run from connect.crewbarn.com, so the menu in the app keeps what you open mid-job — stock, catalogs, assets, vendors, company files — and tells you where the rest went. Nothing is gone: every page still opens if you have the link, and your role still decides what you can change. Want them in both places? Connect → Your business → Where your settings live. App layout stays in the app whichever you pick, because it is saved per browser — it is your choice about your own screen, not a company rule.",
+        "Tool Shed → Website now opens the new builder instead of the old settings page. Four steps across the whole screen — answer three questions and CrewBarn writes your site, pick a layout and colour, change the words, then put it online. The last step is new: it checks what is missing before it lets you publish (no pages, no phone number, no address), shows the address people will find you at, and once it is on, says so properly and shows what Google has been handed. Turning it off again is one click and deletes nothing. The old page is still there for the parts of the editor not rebuilt yet.",
+        "Settings are being rebuilt one screen at a time, in plain English with big cards instead of dropdowns and a panel that spells out what will actually change. First one across: choosing which AI runs CrewBarn — now four cards that say what each company is good at and what it cannot do (Gemini and Azure will read and write but will not book a job or send a text for you), instead of a radio grid, a model dropdown and a table of engine names. The old AI page is untouched and still has everything else.",
+        "New in the website builder: a Logo screen. Type your name, pick a picture, a shape and a lettering style and it draws you one — or press “Show me 6 ideas” if nothing jumps out. You see it on a website header, an invoice and a truck door before you keep it, and there is a square version for your app icon. It saves as a drawing rather than a photo, so it stays sharp at any size — a business card or a door. Already have a logo? Upload it on the same screen. (Taking the white box off an uploaded logo is not built yet, and the screen says so rather than pretending.)",
+        "New: /download — the page explaining what of CrewBarn is open source and how to run it on your own domain — now works here as well as on connect.crewbarn.com.",
+        "Fixed on published websites: the main button used white writing whatever colour you picked, and on the default gold that is too faint to read properly. The writing now turns dark automatically when the colour is light, so the button people press is always legible",
+        "New in the website builder: a Colours screen that shows your colour on your site, your invoice and a text message at once, and tells you in plain words whether writing will be readable on it. Plus a Google screen with the heading and two lines people see in search results, live length meters, and switches for what your site tells Google about your business",
+        "The website builder has a new start: answer three questions about what you do, where you work and what visitors should do first, and CrewBarn writes the first draft. Then pick the shape of your home page and your colour from swatches, with the site updating beside you as you choose. Nothing is public until you publish — the older website page is still there for the rest",
+        "Five more settings now have their own page instead of being a switch somewhere in Shop rules: reminders before an appointment, stopping new work when cash has not been handed in, when a job counts as stalled, how long a video from the field can be, and checking a tech in when they arrive. Each one says in plain words what it does and what changes if you switch it",
+        "New: connect.crewbarn.com now has a home page and seven sections — Your business, Money, Jobs & workflow, Team, Connections, Developers, Account & billing — with every setting filed under one of them. Press Ctrl-K anywhere to search for a setting by what you would call it: typing “stripe” finds “Where card payments go”",
+        "Settings pages you can only look at now say so. If your role can see a setting but not change it, the page opens with a short “View only” line and the controls are greyed out — instead of letting you fill the form and then refusing to save it. Covers company info, shop rules, payment types, phone/text/email, warranty, GPS devices, pricing and brand",
+        "Fixed: reading a call with AI stopped working on the 22nd and every attempt came back blank. The newest Claude models answer with their reasoning first and the answer second, and CrewBarn was only reading the first part — so a call that had been read perfectly well looked empty. Press “Create job from this call” again on anything from that day and it will read properly now",
+        "When the AI genuinely can’t make sense of a call, the review panel now says so instead of opening with every field blank — and tells you nothing was created",
+        "Tool Shed → Modules is now a builder: tick the parts of CrewBarn this shop actually uses and everything else leaves the navigation, the Tool Shed and the phone apps — for everyone here, not just you. 22 areas instead of the old four, each showing what it unlocks. Start from a preset (Scheduling & billing, Dispatch-heavy, Office only, Parts & stock, Everything) and change anything after. Turning things off doesn’t change your bill — CrewBarn is priced per person who signs in; this changes what your app looks like, not what it costs",
+        "Modules that need each other say so before you find out the hard way: switching off Inventory also removes Purchasing, Accounting takes Payroll with it, and a module whose requirement is off can’t be ticked until you turn that back on",
+        "Self-hosted CrewBarn → Quick setup: fixed three things that could stall a deploy. Cloudflare won’t let our link pre-select the Pages permission, so the page now shows the three permission rows your token needs and marks the one to add by hand — and a token without it is refused when you paste it, instead of failing minutes later mid-deploy",
+        "Quick setup: a subdomain is no longer reported as “already taken” because of a wildcard DNS record — that made every name you tried look used. When something genuinely is on that address the message now names it (including “that’s your CrewBarn website”) and says what to do",
+        "Quick setup: the “Open it (first time)” link now waits until Cloudflare has finished issuing the certificate, so clicking it can’t land on a timeout that looks like a broken deploy — and the link survives a server cache clear instead of disappearing",
         "connect.crewbarn.com now has Website Builder, so a workspace on the Self-hosted plan can build and publish its site without the full web app"
       ]
     },

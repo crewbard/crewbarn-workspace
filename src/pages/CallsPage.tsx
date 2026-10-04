@@ -1,4 +1,6 @@
 import { Link } from 'react-router-dom'
+import { useTheme } from '@/hooks/useTheme'
+import { EasyPageHeading } from '@/components/easy/EasyPageHeading'
 import { formatPhone } from '@/lib/comms'
 import { ToastPrefToggle } from '@/components/ToastPrefToggle'
 import { ClickToCallButton } from '@/components/comms/ClickToCallButton'
@@ -7,14 +9,17 @@ import { useUnhandledIncomingCalls } from '@/hooks/useUnhandledIncomingCalls'
 import { markIncomingCallHandled, type IncomingCallAlert } from '@/lib/incomingCalls'
 
 export function CallsPage() {
-  const { calls, isLoading, count } = useUnhandledIncomingCalls()
+  const { calls, isLoading, isError, isFetching, refetch, count } = useUnhandledIncomingCalls()
+  const { theme } = useTheme()
+  const easy = theme === 'easy-side' || theme === 'easy-top'
   const { has, isLoading: permsLoading } = usePermissions()
   const canViewCustomers = !permsLoading && has(PERM.CUSTOMERS_VIEW)
 
   return (
-    <div className="mx-auto max-w-6xl px-6 py-8">
+    <div className={easy ? 'w-full min-w-0 px-3 py-4 sm:px-6 sm:py-6' : 'mx-auto max-w-6xl px-6 py-8'}>
+      {easy && <EasyPageHeading title="Calls to review" description="Review a call, call the customer back, or open its message thread. Your existing call controls and toast preferences stay available below." />}
       <div className="flex flex-wrap items-end justify-between gap-4">
-        <div>
+        <div className={easy ? 'hidden' : undefined}>
           <h1 className="text-2xl font-bold text-navy-900">Unreviewed Calls</h1>
           <p className="mt-1 max-w-2xl text-sm text-slate-600">
             Incoming call and voicemail alerts that have not been opened, called back, or marked reviewed.
@@ -23,7 +28,7 @@ export function CallsPage() {
         <div className="flex items-center gap-3">
           <ToastPrefToggle area="calls" label="Incoming call" />
           <div className="rounded-full bg-amber-100 px-3 py-1 text-sm font-semibold text-amber-900">
-            {count} unreviewed
+            {isLoading || isError ? '—' : count} unreviewed
           </div>
         </div>
       </div>
@@ -31,6 +36,8 @@ export function CallsPage() {
       <div className="mt-6 overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm">
         {isLoading ? (
           <div className="p-6 text-sm text-slate-500">Loading calls...</div>
+        ) : isError ? (
+          <div role="alert" className="p-6 text-sm text-red-700">Calls could not be loaded. <button type="button" onClick={() => { void refetch() }} disabled={isFetching} className="ml-2 underline disabled:opacity-50">Retry</button></div>
         ) : calls.length === 0 ? (
           <div className="p-8 text-center">
             <div className="text-sm font-semibold text-navy-900">No unreviewed calls</div>
@@ -51,6 +58,19 @@ export function CallsPage() {
     </div>
   )
 }
+
+
+/*
+ * One shape for every button in a call row.
+ *
+ * They were three: a navy slab, an amber one and a slate one, which put
+ * the loudest colour in the app on the SECOND most important action and
+ * left amber meaning two different things — here, and on the VIP pill.
+ * Same shape, and only the fill says which is which.
+ */
+const CALL_ACTION = 'inline-flex items-center justify-center gap-1.5 rounded-md px-3.5 py-2 '
+  + 'text-sm font-medium shadow-sm transition-colors focus-visible:outline-none '
+  + 'focus-visible:ring-2 focus-visible:ring-[var(--accent-500,#E8902C)] focus-visible:ring-offset-2'
 
 function CallRow({
   call,
@@ -96,14 +116,14 @@ function CallRow({
             customerId={call.customer?.id}
             label="Call back"
             onStarted={() => markIncomingCallHandled(call)}
-            className="border-navy-900 bg-navy-900 px-3.5 py-2 text-sm text-white shadow-sm hover:bg-navy-800"
+            className={`${CALL_ACTION} border border-navy-800 bg-navy-800 text-white hover:bg-navy-700`}
           />
         ) : null}
         {call.customer && canViewCustomers ? (
           <Link
             to={`/customers/${call.customer.id}`}
             onClick={() => markIncomingCallHandled(call)}
-            className="rounded-md border border-amber-300 bg-amber-50 px-3.5 py-2 text-sm font-semibold text-amber-900 shadow-sm hover:bg-amber-100"
+            className={`${CALL_ACTION} border border-navy-200 bg-white text-navy-800 hover:bg-navy-50`}
           >
             Go to customer
           </Link>
@@ -112,7 +132,7 @@ function CallRow({
           <Link
             to={`/communications?conversation=${encodeURIComponent(call.conversation_id)}`}
             onClick={() => markIncomingCallHandled(call)}
-            className="rounded-md border border-slate-300 bg-white px-3.5 py-2 text-sm font-medium text-slate-700 shadow-sm hover:bg-slate-50"
+            className={`${CALL_ACTION} border border-navy-200 bg-white text-navy-800 hover:bg-navy-50`}
           >
             Open thread
           </Link>
@@ -120,7 +140,9 @@ function CallRow({
         <button
           type="button"
           onClick={() => markIncomingCallHandled(call)}
-          className="rounded-md border border-slate-200 bg-white px-3.5 py-2 text-sm font-medium text-slate-500 hover:bg-slate-50"
+          /* The one action that is not going anywhere, and the only one
+             allowed to be quieter than the rest. */
+          className={`${CALL_ACTION} border border-transparent text-navy-500 hover:bg-navy-50`}
         >
           Mark reviewed
         </button>

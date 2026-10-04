@@ -9,6 +9,8 @@ import {
   type InventoryMovement,
 } from '@/types/inventoryMovement'
 import { formatQty } from '@/lib/unitsOfMeasure'
+import { useTheme } from '@/hooks/useTheme'
+import { EasyActionCards } from '@/components/easy/EasyActionCards'
 
 /**
  * Inventory Movements page — read-only audit log of every stock-changing
@@ -19,6 +21,8 @@ import { formatQty } from '@/lib/unitsOfMeasure'
  * row that caused it.
  */
 export function InventoryMovementsPage() {
+  const { theme } = useTheme()
+  const easy = theme === 'easy-side' || theme === 'easy-top'
   const [type, setType] = useState<InventoryMovementType | ''>('')
   const [itemId, setItemId] = useState('')
   const [locationId, setLocationId] = useState('')
@@ -64,6 +68,12 @@ export function InventoryMovementsPage() {
       </div>
 
       {/* Filters */}
+      {easy && <EasyActionCards label="Follow the stock" actions={[
+        { key: 'receive', title: 'Stock received', description: 'Review stock coming into inventory.' },
+        { key: 'transfer', title: 'Moved between locations', description: 'Trace transfers between stocking locations.' },
+        { key: 'install', title: 'Installed on jobs', description: 'Review recorded installations.' },
+        { key: 'return', title: 'Returned stock', description: 'Review recorded returns.' },
+      ].map(action => ({ ...action, active: type === action.key, onClick: () => setType(type === action.key ? '' : action.key as InventoryMovementType) }))} />}
       <div className="bg-white border border-slate-200 rounded-xl shadow-sm p-4">
         <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
           <div>
@@ -155,7 +165,11 @@ export function InventoryMovementsPage() {
         </div>
       )}
 
-      {!query.isLoading && movements.length === 0 && (
+      {query.isError && <div role="alert" className="rounded-xl border border-amber-300 bg-amber-50 p-4 text-sm text-amber-900">
+        Movement history could not be loaded. Displayed records may be incomplete.
+        <button type="button" disabled={query.isFetching} onClick={() => void query.refetch()} className="ml-2 underline disabled:opacity-50">Retry</button>
+      </div>}
+      {!query.isLoading && !query.isError && movements.length === 0 && (
         <div className="bg-white border border-slate-200 rounded-xl shadow-sm p-12 text-center">
           <p className="text-sm text-slate-600">
             No movements yet{hasFilters ? ' matching the current filters' : ''}.
@@ -164,8 +178,8 @@ export function InventoryMovementsPage() {
       )}
 
       {movements.length > 0 && (
-        <div className="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden">
-          <table className="w-full text-sm">
+        <div className={`bg-white border border-slate-200 rounded-xl shadow-sm ${easy ? 'overflow-x-auto' : 'overflow-hidden'}`}>
+          <table className={`w-full text-sm ${easy ? 'min-w-[760px]' : ''}`}>
             <thead className="bg-slate-50 text-xs uppercase tracking-wide text-slate-500 border-b border-slate-200">
               <tr>
                 <th className="text-left px-4 py-3 font-medium">When</th>
@@ -243,7 +257,7 @@ function MovementRow({ m, onClick }: { m: InventoryMovement; onClick: () => void
       onClick={onClick}
       title="Click to view full log"
     >
-      <td className="px-4 py-3 text-xs text-slate-600 whitespace-nowrap">{whenDisplay}</td>
+      <td className="px-4 py-3 text-xs text-slate-600 whitespace-nowrap"><button type="button" onClick={event => { event.stopPropagation(); onClick() }} className="underline underline-offset-2" aria-label={`View ${TYPE_LABELS[m.type] ?? m.type} movement from ${whenDisplay}`}>{whenDisplay}</button></td>
       <td className="px-4 py-3">
         <span
           className={`inline-flex items-center px-2 py-0.5 text-xs rounded font-medium uppercase tracking-wide ${TYPE_BADGES[m.type] ?? 'bg-slate-100 text-slate-700'}`}

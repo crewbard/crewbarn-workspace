@@ -48,6 +48,30 @@ export interface AssetHistoryInventoryMovement {
   catalog_item_name: string | null
 }
 
+/**
+ * What a tech logged against this item, notes included.
+ *
+ * The other four shapes are all derived from paperwork -- what was
+ * quoted, billed, moved or formally inspected. This is the only one that
+ * carries what a person actually said about the thing.
+ */
+export interface AssetHistoryServiceLog {
+  type: 'service_log'
+  event_id: string
+  event_date: string | null
+  /** The entry's one-line summary; for a note, the note. */
+  description: string
+  kind: 'work' | 'part_replaced' | 'part_needed' | 'finding' | 'skipped' | 'note'
+  details: string | null
+  result: 'working' | 'working_needs_parts' | 'not_working' | null
+  priority: 'critical' | 'high' | 'medium' | 'low' | null
+  part_name: string | null
+  need_status: string | null
+  /** 'internal' never reaches the customer; shown here so the office knows. */
+  visibility: 'public' | 'internal'
+  parent: AssetHistoryParent | null
+}
+
 export interface AssetHistoryInspectionRecord {
   type: 'inspection_record'
   event_id: string
@@ -65,6 +89,7 @@ export type AssetHistoryEvent =
   | AssetHistoryWorkOrderLine
   | AssetHistoryInventoryMovement
   | AssetHistoryInspectionRecord
+  | AssetHistoryServiceLog
 
 export interface AssetHistoryResponse {
   data: AssetHistoryEvent[]

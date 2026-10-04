@@ -5,6 +5,8 @@ import { apiRequest } from '@/lib/api'
 import { ReportIcon, type IconName } from '@/components/reports/ReportIcon'
 import { ReportOverlay } from '@/components/reports/ReportOverlay'
 import { SalesTaxOverlay } from '@/components/reports/SalesTaxOverlay'
+import { useTheme } from '@/hooks/useTheme'
+import { EasyPageHeading } from '@/components/easy/EasyPageHeading'
 
 /**
  * Reports front door — the same twenty reports, asked as questions.
@@ -212,6 +214,8 @@ interface ApiPreset {
 }
 
 export function ReportQuestionsPage() {
+  const { theme } = useTheme()
+  const easy = theme === 'easy-side' || theme === 'easy-top'
   const navigate = useNavigate()
   const [search, setSearch] = useState('')
   const [openReport, setOpenReport] = useState<string | null>(null)
@@ -253,7 +257,8 @@ export function ReportQuestionsPage() {
   }
 
   return (
-    <div className="mx-auto w-full max-w-[1400px] px-4 py-6 sm:px-6 2xl:px-8">
+    <div className={easy ? 'w-full min-w-0 px-4 py-6 sm:px-6 2xl:px-8' : 'mx-auto w-full max-w-[1400px] px-4 py-6 sm:px-6 2xl:px-8'}>
+      {easy ? <EasyPageHeading title="Reports" description="What do you want to know? Search a question or report name, then open it to review the numbers and available exports." /> : <>
       <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-[#B4762A]">Reports</p>
       <h1 className="mt-1.5 text-[30px] font-bold leading-tight text-[#0A1220]">
         What do you want to know?
@@ -262,6 +267,7 @@ export function ReportQuestionsPage() {
         Same twenty reports underneath — asked as questions instead of listed by name. Pick one and
         the answer comes first; the table you&rsquo;d export is below it.
       </p>
+      </>}
 
       <div className="relative mt-5 max-w-[1120px]">
         <span className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-slate-400">

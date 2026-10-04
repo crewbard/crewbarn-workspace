@@ -24,8 +24,10 @@ export interface PermissionsResponse {
     role_slug: string | null
     is_platform_admin: boolean
     permissions: string[]
-    data_scopes: Record<string, 'all' | 'own'>
+    data_scopes: Record<string, 'all' | 'own' | 'team' | 'territory'>
     catalog: string[]
+    /** Whether connect.crewbarn.com opens for this account at all. */
+    connect_access?: boolean
     // Platform/management role + capabilities (empty for tenant users).
     platform_role?: string | null
     platform_capabilities?: string[]
@@ -47,6 +49,9 @@ export function usePermissions() {
   })
 
   const isPlatformAdmin = !!data?.data?.is_platform_admin
+  // Undefined while the first fetch is in flight, or on a server that
+  // predates the switch. Both mean "do not lock anybody out yet".
+  const connectAccess = data?.data?.connect_access
   const permissions = data?.data?.permissions ?? []
   const dataScopes = data?.data?.data_scopes ?? {}
   const permSet = new Set(permissions)
@@ -67,10 +72,16 @@ export function usePermissions() {
   }
 
   /**
-   * Data scope for an entity: 'all' | 'own'. Defaults to 'all' (least
-   * surprising — readers see everything unless the role narrows them).
+   * Data scope for an entity. Defaults to 'all' (least surprising —
+   * readers see everything unless the role narrows them).
+   *
+   * 'territory' narrows by GROUND rather than by people: the jobs at
+   * the properties in this account's territories, plus its own. It is
+   * computed server-side and can apply to somebody whose ROLE says
+   * 'all' — a dispatcher assigned territories is fenced to them — so
+   * never infer the scope from the role here.
    */
-  function scope(entity: string): 'all' | 'own' {
+  function scope(entity: string): 'all' | 'own' | 'team' | 'territory' {
     if (isPlatformAdmin) return 'all'
     return dataScopes[entity] ?? 'all'
   }
@@ -85,6 +96,7 @@ export function usePermissions() {
     isPlatformAdmin,
     permissions,
     isLoading,
+    connectAccess,
     // Platform/management capabilities (for the /admin console).
     platformRole: data?.data?.platform_role ?? null,
     platformCapabilities: data?.data?.platform_capabilities ?? [],
@@ -127,6 +139,7 @@ export const PERM = {
   REVENUE_VIEW: 'revenue.view',
   INVENTORY_VIEW: 'inventory.view',
   INVENTORY_EDIT: 'inventory.edit',
+  INVENTORY_ORDER: 'inventory.order',
   CATALOG_VIEW: 'catalog.view',
   CATALOG_EDIT: 'catalog.edit',
   PARTS_IDENTIFY_WITH_AI: 'parts.identify_with_ai',
@@ -143,5 +156,6 @@ export const PERM = {
   SETTINGS_VIEW: 'settings.view',
   SETTINGS_EDIT: 'settings.edit',
   AI_USE: 'ai.use',
+  AI_TRAIN: 'ai.train',
   MOBILE_ACCESS: 'mobile.access',
 } as const

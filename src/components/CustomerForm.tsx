@@ -35,6 +35,7 @@ interface ContactRow {
   is_billing_contact: boolean
   is_service_contact: boolean
   is_intake_contact: boolean
+  is_intake_approver: boolean
   notes: string
   prefix: string
   suffix: string
@@ -94,6 +95,10 @@ interface FormData {
   default_tax_class_id: string
   tax_exempt_certificate_document_id: string
   payment_term_id: string
+  statement_day: string
+  invoice_email_subject: string
+  statement_recipients: string
+  statement_subject: string
   default_currency: string
   payment_method: string
   assigned_agent_id: string
@@ -118,6 +123,7 @@ const emptyContact = (isMain = false): ContactRow => ({
   is_billing_contact: false,
   is_service_contact: false,
   is_intake_contact: false,
+  is_intake_approver: false,
   notes: '',
   prefix: '',
   suffix: '',
@@ -184,6 +190,7 @@ function contactRowsForCustomer(c: Customer): ContactRow[] {
       is_billing_contact: !!contact.is_billing_contact,
       is_service_contact: !!contact.is_service_contact,
       is_intake_contact: !!contact.is_intake_contact,
+      is_intake_approver: !!contact.is_intake_approver,
       notes: contact.notes || '',
       prefix: contact.prefix || '',
       suffix: contact.suffix || '',
@@ -254,6 +261,10 @@ function customerToFormData(c: Customer): FormData {
     default_tax_class_id: c.default_tax_class_id || '',
     tax_exempt_certificate_document_id: c.tax_exempt_certificate_document_id || '',
     payment_term_id: c.payment_term_id || '',
+    statement_day: String(c.statement_preferences?.day ?? ''),
+    invoice_email_subject: c.invoice_email_subject ?? '',
+    statement_recipients: c.statement_preferences?.recipients.join(', ') ?? '',
+    statement_subject: c.statement_preferences?.subject ?? 'Monthly statement',
     default_currency: c.default_currency || 'USD',
     payment_method: c.payment_method || '',
     assigned_agent_id: c.assigned_agent_id || '',
@@ -351,6 +362,7 @@ function cleanFormData(data: FormData): CustomerInput {
     out.is_billing_contact = !!c.is_billing_contact
     out.is_service_contact = !!c.is_service_contact
     out.is_intake_contact = !!c.is_intake_contact
+    out.is_intake_approver = !!c.is_intake_approver
     out.bill_to_service_address = !!c.bill_to_service_address
     out.sms_consent = !!c.sms_consent
     return out
@@ -416,6 +428,10 @@ function cleanFormData(data: FormData): CustomerInput {
   // payment_term_id: same pattern — null clears, server falls back to
   // tenant default (then COD).
   input.payment_term_id = data.payment_term_id || null
+  input.invoice_email_subject = data.invoice_email_subject.trim() || null
+  input.statement_preferences = data.customer_type !== 'residential' && data.statement_day
+    ? { day: Number(data.statement_day), recipients: data.statement_recipients.split(/[,;\n]/).map(v => v.trim()).filter(Boolean), subject: data.statement_subject.trim() }
+    : null
   // territory (FR-7): always send so clearing it on the form unassigns the
   // customer. Harmless for non-franchise tenants (column is nullable).
   input.territory_id = data.territory_id || null
@@ -446,9 +462,11 @@ interface CustomerFormProps {
   serverErrors?: Record<string, string[]>
   initialData?: Customer
   mode?: 'create' | 'edit'
+  onOpenTemplates?: () => void
+  profileOnly?: boolean
 }
 
-export function CustomerForm({ onSubmit, onCancel, submitLabel, serverErrors, initialData, mode: _mode = 'create' }: CustomerFormProps) {
+export function CustomerForm({ onSubmit, onCancel, submitLabel, serverErrors, initialData, mode: _mode = 'create', onOpenTemplates, profileOnly = false }: CustomerFormProps) {
   const defaultValues: FormData = initialData
     ? customerToFormData(initialData)
     : {
@@ -473,6 +491,10 @@ export function CustomerForm({ onSubmit, onCancel, submitLabel, serverErrors, in
         default_tax_class_id: '',
         tax_exempt_certificate_document_id: '',
         payment_term_id: '',
+        statement_day: '',
+        invoice_email_subject: '',
+        statement_recipients: '',
+        statement_subject: 'Monthly statement',
         default_currency: 'USD',
         payment_method: '',
         assigned_agent_id: '',
@@ -490,7 +512,7 @@ export function CustomerForm({ onSubmit, onCancel, submitLabel, serverErrors, in
     watch,
     control,
     setValue,
-    formState: { isSubmitting },
+    formState: { isSubmitting, isDirty },
   } = useForm<FormData>({ defaultValues })
 
   const customerType = watch('customer_type')
@@ -695,6 +717,10 @@ export function CustomerForm({ onSubmit, onCancel, submitLabel, serverErrors, in
                       <input type="checkbox" {...register(`contacts.${index}.is_intake_contact`)} className="rounded border-navy-300" />
                       <span className="text-navy-700">Intake / bill-to</span>
                     </label>
+                    <label className="inline-flex items-center gap-2 cursor-pointer" title="Texted when work is sent to the intake number, and their reply of APPROVED authorizes it">
+                      <input type="checkbox" {...register(`contacts.${index}.is_intake_approver`)} className="rounded border-navy-300" />
+                      <span className="text-navy-700">Approves intake</span>
+                    </label>
                   </div>
                   {contactFields.length > 1 && (
                     <button type="button" onClick={() => removeContact(index)} className="text-xs text-danger hover:underline">
@@ -833,9 +859,22 @@ export function CustomerForm({ onSubmit, onCancel, submitLabel, serverErrors, in
                       <span className="text-navy-700">Gated property</span>
                     </label>
                   </div>
-                  {locationFields.length > 1 && (
-                    <button type="button" onClick={() => removeLocation(index)} className="text-xs text-danger hover:underline">Remove</button>
-                  )}
+                  <div className="flex items-center gap-3">
+                    {/* Only for a location that has been saved: a row just
+                        added has no id yet, and an agreement cannot point
+                        at a property that does not exist. */}
+                    {!profileOnly && watch(`service_locations.${index}.id`) && initialData?.id && (
+                      <a
+                        href={`/maintenance-contracts/new?customer=${initialData.id}&location=${watch(`service_locations.${index}.id`)}`}
+                        className="text-xs font-semibold text-amber-700 hover:underline"
+                      >
+                        Service agreement for this location
+                      </a>
+                    )}
+                    {locationFields.length > 1 && (
+                      <button type="button" onClick={() => removeLocation(index)} className="text-xs text-danger hover:underline">Remove</button>
+                    )}
+                  </div>
                 </div>
 
                 <div className="space-y-3">
@@ -979,8 +1018,47 @@ export function CustomerForm({ onSubmit, onCancel, submitLabel, serverErrors, in
               <Label>Currency</Label>
               <Input {...register('default_currency')} placeholder="USD" maxLength={3} />
             </div>
+            {customerType !== 'residential' && (
+              <div className="rounded-lg border border-amber-200 bg-amber-50 p-3">
+                <label htmlFor="statement-send-day" className="mb-1 block text-sm font-medium text-slate-700">Statement send day (every month)</label>
+                <select id="statement-send-day" {...register('statement_day')} className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900">
+                  <option value="">No monthly schedule</option>
+                  {Array.from({ length: 31 }, (_, index) => index + 1).map(day => (
+                    <option key={day} value={day}>Day {day} of every month</option>
+                  ))}
+                </select>
+                <FieldError name="statement_preferences.day" />
+                {onOpenTemplates ? (
+                  <button type="button" className="mt-2 text-sm font-semibold text-amber-800 underline underline-offset-2" onClick={() => {
+                    if (!isDirty || window.confirm('You have unsaved customer changes. Leave without saving and open Templates?')) onOpenTemplates()
+                  }}>Choose this customer's statement template →</button>
+                ) : (
+                  <p className="mt-2 text-xs text-slate-600">Save this customer first, then open Templates to choose a statement template.</p>
+                )}
+                <p className="mt-2 text-xs text-slate-600">Choose this customer's monthly send day. Days 29–31 use month-end in shorter months. Saving a day does not enable delivery or change payment due dates.</p>
+              </div>
+            )}
           </div>
 
+          {/* Hidden — kept so legacy 'tax_item' on existing customers
+              doesn't get nulled silently on save. Pure passthrough. */}
+          {customerType !== 'residential' && (
+            <div className="rounded-xl border border-slate-200 bg-slate-50 p-4 space-y-3">
+              <h3 className="font-semibold text-navy-900">Monthly statement pack</h3>
+              <p className="text-sm text-slate-500">Save your schedule here, then use Preview statement to enable or pause monthly delivery. Pause delivery before editing an active schedule. Packs include all unpaid invoices, including overdue balances, without changing their NET due dates.</p>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div><Label>Send to</Label><Input {...register('statement_recipients')} placeholder="billing@example.com, accounts@example.com" /><FieldError name="statement_preferences.recipients" /></div>
+              </div>
+              <div><Label>Statement email subject</Label><Input {...register('statement_subject')} maxLength={200} /><FieldError name="statement_preferences.subject" /></div>
+              <p className="text-xs text-slate-500">Days 29–31 use the last day in shorter months. Select this customer's statement template before enabling delivery. System-wide sending must also be enabled.</p>
+            </div>
+          )}
+          <div className="rounded-xl border border-slate-200 p-4 space-y-2">
+            <Label>Invoice email subject for this customer</Label>
+            <Input {...register('invoice_email_subject')} maxLength={200} placeholder="Leave blank to use your normal invoice subject" />
+            <p className="text-xs text-slate-500">Use {'{{invoice.number}}'}, {'{{job.number}}'}, or your field tag such as {'{{custom.po_number}}'} / {'{{custom.wo_number}}'}. Applies when this customer receives the invoice. Missing values stop sending so an incomplete subject is not emailed.</p>
+            <FieldError name="invoice_email_subject" />
+          </div>
           {/* Hidden — kept so legacy 'tax_item' on existing customers
               doesn't get nulled silently on save. Pure passthrough. */}
           <input type="hidden" {...register('tax_item')} />

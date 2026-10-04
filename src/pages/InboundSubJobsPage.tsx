@@ -2,6 +2,9 @@ import { useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link } from 'react-router-dom'
 import { apiRequest } from '@/lib/api'
+import { useTheme } from '@/hooks/useTheme'
+import { EasyPageHeading } from '@/components/easy/EasyPageHeading'
+import { EasyActionCards } from '@/components/easy/EasyActionCards'
 
 /**
  * InboundSubJobsPage — receiving-side inbox for cross-tenant subbing.
@@ -59,7 +62,10 @@ interface InboundResponse {
 const inboxKey = ['inbound-sub-jobs'] as const
 
 export function InboundSubJobsPage() {
-  const { data, isLoading, error } = useQuery({
+  const { theme } = useTheme()
+  const easy = theme === 'easy-side' || theme === 'easy-top'
+  const [view, setView] = useState<'all' | 'pending' | 'recent'>('all')
+  const { data, isLoading, error, refetch } = useQuery({
     queryKey: inboxKey,
     queryFn: () => apiRequest<InboundResponse>('/v1/inbound-sub-jobs'),
     refetchInterval: 60_000,
@@ -69,21 +75,27 @@ export function InboundSubJobsPage() {
   const recent = data?.data.rows.filter((r) => r.mirror_status !== 'pending_accept') ?? []
 
   return (
-    <div className="max-w-5xl mx-auto px-6 py-6">
+    <div className={easy ? 'w-full min-w-0 px-3 py-4 sm:px-6 sm:py-6' : 'max-w-5xl mx-auto px-6 py-6'}>
       <div className="mb-6">
         <Link to="/jobs" className="inline-flex items-center text-sm font-medium text-amber-700 hover:text-amber-800 hover:underline mb-3">
           ← Back to Jobs
         </Link>
-        <h1 className="text-2xl font-semibold text-slate-900">Inbound sub jobs</h1>
+        {easy ? <EasyPageHeading title="Incoming partner jobs" description="Review the job details, then accept it into your dispatch flow or decline with a reason." /> : <h1 className="text-2xl font-semibold text-slate-900">Inbound sub jobs</h1>}
         <p className="text-sm text-slate-500 mt-1">
           Work routed to you by partner tenants. Accept to move into your dispatch flow, or
           decline with a reason so they can reassign.
         </p>
       </div>
 
+      {easy && <EasyActionCards label="Choose a job queue" actions={[
+        { key: 'all', title: 'All partner jobs', description: 'Waiting requests and recent decisions.', active: view === 'all', onClick: () => setView('all') },
+        { key: 'pending', title: 'Needs a decision', description: 'Review before accepting or declining.', count: data && !error ? pending.length : undefined, active: view === 'pending', onClick: () => setView('pending') },
+        { key: 'recent', title: 'Recent decisions', description: 'Review previously handled requests.', count: data && !error ? recent.length : undefined, active: view === 'recent', onClick: () => setView('recent') },
+      ]} />}
       {error && (
-        <div className="text-xs bg-red-50 border border-red-200 text-red-800 rounded-md px-3 py-2 mb-4">
+        <div role="alert" className="text-xs bg-red-50 border border-red-200 text-red-800 rounded-md px-3 py-2 mb-4">
           Failed to load: {String((error as Error).message)}
+          <button type="button" onClick={() => void refetch()} className="ml-3 underline">Retry</button>
         </div>
       )}
 
@@ -91,10 +103,10 @@ export function InboundSubJobsPage() {
         <div className="text-sm text-slate-500">Loading…</div>
       )}
 
-      {data && (
+      {data && !error && (
         <div className="space-y-8">
-          <PendingSection rows={pending} />
-          <RecentSection rows={recent} />
+          <div hidden={easy && view === 'recent'}><PendingSection rows={pending} /></div>
+          <div hidden={easy && view === 'pending'}><RecentSection rows={recent} /></div>
         </div>
       )}
     </div>

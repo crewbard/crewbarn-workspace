@@ -2,6 +2,9 @@ import { useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link } from 'react-router-dom'
 import { apiRequest } from '@/lib/api'
+import { useTheme } from '@/hooks/useTheme'
+import { EasyPageHeading } from '@/components/easy/EasyPageHeading'
+import { EasyActionCards } from '@/components/easy/EasyActionCards'
 import { AttachmentOverlay } from '@/components/ui/AttachmentOverlay'
 
 /**
@@ -47,27 +50,36 @@ interface InboxEnvelope {
 const inboxKey = ['sub-reviews-pending'] as const
 
 export function SubReviewsPage() {
-  const { data, isLoading, error } = useQuery({
+  const { theme } = useTheme()
+  const easy = theme === 'easy-side' || theme === 'easy-top'
+  const [view, setView] = useState<'all' | 'limits' | 'invoices'>('all')
+  const { data, isLoading, error, refetch } = useQuery({
     queryKey: inboxKey,
     queryFn: () => apiRequest<InboxEnvelope>('/v1/sub-reviews/pending'),
     refetchInterval: 60_000,
   })
 
   return (
-    <div className="max-w-5xl mx-auto px-6 py-6">
+    <div className={easy ? 'w-full min-w-0 px-3 py-4 sm:px-6 sm:py-6' : 'max-w-5xl mx-auto px-6 py-6'}>
       <div className="mb-6">
         <Link to="/jobs" className="inline-flex items-center text-sm font-medium text-amber-700 hover:text-amber-800 hover:underline mb-3">
           ← Back to Jobs
         </Link>
-        <h1 className="text-2xl font-semibold text-slate-900">Sub reviews</h1>
+        {easy ? <EasyPageHeading title="Partner reviews" description="Review requested spending-limit increases and submitted invoices. Opening a review does not approve or pay it." /> : <h1 className="text-2xl font-semibold text-slate-900">Sub reviews</h1>}
         <p className="text-sm text-slate-500 mt-1">
           NTE extension requests and submitted invoices from subcontractors awaiting your approval.
         </p>
       </div>
 
+      {easy && <EasyActionCards label="Choose what to review" actions={[
+        { key: 'all', title: 'All requests', description: 'Spending-limit increases and invoices.', active: view === 'all', onClick: () => setView('all') },
+        { key: 'limits', title: 'Spending limits', description: 'Review not-to-exceed increases.', count: data && !error ? data.data.nte_extensions.length : undefined, active: view === 'limits', onClick: () => setView('limits') },
+        { key: 'invoices', title: 'Partner invoices', description: 'Review submitted charges before approval.', count: data && !error ? data.data.invoices.length : undefined, active: view === 'invoices', onClick: () => setView('invoices') },
+      ]} />}
       {error && (
-        <div className="text-xs bg-red-50 border border-red-200 text-red-800 rounded-md px-3 py-2 mb-4">
+        <div role="alert" className="text-xs bg-red-50 border border-red-200 text-red-800 rounded-md px-3 py-2 mb-4">
           Failed to load: {String((error as Error).message)}
+          <button type="button" onClick={() => void refetch()} className="ml-3 underline">Retry</button>
         </div>
       )}
 
@@ -75,10 +87,10 @@ export function SubReviewsPage() {
         <div className="text-sm text-slate-500">Loading…</div>
       )}
 
-      {data && (
+      {data && !error && (
         <div className="space-y-8">
-          <NteExtensionsSection rows={data.data.nte_extensions} />
-          <InvoicesSection rows={data.data.invoices} />
+          <div hidden={easy && view === 'invoices'}><NteExtensionsSection rows={data.data.nte_extensions} /></div>
+          <div hidden={easy && view === 'limits'}><InvoicesSection rows={data.data.invoices} /></div>
         </div>
       )}
     </div>

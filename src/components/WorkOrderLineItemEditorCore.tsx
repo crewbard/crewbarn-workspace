@@ -22,6 +22,7 @@ import type {
   WorkOrderLineItemDraft,
 } from '@/types/workOrderLineItem'
 import { CatalogItemPickerModal } from '@/components/CatalogItemPickerModal'
+import { CatalogDescriptionInput } from '@/components/CatalogDescriptionInput'
 import type { LineType } from '@/types/workOrderLineItem'
 import { ScanToAddLineItem } from '@/components/ScanToAddLineItem'
 
@@ -472,7 +473,8 @@ const LineRow = memo(function LineRow({ line, onChange, onDelete, availableAsset
       {/* Description */}
       <div className="col-span-4">
         <div className="flex min-w-0 items-center gap-2">
-        <input
+        <CatalogDescriptionInput
+          onPick={item => { focusedRef.current = null; const description = item.description || item.name; setDescLocal(description); onChange({ description, catalog_item_id: item.id, customer_cost_cents: item.pricing.customer_cost_cents, owner_cost_cents: item.pricing.owner_cost_cents, tax_class_id: item.pricing.tax_class_id }) }}
           type="text"
           value={descLocal}
           onChange={(e) => setDescLocal(e.target.value)}

@@ -16,6 +16,20 @@ export type WorkOrderStatusCategory = 'open' | 'in_progress' | 'blocked' | 'comp
 
 // ---------- Nested objects on the resource ----------
 
+/**
+ * The service agreement that already paid for this visit.
+ *
+ * Present only on the few jobs a contract booked. When it is there, the
+ * fee has already covered the work — invoicing the job again bills the
+ * customer twice for the same visit.
+ */
+export interface WorkOrderCoveredBy {
+  visit_id: string
+  contract_id: string | null
+  title: string | null
+  due_on: string | null
+}
+
 export interface WorkOrderJobType {
   id: string
   name: string
@@ -138,6 +152,9 @@ export interface WorkOrder {
   status_id: string
   status?: WorkOrderStatus
 
+  /** Only on a job a service agreement booked. Absent otherwise. */
+  covered_by?: WorkOrderCoveredBy | null
+
   // Customers
   service_customer_id: string
   service_customer?: WorkOrderServiceCustomer
@@ -149,6 +166,7 @@ export interface WorkOrder {
   service_location?: WorkOrderServiceLocation
 
   lead_tech_account_id: string | null
+  project_manager_account_id: string | null
   lead_tech?: WorkOrderLeadTech | null
 
   crew_id: string | null
@@ -335,7 +353,12 @@ export interface WorkOrderVisit {
   dispatcher_alerted_at?: string | null
   gps_issue_reported_at?: string | null
   gps_issue_note?: string | null
-  tech?: { id: string; name: string | null; email: string | null } | null
+  /*
+   * display_name, not name. `accounts` has no name column — a person's
+   * name lives on tenant_admin_accounts — so `name` was always
+   * undefined here and the field log printed the raw account id.
+   */
+  tech?: { id: string; display_name: string | null; email: string | null } | null
   created_at: string | null
   updated_at: string | null
 }
@@ -377,6 +400,8 @@ export interface WorkOrderNteExtension {
  * is auto-assigned via TenantSetting::nextWorkOrderNumber().
  */
 export interface WorkOrderInput {
+  custom_values?: import('@/components/CustomFieldsSection').CustomValues
+  ai_intake_draft_id?: string
   job_type_id: string
   status_id: string
   title: string
@@ -385,6 +410,7 @@ export interface WorkOrderInput {
   billing_customer_id?: string | null
   service_location_id: string
   lead_tech_account_id?: string | null
+  project_manager_account_id?: string | null
   crew_id?: string | null
   crew_member_account_ids?: string[]
   parent_work_order_id?: string | null
@@ -433,6 +459,7 @@ export interface WorkOrderListParams {
   scheduled_week?: 'current'
   /** Tech account id, or the literal 'unassigned' for jobs with no lead tech. */
   lead_tech_account_id?: string
+  project_manager_account_id?: string
   /** Needs-attention deep link: stale/ops buckets such as dormant, past_scheduled_open, needs_parts, parts_ordered. */
   stale?: string
   /** When true, only subbed-out jobs. When false, only in-house jobs. Omit for all. */

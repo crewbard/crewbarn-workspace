@@ -116,9 +116,13 @@ export function ReceivePaymentModal({
   const invoicesQ = useQuery({
     queryKey: ['customer-outstanding-invoices', customerId],
     queryFn: () =>
-      apiRequest<{ data: OutstandingInvoice[] }>(
-        `/v1/customers/${customerId}/outstanding-invoices`,
-      ),
+      apiRequest<{
+        data: OutstandingInvoice[]
+        meta?: {
+          settled_count: number
+          latest_settled: { id: string; invoice_number: string; total_cents: number } | null
+        }
+      }>(`/v1/customers/${customerId}/outstanding-invoices`),
   })
 
   const techsQ = useQuery({
@@ -206,6 +210,14 @@ export function ReceivePaymentModal({
   }, [invoicesQ.data, preSelectInvoiceId])
 
   const invoices = invoicesQ.data?.data ?? []
+  /*
+   * What the customer has that is already paid. Only consulted when
+   * nothing is outstanding, to say which of the two silences this is.
+   */
+  const settled = {
+    count: invoicesQ.data?.meta?.settled_count ?? 0,
+    latest: invoicesQ.data?.meta?.latest_settled ?? null,
+  }
   const techs = techsQ.data?.data ?? []
 
   const allocSum = useMemo(
@@ -413,12 +425,33 @@ export function ReceivePaymentModal({
               <div className="text-xs text-slate-500">Loading invoices…</div>
             ) : invoices.length === 0 ? (
               <div className="bg-sky-50 border border-sky-200 rounded p-4 text-sm text-sky-900 space-y-2">
-                <div className="font-semibold">No invoices yet — record this as a down payment</div>
-                <div className="text-xs">
-                  Enter the amount in the <strong>Customer credit</strong> box below. It'll
-                  sit on the customer's account; you can apply it to the invoice once you
-                  create one.
-                </div>
+                {/* "No invoices yet" was said to people looking straight
+                    at the invoice it was talking about. Nothing
+                    OUTSTANDING is a different sentence from nothing at
+                    all, and the difference is the whole message. */}
+                {settled.latest ? (
+                  <>
+                    <div className="font-semibold">
+                      Nothing outstanding — {settled.latest.invoice_number} is paid in full
+                    </div>
+                    <div className="text-xs">
+                      {settled.count > 1
+                        ? `All ${settled.count} invoices for this customer are settled. `
+                        : ''}
+                      Anything you record here becomes a credit on their account, in the{' '}
+                      <strong>Customer credit</strong> box below.
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <div className="font-semibold">No invoices yet — record this as a down payment</div>
+                    <div className="text-xs">
+                      Enter the amount in the <strong>Customer credit</strong> box below. It'll
+                      sit on the customer's account; you can apply it to the invoice once you
+                      create one.
+                    </div>
+                  </>
+                )}
               </div>
             ) : (
               <div className="border border-slate-200 rounded-lg overflow-hidden">

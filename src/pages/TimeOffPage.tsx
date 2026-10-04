@@ -184,8 +184,8 @@ export function TimeOffPage() {
   }, [rows])
 
   return (
-    <div className="max-w-5xl mx-auto px-6 py-8">
-      <div className="mb-6 flex items-start justify-between gap-4">
+    <div className="max-w-[1080px] mx-auto px-4 sm:px-6 py-8">
+      <div className="mb-6 flex flex-wrap items-start justify-between gap-4">
         <div>
           <p className="text-xs uppercase tracking-[0.18em] font-bold text-amber-600 mb-2">
             {canViewAll ? 'Team schedule' : 'My schedule'}
@@ -257,12 +257,13 @@ export function TimeOffPage() {
 
       {(query.isLoading || permissions.isLoading) && <p className="text-sm text-slate-500 italic">Loading...</p>}
       {query.isError && (
-        <p className="text-sm text-red-700">
+        <p role="alert" className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">
           {(query.error as Error).message ?? 'Failed to load.'}
+          {' '}<button type="button" className="underline" onClick={() => query.refetch()}>Try again</button>
         </p>
       )}
 
-      {!query.isLoading && !permissions.isLoading && sortedRows.length === 0 && (
+      {!query.isLoading && !query.isError && !permissions.isLoading && sortedRows.length === 0 && (
         <div className="bg-slate-50 border border-slate-200 rounded-lg p-10 text-center text-sm text-slate-500">
           {search.trim()
             ? 'No time-off requests match that search.'

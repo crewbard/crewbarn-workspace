@@ -58,6 +58,12 @@ export interface PurchaseOrderItem {
   line_total_cents: number
   sort_order: number
   notes: string | null
+  /** The part number as printed, and the catalogue page it was picked from. */
+  part_number?: string | null
+  source_document_id?: string | null
+  source_page?: number | null
+  source_page_label?: string | null
+  estimate_line_item_id?: string | null
   created_at: string | null
   updated_at: string | null
 }
@@ -70,6 +76,15 @@ export interface PurchaseOrder {
   po_number: string
   vendor_order_number: string | null
   status: PurchaseOrderStatus
+  /** Stock for the shelves, or parts for one estimate that wait on its answer. */
+  kind?: 'stock' | 'estimate'
+  estimate_id?: string | null
+  estimate_number?: string | null
+  work_order_id?: string | null
+  /** Why it was ordered before the customer approved. */
+  order_note?: string | null
+  /** What happened to it on its own: "Closed: the estimate was declined." */
+  status_note?: string | null
   order_date: string | null
   expected_delivery: string | null
   money: PurchaseOrderMoney

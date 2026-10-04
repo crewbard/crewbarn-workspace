@@ -28,6 +28,19 @@ const CANDIDATE_SERVICES = [
   'e7810a71-73ae-499d-8c15-faa9aef0c3f2', // Some Brother / TPL printers
 ]
 
+/**
+ * The slice of a Web Bluetooth device this module touches. Declared once
+ * because getDevices() and requestDevice() both return it.
+ */
+interface BleDevice {
+  id?: string
+  name?: string
+  gatt?: {
+    connected?: boolean
+    connect: () => Promise<{ getPrimaryServices: () => Promise<unknown[]> }>
+  }
+}
+
 /** Most thermal BLE printers run at 203 dpi. Some at 300. We default to 203. */
 const PRINTER_DPI = 203
 
@@ -42,17 +55,20 @@ export function isWebBluetoothSupported(): boolean {
 /**
  * Print one or more labels to a BLE thermal printer.
  * The browser will prompt the user to pick the printer from a device
- * chooser the first time. After pairing, subsequent prints reuse the
- * same device until the page is reloaded.
+ * chooser the first time. After that getDevices() reconnects silently, so
+ * printing forty labels asks which printer once rather than forty times.
  */
 export async function printLabelsViaBluetooth({
   labels,
   thermalSize,
   copies = 1,
+  preferId,
 }: {
   labels: PdfLabel[]
   thermalSize: ThermalSizeKey
   copies?: number
+  /** Reconnect to this device if it is still permitted, rather than asking. */
+  preferId?: string
 }): Promise<void> {
   if (!isWebBluetoothSupported()) {
     throw new Error('Web Bluetooth is not available in this browser. Try Chrome on desktop or Android, or use the PNG download for iOS / Safari.')
@@ -61,28 +77,40 @@ export async function printLabelsViaBluetooth({
     throw new Error('Bluetooth printing requires a specific thermal size, not sheet.')
   }
 
-  // Ask the user to pick a printer. acceptAllDevices + optionalServices
-  // gives broad compatibility because we don't know the printer's MAC
-  // ahead of time. The user picks theirs from the prompt.
+  // A printer this browser has already been allowed to use, if there is
+  // one. acceptAllDevices + optionalServices on the chooser gives broad
+  // compatibility because we do not know the printer's MAC ahead of time.
   const nav = navigator as Navigator & {
     bluetooth: {
+      getDevices?: () => Promise<BleDevice[]>
       requestDevice: (options: {
         acceptAllDevices?: boolean
         filters?: unknown
         optionalServices?: string[]
-      }) => Promise<{
-        gatt?: {
-          connect: () => Promise<{
-            getPrimaryServices: () => Promise<unknown[]>
-          }>
-        }
-      }>
+      }) => Promise<BleDevice>
     }
   }
-  const device = await nav.bluetooth.requestDevice({
-    acceptAllDevices: true,
-    optionalServices: CANDIDATE_SERVICES,
-  })
+
+  let device: BleDevice | null = null
+
+  // Printing forty labels should ask which printer once, not forty times.
+  if (typeof nav.bluetooth.getDevices === 'function') {
+    try {
+      const known = await nav.bluetooth.getDevices()
+      device = known.find((d) => (preferId ? d.id === preferId : true)) ?? known[0] ?? null
+    } catch {
+      // Not supported, or the user has cleared their permissions. The
+      // chooser below is the answer either way.
+      device = null
+    }
+  }
+
+  if (!device) {
+    device = await nav.bluetooth.requestDevice({
+      acceptAllDevices: true,
+      optionalServices: CANDIDATE_SERVICES,
+    })
+  }
 
   if (!device.gatt) {
     throw new Error('Selected device has no GATT server.')
@@ -135,10 +163,34 @@ export async function printLabelsViaBluetooth({
 /**
  * Build the ESC/POS byte stream for one label: init → raster bitmap → feed → cut.
  */
-async function buildEscPosForLabel(
+/**
+ * A label as ESC/POS bytes.
+ *
+ * Exported because the Print Bridge sends the very same bytes down a USB
+ * or network cable. The printer does not care which pipe they arrived
+ * through, and neither should this.
+ */
+/** A label rendered to one bit per pixel, before any printer language. */
+export interface LabelRaster {
+  /** Rows of MSB-first bytes, each row padded to a byte boundary. */
+  bitmap: Uint8Array
+  widthPx: number
+  heightPx: number
+  widthBytes: number
+}
+
+/**
+ * The label as pixels — the part every printer language shares.
+ *
+ * ESC/POS wraps it in a raster command and ZPL wraps it in a graphic
+ * field, but both want exactly these bytes: one bit per pixel, MSB first,
+ * rows padded to a byte boundary, 1 meaning black. Rendered at the
+ * printer's own DPI so nothing is resampled downstream.
+ */
+export async function buildLabelRaster(
   label: PdfLabel,
   thermalSize: ThermalSizeKey,
-): Promise<Uint8Array> {
+): Promise<LabelRaster> {
   const size = THERMAL_SIZES[thermalSize]
   const widthPx = Math.round(size.w * PRINTER_DPI)
   const heightPx = Math.round(size.h * PRINTER_DPI)
@@ -154,8 +206,19 @@ async function buildEscPosForLabel(
   ctx.drawImage(img, 0, 0, widthPx, heightPx)
   const imgData = ctx.getImageData(0, 0, widthPx, heightPx)
 
-  const bitmap = pixelsToOneBitBitmap(imgData)
-  const widthBytes = Math.ceil(widthPx / 8)
+  return {
+    bitmap: pixelsToOneBitBitmap(imgData),
+    widthPx,
+    heightPx,
+    widthBytes: Math.ceil(widthPx / 8),
+  }
+}
+
+export async function buildEscPosForLabel(
+  label: PdfLabel,
+  thermalSize: ThermalSizeKey,
+): Promise<Uint8Array> {
+  const { bitmap, heightPx, widthBytes } = await buildLabelRaster(label, thermalSize)
 
   // ESC @ — initialize printer
   // GS v 0 m xL xH yL yH ... raster bitmap

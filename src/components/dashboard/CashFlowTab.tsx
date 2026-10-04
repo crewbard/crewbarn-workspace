@@ -28,7 +28,7 @@ export function CashFlowTab() {
         <p className="text-sm text-slate-500">
           Money in vs out, receivables, and average job revenue — live from your books.
         </p>
-        <div className="inline-flex rounded-lg border border-slate-300 overflow-hidden">
+        <div data-easy-period-controls className="inline-flex rounded-lg border border-slate-300 overflow-hidden">
           {(Object.keys(DASH_RANGE_LABELS) as DashRange[]).map((r) => (
             <button
               key={r}
@@ -45,7 +45,7 @@ export function CashFlowTab() {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
+      <div data-easy-widget-grid className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
         {CASHFLOW_TILES.map(({ id, span }) => {
           const def = WIDGET_BY_ID.get(id)
           if (!def) return null

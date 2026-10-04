@@ -7,6 +7,7 @@ import { CustomMonthView } from '@/components/schedule/CustomMonthView'
 import { ZOOM_MIN, ZOOM_MAX, ZOOM_STEP } from '@/components/schedule/calendarUtils'
 import { EventBadges, BadgeLegend } from '@/components/schedule/EventBadges'
 import { Avatar } from '@/components/Avatar'
+import { Modal } from '@/components/ui/Modal'
 import { MobileScheduleAgenda } from '@/components/schedule/MobileScheduleAgenda'
 import { JobLocationMap } from '@/components/schedule/JobLocationMap'
 import dndAddon, { type withDragAndDropProps } from 'react-big-calendar/lib/addons/dragAndDrop'
@@ -769,6 +770,7 @@ export function SchedulePage() {
                 key={filter.value}
                 type="button"
                 onClick={() => setUnschedFilter(filter.value)}
+                aria-pressed={unschedFilter === filter.value}
                 className={`rounded-full border px-2 py-0.5 text-[10px] font-medium ${
                   unschedFilter === filter.value
                     ? 'border-amber-500 bg-amber-100 text-amber-800'
@@ -808,11 +810,18 @@ export function SchedulePage() {
                 <option value="customer">By customer</option>
               </select>
               <span className="text-amber-700 bg-amber-100 rounded px-1.5">
-                {visibleUnscheduled.length}{rawUnscheduled.length !== visibleUnscheduled.length ? `/${rawUnscheduled.length}` : ''}
+                {unscheduledQuery.isSuccess ? `${visibleUnscheduled.length}${rawUnscheduled.length !== visibleUnscheduled.length ? `/${rawUnscheduled.length}` : ''}` : '—'}
               </span>
             </div>
           </div>
-          {visibleUnscheduled.length === 0 ? (
+          {unscheduledQuery.isLoading ? (
+            <p role="status" className="px-4 py-6 text-xs text-slate-500">Loading unscheduled jobs…</p>
+          ) : unscheduledQuery.isError ? (
+            <div role="alert" className="px-4 py-4 text-xs text-red-700">
+              Could not load unscheduled jobs.
+              <button type="button" onClick={() => { void unscheduledQuery.refetch() }} disabled={unscheduledQuery.isFetching} className="ml-2 underline disabled:opacity-50">Retry</button>
+            </div>
+          ) : visibleUnscheduled.length === 0 ? (
             <div className="px-4 py-6 text-center text-xs text-slate-400">Nothing in this queue.</div>
           ) : unschedGroupBy === 'none' ? (
             <ul className="divide-y divide-slate-100">
@@ -845,6 +854,18 @@ export function SchedulePage() {
 
       {/* ===== Calendar ===== */}
       <main className="flex-1 flex flex-col overflow-hidden">
+        {[
+          { label: 'Calendar jobs', query: eventsQuery },
+          { label: 'Tasks', query: tasksQuery },
+          { label: 'Staff time off', query: approvedTimeOffQuery },
+          { label: 'Job statuses', query: statusesQuery },
+          { label: 'Technician roster', query: techRosterQuery },
+        ].filter(({ query }) => query.isError).map(({ label, query }) => (
+          <div key={label} role="alert" className="shrink-0 border-b border-red-200 bg-red-50 px-4 py-2 text-xs text-red-800">
+            {label} could not refresh. The schedule may be incomplete or out of date.
+            <button type="button" onClick={() => { void query.refetch() }} disabled={query.isFetching} className="ml-2 underline disabled:opacity-50">Retry</button>
+          </div>
+        ))}
         <div className="border-b border-slate-200 px-3 sm:px-4 py-2 flex items-center gap-2 sm:gap-3 flex-wrap">
           {/* Mobile-only: open the unscheduled-jobs drawer */}
           <button
@@ -870,6 +891,8 @@ export function SchedulePage() {
                 key={v}
                 type="button"
                 onClick={() => setView(v as View)}
+                aria-pressed={view === v}
+                data-easy-view-option
                 className={`px-3 py-1.5 ${idx > 0 ? 'border-l border-slate-300' : ''} ${
                   view === v ? 'bg-amber-100 text-amber-800 font-medium' : 'text-slate-600 hover:bg-slate-50'
                 }`}
@@ -944,6 +967,8 @@ export function SchedulePage() {
                 key={option.value}
                 type="button"
                 onClick={() => setCardDensity(option.value)}
+                aria-pressed={cardDensity === option.value}
+                data-easy-view-option
                 className={`px-2.5 py-1.5 ${idx > 0 ? 'border-l border-slate-300' : ''} ${
                   cardDensity === option.value
                     ? 'bg-slate-900 text-white font-medium'
@@ -1184,6 +1209,9 @@ export function SchedulePage() {
         <TechSelectModal
           techs={techRosterQuery.data?.data.techs ?? []}
           loading={techRosterQuery.isLoading}
+          failed={techRosterQuery.isError}
+          retrying={techRosterQuery.isFetching}
+          onRetry={() => { void techRosterQuery.refetch() }}
           onClose={() => setPendingSchedule(null)}
           onSelect={(techId) => {
             const p = pendingSchedule
@@ -1262,17 +1290,15 @@ function StatusLegendList({
               <li
                 key={status.id}
                 className={`grid cursor-pointer grid-cols-[1fr_auto] gap-2 px-3 py-2 hover:bg-slate-50 ${hidden ? 'opacity-40' : ''}`}
-                onClick={() => onToggleStatus(status.id)}
-                title={hidden ? 'Click to show on calendar' : 'Click to hide from calendar'}
               >
-                <div className="min-w-0">
+                <button type="button" className="min-w-0 text-left rounded focus-visible:outline focus-visible:outline-2 focus-visible:outline-amber-500" onClick={() => onToggleStatus(status.id)} aria-pressed={!hidden} aria-label={`${status.name}: ${hidden ? 'show on' : 'hide from'} calendar`}>
                   <div className="truncate text-xs font-semibold text-slate-700">{status.name}</div>
                   <div className="mt-1 inline-flex items-center gap-1 rounded border px-2 py-1 text-[10px] text-slate-500" style={{ background: matteStatusFill(outline, fill), borderColor: matteStatusBorder(outline) }}>
                     <span className="h-4 w-1 rounded-full" style={{ background: statusAccentColor(outline) }} />
                     Preview
                   </div>
                   {hidden ? <div className="mt-1 text-[10px] font-semibold uppercase tracking-wide text-slate-400">Hidden</div> : null}
-                </div>
+                </button>
                 <div className="flex items-center gap-2" onClick={(event) => event.stopPropagation()}>
                   <label className="flex flex-col items-center gap-1 text-[10px] font-semibold uppercase tracking-wide text-slate-400">
                     Outline
@@ -1306,36 +1332,36 @@ function StatusLegendList({
 function TechSelectModal({
   techs,
   loading,
+  failed,
+  retrying,
+  onRetry,
   onClose,
   onSelect,
   onKeepUnassigned,
 }: {
   techs: Array<{ id: string; name: string }>
   loading: boolean
+  failed: boolean
+  retrying: boolean
+  onRetry: () => void
   onClose: () => void
   onSelect: (techId: string) => void
   onKeepUnassigned: () => void
 }) {
   return (
-    <div
-      className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 p-4"
-      onClick={onClose}
-    >
-      <div
-        className="bg-white rounded-xl shadow-xl w-full max-w-sm p-5"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <h3 className="text-sm font-semibold text-navy-900">Assign a tech?</h3>
+    <Modal isOpen onClose={onClose} title="Assign a tech?" size="sm">
+      <Modal.Body>
         <p className="text-xs text-slate-500 mt-1">
           This job has no tech yet. Pick one to assign, or schedule it unassigned.
         </p>
 
         <div className="mt-3 max-h-64 overflow-y-auto divide-y divide-slate-100 border border-slate-200 rounded-lg">
           {loading && <div className="px-3 py-3 text-xs text-slate-400 italic">Loading techs…</div>}
-          {!loading && techs.length === 0 && (
+          {failed && <div role="alert" className="px-3 py-3 text-xs text-red-700">Could not load the roster. <button type="button" onClick={onRetry} disabled={retrying} className="underline disabled:opacity-50">Retry</button></div>}
+          {!loading && !failed && techs.length === 0 && (
             <div className="px-3 py-3 text-xs text-slate-400 italic">No techs on the roster.</div>
           )}
-          {techs.map((t) => (
+          {!loading && !failed && techs.map((t) => (
             <button
               key={t.id}
               type="button"
@@ -1347,7 +1373,8 @@ function TechSelectModal({
           ))}
         </div>
 
-        <div className="mt-4 flex items-center justify-between gap-2">
+      </Modal.Body>
+        <Modal.Footer>
           <button
             type="button"
             onClick={onClose}
@@ -1362,9 +1389,8 @@ function TechSelectModal({
           >
             Keep unassigned →
           </button>
-        </div>
-      </div>
-    </div>
+        </Modal.Footer>
+    </Modal>
   )
 }
 
@@ -1818,7 +1844,7 @@ function UnscheduledRow({
  * which removes them from this list automatically.
  */
 function PendingEstimatesPanel() {
-  const { data, isLoading } = useEstimates({ status: 'sent', per_page: 25 })
+  const { data, isLoading, isError, isFetching, refetch } = useEstimates({ status: 'sent', per_page: 25 })
   const rows = data?.data ?? []
 
   function relativeExpiry(iso: string | null): string {
@@ -1839,19 +1865,25 @@ function PendingEstimatesPanel() {
           Pending approval
         </span>
         <span className="text-xs bg-amber-100 text-amber-800 px-2 py-0.5 rounded-full font-medium">
-          {rows.length}
+          {isLoading || isError ? '—' : `${rows.length} shown`}
         </span>
       </div>
       <ul className="overflow-y-auto">
         {isLoading && (
           <li className="px-4 py-2 text-xs text-slate-400">Loading…</li>
         )}
-        {!isLoading && rows.length === 0 && (
+        {isError && (
+          <li role="alert" className="px-4 py-3 text-xs text-red-700">
+            Could not load pending estimates.
+            <button type="button" onClick={() => { void refetch() }} disabled={isFetching} className="ml-2 underline disabled:opacity-50">Retry</button>
+          </li>
+        )}
+        {!isLoading && !isError && rows.length === 0 && (
           <li className="px-4 py-3 text-center text-xs text-slate-400">
             Nothing waiting.
           </li>
         )}
-        {!isLoading && rows.map((est) => {
+        {!isLoading && !isError && rows.map((est) => {
           const expiringSoon =
             !!est.expires_at &&
             new Date(est.expires_at).getTime() - Date.now() < 3 * 86_400_000

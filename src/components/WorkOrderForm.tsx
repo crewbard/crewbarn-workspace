@@ -71,6 +71,7 @@ export interface EstimateCreateFromFormInput {
   scheduled_end_at: string | null
   estimated_duration_minutes: number | null
   lead_tech_account_id: string | null
+  project_manager_account_id: string | null
   internal_notes: string | null
   customer_notes: string | null
   contract_template_id: string | null
@@ -172,6 +173,13 @@ interface FormState {
   // Section 2.5 — field assignment. lead_tech_account_id is the primary
   // assignment used by dispatch, mobile, payroll, reports, and notifications.
   lead_tech_account_id: string | null
+  /*
+   * Who is ANSWERABLE, which on anything bigger than a single visit is
+   * not who is doing it. Left null on purpose: the server resolves an
+   * empty one to the lead tech, and copying the tech in here would mean
+   * reassigning the job leaves the old one quietly holding it.
+   */
+  project_manager_account_id: string | null
   crew_id: string | null
   crew_member_account_ids: string[]
 
@@ -417,6 +425,7 @@ function buildInitialState(
       their_work_order_number: '',
       their_po_number: '',
       lead_tech_account_id: null,
+      project_manager_account_id: null,
       crew_id: null,
       crew_member_account_ids: [],
       // New jobs schedule to now by default so they always appear on the
@@ -461,6 +470,7 @@ function buildInitialState(
     their_work_order_number: initialData.their_work_order_number ?? '',
     their_po_number: initialData.their_po_number ?? '',
     lead_tech_account_id: initialData.lead_tech_account_id ?? null,
+    project_manager_account_id: initialData.project_manager_account_id ?? null,
     crew_id: initialData.crew_id ?? null,
     crew_member_account_ids: initialData.crew_members?.map((member) => member.id) ?? [],
     is_scheduled: initialData.schedule.is_scheduled,
@@ -1227,6 +1237,7 @@ export function WorkOrderForm({
           ? effectiveForm.billing_customer.id
           : null,
       lead_tech_account_id: effectiveForm.lead_tech_account_id || null,
+      project_manager_account_id: effectiveForm.project_manager_account_id || null,
       crew_id: effectiveForm.crew_id || null,
       crew_member_account_ids: effectiveForm.crew_member_account_ids,
 
@@ -1301,6 +1312,7 @@ export function WorkOrderForm({
             ? parseInt(effectiveForm.estimated_duration_minutes, 10) || null
             : null,
         lead_tech_account_id: effectiveForm.lead_tech_account_id || null,
+        project_manager_account_id: effectiveForm.project_manager_account_id || null,
         internal_notes: effectiveForm.internal_notes.trim() || null,
         customer_notes: effectiveForm.public_notes.trim() || null,
         contract_template_id: effectiveForm.contract_template_id || null,
@@ -1800,6 +1812,8 @@ export function WorkOrderForm({
             <CrewSection
               leadTechAccountId={form.lead_tech_account_id}
               onLeadTechChange={(lead_tech_account_id) => update({ lead_tech_account_id })}
+              projectManagerAccountId={form.project_manager_account_id}
+              onProjectManagerChange={(project_manager_account_id) => update({ project_manager_account_id })}
               leadTechError={fieldError('lead_tech_account_id')}
               crewMemberAccountIds={form.crew_member_account_ids}
               onCrewMemberChange={(crew_member_account_ids) => update({ crew_member_account_ids })}
@@ -2123,6 +2137,18 @@ export function WorkOrderForm({
           </Modal>
         </>
       )}
+      <div className="mb-4">
+        <FormSection title="Required custom fields">
+          <CustomFieldsSection
+            requirement="required"
+            entityType="work_order"
+            customerIds={[form.service_customer?.id, form.has_billing_override ? form.billing_customer?.id : enrichedServiceCustomer?.parent_customer_id ?? form.service_customer?.id]}
+            entityId={initialData?.id ?? null}
+            values={customValues}
+            onChange={setCustomValues}
+          />
+        </FormSection>
+      </div>
       <FormSection title="Job Basics">
         <Field label="Title" required error={fieldError('title')}>
           <input
@@ -2216,6 +2242,8 @@ export function WorkOrderForm({
             <CrewSection
               leadTechAccountId={form.lead_tech_account_id}
               onLeadTechChange={(lead_tech_account_id) => update({ lead_tech_account_id })}
+              projectManagerAccountId={form.project_manager_account_id}
+              onProjectManagerChange={(project_manager_account_id) => update({ project_manager_account_id })}
               leadTechError={fieldError('lead_tech_account_id')}
               crewMemberAccountIds={form.crew_member_account_ids}
               onCrewMemberChange={(crew_member_account_ids) => update({ crew_member_account_ids })}
@@ -2320,21 +2348,21 @@ export function WorkOrderForm({
         </div>
       )}
 
-      {/* ---------- Custom fields (tenant-defined) ---------- */}
-      {(!guidedMode || step === lastStep) && (
-      <div className={bottomLeftClass}>
-      <FormSection title="Custom fields" collapsible={!workspaceLayout && !guidedMode} defaultOpen={workspaceLayout}>
-        <CustomFieldsSection
-          entityType="work_order"
-          entityId={initialData?.id ?? null}
-          values={customValues}
-          onChange={setCustomValues}
-        />
-      </FormSection>
-      </div>
-      )}
-
       {/* ---------- Notes ---------- */}
+      {(!guidedMode || step === lastStep) && (
+        <div className={bottomLeftClass}>
+          <FormSection title="Optional custom fields">
+            <CustomFieldsSection
+              requirement="optional"
+              entityType="work_order"
+              customerIds={[form.service_customer?.id, form.has_billing_override ? form.billing_customer?.id : enrichedServiceCustomer?.parent_customer_id ?? form.service_customer?.id]}
+              entityId={initialData?.id ?? null}
+              values={customValues}
+              onChange={setCustomValues}
+            />
+          </FormSection>
+        </div>
+      )}
       {(!guidedMode || step === lastStep) && (
       <div className={bottomLeftClass}>
       <FormSection
@@ -2602,6 +2630,8 @@ function CrewSection({
   leadTechAccountId,
   onLeadTechChange,
   leadTechError,
+  projectManagerAccountId = null,
+  onProjectManagerChange,
   crewMemberAccountIds,
   onCrewMemberChange,
   showCrew = true,
@@ -2611,6 +2641,8 @@ function CrewSection({
   leadTechAccountId: string | null
   onLeadTechChange: (accountId: string | null) => void
   leadTechError?: string
+  projectManagerAccountId?: string | null
+  onProjectManagerChange?: (accountId: string | null) => void
   crewMemberAccountIds: string[]
   onCrewMemberChange: (accountIds: string[]) => void
   showCrew?: boolean
@@ -2634,6 +2666,28 @@ function CrewSection({
           techOnly
         />
       </label>
+      {onProjectManagerChange && (
+        <label className="block">
+          <span className="block text-xs font-medium text-slate-700 mb-1">
+            Project manager
+            <span className="ml-2 font-normal text-slate-400">optional</span>
+          </span>
+          {/*
+            No techOnly: an office manager can hold a project and never
+            opens the phone app. Gating this the way the lead tech is
+            gated would make the field useless for the people it exists
+            for.
+          */}
+          <TenantAccountPicker
+            value={projectManagerAccountId}
+            onChange={onProjectManagerChange}
+            placeholder="Search staff..."
+          />
+          <span className="mt-1 block text-xs text-slate-500">
+            Who is answerable for this going right. Leave it empty and the lead tech holds it.
+          </span>
+        </label>
+      )}
       {showCrew && (
         <CrewMemberMultiPicker
           value={crewMemberAccountIds}

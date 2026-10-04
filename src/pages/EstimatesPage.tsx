@@ -4,11 +4,15 @@ import { useEstimates } from '@/hooks/useEstimates'
 import { WorkflowTabs, type WorkflowTab } from '@/components/lists/WorkflowTabs'
 import { RowChevron } from '@/components/lists/RowChevron'
 import { useTheme, type FolderLayout } from '@/hooks/useTheme'
+import { EasyPageHeading } from '@/components/easy/EasyPageHeading'
 import { FolderBrowser, Pager, type FolderNode } from '@/components/FolderBrowser'
 import { FolderLayoutSwitch } from '@/components/FolderLayoutSwitch'
 import { FolderStatTile, formatFolderMoney } from '@/components/FolderStatTile'
 import type { Estimate, EstimateStatus } from '@/types/estimate'
 import type { EstimateFilingSummary } from '@/types/api'
+import { EasyActionCards } from '@/components/easy/EasyActionCards'
+import { Modal } from '@/components/ui/Modal'
+import { CustomerOrdersPanel } from '@/components/estimates/CustomerOrdersPanel'
 
 const STATUS_OPTIONS: { value: EstimateStatus | ''; label: string }[] = [
   { value: '', label: 'All statuses' },
@@ -75,9 +79,21 @@ const estimateTitle = (est: Estimate) =>
 
 export function EstimatesPage() {
   const navigate = useNavigate()
-  const { estimateView, setEstimateView, density, folderLayout, setFolderLayout } = useTheme()
+  const { theme, estimateView, setEstimateView, density, folderLayout, setFolderLayout } = useTheme()
+  const easy = theme === 'easy-side' || theme === 'easy-top'
+  const [board, setBoard] = useState(true)
+  const [mobileLane, setMobileLane] = useState('Drafts')
+  const [preview, setPreview] = useState<Estimate | null>(null)
+  const showBoard = easy && board
   const [q, setQ] = useState('')
   const [status, setStatus] = useState<EstimateStatus | ''>('')
+  // Status filters must reveal their matching lane on the single-column phone board.
+  useEffect(() => {
+    if (status === 'draft') setMobileLane('Drafts')
+    else if (status === 'sent') setMobileLane('Waiting on them')
+    else if (status === 'approved') setMobileLane('Approved')
+    else if (status) setMobileLane('Closed / expired')
+  }, [status])
   const [page, setPage] = useState(1)
   const [filingView, setFilingView] = useState(
     () => estimateView === 'files'
@@ -100,8 +116,8 @@ export function EstimatesPage() {
   const desktopRowPad = density === 'dense' ? 'px-4 py-2' : density === 'compact' ? 'px-4 py-2.5' : 'px-4 py-3'
 
   return (
-    <div className={`mx-auto px-3 sm:px-6 py-4 sm:py-6 ${filingView ? 'max-w-[1760px]' : 'max-w-7xl'}`}>
-      <div className="flex items-center justify-between mb-4 sm:mb-6 gap-3">
+    <div className={`mx-auto px-3 sm:px-6 py-4 sm:py-6 ${easy ? 'w-full min-w-0 max-w-none' : filingView ? 'max-w-[1760px]' : 'max-w-7xl'}`}>
+      {easy ? <EasyPageHeading title="Estimates" description="Prepare the work, follow up on approvals, and find estimates ready for their next step." actions={<Link to="/estimates/new" data-tour="estimates-new" className="rounded-xl bg-amber-400 px-4 py-3 text-sm font-semibold text-slate-950 hover:bg-amber-300">+ New estimate</Link>} /> : <div className="flex items-center justify-between mb-4 sm:mb-6 gap-3">
         <h1 className="text-xl sm:text-2xl font-semibold text-slate-900">Estimates</h1>
         <Link
           to="/estimates/new"
@@ -110,14 +126,23 @@ export function EstimatesPage() {
         >
           + New
         </Link>
-      </div>
+      </div>}
+
+      {/* Orders customers built from the shop's catalogs in the portal. Hidden when none wait. */}
+      <CustomerOrdersPanel />
 
       {/* Workflow tabs — common approval stages; full list stays in the dropdown.
           Live counts (by approval status) come from the index tab_counts. */}
+      {easy && <EasyActionCards label="Move an estimate forward" actions={[
+        { key: 'draft', title: 'Finish a draft', description: 'Review the details before sending.' },
+        { key: 'sent', title: 'Waiting on them', description: 'Open an estimate to review follow-up options.' },
+        { key: 'approved', title: 'Approved', description: 'Review approved work and its next step.' },
+        { key: 'expired', title: 'Past its expiry', description: 'Review pricing and terms before sending again.' },
+      ].map(action => ({ ...action, count: estimatesQuery.isError ? undefined : tabCounts?.[action.key], active: status === action.key, onClick: () => { setStatus(action.key as EstimateStatus); setPage(1) } }))} />}
       <WorkflowTabs
         tabs={ESTIMATE_TABS.map((t) => ({
           ...t,
-          count: tabCounts ? tabCounts[t.key === '' ? 'all' : t.key] ?? 0 : undefined,
+          count: !estimatesQuery.isError && tabCounts ? tabCounts[t.key === '' ? 'all' : t.key] ?? 0 : undefined,
         }))}
         active={status}
         onChange={(key) => {
@@ -127,7 +152,7 @@ export function EstimatesPage() {
       />
 
       {/* Filters */}
-      <div className="flex items-center gap-2 sm:gap-3 mb-4 flex-wrap">
+      <div data-easy-list-toolbar className="flex items-center gap-2 sm:gap-3 mb-4 flex-wrap">
         <input
           type="search"
           value={q}
@@ -158,6 +183,7 @@ export function EstimatesPage() {
               type="button"
               onClick={() => {
                 setFilingView(false)
+                setBoard(false)
                 setEstimateView('cards')
                 setPage(1)
               }}
@@ -172,6 +198,7 @@ export function EstimatesPage() {
               type="button"
               onClick={() => {
                 setFilingView(true)
+                setBoard(false)
                 setEstimateView('files')
                 setPage(1)
               }}
@@ -185,7 +212,7 @@ export function EstimatesPage() {
           </div>
         )}
 
-        {filingView && (
+        {filingView && !showBoard && (
           <div className="ml-2 hidden items-center md:flex">
             <FolderLayoutSwitch value={folderLayout} onChange={setFolderLayout} />
           </div>
@@ -193,6 +220,45 @@ export function EstimatesPage() {
       </div>
 
       {/* Table */}
+      {easy && <div className="mb-5 flex w-full flex-col items-center gap-2">
+        <div role="group" aria-label="Estimate view" className="flex flex-wrap justify-center gap-3">
+        <button type="button" aria-pressed={board} onClick={() => setBoard(true)} className={`rounded-lg border px-4 py-2 transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-amber-500 ${board ? 'border-amber-500 bg-amber-500/15 text-amber-900' : 'border-slate-400 bg-transparent text-slate-700 hover:bg-amber-500/5'}`}>Workflow board</button>
+        <button type="button" aria-pressed={!board} onClick={() => setBoard(false)} className={`rounded-lg border px-4 py-2 transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-amber-500 ${!board ? 'border-amber-500 bg-amber-500/15 text-amber-900' : 'border-slate-400 bg-transparent text-slate-700 hover:bg-amber-500/5'}`}>Detailed list & files</button>
+        </div>
+        {showBoard && <span className="text-center text-sm text-slate-500">Current page of filtered results. Open an estimate to review and act.</span>}
+      </div>}
+      {estimatesQuery.isError && <div role="alert" className="rounded-xl border border-red-200 bg-red-50 p-4">Estimates could not be loaded. <button type="button" className="underline" onClick={() => estimatesQuery.refetch()}>Try again</button></div>}
+      {showBoard && !estimatesQuery.isError && (estimatesQuery.isLoading ? <p role="status">Loading estimates…</p> : <>
+      <div role="group" aria-label="Estimate board lane" className="mb-3 flex flex-wrap gap-2 md:hidden">
+        {['Drafts', 'Waiting on them', 'Approved', 'Closed / expired'].map(lane => <button key={lane} type="button" data-easy-view-option aria-pressed={mobileLane === lane} onClick={() => setMobileLane(lane)} className="min-h-11 rounded-lg border border-slate-300 px-3 py-2 text-sm">{lane}</button>)}
+      </div>
+      <div data-easy-estimate-board className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+        {[
+          { title: 'Drafts', statuses: ['draft'] },
+          { title: 'Waiting on them', statuses: ['sent'] },
+          { title: 'Approved', statuses: ['approved'] },
+          { title: 'Closed / expired', statuses: ['rejected', 'superseded', 'expired'] },
+        ].map(column => {
+          const rows = items.filter(est => column.statuses.includes(est.status))
+          return <section key={column.title} aria-label={column.title} className={`${mobileLane === column.title ? '' : 'hidden md:block'} min-w-0 rounded-xl border border-slate-200 bg-slate-50 p-3 space-y-3`}>
+            <h2 className="font-semibold">{column.title} <span className="text-slate-500">({rows.length})</span></h2>
+            {rows.length === 0 && <p className="text-sm text-slate-500">None on this page.</p>}
+            {rows.map(est => <article key={est.id} className="space-y-2 rounded-xl border border-slate-200 bg-white p-4">
+              <div className="text-xs text-slate-500">{est.display_number} · {ESTIMATE_STATUS_META[est.status]?.label ?? est.status}</div>
+              <h3 className="font-semibold break-words">{estimateTitle(est)}</h3>
+              <p className="text-sm text-slate-600">{est.customer?.display_name ?? 'No customer'}</p>
+              <p className="font-semibold">{est.money?.total_formatted ?? 'Total unavailable'}</p>
+              <p className="text-xs text-slate-500">{estimateDateLabel(est)}</p>
+              <NextStepHint est={est} />
+              <div className="flex flex-wrap justify-between gap-2 text-sm">
+                <button type="button" className="underline text-slate-600" onClick={() => setPreview(est)} aria-label={`Quick look at ${est.display_number}`}>Quick look</button>
+                <Link to={`/estimates/${est.id}`} className="font-semibold text-amber-800">Open estimate →</Link>
+              </div>
+            </article>)}
+          </section>
+        })}
+      </div></>)}
+      <div hidden={showBoard || estimatesQuery.isError}>
       {/* Mobile cards */}
       <div className="md:hidden space-y-2">
         {estimatesQuery.isLoading ? (
@@ -337,8 +403,9 @@ export function EstimatesPage() {
       </div>
 
       {/* Pagination */}
-      {meta && meta.last_page > 1 && !filingView && (
-        <div className="flex items-center justify-between mt-4 text-sm">
+      </div>
+      {meta && !estimatesQuery.isError && meta.last_page > 1 && (!filingView || showBoard) && (
+        <div data-easy-pager className="flex flex-wrap items-center justify-between gap-3 mt-4 text-sm">
           <div className="text-slate-600">
             Showing {meta.from ?? 0}–{meta.to ?? 0} of {meta.total}
           </div>
@@ -346,7 +413,7 @@ export function EstimatesPage() {
             <button
               type="button"
               onClick={() => setPage((p) => Math.max(p - 1, 1))}
-              disabled={meta.current_page <= 1}
+              disabled={estimatesQuery.isFetching || meta.current_page <= 1}
               className="px-3 py-1.5 border border-slate-300 rounded-md hover:bg-slate-50 disabled:opacity-50"
             >
               Previous
@@ -357,7 +424,7 @@ export function EstimatesPage() {
             <button
               type="button"
               onClick={() => setPage((p) => Math.min(p + 1, meta.last_page))}
-              disabled={meta.current_page >= meta.last_page}
+              disabled={estimatesQuery.isFetching || meta.current_page >= meta.last_page}
               className="px-3 py-1.5 border border-slate-300 rounded-md hover:bg-slate-50 disabled:opacity-50"
             >
               Next
@@ -365,6 +432,21 @@ export function EstimatesPage() {
           </div>
         </div>
       )}
+      {easy && preview && <Modal isOpen onClose={() => setPreview(null)} title={preview.display_number} subtitle="Estimate quick look">
+        <Modal.Body>
+          <h2 className="text-lg font-semibold">{estimateTitle(preview)}</h2>
+          <p className="mt-1 text-slate-600">{preview.customer?.display_name ?? 'No customer'}</p>
+          <dl className="mt-5 grid grid-cols-2 gap-4">
+            <div><dt className="text-sm text-slate-500">Status</dt><dd>{ESTIMATE_STATUS_META[preview.status]?.label ?? preview.status}</dd></div>
+            <div><dt className="text-sm text-slate-500">Total</dt><dd className="font-semibold">{preview.money?.total_formatted ?? 'Unavailable'}</dd></div>
+          </dl>
+          <p className="mt-4 text-sm text-slate-500">{estimateDateLabel(preview)}</p>
+          {preview.description && <p className="mt-4 whitespace-pre-wrap break-words">{preview.description}</p>}
+          <div className="mt-4"><NextStepHint est={preview} /></div>
+          <p className="mt-5 text-sm text-slate-500">Open the estimate for line items and available actions. Previewing does not send, approve, or convert it.</p>
+        </Modal.Body>
+        <Modal.Footer><button type="button" className="rounded-lg border px-4 py-2" onClick={() => setPreview(null)}>Back to board</button><Link to={`/estimates/${preview.id}`} className="rounded-lg bg-amber-400 px-4 py-2 font-semibold">Open estimate →</Link></Modal.Footer>
+      </Modal>}
     </div>
   )
 }
@@ -401,7 +483,7 @@ function EstimateFolderContents({
   const [bucket, setBucket] = useState<EstimateBucket>('all')
   const [page, setPage] = useState(1)
   useEffect(() => { setPage(1) }, [bucket, status, search])
-  const { data, isFetching } = useEstimates({
+  const { data, isFetching, isError, refetch } = useEstimates({
     filing_year: Number(year),
     filing_month: Number(month),
     status: status || undefined,
@@ -434,7 +516,7 @@ function EstimateFolderContents({
         />
       </div>
 
-      {isFetching && estimates.length === 0 ? (
+      {isError ? <div role="alert" className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm">This estimate folder could not be loaded. <button type="button" className="underline" onClick={() => refetch()}>Try again</button></div> : isFetching && estimates.length === 0 ? (
         <div className="grid gap-3 grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
           {[0, 1, 2, 3].map((i) => <div key={i} className="h-52 animate-pulse rounded-lg bg-white" />)}
         </div>

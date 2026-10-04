@@ -103,3 +103,21 @@ export const DEFAULT_TEXT_SCALE: TextScale = 'comfortable'
 export function textScalePx(id: string): string {
   return (TEXT_SCALES.find((s) => s.id === id) ?? TEXT_SCALES[0]).px
 }
+
+/** The base every scale is measured against. */
+const BASE_PX = 16
+
+/**
+ * The same choice as a plain multiplier.
+ *
+ * Text that sets its own size in pixels cannot follow --ui-base, so
+ * index.css restates each of those sizes as `calc(<n>px * var(--ui-ratio))`.
+ * Derived from the size rather than written down beside it, because two
+ * numbers describing one choice is how they come to disagree.
+ *
+ * Comfortable gives exactly 1, so the default is unchanged to the pixel.
+ */
+export function textScaleRatio(id: string): number {
+  const px = parseFloat(textScalePx(id))
+  return Number.isFinite(px) && px > 0 ? px / BASE_PX : 1
+}

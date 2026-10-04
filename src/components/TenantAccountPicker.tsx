@@ -40,9 +40,9 @@ export function TenantAccountPicker({
   const containerRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
 
-  const { data, isLoading } = useTenantAccounts(query)
+  const { data, isLoading } = useTenantAccounts(query, 50, techOnly)
   const results: TenantAccount[] = useMemo(
-    () => (data ?? []).filter((a) => !techOnly || a.app_access),
+    () => (data ?? []).filter((a) => !techOnly || (a.is_field_technician && a.app_access)),
     [data, techOnly],
   )
   const selectedAccount = useMemo(

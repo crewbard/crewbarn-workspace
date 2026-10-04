@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { priceFromCost, usePricingRules } from '@/hooks/usePricingRules'
 import { useQueryClient } from '@tanstack/react-query'
 import { Modal } from '@/components/ui/Modal'
 import { useCreateCatalogItem } from '@/hooks/useCatalogItems'
@@ -102,6 +103,23 @@ export function CatalogItemQuickCreate({
    * itself; the line just quietly reads $0.00 with no tax.
    */
   const [customerCostDollars, setCustomerCostDollars] = useState('')
+
+  /*
+   * What the shop's own markup says this part should sell for.
+   *
+   * Offered, never applied: somebody who has decided this one part is priced
+   * differently should not have their number overwritten by a rule. It shows
+   * only when there is a cost to mark up and a markup to apply, so a shop
+   * that has not set one sees nothing rather than a suggestion of $0.
+   */
+  const pricing = usePricingRules()
+  const suggestedPriceCents = priceFromCost(
+    Math.round(Number(ownerCostDollars || 0) * 100) || 0,
+    pricing?.material_markup_percent ?? null,
+  )
+  const suggestionUnused =
+    suggestedPriceCents !== null &&
+    Math.round(Number(customerCostDollars || 0) * 100) !== suggestedPriceCents
   const [taxClassId, setTaxClassId] = useState('')
   const [reorderThreshold, setReorderThreshold] = useState('')
   const [reorderQuantity, setReorderQuantity] = useState('')
@@ -442,6 +460,15 @@ export function CatalogItemQuickCreate({
                 className={inputClass()}
                 placeholder="0.00"
               />
+              {suggestionUnused && suggestedPriceCents !== null && (
+                <button
+                  type="button"
+                  onClick={() => setCustomerCostDollars((suggestedPriceCents / 100).toFixed(2))}
+                  className="mt-1 block text-left text-[11px] font-semibold text-amber-700 hover:underline"
+                >
+                  Your {pricing?.material_markup_percent}% markup makes this ${(suggestedPriceCents / 100).toFixed(2)} — use it
+                </button>
+              )}
             </Field>
             <Field label="Tax class">
               <select

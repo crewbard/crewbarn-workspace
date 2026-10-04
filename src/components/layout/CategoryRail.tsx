@@ -111,7 +111,7 @@ export function CategoryRail() {
         ...g,
         items: g.items.filter(
           (it) =>
-            (!it.requires || isLoading || has(it.requires)) &&
+            !isLoading && (!it.requires || has(it.requires)) &&
             (it.feature !== 'franchise' || franchise.enabled) &&
             isRouteVisible(it.to),
         ),
@@ -132,6 +132,7 @@ export function CategoryRail() {
     <div className="flex h-full shrink-0">
       {/* The rail */}
       <nav
+        data-traditional-chrome
         aria-label="Sections"
         className="flex w-[68px] shrink-0 flex-col items-center gap-1 border-r border-white/10 bg-[var(--chrome-bg,#0F1A2E)] py-3"
       >

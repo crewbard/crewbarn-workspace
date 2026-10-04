@@ -2,6 +2,8 @@ import { useParams, useSearchParams } from 'react-router-dom'
 import { QRCodeCanvas } from 'qrcode.react'
 import { useQuery } from '@tanstack/react-query'
 import { apiRequest } from '@/lib/api'
+import { LabelStudio } from '@/components/labels/LabelStudio'
+import type { LabelFaceData } from '@/components/labels/LabelFace'
 import { useCatalogItem } from '@/hooks/useCatalogItems'
 import {
   THERMAL_SIZES,
@@ -36,6 +38,8 @@ export function CatalogItemLabelsPage() {
   const multiUp = isFullSheet
   const isMini = !isThermal && sizeMode === 'mini'
   const copies = Math.max(1, Math.min(50, Number(search.get('copies')) || 1))
+  // Sticker-sheet spacing, the same parameter every other labels page reads.
+  const gap = Math.max(0, Math.min(0.5, Number(search.get('gap')) || 0))
   // Detail level: short = QR + name only; long = adds SKU, qr value, bin
   // info (when bin_id is passed). Default short for tile-style printing,
   // long when called from stock level rows.
@@ -84,7 +88,22 @@ export function CatalogItemLabelsPage() {
   const item = itemQuery.data
   const qrValue = item.qr_code_value || item.barcode || item.id
   const qrUrl = `${window.location.origin}/catalog/products/${item.id}`
-  const sizeMeta = THERMAL_SIZES[thermal]
+  const units = unitsQuery.data?.data ?? []
+  const unitCount = units.length
+
+  /**
+   * What the studio draws. Per-unit labels carry the unit's own payload,
+   * which is the whole point of the mode: four copies of the product code
+   * are four labels that identify nothing in particular.
+   */
+  const faces: LabelFaceData[] = perUnit
+    ? units.map((u) => ({
+        qrValue: u.qr_payload,
+        name: item.name,
+        code: u.internal_serial ?? item.sku ?? undefined,
+        tag: 'UNIT',
+      }))
+    : [{ qrValue, name: item.name, code: item.sku ?? undefined, tag: 'ITEM' }]
 
   return (
     <div className="bg-white min-h-screen">
@@ -93,60 +112,35 @@ export function CatalogItemLabelsPage() {
         @media print { .no-print { display: none !important; } body { background: white; } }
       `}</style>
 
-      <div className="no-print bg-slate-100 border-b border-slate-200 px-6 py-3 flex items-center justify-between gap-3 flex-wrap">
-        <div>
-          <div className="text-sm font-medium text-slate-800">
-            Catalog item label — {item.name}
-          </div>
-          <div className="text-xs text-slate-500">
-            {sizeMeta.label} · {copies} copy{copies === 1 ? '' : 'ies'} · pick options, click Print
-          </div>
-        </div>
-        <div className="flex items-center gap-2 flex-wrap">
-          <div className="inline-flex rounded-md border border-slate-300 overflow-hidden text-xs">
-            <ToggleBtn active={detail === 'short'} onClick={() => setParam('detail', null)} title="QR + product name only">
-              Short
-            </ToggleBtn>
-            <ToggleBtn active={detail === 'long'} onClick={() => setParam('detail', 'long')} title="QR + name + SKU + (if from a bin) location + qty" borderLeft>
-              Long
-            </ToggleBtn>
-          </div>
-          {!isThermal && (
-            <div className="inline-flex rounded-md border border-slate-300 overflow-hidden text-xs">
-              <ToggleBtn active={!isMini} onClick={() => setParam('size', null)}>Regular</ToggleBtn>
-              <ToggleBtn active={isMini} onClick={() => setParam('size', 'mini')} borderLeft>Mini</ToggleBtn>
-            </div>
-          )}
-          <select
-            value={thermal}
-            onChange={(e) => setParam('thermal', e.target.value === 'sheet' ? null : e.target.value)}
-            className="text-xs px-3 py-1.5 border border-slate-300 rounded bg-white"
-            title="Pick the output: cut sheet, full-sheet sticker grid, or single thermal label"
-          >
-            {Object.values(THERMAL_SIZES).map((s) => (
-              <option key={s.key} value={s.key}>{s.label}</option>
-            ))}
-          </select>
-          <select
-            value={String(copies)}
-            onChange={(e) => setParam('copies', e.target.value === '1' ? null : e.target.value)}
-            className="text-xs px-3 py-1.5 border border-slate-300 rounded bg-white"
-            title="Number of copies"
-          >
-            {[1, 2, 3, 4, 5, 10, 20, 50].map((n) => (
-              <option key={n} value={String(n)}>{n} cop{n === 1 ? 'y' : 'ies'}</option>
-            ))}
-          </select>
-          <button
-            type="button"
-            onClick={() => window.print()}
-            className="text-sm px-4 py-1.5 rounded bg-amber-500 hover:bg-amber-600 text-white font-medium"
-          >
-            Print
-          </button>
-        </div>
-      </div>
-
+      <LabelStudio
+        backTo={{ href: `/catalog/products/${item.id}`, label: item.name }}
+        faces={faces}
+        size={thermal}
+        onSize={(next) => setParam('thermal', next === 'sheet' ? null : next)}
+        copies={copies}
+        onCopies={(n) => setParam('copies', n === 1 ? null : String(n))}
+        gap={gap}
+        onGap={(g) => setParam('gap', g === 0 ? null : String(g))}
+        scope={{
+          value: perUnit ? 'units' : 'product',
+          onChange: (next) => setParam('per_unit', next === 'units' ? '1' : null),
+          options: [
+            {
+              value: 'product',
+              title: 'One label for the product',
+              help: 'Scans to the product page — the same code however many you have',
+              count: 1,
+            },
+            {
+              value: 'units',
+              title: 'One label per tracked unit',
+              help: 'Each label scans to that one unit, not to the product',
+              count: unitCount,
+            },
+          ],
+        }}
+        onPrint={() => window.print()}
+      />
       <div className={`print-stage ${isThermal && !multiUp ? 'p-0' : 'p-4'}`}>
         <div
           className={
@@ -340,29 +334,3 @@ function CatalogLabelCard({
   )
 }
 
-function ToggleBtn({
-  active,
-  onClick,
-  borderLeft,
-  title,
-  children,
-}: {
-  active: boolean
-  onClick: () => void
-  borderLeft?: boolean
-  title?: string
-  children: React.ReactNode
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      title={title}
-      className={`px-3 py-1.5 ${borderLeft ? 'border-l border-slate-300' : ''} ${
-        active ? 'bg-amber-100 text-amber-800 font-medium' : 'text-slate-600 hover:bg-slate-50'
-      }`}
-    >
-      {children}
-    </button>
-  )
-}

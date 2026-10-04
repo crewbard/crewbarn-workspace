@@ -4,6 +4,8 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link } from 'react-router-dom'
 import { API_URL, apiRequest, getActingTenant, getFranchiseActAs, getStoredToken } from '@/lib/api'
 import { tenantDate, useTenantTimezone } from '@/hooks/useTenantTime'
+import { useTheme } from '@/hooks/useTheme'
+import { EasyPageHeading } from '@/components/easy/EasyPageHeading'
 
 type AccountingAccount = {
   id: string
@@ -263,6 +265,8 @@ function blankLine(): JournalFormLine {
 }
 
 export function GeneralLedgerPage() {
+  const { theme } = useTheme()
+  const easy = theme === 'easy-side' || theme === 'easy-top'
   const queryClient = useQueryClient()
   const tenantTimezone = useTenantTimezone()
   const today = tenantDate(tenantTimezone)
@@ -792,13 +796,15 @@ export function GeneralLedgerPage() {
 
   return (
     <div className="mx-auto w-full max-w-none space-y-6 px-4 py-4 sm:px-6 sm:py-6 2xl:px-8">
-      <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-        <div>
+<div data-easy-accounting-header={easy || undefined} className={easy ? 'flex min-w-0 w-full flex-col items-stretch gap-4' : 'flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between'}>
+        <div className={easy ? 'min-w-0 w-full' : undefined}>
+          {easy ? <EasyPageHeading title="General ledger" description="Set the reporting dates, review balances and journal entries, then make any bookkeeping adjustments below." /> : <>
           <div className="text-xs font-semibold uppercase tracking-wide text-amber-700">Accounting</div>
           <h1 className="mt-1 text-2xl font-semibold text-slate-900">General Ledger</h1>
           <p className="mt-1 max-w-3xl text-sm leading-6 text-slate-500">
             Chart of accounts, trial balance, posted journal entries, and bookkeeper adjustments.
           </p>
+          </>}
         </div>
         <div className="flex flex-wrap gap-2">
           <button
@@ -813,11 +819,21 @@ export function GeneralLedgerPage() {
             to="/accounting"
             className="rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
           >
-            Accounting overview
+            Money desk
           </Link>
         </div>
       </div>
 
+      {[trialBalanceQ, glDetailQ, journalsQ, accountsQ, periodsQ, incomeStatementQ, balanceSheetQ, cashFlowStatementQ, postingAuditQ].some(query => query.isError) && (
+        <div role="alert" className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-800">
+          Some ledger data could not be loaded. Do not treat missing figures as zero or use this incomplete view to reconcile your books.
+          <button type="button" className="ml-3 rounded-md border border-red-300 px-3 py-2 font-semibold" onClick={() => {
+            for (const query of [trialBalanceQ, glDetailQ, journalsQ, accountsQ, periodsQ, incomeStatementQ, balanceSheetQ, cashFlowStatementQ, postingAuditQ]) {
+              if (query.isError) void query.refetch()
+            }
+          }}>Retry failed reports</button>
+        </div>
+      )}
       <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
         <div className="flex flex-col gap-3 xl:flex-row xl:items-end xl:justify-between">
           <div>
@@ -826,7 +842,7 @@ export function GeneralLedgerPage() {
               Date range controls income statement, GL detail, and journal entries. As-of controls trial balance and balance sheet.
             </p>
           </div>
-          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-4 xl:min-w-[760px]">
+          <div data-easy-filter-grid className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-4 xl:min-w-[760px]">
             <label className="block">
               <span className="mb-1 block text-xs font-semibold text-slate-600">From</span>
               <input
@@ -1168,7 +1184,7 @@ export function GeneralLedgerPage() {
                     </tr>
                   ))}
                   {trialBalanceQ.isLoading && <EmptyRow colSpan={4} label="Loading trial balance..." />}
-                  {!trialBalanceQ.isLoading && trialRows.length === 0 && <EmptyRow colSpan={4} label="No accounts found." />}
+                  {!trialBalanceQ.isLoading && !trialBalanceQ.isError && trialRows.length === 0 && <EmptyRow colSpan={4} label="No accounts found." />}
                 </tbody>
               </table>
             </div>
@@ -1285,7 +1301,7 @@ export function GeneralLedgerPage() {
                     </tr>
                   ))}
                   {glDetailQ.isLoading && <EmptyRow colSpan={7} label="Loading GL detail..." />}
-                  {!glDetailQ.isLoading && detailLines.length === 0 && <EmptyRow colSpan={7} label="No GL detail lines in this filter." />}
+                  {!glDetailQ.isLoading && !glDetailQ.isError && detailLines.length === 0 && <EmptyRow colSpan={7} label="No GL detail lines in this filter." />}
                 </tbody>
               </table>
             </div>
@@ -1362,7 +1378,7 @@ export function GeneralLedgerPage() {
                 </article>
               ))}
               {journalsQ.isLoading && <div className="py-8 text-center text-sm text-slate-500">Loading journal entries...</div>}
-              {!journalsQ.isLoading && journalEntries.length === 0 && <div className="py-8 text-center text-sm text-slate-500">No journal entries in this filter.</div>}
+              {!journalsQ.isLoading && !journalsQ.isError && journalEntries.length === 0 && <div className="py-8 text-center text-sm text-slate-500">No journal entries in this filter.</div>}
             </div>
           </Panel>
         </div>
@@ -1823,7 +1839,7 @@ export function GeneralLedgerPage() {
                   )
                 })}
                 {periodsQ.isLoading && <div className="py-8 text-center text-sm text-slate-500">Loading periods...</div>}
-                {!periodsQ.isLoading && periods.length === 0 && <div className="py-8 text-center text-sm text-slate-500">No accounting periods in this range.</div>}
+                {!periodsQ.isLoading && !periodsQ.isError && periods.length === 0 && <div className="py-8 text-center text-sm text-slate-500">No accounting periods in this range.</div>}
               </div>
             </div>
           </Panel>

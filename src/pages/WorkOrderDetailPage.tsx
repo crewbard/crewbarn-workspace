@@ -6,7 +6,9 @@ import { formatTime12 } from '@/lib/time'
 import { useWorkOrder, useDeleteWorkOrder, useLineItems } from '@/hooks/useWorkOrders'
 import { tenantDate, useTenantTimezone } from '@/hooks/useTenantTime'
 import { usePermissions } from '@/hooks/usePermissions'
+import { useTheme } from '@/hooks/useTheme'
 import { WorkOrderLineItemEditorLive } from '@/components/WorkOrderLineItemEditorLive'
+import { PartsOrders } from '@/components/estimates/PartsOrders'
 import { WorkOrderFieldLogPanel } from '@/components/workorders/WorkOrderFieldLogPanel'
 import { WorkOrderDrivesPanel } from '@/components/workorders/WorkOrderDrivesPanel'
 import { WorkOrderPdfPreview } from '@/components/workorders/WorkOrderPdfPreview'
@@ -17,6 +19,7 @@ import {
 } from '@/components/workorders/WorkOrderQuickEdit'
 import { WorkOrderStatusHistory } from '@/components/workorders/WorkOrderStatusHistory'
 import { WorkOrderPhotosPanel } from '@/components/workorders/WorkOrderPhotosPanel'
+import { ReferencedText } from '@/components/ReferencedText'
 import { TasksPanel } from '@/components/tasks/TasksPanel'
 import { EntityActivityPanel } from '@/components/EntityActivityPanel'
 import { AttachmentsPanel } from '@/components/attachments/AttachmentsPanel'
@@ -178,6 +181,8 @@ function sectionDefaultTab(section: JobSection): Tab {
   }
 }
 export function WorkOrderDetailPage() {
+  const { theme } = useTheme()
+  const easy = theme === 'easy-side' || theme === 'easy-top'
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
   const [searchParams, setSearchParams] = useSearchParams()
@@ -249,13 +254,16 @@ export function WorkOrderDetailPage() {
   // `open` = show it in the overlay afterwards (a click); the automatic
   // create on Complete just makes the Charge / View invoice buttons appear.
   const createInvoice = useMutation({
-    mutationFn: (v: { customerId: string; open: boolean }) =>
+    mutationFn: (v: { customerId: string; open: boolean; extraWorkOnly?: boolean }) =>
       apiRequest<{ data: { id: string; invoice_number: string } }>('/v1/invoices', {
         method: 'POST',
         body: {
           customer_id: v.customerId,
           work_order_id: id,
           copy_line_items_from_work_order: true,
+          // Only sent after the server has refused once and the person
+          // has said this invoice is the extra work, not the visit.
+          ...(v.extraWorkOnly ? { extra_work_only: true } : {}),
         },
       }),
     onSuccess: (resp, v) => {
@@ -363,6 +371,33 @@ export function WorkOrderDetailPage() {
 
   return (
     <div className="max-w-screen-2xl mx-auto px-3 sm:px-6 pt-4 sm:pt-8 pb-40">
+      {/*
+        Covered by a service agreement.
+        Above everything, because it changes what the person is allowed to
+        do on this job: the fee has already paid for the visit, so nobody
+        collects for it and nobody invoices it a second time. Green, not
+        amber — this is not a problem, it is a fact about the work.
+      */}
+      {wo.covered_by && (
+        <div className="mb-4 rounded-lg border border-emerald-300 bg-emerald-50 px-4 py-3">
+          <p className="text-sm font-bold text-emerald-900">
+            Covered by {wo.covered_by.title ?? 'a service agreement'}
+          </p>
+          <p className="mt-0.5 text-sm leading-relaxed text-emerald-800">
+            Their fee already pays for this visit — do not collect payment for it. Extra work found on the visit
+            is quoted and billed separately.
+          </p>
+          {wo.covered_by.contract_id && (
+            <Link
+              to={`/maintenance-contracts/${wo.covered_by.contract_id}`}
+              className="mt-1.5 inline-block text-sm font-semibold text-emerald-900 underline"
+            >
+              Open the agreement
+            </Link>
+          )}
+        </div>
+      )}
+
       {/* Dormant force-notes gate (#3) — blocks the job until the tech logs
           a note on what's the hold-up. Gated server-side by the tenant rule. */}
       {wo.requires_note && id && (
@@ -385,6 +420,11 @@ export function WorkOrderDetailPage() {
         &larr; Back to Jobs
       </Link>
       <section className="rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden mb-4">
+        {easy && <div className="flex flex-wrap items-center justify-between gap-3 bg-emerald-950 px-5 py-4 text-white sm:px-7">
+          <div><p className="text-xs font-semibold uppercase tracking-widest text-emerald-200">Job workspace</p>
+            <p className="mt-1 text-sm">Plan the visit, carry out the work, and review billing—all in one place.</p></div>
+          <span className="rounded-full border border-emerald-700 px-3 py-1 text-xs text-emerald-100">{wo.display_number}</span>
+        </div>}
         <div className="flex flex-col gap-5 p-5 sm:p-7 lg:flex-row lg:items-start lg:justify-between">
           <div className="min-w-0">
             <div className="flex items-center gap-3 flex-wrap">
@@ -477,12 +517,42 @@ export function WorkOrderDetailPage() {
               wo.status?.category === 'complete' && wo.service_customer?.id && (
                 <button
                   type="button"
-                  onClick={() => createInvoice.mutate({ customerId: wo.service_customer!.id, open: true })}
+                  onClick={() => {
+                    /*
+                     * A covered visit is already paid for by the
+                     * agreement's fee. The server refuses it too — this
+                     * asks first so the answer is a decision rather than
+                     * an error message.
+                     */
+                    if (wo.covered_by) {
+                      const agreement = wo.covered_by.title ?? 'a service agreement'
+                      const ok = window.confirm(
+                        `This visit is covered by "${agreement}". Their fee already pays for it.\n\n` +
+                          'Only continue if you are invoicing EXTRA work found on the visit.',
+                      )
+                      if (!ok) return
+                      createInvoice.mutate({
+                        customerId: wo.service_customer!.id,
+                        open: true,
+                        extraWorkOnly: true,
+                      })
+                      return
+                    }
+                    createInvoice.mutate({ customerId: wo.service_customer!.id, open: true })
+                  }}
                   disabled={createInvoice.isPending}
                   className="rounded-lg bg-emerald-600 px-3 py-2 text-sm font-semibold text-white hover:bg-emerald-700 disabled:opacity-50 whitespace-nowrap"
-                  title="Snapshot this job's line items into a new invoice"
+                  title={
+                    wo.covered_by
+                      ? 'Covered by a service agreement — only invoice extra work'
+                      : "Snapshot this job's line items into a new invoice"
+                  }
                 >
-                  {createInvoice.isPending ? 'Creating…' : 'Invoice Job'}
+                  {createInvoice.isPending
+                    ? 'Creating…'
+                    : wo.covered_by
+                      ? 'Invoice extra work'
+                      : 'Invoice Job'}
                 </button>
               )
             )}
@@ -832,16 +902,30 @@ export function WorkOrderDetailPage() {
 
       {/* Grouped navigation keeps the full job workspace discoverable without
           flattening every tool into one crowded row. */}
+      {easy && <section aria-label="Job workspace guide" className="mb-4 rounded-xl border border-slate-200 bg-white p-4">
+        <h2 className="text-sm font-semibold text-slate-900">{activeSection === 'overview' ? 'Plan the job' : activeSection === 'field' ? 'Carry out the work' : activeSection === 'money' ? 'Review job costs' : activeSection === 'messages' ? 'Keep the conversation with the job' : activeSection === 'notes' ? 'Keep job notes together' : 'Review the job history'}</h2>
+        <p className="mt-1 text-sm text-slate-600">{activeSection === 'overview'
+          ? 'Review the customer, location, schedule, and assignments. Job status and billing actions stay above.'
+          : activeSection === 'field'
+            ? 'Use the tools below for line items, tasks, equipment, inspections, agreements, photos, and documents.'
+            : activeSection === 'money'
+              ? 'Review costs, reimbursements, and supporting records here. Use the existing invoice and payment actions above for customer billing.'
+              : activeSection === 'messages'
+                ? 'Your existing conversations, attachments, and reply controls remain available here.'
+                : activeSection === 'notes'
+                  ? 'Review internal and customer-facing notes using the existing visibility controls.'
+                  : 'Review travel and recorded changes without changing the job.'}</p>
+      </section>}
       <div className="mb-6 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
-        <nav className="flex min-w-max items-center gap-1 overflow-x-auto border-b border-slate-200 px-2" aria-label="Job sections">
+        <nav className={`flex ${easy ? 'min-w-0 flex-wrap bg-slate-50 py-2' : 'min-w-max'} items-center gap-1 overflow-x-auto border-b border-slate-200 px-2`} aria-label="Job sections">
           <TabButton active={activeSection === 'overview'} onClick={() => setTab('overview')}>
             Overview
           </TabButton>
           <TabButton active={activeSection === 'field'} onClick={() => setTab(sectionDefaultTab('field'))}>
-            Field <span className="ml-1 text-xs text-slate-400">6</span>
+            {easy ? 'The work' : <>Field <span className="ml-1 text-xs text-slate-400">6</span></>}
           </TabButton>
           <TabButton active={activeSection === 'money'} onClick={() => setTab(sectionDefaultTab('money'))}>
-            Expense
+            {easy ? 'Costs & reimbursements' : 'Expense'}
           </TabButton>
           <TabButton active={activeSection === 'messages'} onClick={() => setTab('messages')}>
             Messages
@@ -856,11 +940,11 @@ export function WorkOrderDetailPage() {
             />
           </div>
           <TabButton active={activeSection === 'log'} onClick={() => setTab('drives')}>
-            Log
+            {easy ? 'History & travel' : 'Log'}
           </TabButton>
         </nav>
         {activeSection !== 'overview' && activeSection !== 'messages' && activeSection !== 'notes' && (
-          <nav className="flex min-w-max gap-1 overflow-x-auto bg-slate-50/80 px-4 py-2" aria-label={`${activeSection} job tools`}>
+          <nav className={`flex ${easy ? 'min-w-0 flex-wrap' : 'min-w-max'} gap-1 overflow-x-auto bg-slate-50/80 px-4 py-2`} aria-label={`${activeSection} job tools`}>
             {activeSection === 'field' && (
               <>
                 <TabButton active={tab === 'line-items'} onClick={() => setTab('line-items')}>Line items</TabButton>
@@ -957,7 +1041,15 @@ export function WorkOrderDetailPage() {
           </Card>
           {wo.description && (
             <Card title="Description">
-              <p className="text-sm whitespace-pre-wrap">{wo.description}</p>
+              {/*
+                Vehicles named in the description become links to the
+                key reference. The text itself is never rewritten --
+                this renders around spans the backend reports, so the
+                note stays exactly what somebody typed.
+              */}
+              <p className="text-sm whitespace-pre-wrap">
+                <ReferencedText text={wo.description} />
+              </p>
             </Card>
           )}
 
@@ -1085,6 +1177,8 @@ export function WorkOrderDetailPage() {
 
       {tab === 'line-items' && (
         <Card title="Line Items">
+          {/* Parts held for this job and the orders for it, when it came from an estimate. */}
+          <PartsOrders workOrderId={wo.id} />
           <WorkOrderLineItemEditorLive
             workOrderId={wo.id}
             availableAssets={(wo.covered_assets ?? []).map((asset) => ({

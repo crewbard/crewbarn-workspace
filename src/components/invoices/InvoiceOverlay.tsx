@@ -2,6 +2,7 @@ import { useEffect } from 'react'
 import { createPortal } from 'react-dom'
 import { Link } from 'react-router-dom'
 import { InvoiceDetail } from '@/components/invoices/InvoiceDetail'
+import { useTheme } from '@/hooks/useTheme'
 
 /**
  * The invoice, on top of the job — not a page away. Everything the invoice
@@ -20,6 +21,8 @@ export function InvoiceOverlay({
   onClose: () => void
   onChanged?: () => void
 }) {
+  const { theme } = useTheme()
+  const easy = theme === 'easy-side' || theme === 'easy-top'
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose() }
     document.addEventListener('keydown', onKey)
@@ -62,7 +65,7 @@ export function InvoiceOverlay({
           </div>
         </div>
         <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4 sm:px-6 sm:py-6">
-          <InvoiceDetail invoiceId={invoiceId} embedded onDeleted={onClose} onChanged={onChanged} />
+          <InvoiceDetail invoiceId={invoiceId} embedded presentation={easy ? 'easy' : 'standard'} onDeleted={onClose} onChanged={onChanged} />
         </div>
       </div>
     </div>,

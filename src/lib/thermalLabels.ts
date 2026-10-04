@@ -15,6 +15,10 @@ export type ThermalSizeKey =
   | 'full-2.25x1.25'
   | 'full-3x2'
   | '1x1'        // Tiny square — Dymo 30332
+  | 'avery-5160'
+  | 'avery-5161'
+  | 'avery-5163'
+  | 'avery-5167'
   | '2x1'        // Small — Dymo 30330 (1.875" x 0.75" ish; rounded for cleanliness)
   | '2.25x1.25'  // Standard Dymo 30334 (most common LabelWriter roll)
   | '3x2'        // Mid-size general purpose
@@ -24,6 +28,8 @@ export interface ThermalSize {
   key: ThermalSizeKey
   label: string
   /** width in inches (label dimensions, NOT page dimensions for sheets) */
+  /** Set when this is a sheet you can buy, with fixed die-cut positions. */
+  stock?: SheetStock
   w: number
   /** height in inches */
   h: number
@@ -82,12 +88,54 @@ export const THERMAL_SIZES: Record<ThermalSizeKey, ThermalSize> = {
   },
   'full-2.25x1.25': {
     key: 'full-2.25x1.25',
-    label: 'Full sheet · 2.25" × 1.25" labels (Avery 5160)',
+    // Not an Avery size. It used to say "(Avery 5160)", which sent people
+    // to buy 5160 and print a layout that misses every label on it.
+    label: 'Full sheet · 2.25" × 1.25" labels (generic)',
     w: 2.25,
     h: 1.25,
     qrPx: 80,
     showFullText: true,
     fullSheet: true,
+  },
+  'avery-5160': {
+    key: 'avery-5160',
+    label: 'Avery 5160 / 8160 / 5260 · 30 per sheet (2⅝" × 1")',
+    w: 2.625,
+    h: 1,
+    qrPx: 70,
+    showFullText: true,
+    fullSheet: true,
+    stock: { cols: 3, rows: 10, marginLeft: 0.1875, marginTop: 0.5, gapX: 0.125, gapY: 0 },
+  },
+  'avery-5161': {
+    key: 'avery-5161',
+    label: 'Avery 5161 / 8161 · 20 per sheet (4" × 1")',
+    w: 4,
+    h: 1,
+    qrPx: 70,
+    showFullText: true,
+    fullSheet: true,
+    stock: { cols: 2, rows: 10, marginLeft: 0.15625, marginTop: 0.5, gapX: 0.1875, gapY: 0 },
+  },
+  'avery-5163': {
+    key: 'avery-5163',
+    label: 'Avery 5163 / 8163 · 10 per sheet (4" × 2")',
+    w: 4,
+    h: 2,
+    qrPx: 130,
+    showFullText: true,
+    fullSheet: true,
+    stock: { cols: 2, rows: 5, marginLeft: 0.15625, marginTop: 0.5, gapX: 0.1875, gapY: 0 },
+  },
+  'avery-5167': {
+    key: 'avery-5167',
+    label: 'Avery 5167 / 8167 · 80 per sheet (1¾" × ½")',
+    w: 1.75,
+    h: 0.5,
+    qrPx: 44,
+    showFullText: false,
+    fullSheet: true,
+    stock: { cols: 4, rows: 20, marginLeft: 0.28125, marginTop: 0.5, gapX: 0.3125, gapY: 0 },
   },
   'full-3x2': {
     key: 'full-3x2',
@@ -151,8 +199,29 @@ export const THERMAL_SIZES: Record<ThermalSizeKey, ThermalSize> = {
 export interface SheetGridLayout {
   cols: number
   rows: number
+  /** Left edge of the first label, not page padding. */
   marginX: number
+  /** Top edge of the first label, not page padding. */
   marginY: number
+  /** Distance between labels across. Die-cut sheets differ across and down. */
+  gapX: number
+  gapY: number
+}
+
+/**
+ * A sheet that exists as a product, with the geometry off its spec sheet.
+ *
+ * Every number is the manufacturer's, in inches, measured from the top-left
+ * of US Letter. They are not centred and not symmetrical, which is exactly
+ * why a computed grid cannot land on them.
+ */
+export interface SheetStock {
+  cols: number
+  rows: number
+  marginLeft: number
+  marginTop: number
+  gapX: number
+  gapY: number
 }
 
 /**
@@ -169,6 +238,19 @@ export function computeSheetGrid(
   gap = 0,
   minMargin = 0.25,
 ): SheetGridLayout {
+  // A sheet you can buy knows where its labels are. Nothing to compute.
+  if (size.stock) {
+    const st = size.stock
+    return {
+      cols: st.cols,
+      rows: st.rows,
+      marginX: st.marginLeft,
+      marginY: st.marginTop,
+      gapX: st.gapX,
+      gapY: st.gapY,
+    }
+  }
+
   const pageW = 8.5
   const pageH = 11
   // pageW >= 2*minMargin + cols*size.w + (cols-1)*gap
@@ -185,12 +267,47 @@ export function computeSheetGrid(
   const usedH = rows * size.h + Math.max(0, rows - 1) * gap
   const marginX = (pageW - usedW) / 2
   const marginY = (pageH - usedH) / 2
-  return { cols, rows, marginX, marginY }
+  return { cols, rows, marginX, marginY, gapX: gap, gapY: gap }
 }
 
+/**
+ * Where this browser's last label size is kept.
+ *
+ * Per browser, not per tenant: a label printer is a physical thing bolted
+ * to one PC, and the shop machine with the 2x1 thermal and the laptop that
+ * prints Avery sheets are the same login.
+ */
+const REMEMBERED_SIZE_KEY = 'crewbarn.labels.size'
+
+/** The size this browser used last, if it is still a size we offer. */
+export function rememberedThermalSize(): ThermalSizeKey | null {
+  try {
+    const stored = localStorage.getItem(REMEMBERED_SIZE_KEY)
+    return stored && stored in THERMAL_SIZES ? (stored as ThermalSizeKey) : null
+  } catch {
+    // Private window, or storage switched off. Not remembering is a fine
+    // outcome; throwing on the way to printing a label is not.
+    return null
+  }
+}
+
+export function rememberThermalSize(key: ThermalSizeKey): void {
+  try {
+    localStorage.setItem(REMEMBERED_SIZE_KEY, key)
+  } catch {
+    /* see above */
+  }
+}
+
+/**
+ * The size to show, in order: what the URL asked for, then what this
+ * browser printed last, then sheet.
+ *
+ * The URL still wins so a link that names a size prints that size.
+ */
 export function parseThermalSize(value: string | null | undefined): ThermalSizeKey {
   if (value && value in THERMAL_SIZES) return value as ThermalSizeKey
-  return 'sheet'
+  return rememberedThermalSize() ?? 'sheet'
 }
 
 /**

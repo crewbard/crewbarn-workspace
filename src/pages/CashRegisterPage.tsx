@@ -3,6 +3,8 @@ import { Link } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { apiRequest } from '@/lib/api'
 import { OfficeDrawer } from '@/components/accounting/OfficeDrawer'
+import { useTheme } from '@/hooks/useTheme'
+import { EasyPageHeading } from '@/components/easy/EasyPageHeading'
 
 /**
  * Cash register — everything physical, before it reaches the bank.
@@ -85,6 +87,8 @@ function TabIcon({ d }: { d: string[] }) {
 }
 
 export function CashRegisterPage() {
+  const { theme } = useTheme()
+  const easy = theme === 'easy-side' || theme === 'easy-top'
   const [view, setView] = useState<View>('tills')
   const qc = useQueryClient()
   const [counted, setCounted] = useState<Record<string, string>>({})
@@ -138,10 +142,14 @@ export function CashRegisterPage() {
   })
 
   return (
-    <div className="mx-auto max-w-[1180px] px-6 py-8">
-      <p className="text-[11px] font-bold uppercase tracking-[0.08em] text-[#B45309]">Money in</p>
+    <div className={easy ? 'w-full min-w-0 px-4 py-4 sm:px-6 sm:py-6 2xl:px-8' : 'mx-auto max-w-[1180px] px-6 py-8'}>
+      {easy ? <EasyPageHeading title="Cash register" description={
+        view === 'tills' ? 'Review cash and checks held by each person. Count the money before confirming that the office received it.'
+        : view === 'drawer' ? 'Review money physically held by the office, record drawer activity, and prepare deposits using the controls below.'
+        : 'Review completed COD jobs with no money collected. Open the job to investigate and take the next step.'
+      } /> : <p className="text-[11px] font-bold uppercase tracking-[0.08em] text-[#B45309]">Money in</p>}
       <div className="flex flex-wrap items-start justify-between gap-4">
-        <div className="max-w-2xl">
+        {!easy && <div className="max-w-2xl">
           <h1 className="mt-1 text-[25px] font-extrabold tracking-[-0.02em] text-[#0A1220]">
             Cash register
           </h1>
@@ -153,14 +161,14 @@ export function CashRegisterPage() {
             {view === 'uncollected' &&
               'COD jobs the crew closed out where no money ever came in. Not overdue invoices — these are finished jobs nobody collected on, and they are invisible until someone goes looking.'}
           </p>
-        </div>
+        </div>}
 
         <div className="rounded-xl border border-slate-200 bg-white px-5 py-3 text-right">
           <p className="text-[10.5px] font-bold uppercase tracking-[0.06em] text-slate-500">
             {view === 'uncollected' ? 'Never collected' : 'Collected, not checked in'}
           </p>
           <p className="tnum mt-0.5 text-[22px] font-extrabold text-[#B45309]">
-            {view === 'uncollected'
+            {(view === 'uncollected' ? uncollected : tills).isError ? 'Unavailable' : (view === 'uncollected' ? uncollected : tills).isPending ? 'Loading…' : view === 'uncollected'
               ? money(uncollected.data?.meta?.total_owed_cents ?? 0)
               : money(outInTrucks)}
           </p>
@@ -182,6 +190,8 @@ export function CashRegisterPage() {
               key={t.id}
               type="button"
               onClick={() => setView(t.id)}
+              aria-pressed={on}
+              data-easy-view-option
               className={[
                 'inline-flex items-center gap-2 rounded-lg border px-4 py-2.5 text-[13.5px] font-bold transition',
                 on
@@ -216,7 +226,8 @@ export function CashRegisterPage() {
       {view === 'tills' && (
         <div className="mt-5">
           {tills.isLoading && <p className="text-sm text-slate-500">Loading tills…</p>}
-          {!tills.isLoading && byTech.length === 0 && (
+          {tills.isError && <div role="alert" className="rounded-xl border border-rose-200 bg-rose-50 p-4">Tills could not be loaded. <button type="button" className="underline" onClick={() => tills.refetch()}>Try again</button></div>}
+          {tills.isSuccess && byTech.length === 0 && (
             <div className="rounded-[13px] border border-[#A7D9B8] bg-[#EFF7F1] px-5 py-4 text-[14px] font-bold text-[#166534]">
               Nothing is being held. Every till is counted in.
             </div>
@@ -225,7 +236,7 @@ export function CashRegisterPage() {
           {/* A card appears only when someone is holding money — a wall of
               zeroes would bury the two people you need. But absence has to be
               legible, or "no card" reads the same as "no data". */}
-          {!tills.isLoading && byTech.length > 0 && (
+          {tills.isSuccess && byTech.length > 0 && (
             <p className="mb-3 text-[12.5px] text-slate-500">
               {byTech.length} {byTech.length === 1 ? 'person is' : 'people are'} holding money.
               Anyone not listed has nothing to hand in — a till appears the moment a payment
@@ -234,7 +245,7 @@ export function CashRegisterPage() {
           )}
 
           <div className="grid grid-cols-1 gap-4 lg:grid-cols-2 xl:grid-cols-3">
-            {byTech.map((t) => {
+            {!tills.isError && byTech.map((t) => {
               const key = t.id
               const typed = counted[key] ?? String((t.total / 100).toFixed(2))
               return (
@@ -324,8 +335,9 @@ export function CashRegisterPage() {
       {view === 'uncollected' && (
         <div className="mt-5">
           {uncollected.isLoading && <p className="text-sm text-slate-500">Checking closed jobs…</p>}
+          {uncollected.isError && <div role="alert" className="rounded-xl border border-rose-200 bg-rose-50 p-4">Uncollected jobs could not be loaded. <button type="button" className="underline" onClick={() => uncollected.refetch()}>Try again</button></div>}
 
-          {(uncollected.data?.meta?.blocking_count ?? 0) > 0 && (
+          {uncollected.isSuccess && (uncollected.data?.meta?.blocking_count ?? 0) > 0 && (
             <div className="mb-4 flex items-start gap-3 rounded-[11px] border border-rose-200 bg-rose-50 px-4 py-3">
               <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-md bg-[#9F1239] text-[11px] font-extrabold text-white">
                 !
@@ -337,13 +349,13 @@ export function CashRegisterPage() {
             </div>
           )}
 
-          {!uncollected.isLoading && (uncollected.data?.data?.length ?? 0) === 0 && (
+          {uncollected.isSuccess && (uncollected.data?.data?.length ?? 0) === 0 && (
             <div className="rounded-[13px] border border-[#A7D9B8] bg-[#EFF7F1] px-5 py-4 text-[14px] font-bold text-[#166534]">
               Every closed COD job has been collected on.
             </div>
           )}
 
-          {(uncollected.data?.data?.length ?? 0) > 0 && (
+          {uncollected.isSuccess && (uncollected.data?.data?.length ?? 0) > 0 && (
             <div className="overflow-hidden rounded-[13px] border border-slate-200 bg-white">
               <div className="flex items-baseline gap-2 px-5 py-3.5">
                 <span className="text-[14px] font-extrabold text-[#0A1220]">

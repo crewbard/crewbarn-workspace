@@ -4,6 +4,8 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { ToastPrefToggle } from '@/components/ToastPrefToggle'
 import { Link, useSearchParams } from 'react-router-dom'
 import { useAuth } from '@/hooks/useAuth'
+import { useTheme } from '@/hooks/useTheme'
+import './comms-easy.css'
 import { useTenantAccounts } from '@/hooks/useTenantAccounts'
 import { useRealtimeComms } from '@/hooks/useRealtimeComms'
 import { formatPhone, listConversations, getInboxCounts, assignConversation, setConversationDone, linkConversation, linkConversationCustomer, type CommsConversation, type InboxCounts } from '@/lib/comms'
@@ -59,6 +61,8 @@ const VIEW_TITLE: Record<View, string> = {
 }
 
 export function CommsPage() {
+  const { theme } = useTheme()
+  const easy = theme === 'easy-side' || theme === 'easy-top'
   const queryClient = useQueryClient()
   const [searchParams, setSearchParams] = useSearchParams()
   const [search, setSearch] = useState('')
@@ -204,7 +208,7 @@ export function CommsPage() {
     // grew, and one page scrollbar moved the rail, the list and the thread
     // together — you could not read a conversation without losing your place
     // in the list.
-    <div className="flex h-[calc(100vh-5rem)] flex-col overflow-hidden bg-slate-100 text-slate-900">
+    <div data-easy-comms={easy ? '' : undefined} className="flex h-[calc(100vh-5rem)] flex-col overflow-hidden bg-slate-100 text-slate-900">
       <div className="min-h-0 flex-1 grid grid-cols-1 lg:grid-cols-[15rem_25rem_minmax(0,1fr)]">
         <InboxViews view={view} counts={counts} onPick={pick} onNewMessage={() => setComposerOpen(true)} />
 
@@ -552,7 +556,14 @@ function ConversationRow({
     || conversation.external_email
     || formatPhone(conversation.external_number)
     || 'Unknown contact'
-  const unread = conversation.unread_count > 0
+  const unread = conversation.unread_for_me ?? conversation.unread_count > 0
+  /*
+   * The badge is only on screen because something is unread, so zero
+   * is the one number it cannot truthfully show. unread_for_me is a
+   * read-receipt check and unread_count is counted separately; when
+   * they disagree, the badge used to read "0".
+   */
+  const unreadShown = Math.max(1, conversation.unread_count ?? 0)
   const needsReply = conversation.last_direction === 'inbound'
   const unknown = !conversation.customer_id
   const done = !!conversation.handled_at
@@ -614,9 +625,9 @@ function ConversationRow({
           {unread && (
             <span
               className="inline-flex min-w-[1.25rem] items-center justify-center rounded-full bg-amber-500 px-1.5 text-[11px] font-bold leading-5 text-white"
-              title={`${conversation.unread_count} new message${conversation.unread_count === 1 ? '' : 's'}`}
+              title={`${unreadShown} new message${unreadShown === 1 ? '' : 's'}`}
             >
-              {conversation.unread_count}
+              {unreadShown}
             </span>
           )}
         </div>

@@ -114,7 +114,7 @@ export function CustomBoard() {
         <p className="text-sm text-slate-500">
           Your own board — drag blocks to rearrange, customize to add or remove.
         </p>
-        <div className="flex items-center gap-2">
+        <div data-easy-board-controls className="flex items-center gap-2">
           {/* WHICH period — each is a closed calendar period (tax-year safe). */}
           <BoardPeriodPicker range={range} onChange={setPeriod} />
           {/* Day / Month / Quarter / Year */}
@@ -220,7 +220,7 @@ export function CustomBoard() {
           onDragEnd={handleDragEnd}
         >
           <SortableContext items={widgets} strategy={rectSortingStrategy}>
-            <div className={`grid ${sizeCfg.grid} gap-4`}>
+            <div data-easy-widget-grid className={`grid ${sizeCfg.grid} gap-4`}>
               {widgets.map((id) => {
                 const def = WIDGET_BY_ID.get(id)
                 if (!def) return null

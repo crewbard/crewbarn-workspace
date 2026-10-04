@@ -15,6 +15,8 @@ import type {
   AssetGroupInput,
   AssetGroupUpdateInput,
   AssetGroupListParams,
+  AssetTreeBuilderAiInput,
+  AssetTreeBuilderAiResponse,
   AssetTreeBuilderPayload,
   AssetTreeBuilderPreview,
   AssetTreeBuilderCreateResponse,
@@ -104,6 +106,23 @@ export async function updateAssetGroup(
 
 export async function deleteAssetGroup(id: string): Promise<void> {
   await apiRequest<void>(`/v1/asset-groups/${id}`, { method: "DELETE" })
+}
+
+/**
+ * Draft a tree from words, a pasted schedule, or a change to the draft
+ * on screen.
+ *
+ * The office is where the spreadsheet is. Until now this only existed
+ * on the phone, so the person holding the customer's door schedule had
+ * to retype it as a sentence — which threw away every number on it.
+ */
+export async function buildAssetTreeWithAi(
+  input: AssetTreeBuilderAiInput
+): Promise<AssetTreeBuilderAiResponse> {
+  return apiRequest<AssetTreeBuilderAiResponse>('/v1/asset-groups/tree-builder/ai', {
+    method: 'POST',
+    body: input,
+  })
 }
 
 export async function previewAssetTreeBuilder(

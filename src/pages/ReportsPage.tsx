@@ -2,6 +2,8 @@ import { type DragEvent, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { API_URL, apiRequest, getActingTenant, getFranchiseActAs, getStoredToken } from '@/lib/api'
+import { useTheme } from '@/hooks/useTheme'
+import { EasyPageHeading } from '@/components/easy/EasyPageHeading'
 
 type AgingBucket = {
   bucket: string
@@ -1101,6 +1103,8 @@ async function downloadReportFile(path: string, filename: string) {
 }
 
 export function ReportsPage() {
+  const { theme } = useTheme()
+  const easy = theme === 'easy-side' || theme === 'easy-top'
   const queryClient = useQueryClient()
   const [searchParams, setSearchParams] = useSearchParams()
   const defaults = useMemo(() => {
@@ -1863,6 +1867,7 @@ export function ReportsPage() {
 
   return (
     <div data-tour="reports-root" className="mx-auto w-full max-w-none space-y-6 px-4 py-4 sm:px-6 sm:py-6 2xl:px-8">
+      {easy && <EasyPageHeading title="Report browser" description="Choose a report, review its filters and dates, then use the existing download tools for your records or bookkeeper." />}
       <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
         <div>
           <Link
@@ -1871,7 +1876,7 @@ export function ReportsPage() {
           >
             &larr; All questions
           </Link>
-          <h1 className="mt-1 text-2xl font-semibold text-slate-900">Reports</h1>
+          {!easy && <h1 className="mt-1 text-2xl font-semibold text-slate-900">Reports</h1>}
           <p className="text-sm text-slate-500 mt-1">
             Download PDF and spreadsheet reports. Visual graphs stay in Accounting.
           </p>

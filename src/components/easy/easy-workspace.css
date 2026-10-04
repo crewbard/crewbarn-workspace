@@ -1,0 +1,575 @@
+/* Work-app presentation only. No html-level theme selectors: Connect,
+   customer/employee portals and platform admin keep their own presentation.
+   Responsive rules use explicit Easy hooks; native pickers and business controls remain intact. */
+[data-easy-workspace] {
+  background-color: var(--easy-page-bg, #f1f5f9);
+  min-width: 0;
+  width: 100%;
+}
+/* Fixed brand colors stay readable independently of the navigation palette. */
+[data-easy-topbar] > [data-easy-brand-strip] {
+  background-color: #0f1a2e;
+  border-bottom: 1px solid rgb(255 255 255 / 10%);
+  padding: 0.5rem 1.5rem;
+  min-width: 0;
+}
+[data-easy-topbar] > [data-header-controls] {
+  min-width: 0;
+  gap: 0.5rem;
+}
+[data-easy-topbar] nav {
+  min-width: 0;
+  flex-shrink: 0;
+}
+[data-easy-topbar] [data-header-controls] > [data-toast-anchor] {
+  font-size: 0.875rem;
+  font-weight: 500;
+  align-items: center;
+  align-self: center;
+  height: 2.75rem;
+  padding-block: 0;
+  line-height: 1;
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+[data-easy-topbar] [data-header-controls] > [data-toast-anchor] > svg {
+  width: 1rem;
+  height: 1rem;
+  flex-shrink: 0;
+}
+[data-easy-topbar] [data-header-controls] > [data-toast-anchor] > span:not(.absolute) {
+  font-size: inherit;
+  font-weight: inherit;
+  line-height: 1;
+  color: inherit;
+}
+[data-easy-topbar] [data-header-controls] > [data-toast-anchor] > .absolute.-top-1 {
+  top: 0;
+}
+[data-easy-topbar] [data-header-ai] > button {
+  margin-inline: 0;
+  width: 2.25rem;
+  height: 2.25rem;
+}
+[data-easy-topbar] [data-header-actions] {
+  gap: 0.5rem;
+  flex-shrink: 0;
+}
+[data-easy-topbar] [data-header-actions] > div,
+[data-easy-topbar] [data-header-actions] > button {
+  margin-inline: 0;
+}
+[data-easy-topbar] [data-header-actions] > button,
+[data-easy-topbar] [data-header-actions] > div > button:not([title='More tools']) {
+  width: 2.25rem;
+  height: 2.25rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+[data-easy-topbar] nav :where(a, button) {
+  white-space: nowrap;
+}
+[data-easy-dashboard] :where(header, section, nav) {
+  min-width: 0;
+}
+[data-easy-dashboard] > div > nav,
+[data-easy-dashboard] > div > section > .grid {
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 15rem), 1fr));
+}
+[data-easy-dashboard] :where(h1, h2, a, button) {
+  overflow-wrap: anywhere;
+}
+/* Fit the available work area, including when a sidebar takes screen width. */
+[data-easy-workspace] [data-easy-job-grid] {
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 20rem), 1fr));
+}
+[data-easy-workspace] [data-easy-job-grid] > * {
+  min-width: 0;
+}
+[data-easy-workspace] [data-easy-estimate-board] {
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 18rem), 1fr));
+  align-items: start;
+}
+[data-easy-workspace] [data-easy-estimate-board] article {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+[data-easy-workspace] [data-easy-estimate-board] article :where(a, button) {
+  min-height: 2.75rem;
+  display: inline-flex;
+  align-items: center;
+}
+[data-easy-workspace] [data-work-dialog] {
+  min-width: 0;
+  max-height: 90dvh;
+}
+[data-easy-workspace] [data-work-dialog-header] {
+  flex-shrink: 0;
+}
+[data-easy-workspace] [data-work-dialog-header] h2 {
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+[data-easy-workspace] [data-work-dialog-header] > button {
+  min-width: 2.75rem;
+  min-height: 2.75rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+[data-easy-workspace] [data-work-dialog-body] {
+  min-width: 0;
+  min-height: 0;
+  overscroll-behavior: contain;
+}
+[data-easy-workspace] [data-work-dialog-footer] :where(a, button) {
+  min-height: 2.75rem;
+  max-width: 100%;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+[data-easy-workspace] [data-easy-filter-grid] {
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 12rem), 1fr));
+  min-width: 0;
+  width: 100%;
+}
+[data-easy-workspace] [data-easy-filter-grid] > * {
+  grid-column: auto;
+  min-width: 0;
+}
+[data-easy-workspace] [data-easy-filter-grid] :where(input, select, button) {
+  min-width: 0;
+  max-width: 100%;
+  min-height: 2.75rem;
+}
+[data-easy-workspace] [data-easy-list-toolbar] {
+  flex-wrap: wrap;
+  min-width: 0;
+  gap: 0.75rem;
+  align-items: center;
+}
+[data-easy-workspace] [data-easy-list-toolbar] > * {
+  min-width: 0;
+  max-width: 100%;
+}
+[data-easy-workspace] [data-easy-list-toolbar] > input,
+[data-easy-workspace] [data-easy-list-toolbar] > .flex-1 {
+  flex-basis: 16rem;
+}
+[data-easy-workspace] [data-easy-list-toolbar] :where(input:not([type='checkbox']):not([type='radio']), select, button) {
+  min-height: 2.75rem;
+  max-width: 100%;
+}
+[data-easy-workspace] [data-easy-list-toolbar] button {
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+[data-easy-workspace] [data-easy-list-toolbar] .inline-flex {
+  flex-wrap: wrap;
+  max-width: 100%;
+}
+[data-easy-workspace] [data-easy-folder-tree] {
+  container: easy-folder-tree / inline-size;
+  min-width: 0;
+}
+@container easy-folder-tree (max-width: 48rem) {
+  [data-easy-folder-tree] > div {
+    flex-direction: column;
+  }
+  [data-easy-folder-sidebar] {
+    width: 100%;
+    border-right-width: 0;
+    border-bottom-width: 1px;
+  }
+  [data-easy-folder-sidebar] > ul {
+    max-height: 15rem;
+  }
+}
+[data-easy-workspace] [data-easy-folder-heading] {
+  flex-wrap: wrap;
+}
+[data-easy-workspace] [data-easy-folder-heading] > :first-child {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+[data-easy-workspace] [data-easy-folder-heading] > button {
+  min-height: 2.75rem;
+  flex-shrink: 0;
+}
+[data-easy-workspace] [data-easy-folder-money] > div {
+  min-width: min(100%, 9.375rem);
+  overflow-wrap: anywhere;
+}
+[data-easy-dashboard] {
+  container-type: inline-size;
+  container-name: easy-dashboard;
+}
+[data-easy-dashboard] [data-tour='dash-stats'] {
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 12rem), 1fr));
+}
+[data-easy-dashboard] [data-easy-ops-grid] {
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 20rem), 1fr));
+}
+[data-easy-dashboard] [data-easy-board-controls],
+[data-easy-dashboard] [data-easy-period-controls],
+[data-easy-dashboard] [data-tour='dash-range'] {
+  flex-wrap: wrap;
+  min-width: 0;
+  max-width: 100%;
+}
+[data-easy-dashboard] [data-easy-board-controls] button,
+[data-easy-dashboard] [data-easy-period-controls] button {
+  min-height: 2.75rem;
+}
+[data-easy-dashboard] [data-easy-widget-grid] > div {
+  min-width: 0;
+}
+@container easy-dashboard (max-width: 45rem) {
+  [data-easy-widget-grid] {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  [data-easy-widget-grid] > div {
+    grid-column: auto;
+  }
+}
+[data-easy-workspace] [data-easy-heading] > div:first-child {
+  flex-basis: 20rem;
+}
+[data-easy-workspace] [data-easy-heading-actions] {
+  min-width: 0;
+  max-width: 100%;
+}
+[data-easy-workspace] [data-easy-heading-actions] :where(a, button) {
+  min-height: 2.75rem;
+  max-width: 100%;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+[data-easy-workspace] [data-easy-action-grid] {
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 16rem), 1fr));
+}
+[data-easy-workspace] [data-easy-cash-grid] {
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 15rem), 1fr));
+}
+[data-easy-workspace] [data-easy-heading] h1 {
+  font-size: clamp(1.75rem, 1.25rem + 1.5vw, 2.5rem);
+  overflow-wrap: anywhere;
+}
+[data-easy-workspace] [data-easy-action-card] {
+  overflow-wrap: anywhere;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: flex-start;
+  height: 100%;
+}
+[data-easy-workspace] [data-easy-cash-grid] button {
+  min-width: 2.75rem;
+  min-height: 2.75rem;
+  flex-shrink: 0;
+}
+[data-easy-workspace] [data-easy-cash-grid] input {
+  min-height: 2.75rem;
+}
+[data-easy-workspace] [data-easy-cash-count] p {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+[data-easy-workspace] [data-easy-pager] > div:last-child {
+  flex-wrap: wrap;
+}
+[data-easy-section-tabs] {
+  min-width: 0;
+  max-width: 100%;
+}
+[data-easy-section-tabs] a {
+  overflow-wrap: anywhere;
+  min-width: 0;
+  min-height: 44px;
+  display: inline-flex;
+  align-items: center;
+}
+@media (max-width: 639px) {
+  [data-easy-workspace] [data-easy-cash-count] input {
+    max-width: 100%;
+    box-sizing: border-box;
+  }
+  [data-easy-workspace] [data-easy-cash-count] label {
+    min-width: 0;
+    max-width: 100%;
+  }
+}
+[data-easy-workspace] :where(h1) {
+  letter-spacing: -0.025em;
+  line-height: 1.25;
+}
+[data-easy-workspace] :where(section, article, div).bg-white.border.rounded-lg,
+[data-easy-workspace] :where(section, article, div).bg-white.border.rounded-xl {
+  border-radius: var(--easy-card-radius, 16px);
+  box-shadow: var(--easy-card-shadow, 0 2px 8px rgb(15 23 42 / 4%));
+  background-color: var(--easy-surface, white);
+  border-color: var(--easy-border, #e2e8f0);
+}
+[data-easy-workspace] :where(input[type='search']) {
+  border-radius: 10px;
+  background-color: var(--easy-search-bg, #f8fafc);
+}
+[data-easy-workspace] :where(button, a, input, select, textarea):focus-visible {
+  outline: 2px solid var(--easy-focus, var(--accent-500, #e8902c));
+  outline-offset: 2px;
+}
+[data-easy-workspace] [data-workflow-tabs] {
+  flex-wrap: wrap;
+  min-width: 0;
+  gap: 8px;
+  border-bottom: 0;
+  padding: 3px 2px 6px;
+}
+[data-easy-workspace] [data-workflow-tabs] > button {
+  margin-bottom: 0;
+  border: 1px solid var(--easy-border, #cbd5e1);
+  border-radius: 999px;
+  min-height: 44px;
+  background-color: var(--easy-surface, white);
+  color: var(--easy-muted, #475569);
+  transition: background-color 150ms, color 150ms, border-color 150ms;
+}
+[data-easy-workspace] [data-workflow-tabs] > button:not([aria-pressed='true']):hover {
+  background-color: var(--easy-selected-bg, var(--accent-50));
+  border-color: var(--easy-selected-border, var(--accent-500));
+}
+[data-easy-workspace] [data-workflow-tabs] > button[aria-pressed='true'] {
+  background-color: var(--easy-tab-active-bg, var(--accent-900));
+  border-color: var(--easy-tab-active-bg, var(--accent-900));
+  color: var(--easy-tab-active-text, white);
+}
+[data-easy-workspace] [data-workflow-tabs] > button[aria-pressed='true'] > span {
+  color: var(--easy-tab-active-count, var(--accent-100));
+}
+@media print {
+  [data-easy-workspace] { background: white; }
+  [data-easy-workspace] :where(section, article, div).bg-white.border { box-shadow: none; }
+}
+
+/* Stable presentation hooks for the open-source theme kit. */
+[data-easy-workspace] [data-easy-folder-sidebar] {
+  background-color: var(--easy-search-bg, #f8fafc);
+  border-color: var(--easy-border, #e2e8f0);
+}
+[data-easy-workspace] [data-easy-folder-summary] {
+  border-color: var(--easy-border, #e2e8f0);
+}
+[data-easy-workspace] [data-easy-folder-summary] h2 {
+  color: var(--easy-text, #0f172a);
+}
+[data-easy-workspace] [data-easy-folder-summary] > span {
+  color: var(--easy-muted, #475569);
+}
+[data-easy-workspace] [data-easy-folder-choice]:focus-visible {
+  outline-offset: -3px;
+}
+[data-easy-workspace] [data-easy-pager] {
+  border-color: var(--easy-border, #e2e8f0);
+}
+[data-easy-workspace] [data-easy-pager] > div,
+[data-easy-workspace] [data-easy-pager] span {
+  color: var(--easy-muted, #475569);
+}
+[data-easy-workspace] [data-easy-pager] button {
+  background-color: var(--easy-surface, white);
+  border-color: var(--easy-border, #e2e8f0);
+  color: var(--easy-text, #0f172a);
+  min-height: 44px;
+}
+[data-easy-workspace] [data-easy-pager] button:enabled:hover {
+  background-color: var(--easy-selected-bg, var(--accent-50));
+  border-color: var(--easy-selected-border, var(--accent-500));
+}
+[data-easy-workspace] [data-easy-folder-choice] {
+  background-color: var(--easy-surface, white);
+  color: var(--easy-text, #0f172a);
+}
+[data-easy-workspace] [data-easy-folder-choice] > span:not([aria-hidden]) {
+  color: inherit;
+}
+[data-easy-workspace] [data-easy-folder-choice] > span:last-of-type {
+  color: var(--easy-muted, #475569);
+}
+[data-easy-workspace] [data-easy-folder-choice]:is([aria-pressed='true'], [aria-expanded='true']) {
+  background-color: var(--easy-selected-bg, var(--accent-50));
+  border-color: var(--easy-selected-border, var(--accent-500));
+}
+[data-easy-workspace] [data-easy-folder-choice]:hover {
+  background-color: var(--easy-selected-bg, var(--accent-50));
+}
+[data-easy-workspace] [data-easy-folder-heading] {
+  background-color: var(--easy-folder-heading-bg, #0f1a2e);
+  color: var(--easy-folder-heading-text, white);
+}
+[data-easy-workspace] [data-easy-folder-body] {
+  background-color: var(--easy-surface, white);
+}
+[data-easy-workspace] [data-easy-folder-tab] > span:last-child {
+  background-color: var(--easy-surface, white);
+  border-color: var(--easy-border, #e2e8f0);
+}
+[data-easy-workspace] [data-easy-folder-tab]:focus-visible {
+  outline: none;
+}
+[data-easy-workspace] [data-easy-folder-tab]:focus-visible > span:last-child {
+  outline: 2px solid var(--easy-focus, var(--accent-500));
+  outline-offset: -3px;
+}
+[data-easy-workspace] [data-easy-folder-tab][aria-expanded='true'] > span:last-child {
+  background-color: var(--easy-selected-bg, var(--accent-50));
+  border-color: var(--easy-selected-border, var(--accent-500));
+}
+[data-easy-workspace] [data-easy-folder-tab] > span:last-child > span:first-child {
+  color: var(--easy-text, #0f172a);
+}
+[data-easy-workspace] [data-easy-folder-tab] > span:last-child > span:last-child {
+  color: var(--easy-muted, #475569);
+}
+[data-easy-workspace] [data-easy-folder-stat][aria-pressed='false'] {
+  background-color: var(--easy-surface, white);
+  border-color: var(--easy-border, #e2e8f0);
+}
+[data-easy-workspace] [data-easy-folder-stat] > div:last-child {
+  color: var(--easy-muted, #475569);
+}
+[data-easy-workspace] [data-easy-folder-stat='all'] > div:nth-last-child(2) {
+  color: var(--easy-text, #0f172a);
+}
+[data-easy-workspace] [data-easy-cash-count] {
+  background-color: var(--easy-surface, white);
+  border-color: var(--easy-border, #e2e8f0);
+  border-radius: var(--easy-card-radius, 16px);
+  color: var(--easy-text, #0f172a);
+}
+[data-easy-workspace] [data-easy-cash-count] > p {
+  color: var(--easy-muted, #475569);
+}
+[data-easy-workspace] [data-easy-cash-count] :where(div, button).border {
+  border-color: var(--easy-border, #e2e8f0);
+}
+[data-easy-workspace] [data-easy-cash-count] input {
+  background-color: var(--easy-search-bg, #f8fafc);
+  border-color: var(--easy-border, #e2e8f0);
+  color: var(--easy-text, #0f172a);
+}
+[data-easy-workspace] [data-easy-cash-count] button:enabled:hover {
+  background-color: var(--easy-selected-bg, var(--accent-50));
+  border-color: var(--easy-selected-border, var(--accent-500));
+}
+[data-easy-workspace] [data-easy-cash-count] button:disabled {
+  cursor: not-allowed;
+}
+[data-easy-workspace] [data-easy-list-toolbar] [data-easy-view-group],
+[data-easy-workspace] [data-easy-view-group] {
+  background-color: var(--easy-search-bg, #f8fafc);
+  border-color: var(--easy-border, #e2e8f0);
+  height: auto;
+  max-width: 100%;
+  flex-wrap: nowrap;
+  flex-shrink: 0;
+  align-items: stretch;
+}
+[data-easy-workspace] [data-easy-list-toolbar] [data-easy-view-group] button,
+[data-easy-workspace] [data-easy-view-group] button {
+  min-height: 44px;
+  white-space: nowrap;
+  overflow-wrap: normal;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+[data-easy-workspace] [data-easy-folder-choice] {
+  min-height: 44px;
+}
+/* View switches share a translucent accent in Easy; legacy themes retain
+   their existing classes. Color changes never change button dimensions. */
+[data-easy-workspace] [data-easy-view-option] {
+  transition: background-color 150ms, color 150ms, border-color 150ms;
+}
+[data-easy-workspace] [data-easy-view-option][aria-pressed='true'] {
+  background-color: var(--easy-view-selected-bg, rgb(232 144 44 / 15%));
+  color: var(--easy-view-selected-text, #78350f);
+  border-color: var(--easy-view-selected-border, #e8902c);
+  box-shadow: inset 0 0 0 1px var(--easy-view-selected-border, #e8902c);
+}
+[data-easy-workspace] [data-easy-view-option][aria-pressed='false'] {
+  background-color: transparent;
+  color: var(--easy-muted, #475569);
+}
+[data-easy-workspace] [data-easy-view-option][aria-pressed='false']:hover {
+  background-color: var(--easy-view-hover-bg, rgb(232 144 44 / 5%));
+}
+[data-easy-workspace] [data-easy-heading] {
+  background-color: var(--easy-heading-bg, #022c22);
+  color: var(--easy-heading-text, white);
+  border-radius: var(--easy-card-radius, 16px);
+}
+[data-easy-workspace] [data-easy-heading-description] {
+  color: var(--easy-heading-muted, #d1fae5);
+}
+[data-easy-workspace] [data-easy-action-card] {
+  background-color: var(--easy-surface, white);
+  border-color: var(--easy-border, #e2e8f0);
+  border-radius: var(--easy-card-radius, 16px);
+}
+[data-easy-workspace] [data-easy-action-card][aria-pressed='true'] {
+  background-color: var(--easy-selected-bg, var(--accent-50));
+  border-color: var(--easy-selected-border, var(--accent-500));
+}
+[data-easy-workspace] [data-easy-action-card]:not([aria-pressed='true']):hover {
+  background-color: var(--easy-selected-bg, var(--accent-50));
+  border-color: var(--easy-selected-border, var(--accent-500));
+}
+[data-easy-workspace] [data-easy-action-card] > span {
+  color: var(--easy-text, #0f172a);
+}
+[data-easy-workspace] [data-easy-action-card] > span:last-child {
+  color: var(--easy-muted, #475569);
+}
+[data-easy-section-tabs] {
+  background-color: var(--easy-surface, white);
+  border-color: var(--easy-border, #e2e8f0);
+}
+[data-easy-section-tabs] a {
+  color: var(--easy-muted, #475569);
+  transition: background-color 150ms, color 150ms, border-color 150ms;
+}
+[data-easy-section-tabs] a:not([aria-current='page']):hover {
+  background-color: var(--easy-selected-bg, var(--accent-50));
+  color: var(--easy-text, #0f172a);
+}
+[data-easy-section-tabs] a[aria-current='page'] {
+  color: var(--easy-text, #0f172a);
+  border-bottom-color: var(--easy-selected-border, var(--accent-500));
+}
+[data-easy-section-tabs] a:focus-visible {
+  outline: 2px solid var(--easy-focus, var(--accent-500));
+  outline-offset: 2px;
+}
+@media (prefers-reduced-motion: reduce) {
+  [data-easy-workspace] [data-workflow-tabs] > button,
+  [data-easy-workspace] [data-easy-view-option],
+  [data-easy-workspace] [data-easy-action-card],
+  [data-easy-workspace] [data-easy-folder-stat],
+  [data-easy-workspace] [data-easy-folder-choice],
+  [data-easy-workspace] [data-easy-folder-choice] svg,
+  [data-easy-section-tabs] a {
+    transition: none;
+  }
+  [data-easy-workspace] [data-easy-folder-stat]:hover {
+    transform: none;
+    translate: none;
+  }
+  [data-easy-workspace] [data-easy-folder-tab] > span {
+    transition: none;
+    transform: none;
+    translate: none;
+  }
+}

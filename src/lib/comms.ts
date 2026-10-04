@@ -23,6 +23,12 @@ export interface CommsConversation {
   last_direction: CommsDirection | null
   last_message_preview: string | null
   unread_count: number
+  /**
+   * Unread for whoever is asking, rather than for the office as a whole.
+   * Optional so an older backend degrades to unread_count instead of to
+   * "nothing is ever unread".
+   */
+  unread_for_me?: boolean
   assigned_to_account_id?: string | null
   assigned_to?: { id: string; name: string } | null
   handled_at?: string | null
@@ -38,7 +44,7 @@ export interface CommsMessage {
   subject: string | null
   media_urls: string[]
   /** Speaker turns for a call transcript. Absent on older calls. */
-  transcript_segments?: Array<{ speaker: 'office' | 'customer' | 'unknown'; text: string }> | null
+  transcript_segments?: Array<{ speaker: 'office' | 'customer' | 'unknown'; text: string; voice?: number | null; source?: 'audio'; start?: number; end?: number }> | null
   recording_url: string | null
   transcription_status: string | null
   meta?: Record<string, unknown> | null
@@ -99,6 +105,7 @@ export interface CommsImageAnalysisStock {
 }
 
 export interface CommsImageAnalysis {
+  source_url?: string
   status: string
   summary: string | null
   description: string | null
@@ -119,9 +126,18 @@ export interface CommsImageAnalysis {
   } | null
 }
 
+/** One reader's place in the thread: they have seen everything up to here. */
+export interface ThreadReader {
+  account_id: string
+  name: string
+  last_read_at: string | null
+}
+
 export interface ConversationThread {
   conversation: CommsConversation
   messages: CommsMessage[]
+  /** Absent on an older backend, which is why every use guards for it. */
+  read_by?: ThreadReader[]
 }
 
 export interface ReplyResult {
@@ -131,6 +147,9 @@ export interface ReplyResult {
 }
 
 export interface AiIntakeDraft {
+  supports_local_correction?: boolean
+  created_work_order_id?: string | null
+  approved_at?: string | null
   id: string
   status: string
   source?: string | null
@@ -537,7 +556,9 @@ export async function uploadCommsImage(id: string, file: File): Promise<string> 
 
 export async function submitPartMatchFeedback(params: {
   messageId: string
-  outcome: 'confirmed' | 'corrected' | 'rejected' | 'no_match'
+  outcome: 'confirmed' | 'corrected' | 'rejected' | 'no_match' | 'annotated'
+  photoUrl?: string
+  finish?: string
   confirmedPartId?: string | null
   rejectedPartId?: string | null
   notes?: string | null
@@ -546,6 +567,8 @@ export async function submitPartMatchFeedback(params: {
     method: 'POST',
     body: {
       outcome: params.outcome,
+      photo_url: params.photoUrl,
+      finish: params.finish,
       confirmed_part_id: params.confirmedPartId ?? null,
       rejected_part_id: params.rejectedPartId ?? null,
       notes: params.notes ?? null,
@@ -636,10 +659,12 @@ export async function listAiIntakeDrafts(params?: {
   status?: 'pending' | 'reviewed' | 'approved' | 'dismissed' | 'failed' | 'all'
   profile?: 'intake'
   perPage?: number
+  page?: number
 }): Promise<AiIntakeDraftPage> {
   const qs = new URLSearchParams()
   if (params?.status && params.status !== 'all') qs.set('status', params.status)
   if (params?.profile) qs.set('profile', params.profile)
+  if (params?.page) qs.set('page', String(params.page))
   if (params?.perPage) qs.set('per_page', String(params.perPage))
   const suffix = qs.toString() ? `?${qs.toString()}` : ''
   return apiRequest<AiIntakeDraftPage>(`/v1/ai/intake/drafts${suffix}`)
@@ -779,7 +804,7 @@ export interface IntakeCorrectionPart {
  */
 export async function correctAiIntakePart(
   id: string,
-  input: { parts: IntakeCorrectionPart[]; decider?: string | null; notes?: string | null },
+  input: { parts: IntakeCorrectionPart[]; decider?: string | null; notes?: string | null; remember?: boolean },
 ): Promise<AiIntakeDraft> {
   const res = await apiRequest<{ data: AiIntakeDraft }>(
     `/v1/ai/intake/drafts/${encodeURIComponent(id)}/part-correction`,
@@ -822,14 +847,16 @@ export function recordingPlaybackUrl(message: CommsMessage): string | null {
     return null
   }
 
-  const qs = new URLSearchParams()
-  const token = getStoredToken()
-  const tenant = getActingTenant()
-  if (token) qs.set('access_token', token)
-  if (tenant) qs.set('acting_tenant', tenant)
-
-  const suffix = qs.toString() ? `?${qs.toString()}` : ''
-  return `${API_URL}/v1/comms/messages/${encodeURIComponent(message.id)}/recording${suffix}`
+  /*
+   * A bare URL. It used to carry ?access_token=<session token>, because a
+   * plain <audio src> cannot send an Authorization header — which put a full
+   * API token into browser history, access logs, proxy logs and any Referer
+   * from that tab. Whoever came by the URL held the session, not one call.
+   *
+   * AuthedAudio fetches this with the header and plays it from a blob, so
+   * the credential never appears in a URL at all.
+   */
+  return `${API_URL}/v1/comms/messages/${encodeURIComponent(message.id)}/recording`
 }
 
 /** Format an E.164 US number for display: +13211234567 → (321) 123-4567. */

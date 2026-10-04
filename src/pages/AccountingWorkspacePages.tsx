@@ -1,4 +1,7 @@
 import { useMemo, useState } from 'react'
+import { useTheme } from '@/hooks/useTheme'
+import { EasyPageHeading } from '@/components/easy/EasyPageHeading'
+import { EasyActionCards } from '@/components/easy/EasyActionCards'
 import type { FormEvent } from 'react'
 import { Link } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
@@ -650,6 +653,8 @@ const bankMatchCards: WorkspaceCard[] = [
 ]
 
 export function CustomerCreditsWorkspacePage() {
+  const { theme } = useTheme()
+  const easy = theme === 'easy-side' || theme === 'easy-top'
   const defaultRange = useMemo(() => {
     const now = new Date()
     return {
@@ -713,13 +718,15 @@ export function CustomerCreditsWorkspacePage() {
 
   return (
     <div className="mx-auto w-full max-w-none space-y-6 px-4 py-4 sm:px-6 sm:py-6 2xl:px-8">
-      <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-        <div>
+<div data-easy-accounting-header={easy || undefined} className={easy ? 'flex min-w-0 w-full flex-col items-stretch gap-4' : 'flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between'}>
+        <div className={easy ? 'min-w-0 w-full' : undefined}>
+          {easy ? <EasyPageHeading title="Customer credits & deposits" description="Review money held for customers, where it was applied, and what remains. Use the filters to find a customer or payment reference." /> : <>
           <div className="text-xs font-semibold uppercase tracking-wide text-amber-700">Credits & deposits</div>
           <h1 className="mt-1 text-2xl font-semibold text-slate-900">Customer Credits</h1>
           <p className="mt-1 max-w-3xl text-sm leading-6 text-slate-500">
             Review open overpayments, down payments, applied credits, refunds, and remaining unapplied balances.
           </p>
+          </>}
         </div>
         <Link
           to="/accounting"
@@ -732,6 +739,11 @@ export function CustomerCreditsWorkspacePage() {
       <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
         <div className="flex flex-col gap-4">
           <div>
+            {easy && <EasyActionCards label="Choose a credit view" actions={[
+              { key: 'open', title: 'Open credits', description: 'Find credits with a remaining balance.' },
+              { key: 'closed', title: 'Closed credits', description: 'Review credits marked as closed.' },
+              { key: 'all', title: 'All credits', description: 'Review both open and closed records.' },
+            ].map(action => ({ ...action, active: status === action.key, onClick: () => { setStatus(action.key as 'open' | 'closed' | 'all'); setPage(1) } }))} />}
             <h2 className="text-base font-semibold text-slate-900">Credit register</h2>
             <p className="mt-1 text-sm text-slate-500">Open credits should be applied, refunded, or left intentionally as customer deposits.</p>
           </div>
@@ -789,19 +801,24 @@ export function CustomerCreditsWorkspacePage() {
       </section>
 
       <section className="grid grid-cols-2 gap-3 lg:grid-cols-5">
-        <PayrollMetric label="Credits" value={reportQ.isLoading ? '...' : String(totals?.credit_count ?? 0)} />
-        <PayrollMetric label="Original" value={reportQ.isLoading ? '...' : exactMoney(totals?.amount_cents ?? 0)} tone="green" />
-        <PayrollMetric label="Applied" value={reportQ.isLoading ? '...' : exactMoney(totals?.applied_cents ?? 0)} />
-        <PayrollMetric label="Refunded" value={reportQ.isLoading ? '...' : exactMoney(totals?.refunded_cents ?? 0)} tone="amber" />
-        <PayrollMetric label="Balance" value={reportQ.isLoading ? '...' : exactMoney(totals?.balance_cents ?? 0)} tone="amber" />
+        {reportQ.isError && <div role="alert" className="col-span-full rounded-xl border border-amber-300 bg-amber-50 p-4 text-sm text-amber-900">
+          The credit report could not be loaded. Displayed records may be incomplete.
+          <button type="button" disabled={reportQ.isFetching} onClick={() => void reportQ.refetch()} className="ml-2 underline disabled:opacity-50">Retry</button>
+        </div>}
+        <PayrollMetric label="Credits" value={reportQ.isError ? 'Unavailable' : reportQ.isLoading ? '...' : String(totals?.credit_count ?? 0)} />
+        <PayrollMetric label="Original" value={reportQ.isError ? 'Unavailable' : reportQ.isLoading ? '...' : exactMoney(totals?.amount_cents ?? 0)} tone="green" />
+        <PayrollMetric label="Applied" value={reportQ.isError ? 'Unavailable' : reportQ.isLoading ? '...' : exactMoney(totals?.applied_cents ?? 0)} />
+        <PayrollMetric label="Refunded" value={reportQ.isError ? 'Unavailable' : reportQ.isLoading ? '...' : exactMoney(totals?.refunded_cents ?? 0)} tone="amber" />
+        <PayrollMetric label="Balance" value={reportQ.isError ? 'Unavailable' : reportQ.isLoading ? '...' : exactMoney(totals?.balance_cents ?? 0)} tone="amber" />
       </section>
 
       <section className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
         <div className="flex flex-col gap-3 border-b border-slate-200 bg-white px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
-          <div className="text-sm text-slate-600">{pageLabel}</div>
+          <div className="text-sm text-slate-600">{reportQ.isError ? 'Credit report unavailable' : reportQ.isLoading ? 'Loading credits…' : pageLabel}</div>
           <div className="flex flex-wrap items-center gap-2">
             <select
               value={pageSize}
+              aria-label="Credits per page"
               onChange={(event) => {
                 setPageSize(Number(event.target.value) as 25 | 50 | 100)
                 setPage(1)
@@ -881,7 +898,61 @@ export function CustomerCreditsWorkspacePage() {
   )
 }
 
+/**
+ * What a pay run will post, before it posts.
+ *
+ * Money arrives as integer cents AND as dollars. The cents are what the
+ * figures are built from; `dollars` is what a person reads, so nobody
+ * checking a run has to divide by a hundred in their head.
+ */
+interface PayrollPreviewRow {
+  tech_id: string | null
+  tech_name: string
+  pay_type: string | null
+  job_count: number
+  clock_minutes: number
+  labor_cost_cents: number
+  commission_cost_cents: number
+  parts_commission_cost_cents: number
+  supervisor_bonus_cents: number
+  vacation_accrual_cents: number
+  vacation_hours_earned: number
+  paid_leave_cost_cents: number
+  tips_cents: number
+  tip_card_fee_cents: number
+  card_fee_cost_cents: number
+  payroll_cost_cents: number
+  dollars: Record<string, string>
+}
+
+interface PayrollPreview {
+  rows: PayrollPreviewRow[]
+  /** Closed in this period and never billed. These pay nobody. */
+  unbilled_completed: {
+    count: number
+    jobs: Array<{
+      id: string
+      wo_number: string | number
+      title: string | null
+      customer: string | null
+      completed_at: string | null
+    }>
+  }
+  totals: {
+    tech_count: number
+    job_count: number
+    payroll_cost_cents: number
+    commission_cost_cents: number
+    supervisor_bonus_cents: number
+    tips_cents: number
+    vacation_accrual_cents: number
+    dollars: Record<string, string>
+  }
+}
+
 export function PayrollWorkspacePage() {
+  const { theme } = useTheme()
+  const easy = theme === 'easy-side' || theme === 'easy-top'
   const queryClient = useQueryClient()
   const defaultRange = useMemo(() => {
     const now = new Date()
@@ -922,6 +993,22 @@ export function PayrollWorkspacePage() {
     reimbursementParams.set('reimbursement_status', reimbursementStatusView)
   }
   const reimbursementQueryString = reimbursementParams.toString()
+
+  /*
+   * What this run will post. Same dates as everything else on the page,
+   * so the warning and the figures cannot describe a different period
+   * from the one being reviewed.
+   */
+  const previewQ = useQuery({
+    queryKey: ['accounting', 'payroll-closeout-preview', from, to],
+    queryFn: () =>
+      apiRequest<{ data: PayrollPreview }>(
+        `/v1/accounting/payroll-closeout/preview?from=${from}&to=${to}`,
+      ),
+    staleTime: 60_000,
+  })
+  const preview = previewQ.data?.data
+  const unbilled = preview?.unbilled_completed
 
   const reportQ = useQuery({
     queryKey: ['accounting', 'payroll-tech-performance', from, to, techSearch.trim(), payTypeFilter],
@@ -1645,13 +1732,15 @@ export function PayrollWorkspacePage() {
 
   return (
     <div className="mx-auto w-full max-w-none space-y-6 px-4 py-4 sm:px-6 sm:py-6 2xl:px-8">
-      <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-        <div>
+<div data-easy-accounting-header={easy || undefined} className={easy ? 'flex min-w-0 w-full flex-col items-stretch gap-4' : 'flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between'}>
+        <div className={easy ? 'min-w-0 w-full' : undefined}>
+          {easy ? <EasyPageHeading title="Payroll & tech profit" description="Review the period, check leave and reimbursements, then post payroll when the numbers are ready." /> : <>
           <div className="text-xs font-semibold uppercase tracking-wide text-amber-700">Payroll review</div>
           <h1 className="mt-1 text-2xl font-semibold text-slate-900">Payroll & Tech Profit</h1>
           <p className="mt-1 max-w-3xl text-sm leading-6 text-slate-500">
             Compare completed job revenue against labor, commission, reimbursable expenses, parts/sub cost, and margin.
           </p>
+          </>}
         </div>
         <div className="flex flex-wrap gap-2">
           <Link
@@ -1692,6 +1781,22 @@ export function PayrollWorkspacePage() {
           </button>
         </div>
       </div>
+      {easy && (
+        <nav aria-label="Payroll sections" className="grid grid-cols-2 gap-2 lg:grid-cols-4">
+          {[
+            ['payroll-preview', 'Check before posting', 'What this run pays, and what is not billed yet.'],
+            ['payroll-leave', 'Review leave', 'Check PTO balances for the selected period.'],
+            ['payroll-profit', 'Review job earnings', 'Compare revenue, labor, and margin.'],
+            ['payroll-reimbursements', 'Review reimbursements', 'Check expenses owed to your team.'],
+            ['payroll-closeouts', 'Posted payroll', 'Inspect saved closeouts and their details.'],
+          ].map(([id, title, description]) => (
+            <a key={id} href={`#${id}`} className="rounded-xl border border-slate-200 bg-white p-4 hover:border-emerald-600 focus-visible:outline focus-visible:outline-2 focus-visible:outline-emerald-700">
+              <span className="block text-sm font-semibold text-slate-900">{title}</span>
+              <span className="mt-1 block text-xs text-slate-500">{description}</span>
+            </a>
+          ))}
+        </nav>
+      )}
       {downloadError ? (
         <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm font-semibold text-red-700">
           {downloadError}
@@ -1719,29 +1824,29 @@ export function PayrollWorkspacePage() {
       ) : null}
 
       <section className="grid grid-cols-2 gap-3 lg:grid-cols-9">
-        <PayrollMetric label="Techs" value={reportQ.isLoading ? '...' : String(totals?.tech_count ?? 0)} />
-        <PayrollMetric label="Jobs" value={reportQ.isLoading ? '...' : String(totals?.job_count ?? 0)} />
-        <PayrollMetric label="Revenue" value={reportQ.isLoading ? '...' : money(totals?.revenue_cents ?? 0)} tone="green" />
-        <PayrollMetric label="Payroll cost" value={reportQ.isLoading ? '...' : money(payrollCost)} tone="amber" />
+        <PayrollMetric label="Techs" value={reportQ.isError ? 'Unavailable' : reportQ.isLoading ? '...' : String(totals?.tech_count ?? 0)} />
+        <PayrollMetric label="Jobs" value={reportQ.isError ? 'Unavailable' : reportQ.isLoading ? '...' : String(totals?.job_count ?? 0)} />
+        <PayrollMetric label="Revenue" value={reportQ.isError ? 'Unavailable' : reportQ.isLoading ? '...' : money(totals?.revenue_cents ?? 0)} tone="green" />
+        <PayrollMetric label="Payroll cost" value={reportQ.isError ? 'Unavailable' : reportQ.isLoading ? '...' : money(payrollCost)} tone="amber" />
         <PayrollMetric
           label="Paid leave"
-          value={ptoBalancesQ.isLoading ? '...' : money(paidLeaveCostForCloseout)}
-          subvalue={ptoBalancesQ.isLoading ? undefined : `${paidLeaveHoursForCloseout}h`}
+          value={ptoBalancesQ.isError ? 'Unavailable' : ptoBalancesQ.isLoading ? '...' : money(paidLeaveCostForCloseout)}
+          subvalue={ptoBalancesQ.isError || ptoBalancesQ.isLoading ? undefined : `${paidLeaveHoursForCloseout}h`}
           tone="amber"
         />
-        <PayrollMetric label="Sick earned" value={reportQ.isLoading ? '...' : `${totals?.sick_hours_earned ?? 0}h`} />
-        <PayrollMetric label="Vacation earned" value={reportQ.isLoading ? '...' : `${totals?.vacation_hours_earned ?? 0}h`} />
+        <PayrollMetric label="Sick earned" value={reportQ.isError ? 'Unavailable' : reportQ.isLoading ? '...' : `${totals?.sick_hours_earned ?? 0}h`} />
+        <PayrollMetric label="Vacation earned" value={reportQ.isError ? 'Unavailable' : reportQ.isLoading ? '...' : `${totals?.vacation_hours_earned ?? 0}h`} />
         <PayrollMetric
           label="Expenses"
-          value={reportQ.isLoading ? '...' : money(totals?.reimbursable_expense_cents ?? 0)}
+          value={reportQ.isError ? 'Unavailable' : reportQ.isLoading ? '...' : money(totals?.reimbursable_expense_cents ?? 0)}
           subvalue={
-            reportQ.isLoading
+            reportQ.isError || reportQ.isLoading
               ? undefined
               : `Pending ${money(totals?.reimbursable_pending_cents ?? 0)} · Approved ${money(totals?.reimbursable_approved_cents ?? 0)} · Paid ${money(totals?.reimbursable_reimbursed_cents ?? 0)}`
           }
           tone="amber"
         />
-        <PayrollMetric label="Margin" value={reportQ.isLoading ? '...' : money(totals?.margin_cents ?? 0)} tone={(totals?.margin_cents ?? 0) >= 0 ? 'green' : 'red'} />
+        <PayrollMetric label="Margin" value={reportQ.isError ? 'Unavailable' : reportQ.isLoading ? '...' : money(totals?.margin_cents ?? 0)} tone={(totals?.margin_cents ?? 0) >= 0 ? 'green' : 'red'} />
       </section>
 
       <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
@@ -1791,10 +1896,144 @@ export function PayrollWorkspacePage() {
         </div>
       </section>
 
+      {/*
+        The check that is supposed to happen BEFORE payroll. The endpoint
+        has existed since the close-out was built and nothing called it,
+        so the one warning designed to be read first could only be read
+        afterwards.
+      */}
       <section className="rounded-xl border border-slate-200 bg-white shadow-sm">
         <div className="flex flex-col gap-3 border-b border-slate-200 p-4 lg:flex-row lg:items-center lg:justify-between">
           <div>
-            <h2 className="text-base font-semibold text-slate-900">PTO balances</h2>
+            <h2 id="payroll-preview" tabIndex={-1} className="scroll-mt-24 text-base font-semibold text-slate-900">Check before posting</h2>
+            <p className="mt-0.5 text-xs text-slate-500">
+              What this period would pay, worked out the same way the posted
+              run will work it out. Nothing here changes anything.
+            </p>
+          </div>
+        </div>
+
+        {/*
+          First, because it is the thing that is wrong rather than the
+          thing that is right: a job nobody billed reaches nobody’s pay.
+          It WARNS. A bookkeeping gap must not be why somebody is paid late.
+        */}
+        {unbilled && unbilled.count > 0 ? (
+          <div className="border-b border-amber-200 bg-amber-50 p-4">
+            <p className="text-sm font-semibold text-amber-900">
+              {unbilled.count === 1
+                ? '1 job finished in this period has never been invoiced.'
+                : `${unbilled.count} jobs finished in this period have never been invoiced.`}
+            </p>
+            <p className="mt-0.5 text-xs text-amber-800">
+              A job reaches nobody’s pay until it is invoiced, so these pay
+              nobody. Invoice them and the figures below will change. You can
+              post without doing anything about it.
+            </p>
+            <ul className="mt-3 grid gap-1">
+              {unbilled.jobs.map((job) => (
+                <li key={job.id} className="text-xs text-amber-900">
+                  <Link to={`/jobs/${job.id}`} className="font-semibold underline decoration-amber-400 underline-offset-2 hover:decoration-amber-700">
+                    #{job.wo_number}
+                  </Link>
+                  {job.customer ? ` — ${job.customer}` : ''}
+                  {job.title ? ` — ${job.title}` : ''}
+                </li>
+              ))}
+            </ul>
+            {unbilled.count > unbilled.jobs.length ? (
+              <p className="mt-2 text-xs text-amber-800">
+                and {unbilled.count - unbilled.jobs.length} more.
+              </p>
+            ) : null}
+          </div>
+        ) : null}
+
+        {previewQ.isError ? (
+          <div className="p-4 text-sm font-semibold text-red-700">
+            The preview could not be worked out. The posted figures are
+            unaffected; try the dates again.
+          </div>
+        ) : null}
+
+        <div className="grid gap-3 border-b border-slate-100 p-4 sm:grid-cols-2 xl:grid-cols-5">
+          <PayrollMetric label="People paid" value={previewQ.isLoading ? '...' : String(preview?.totals.tech_count ?? 0)} />
+          <PayrollMetric label="Commission" value={previewQ.isLoading ? '...' : (preview?.totals.dollars?.commission ?? '$0.00')} />
+          <PayrollMetric label="Bonuses" value={previewQ.isLoading ? '...' : (preview?.totals.dollars?.supervisor_bonus ?? '$0.00')} />
+          <PayrollMetric label="Tips" value={previewQ.isLoading ? '...' : (preview?.totals.dollars?.tips ?? '$0.00')} />
+          <PayrollMetric
+            label="Total to post"
+            value={previewQ.isLoading ? '...' : (preview?.totals.dollars?.total_pay ?? '$0.00')}
+            tone="green"
+          />
+        </div>
+
+        <div className="overflow-x-auto">
+          <table className="w-full min-w-[56rem] text-sm">
+            <thead className="bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
+              <tr>
+                <th scope="col" className="px-4 py-2 text-left font-semibold">Who</th>
+                <th scope="col" className="px-4 py-2 text-left font-semibold">Paid as</th>
+                <th scope="col" className="px-4 py-2 text-right font-semibold">Jobs</th>
+                <th scope="col" className="px-4 py-2 text-right font-semibold">Hours</th>
+                <th scope="col" className="px-4 py-2 text-right font-semibold">Wage</th>
+                <th scope="col" className="px-4 py-2 text-right font-semibold">Commission</th>
+                <th scope="col" className="px-4 py-2 text-right font-semibold">Bonus</th>
+                <th scope="col" className="px-4 py-2 text-right font-semibold">Tips</th>
+                <th scope="col" className="px-4 py-2 text-right font-semibold">Vacation</th>
+                <th scope="col" className="px-4 py-2 text-right font-semibold">Total</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100">
+              {previewQ.isLoading ? (
+                <tr><td colSpan={10} className="px-4 py-6 text-center text-sm text-slate-500">Working it out…</td></tr>
+              ) : (preview?.rows.length ?? 0) === 0 ? (
+                <tr><td colSpan={10} className="px-4 py-6 text-center text-sm text-slate-500">
+                  Nobody is owed anything for these dates.
+                </td></tr>
+              ) : (
+                preview?.rows.map((row) => (
+                  <tr key={row.tech_id ?? row.tech_name} className="align-top">
+                    <td className="px-4 py-2 font-semibold text-slate-900">{row.tech_name}</td>
+                    <td className="px-4 py-2 text-slate-600">{row.pay_type ?? 'No pay profile'}</td>
+                    <td className="px-4 py-2 text-right tabular-nums text-slate-600">{row.job_count}</td>
+                    <td className="px-4 py-2 text-right tabular-nums text-slate-600">
+                      {(row.clock_minutes / 60).toFixed(2)}
+                    </td>
+                    <td className="px-4 py-2 text-right tabular-nums text-slate-700">{row.dollars?.labor_cost ?? money(row.labor_cost_cents)}</td>
+                    <td className="px-4 py-2 text-right tabular-nums text-slate-700">{row.dollars?.commission ?? money(row.commission_cost_cents)}</td>
+                    <td className="px-4 py-2 text-right tabular-nums text-slate-700">{row.dollars?.supervisor_bonus ?? money(row.supervisor_bonus_cents)}</td>
+                    <td className="px-4 py-2 text-right tabular-nums text-slate-700">
+                      {row.dollars?.tips ?? money(row.tips_cents)}
+                      {row.tip_card_fee_cents > 0 ? (
+                        <span className="block text-[11px] font-normal text-slate-400">
+                          card fee {row.dollars?.tip_card_fee}
+                        </span>
+                      ) : null}
+                    </td>
+                    <td className="px-4 py-2 text-right tabular-nums text-slate-700">
+                      {row.dollars?.vacation_accrual ?? money(row.vacation_accrual_cents)}
+                      {row.vacation_hours_earned > 0 ? (
+                        <span className="block text-[11px] font-normal text-slate-400">
+                          {row.vacation_hours_earned}h banked
+                        </span>
+                      ) : null}
+                    </td>
+                    <td className="px-4 py-2 text-right font-semibold tabular-nums text-slate-900">
+                      {row.dollars?.total_pay ?? money(row.payroll_cost_cents)}
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section className="rounded-xl border border-slate-200 bg-white shadow-sm">
+        <div className="flex flex-col gap-3 border-b border-slate-200 p-4 lg:flex-row lg:items-center lg:justify-between">
+          <div>
+            <h2 id="payroll-leave" tabIndex={-1} className="scroll-mt-24 text-base font-semibold text-slate-900">PTO balances</h2>
             <p className="mt-0.5 text-xs text-slate-500">
               Approved paid time-off is clipped to this period before subtracting from payroll profile balances. Unpaid leave is tracked separately.
             </p>
@@ -1891,7 +2130,7 @@ export function PayrollWorkspacePage() {
       <section className="rounded-xl border border-slate-200 bg-white shadow-sm">
         <div className="flex flex-col gap-2 border-b border-slate-200 p-4 sm:flex-row sm:items-center sm:justify-between">
           <div>
-            <h2 className="text-base font-semibold text-slate-900">Posted payroll closeouts</h2>
+            <h2 id="payroll-closeouts" tabIndex={-1} className="scroll-mt-24 text-base font-semibold text-slate-900">Posted payroll closeouts</h2>
             <p className="mt-0.5 text-xs text-slate-500">
               Locked pay-period snapshots tied to general-ledger payroll entries.
             </p>
@@ -2168,7 +2407,7 @@ export function PayrollWorkspacePage() {
       <section className="rounded-xl border border-slate-200 bg-white shadow-sm">
         <div className="flex flex-col gap-3 border-b border-slate-200 p-4 lg:flex-row lg:items-center lg:justify-between">
           <div>
-            <h2 className="text-base font-semibold text-slate-900">Technician profitability</h2>
+            <h2 id="payroll-profit" tabIndex={-1} className="scroll-mt-24 text-base font-semibold text-slate-900">Technician profitability</h2>
             <p className="mt-0.5 text-xs text-slate-500">
               {from} to {to}. Cost includes payroll profile rules, commission, reimbursable expenses, and parts/sub cost.
             </p>
@@ -2251,7 +2490,7 @@ export function PayrollWorkspacePage() {
       <section className="rounded-xl border border-slate-200 bg-white shadow-sm">
         <div className="flex flex-col gap-3 border-b border-slate-200 p-4 lg:flex-row lg:items-center lg:justify-between">
           <div>
-            <h2 className="text-base font-semibold text-slate-900">Tech reimbursements</h2>
+            <h2 id="payroll-reimbursements" tabIndex={-1} className="scroll-mt-24 text-base font-semibold text-slate-900">Tech reimbursements</h2>
             <p className="mt-0.5 text-xs text-slate-500">
               Review {reimbursementStatusLabel} for {from} to {to}. Uses the same tech search box above.
             </p>
@@ -2438,6 +2677,8 @@ export function PayrollWorkspacePage() {
 }
 
 export function ExpensesWorkspacePage() {
+  const { theme } = useTheme()
+  const easy = theme === 'easy-side' || theme === 'easy-top'
   const defaultRange = useMemo(() => {
     const now = new Date()
     return {
@@ -2484,13 +2725,15 @@ export function ExpensesWorkspacePage() {
 
   return (
     <div className="mx-auto w-full max-w-none space-y-6 px-4 py-4 sm:px-6 sm:py-6 2xl:px-8">
-      <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-        <div>
+<div data-easy-accounting-header={easy || undefined} className={easy ? 'flex min-w-0 w-full flex-col items-stretch gap-4' : 'flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between'}>
+        <div className={easy ? 'min-w-0 w-full' : undefined}>
+          {easy ? <EasyPageHeading title="Bills, expenses & receipts" description="Review business costs for the selected dates. Open the register to work with individual bills, expenses, receipts, and reimbursements." /> : <>
           <div className="text-xs font-semibold uppercase tracking-wide text-amber-700">Money out</div>
           <h1 className="mt-1 text-2xl font-semibold text-slate-900">Bills, Expenses & Receipts</h1>
           <p className="mt-1 max-w-3xl text-sm leading-6 text-slate-500">
             Capture vendor bills, ordinary expenses, receipts, approvals, reimbursements, payments, and AP aging.
           </p>
+          </>}
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <label className="text-xs font-semibold uppercase tracking-wide text-slate-500">
@@ -2521,12 +2764,16 @@ export function ExpensesWorkspacePage() {
       </div>
 
       <section className="grid grid-cols-2 gap-3 lg:grid-cols-6">
-        <PayrollMetric label="Expenses" value={expenseQ.isLoading ? '...' : String(totals?.expense_count ?? 0)} />
-        <PayrollMetric label="Money out" value={expenseQ.isLoading ? '...' : exactMoney(totals?.total_cents ?? 0)} tone="red" />
-        <PayrollMetric label="Billable" value={expenseQ.isLoading ? '...' : exactMoney(totals?.billable_cents ?? 0)} tone="green" />
-        <PayrollMetric label="Pending reimb." value={expenseQ.isLoading ? '...' : exactMoney(totals?.reimbursement_pending_cents ?? 0)} tone="amber" />
-        <PayrollMetric label="Approved reimb." value={expenseQ.isLoading ? '...' : exactMoney(totals?.reimbursement_approved_cents ?? 0)} tone="amber" />
-        <PayrollMetric label="Open AP" value={apQ.isLoading ? '...' : exactMoney(ap?.totals.balance_cents ?? 0)} tone="amber" />
+        {easy && [expenseQ, apQ, contractor1099Q].some(query => query.isError) && <div role="alert" className="col-span-full rounded-xl border border-amber-300 bg-amber-50 p-4 text-sm text-amber-900">
+          Some expense reports could not be loaded. Totals and lists may be incomplete; do not interpret missing data as zero.
+          <button type="button" onClick={() => { for (const query of [expenseQ, apQ, contractor1099Q]) if (query.isError) void query.refetch() }} className="ml-2 underline">Retry failed reports</button>
+        </div>}
+        <PayrollMetric label="Expenses" value={expenseQ.isError ? 'Unavailable' : expenseQ.isLoading ? '...' : String(totals?.expense_count ?? 0)} />
+        <PayrollMetric label="Money out" value={expenseQ.isError ? 'Unavailable' : expenseQ.isLoading ? '...' : exactMoney(totals?.total_cents ?? 0)} tone="red" />
+        <PayrollMetric label="Billable" value={expenseQ.isError ? 'Unavailable' : expenseQ.isLoading ? '...' : exactMoney(totals?.billable_cents ?? 0)} tone="green" />
+        <PayrollMetric label="Pending reimb." value={expenseQ.isError ? 'Unavailable' : expenseQ.isLoading ? '...' : exactMoney(totals?.reimbursement_pending_cents ?? 0)} tone="amber" />
+        <PayrollMetric label="Approved reimb." value={expenseQ.isError ? 'Unavailable' : expenseQ.isLoading ? '...' : exactMoney(totals?.reimbursement_approved_cents ?? 0)} tone="amber" />
+        <PayrollMetric label="Open AP" value={apQ.isError ? 'Unavailable' : apQ.isLoading ? '...' : exactMoney(ap?.totals.balance_cents ?? 0)} tone="amber" />
       </section>
 
       <section className="grid grid-cols-1 gap-4 xl:grid-cols-3">
@@ -2733,6 +2980,8 @@ export function ExpensesWorkspacePage() {
 }
 
 export function InventoryCostWorkspacePage() {
+  const { theme } = useTheme()
+  const easy = theme === 'easy-side' || theme === 'easy-top'
   const defaultRange = useMemo(() => {
     const now = new Date()
     return {
@@ -2776,13 +3025,15 @@ export function InventoryCostWorkspacePage() {
 
   return (
     <div className="mx-auto w-full max-w-none space-y-6 px-4 py-4 sm:px-6 sm:py-6 2xl:px-8">
-      <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-        <div>
+<div data-easy-accounting-header={easy || undefined} className={easy ? 'flex min-w-0 w-full flex-col items-stretch gap-4' : 'flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between'}>
+        <div className={easy ? 'min-w-0 w-full' : undefined}>
+          {easy ? <EasyPageHeading title="Inventory & purchasing costs" description="Review stock value and purchasing spend. Use the date range for period-based reports, and open purchase orders to review individual deliveries." /> : <>
           <div className="text-xs font-semibold uppercase tracking-wide text-amber-700">Inventory cost</div>
           <h1 className="mt-1 text-2xl font-semibold text-slate-900">Inventory & PO Cost</h1>
           <p className="mt-1 max-w-3xl text-sm leading-6 text-slate-500">
             Track purchase order spend, on-hand inventory value, location value, receiving, and cost basis.
           </p>
+          </>}
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <label className="text-xs font-semibold uppercase tracking-wide text-slate-500">
@@ -2813,12 +3064,16 @@ export function InventoryCostWorkspacePage() {
       </div>
 
       <section className="grid grid-cols-2 gap-3 lg:grid-cols-6">
-        <PayrollMetric label="Inventory value" value={valuationQ.isLoading ? '...' : exactMoney(valuation?.totals.inventory_value_cents ?? 0)} tone="green" />
-        <PayrollMetric label="Available value" value={valuationQ.isLoading ? '...' : exactMoney(valuation?.totals.available_value_cents ?? 0)} tone="green" />
-        <PayrollMetric label="On hand" value={valuationQ.isLoading ? '...' : String(valuation?.totals.qty_on_hand ?? 0)} />
-        <PayrollMetric label="Available qty" value={valuationQ.isLoading ? '...' : String(valuation?.totals.qty_available ?? 0)} />
-        <PayrollMetric label="PO spend" value={spendQ.isLoading ? '...' : exactMoney(spend?.totals.spend_cents ?? 0)} tone="amber" />
-        <PayrollMetric label="POs" value={poQ.isLoading ? '...' : String(purchaseOrders?.totals.purchase_order_count ?? 0)} />
+        {easy && [valuationQ, spendQ, poQ].some(query => query.isError) && <div role="alert" className="col-span-full rounded-xl border border-amber-300 bg-amber-50 p-4 text-sm text-amber-900">
+          Some inventory reports could not be loaded. Values and lists may be incomplete; do not interpret missing data as zero.
+          <button type="button" onClick={() => { for (const query of [valuationQ, spendQ, poQ]) if (query.isError) void query.refetch() }} className="ml-2 underline">Retry failed reports</button>
+        </div>}
+        <PayrollMetric label="Inventory value" value={valuationQ.isError ? 'Unavailable' : valuationQ.isLoading ? '...' : exactMoney(valuation?.totals.inventory_value_cents ?? 0)} tone="green" />
+        <PayrollMetric label="Available value" value={valuationQ.isError ? 'Unavailable' : valuationQ.isLoading ? '...' : exactMoney(valuation?.totals.available_value_cents ?? 0)} tone="green" />
+        <PayrollMetric label="On hand" value={valuationQ.isError ? 'Unavailable' : valuationQ.isLoading ? '...' : String(valuation?.totals.qty_on_hand ?? 0)} />
+        <PayrollMetric label="Available qty" value={valuationQ.isError ? 'Unavailable' : valuationQ.isLoading ? '...' : String(valuation?.totals.qty_available ?? 0)} />
+        <PayrollMetric label="PO spend" value={spendQ.isError ? 'Unavailable' : spendQ.isLoading ? '...' : exactMoney(spend?.totals.spend_cents ?? 0)} tone="amber" />
+        <PayrollMetric label="POs" value={poQ.isError ? 'Unavailable' : poQ.isLoading ? '...' : String(purchaseOrders?.totals.purchase_order_count ?? 0)} />
       </section>
 
       <section className="grid grid-cols-1 gap-4 xl:grid-cols-3">
@@ -2982,6 +3237,8 @@ export function InventoryCostWorkspacePage() {
 }
 
 export function BankMatchWorkspacePage() {
+  const { theme } = useTheme()
+  const easy = theme === 'easy-side' || theme === 'easy-top'
   const queryClient = useQueryClient()
   const defaultRange = useMemo(() => {
     const now = new Date()
@@ -3055,13 +3312,15 @@ export function BankMatchWorkspacePage() {
 
   return (
     <div className="mx-auto w-full max-w-none space-y-6 px-4 py-4 sm:px-6 sm:py-6 2xl:px-8">
-      <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-        <div>
+<div data-easy-accounting-header={easy || undefined} className={easy ? 'flex min-w-0 w-full flex-col items-stretch gap-4' : 'flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between'}>
+        <div className={easy ? 'min-w-0 w-full' : undefined}>
+          {easy ? <EasyPageHeading title="Bank match" description="Choose the statement dates and account, review unmatched rows, then start a statement review. Opening a section does not match or approve transactions." /> : <>
           <div className="text-xs font-semibold uppercase tracking-wide text-amber-700">Bank reconciliation</div>
           <h1 className="mt-1 text-2xl font-semibold text-slate-900">Bank Match</h1>
           <p className="mt-1 max-w-3xl text-sm leading-6 text-slate-500">
             Match statement rows to payments, vendor bills, expenses, purchase orders, and ignored bank activity without storing bank login credentials.
           </p>
+          </>}
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <label className="text-xs font-semibold uppercase tracking-wide text-slate-500">
@@ -3092,7 +3351,7 @@ export function BankMatchWorkspacePage() {
       </div>
 
       <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-        <div className="flex flex-col gap-3 xl:flex-row xl:items-end xl:justify-between">
+        <div className={easy ? 'flex min-w-0 flex-col gap-3' : 'flex flex-col gap-3 xl:flex-row xl:items-end xl:justify-between'}>
           <div>
             <h2 className="text-base font-semibold text-slate-900">Statement account filter</h2>
             <p className="mt-1 text-sm text-slate-500">
@@ -3141,12 +3400,16 @@ export function BankMatchWorkspacePage() {
       </section>
 
       <section className="grid grid-cols-2 gap-3 lg:grid-cols-6">
-        <PayrollMetric label="Bank rows" value={reportQ.isLoading ? '...' : String(totals?.transaction_count ?? 0)} />
-        <PayrollMetric label="Matched" value={reportQ.isLoading ? '...' : String(totals?.matched_count ?? 0)} tone="green" />
-        <PayrollMetric label="Unmatched" value={reportQ.isLoading ? '...' : String(totals?.unmatched_count ?? 0)} tone="amber" />
-        <PayrollMetric label="Deposits" value={reportQ.isLoading ? '...' : exactMoney(totals?.deposit_cents ?? 0)} tone="green" />
-        <PayrollMetric label="Withdrawals" value={reportQ.isLoading ? '...' : exactMoney(totals?.withdrawal_cents ?? 0)} tone="red" />
-        <PayrollMetric label="Net" value={reportQ.isLoading ? '...' : exactMoney(totals?.net_cents ?? 0)} tone={(totals?.net_cents ?? 0) >= 0 ? 'green' : 'red'} />
+        {(reportQ.isError || runsQ.isError) && <div role="alert" className="col-span-full rounded-xl border border-amber-300 bg-amber-50 p-4 text-sm text-amber-900">
+          Bank reports or saved reviews could not be loaded. This view may be incomplete.
+          <button type="button" onClick={() => { if (reportQ.isError) void reportQ.refetch(); if (runsQ.isError) void runsQ.refetch() }} className="ml-2 underline">Retry failed sections</button>
+        </div>}
+        <PayrollMetric label="Bank rows" value={reportQ.isError ? 'Unavailable' : reportQ.isLoading ? '...' : String(totals?.transaction_count ?? 0)} />
+        <PayrollMetric label="Matched" value={reportQ.isError ? 'Unavailable' : reportQ.isLoading ? '...' : String(totals?.matched_count ?? 0)} tone="green" />
+        <PayrollMetric label="Unmatched" value={reportQ.isError ? 'Unavailable' : reportQ.isLoading ? '...' : String(totals?.unmatched_count ?? 0)} tone="amber" />
+        <PayrollMetric label="Deposits" value={reportQ.isError ? 'Unavailable' : reportQ.isLoading ? '...' : exactMoney(totals?.deposit_cents ?? 0)} tone="green" />
+        <PayrollMetric label="Withdrawals" value={reportQ.isError ? 'Unavailable' : reportQ.isLoading ? '...' : exactMoney(totals?.withdrawal_cents ?? 0)} tone="red" />
+        <PayrollMetric label="Net" value={reportQ.isError ? 'Unavailable' : reportQ.isLoading ? '...' : exactMoney(totals?.net_cents ?? 0)} tone={(totals?.net_cents ?? 0) >= 0 ? 'green' : 'red'} />
       </section>
 
       <section className="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1.4fr)_minmax(340px,0.8fr)]">
@@ -3191,7 +3454,7 @@ export function BankMatchWorkspacePage() {
                     </td>
                   </tr>
                 ))}
-                {!reportQ.isLoading && unmatchedRows.length === 0 ? (
+                {!reportQ.isLoading && !reportQ.isError && unmatchedRows.length === 0 ? (
                   <tr>
                     <td className="px-4 py-10 text-center text-slate-500" colSpan={4}>No unmatched bank rows in this date range.</td>
                   </tr>

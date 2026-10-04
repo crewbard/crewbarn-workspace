@@ -160,6 +160,7 @@ export class ApiError extends Error {
 }
 
 interface ApiRequestOptions {
+  responseType?: 'json' | 'blob'
   method?: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE'
   body?: unknown
   requireAuth?: boolean
@@ -359,6 +360,7 @@ export async function apiRequest<T>(
     return undefined as T
   }
 
+  if (options.responseType === 'blob') return await response.blob() as T
   return response.json()
 }
 

@@ -107,7 +107,7 @@ export function FolderBrowser({
  *  (matching the design — not crammed into the navy header). */
 function MoneyBoxes({ money }: { money: FolderMoney }) {
   return (
-    <div className="mb-3.5 flex flex-wrap gap-2.5">
+    <div data-easy-folder-money className="mb-3.5 flex flex-wrap gap-2.5">
       {money.kind === 'total' ? (
         <StatBox label={money.label ?? 'Total value'} value={formatMoney(money.total)} valueClass="text-navy-900" />
       ) : (
@@ -202,7 +202,7 @@ export function Pager({
 }) {
   const btn = 'rounded-md border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40'
   return (
-    <div className="mt-5 flex flex-wrap items-center justify-between gap-3 border-t border-slate-100 pt-4">
+    <div data-easy-pager aria-busy={busy} className="mt-5 flex flex-wrap items-center justify-between gap-3 border-t border-slate-100 pt-4">
       <div className="text-sm text-slate-500">Showing {from}–{to} of {total}</div>
       <div className="flex items-center gap-2">
         <button type="button" className={btn} onClick={onPrev} disabled={page <= 1 || busy}>Previous</button>
@@ -263,6 +263,7 @@ function FolderBody({
                 type="button"
                 aria-expanded={on}
                 onClick={() => setOpenSub(on ? null : s.key)}
+                data-easy-folder-tab
                 className="group relative w-32 shrink-0 pt-2 text-left focus:outline-none"
               >
                 <span
@@ -314,7 +315,7 @@ function CabinetLayout({
   const active = folders.find((f) => f.key === openKey) ?? null
   return (
     <div>
-      <div className="flex gap-3 overflow-x-auto pb-2" aria-label="Folders">
+      <div className="flex items-stretch gap-2 overflow-x-auto px-1 py-2" aria-label="Folders">
         {folders.map((f) => {
           const open = f.key === openKey
           return (
@@ -323,18 +324,19 @@ function CabinetLayout({
               type="button"
               aria-expanded={open}
               onClick={() => onOpen(open ? null : f.key)}
-              className="group relative w-44 shrink-0 pt-2.5 text-left focus:outline-none"
+              data-easy-folder-tab
+              className="group relative w-44 shrink-0 text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-500 focus-visible:ring-offset-2 rounded-xl"
             >
               <span
                 aria-hidden
-                className={'absolute left-0 top-0 h-4 w-24 rounded-t-md transition-colors ' + (open ? 'bg-amber-500' : '')}
-                style={open ? undefined : { backgroundColor: f.tab ?? DEFAULT_TAB }}
+                className="pointer-events-none absolute left-3 right-3 top-0 z-10 h-1 rounded-b-full"
+                style={{ backgroundColor: f.tab ?? DEFAULT_TAB }}
               />
               <span
-                className={'relative flex min-h-[88px] flex-col justify-between rounded-b-xl rounded-tr-xl border p-4 shadow-sm transition-all ' + (
+                className={'relative flex h-full min-h-[88px] flex-col justify-between rounded-xl border px-4 pb-3 pt-4 transition-colors ' + (
                   open
-                    ? 'border-amber-300 bg-amber-50 shadow-md'
-                    : 'border-slate-200 bg-white group-hover:-translate-y-0.5 group-hover:border-amber-300 group-hover:shadow-md'
+                    ? 'border-amber-400 bg-amber-50 ring-1 ring-inset ring-amber-300'
+                    : 'border-slate-200 bg-white group-hover:border-amber-300 group-hover:bg-slate-50'
                 )}
               >
                 <span className="line-clamp-2 text-base font-extrabold leading-tight text-navy-900">{f.label}</span>
@@ -347,7 +349,7 @@ function CabinetLayout({
 
       {active ? (
         <section className="mt-3.5 overflow-hidden rounded-xl border border-amber-300 shadow-sm">
-          <div className="flex items-center justify-between gap-3 bg-navy-800 px-4 py-3 text-white">
+          <div data-easy-folder-heading className="flex items-center justify-between gap-3 bg-navy-800 px-4 py-3 text-white">
             <h2 className="min-w-0 truncate text-[15px] font-bold">{active.label}</h2>
             <button
               type="button"
@@ -357,7 +359,7 @@ function CabinetLayout({
               Close folder
             </button>
           </div>
-          <div className="bg-white p-3.5">
+          <div data-easy-folder-body className="bg-white p-3.5">
             <FolderBody folder={active} display="grid" empty={emptyFolderText} countNoun={countNoun} />
           </div>
         </section>
@@ -386,9 +388,9 @@ function TreeLayout({
 }) {
   const active = folders.find((f) => f.key === openKey) ?? folders[0]
   return (
-    <div className="overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm">
+    <div data-easy-folder-tree className="overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm">
       <div className="flex flex-col md:flex-row">
-        <div className="w-full shrink-0 border-b border-slate-200 bg-slate-50 md:w-52 md:border-b-0 md:border-r">
+        <div data-easy-folder-sidebar className="w-full shrink-0 border-b border-slate-200 bg-slate-50 md:w-52 md:border-b-0 md:border-r">
           <ul className="max-h-[520px] overflow-y-auto py-1">
             {folders.map((f) => {
               const on = f.key === active?.key
@@ -397,6 +399,8 @@ function TreeLayout({
                   <button
                     type="button"
                     onClick={() => onOpen(f.key)}
+                    data-easy-folder-choice
+                    aria-pressed={on}
                     className={'flex w-full items-center gap-2 border-l-2 px-3 py-2 text-left text-sm transition-colors ' + (
                       on ? 'border-amber-500 bg-amber-50 font-bold text-navy-900' : 'border-transparent text-slate-700 hover:bg-white'
                     )}
@@ -410,10 +414,10 @@ function TreeLayout({
             })}
           </ul>
         </div>
-        <div className="min-w-0 flex-1 p-4">
+        <div data-easy-folder-body className="min-w-0 flex-1 p-4">
           {active ? (
             <>
-              <div className="flex flex-wrap items-baseline justify-between gap-2 border-b border-slate-100 pb-2">
+              <div data-easy-folder-summary className="flex flex-wrap items-baseline justify-between gap-2 border-b border-slate-100 pb-2">
                 <h2 className="text-base font-bold text-navy-900">{active.label}</h2>
                 <span className="text-xs font-medium text-slate-500">{countLabel(active.count, countNoun)}</span>
               </div>
@@ -452,6 +456,7 @@ function AccordionLayout({
               type="button"
               aria-expanded={open}
               onClick={() => onToggle(f.key)}
+              data-easy-folder-choice
               className={'flex w-full items-center gap-3 px-3 py-2.5 text-left transition-colors ' + (open ? 'bg-amber-50' : 'bg-white hover:bg-slate-50')}
             >
               <span
@@ -471,7 +476,7 @@ function AccordionLayout({
               </svg>
             </button>
             {open && (
-              <div className="border-t border-amber-200/70 bg-white p-3.5">
+              <div data-easy-folder-body className="border-t border-amber-200/70 bg-white p-3.5">
                 <FolderBody folder={f} display="grid" empty={emptyFolderText} countNoun={countNoun} />
               </div>
             )}

@@ -1,4 +1,5 @@
 import { useMutation } from '@tanstack/react-query'
+import { Link } from 'react-router-dom'
 import { isDeleteCancelled } from '@/lib/api'
 import {
   completeTask,
@@ -86,14 +87,16 @@ function TaskRow({
   })
 
   const overdue = isOverdue(task)
+  const busy = toggle.isPending || del.isPending
 
   return (
     <div className="flex items-start gap-3 p-3">
       <button
         type="button"
         onClick={() => toggle.mutate()}
-        disabled={toggle.isPending}
-        aria-label={done ? 'Mark not done' : 'Mark done'}
+        disabled={busy}
+        aria-pressed={done}
+        aria-label={`${done ? 'Mark not done' : 'Mark done'}: ${task.title}`}
         className={`mt-0.5 h-5 w-5 shrink-0 rounded-full border-2 flex items-center justify-center text-[11px] font-bold transition ${
           done ? 'border-emerald-500 bg-emerald-500 text-white' : 'border-slate-300 hover:border-emerald-400 text-transparent'
         }`}
@@ -131,18 +134,27 @@ function TaskRow({
             </span>
           )}
           {task.assignee_name && <span>· {task.assignee_name}</span>}
-          {showAnchor && task.related_label && (
+          {showAnchor && task.related_label && task.related_id && (task.related_type === 'work_order' || task.related_type === 'customer') ? (
+            <Link className="rounded bg-slate-100 px-1.5 py-0.5 text-slate-700 underline hover:bg-slate-200" to={`${task.related_type === 'work_order' ? '/jobs' : '/customers'}/${encodeURIComponent(task.related_id)}`}>
+              {task.related_label}
+            </Link>
+          ) : showAnchor && task.related_label && (
             <span className="bg-slate-100 text-slate-600 px-1.5 py-0.5 rounded">
               {task.related_type === 'work_order' ? '🔧' : '👤'} {task.related_label}
             </span>
           )}
         </div>
+        {toggle.isError && <p role="alert" className="mt-2 text-xs text-rose-700">
+          {toggle.error instanceof Error ? toggle.error.message : 'Could not update this task.'} Your change was not confirmed. Try again.
+        </p>}
       </div>
 
       <div className="flex items-center gap-1 shrink-0">
         <button
           type="button"
           onClick={onEdit}
+          disabled={busy}
+          aria-label={`Edit task: ${task.title}`}
           className="text-xs px-2.5 py-1.5 rounded border border-slate-300 hover:bg-slate-50 text-slate-700"
         >
           Edit
@@ -150,7 +162,8 @@ function TaskRow({
         <button
           type="button"
           onClick={() => del.mutate()}
-          disabled={del.isPending}
+          disabled={busy}
+          aria-label={`Delete task: ${task.title}`}
           className="text-xs px-2.5 py-1.5 rounded text-rose-700 hover:bg-rose-50"
         >
           Delete

@@ -1,0 +1,5 @@
+# Every unknown path is the app itself — this is a single-page app, so the
+# router decides what a deep link means, not the file system. Cloudflare Pages
+# and Netlify both read this file; a self-hosted copy behind nginx needs the
+# same rule in its own config.
+/*  /index.html  200

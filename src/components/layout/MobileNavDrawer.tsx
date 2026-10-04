@@ -1,11 +1,13 @@
-import { useEffect } from 'react'
+import { lazy, Suspense, useEffect } from 'react'
+import { useTheme } from '@/hooks/useTheme'
+
+const EasySettingsDirectory = lazy(() => import('./EasySettingsDirectory'))
 import { Link, NavLink } from 'react-router-dom'
 import { PERM, usePermissions } from '@/hooks/usePermissions'
 import { useModuleVisibility } from '@/hooks/useModuleVisibility'
 import { useUnhandledIncomingCalls } from '@/hooks/useUnhandledIncomingCalls'
 import { useIntakePendingCount } from '@/hooks/useIntakePendingCount'
-import { useFranchiseFeature } from '@/hooks/useFranchiseFeature'
-import { TOOL_SHED_SECTIONS, type ToolShedSection } from './ToolShedMenu'
+import { useVisibleToolShedSections } from './ToolShedMenu'
 
 interface PrimaryNavItem {
   to: string
@@ -49,6 +51,17 @@ export function MobileNavDrawer({
   wide?: boolean
 }) {
   const { has, isLoading } = usePermissions()
+  const { isRouteVisible } = useModuleVisibility()
+  const { theme } = useTheme()
+  const desktopBreakpoint = wide ? (theme === 'easy-top' ? 1920 : 1280) : 768
+  useEffect(() => {
+    if (!open) return
+    const desktop = window.matchMedia(`(min-width: ${desktopBreakpoint}px)`)
+    const closeOnDesktop = () => { if (desktop.matches) onClose() }
+    closeOnDesktop()
+    desktop.addEventListener('change', closeOnDesktop)
+    return () => desktop.removeEventListener('change', closeOnDesktop)
+  }, [open, onClose, desktopBreakpoint])
   const callAlerts = useUnhandledIncomingCalls()
   const intakeCount = useIntakePendingCount()
 
@@ -72,7 +85,7 @@ export function MobileNavDrawer({
 
   return (
     <div
-      className={`fixed inset-0 z-40 ${wide ? 'xl:hidden' : 'md:hidden'}`}
+      className={`fixed inset-0 z-40 ${wide ? (theme === 'easy-top' ? 'min-[1920px]:hidden' : 'xl:hidden') : 'md:hidden'}`}
       role="dialog"
       aria-modal="true"
       aria-label="Navigation"
@@ -149,6 +162,7 @@ export function MobileNavDrawer({
               </NavLink>
             )
           })}
+          {isRouteVisible('/communications') && <>
           <NavLink
             to="/communications"
             onClick={onClose}
@@ -204,8 +218,12 @@ export function MobileNavDrawer({
             )}
           </NavLink>
 
+          </>}
           {/* Tool Shed sections */}
-          <ToolShedMobileSections onLinkClick={onClose} />
+          {(theme === 'easy-side' || theme === 'easy-top') && <Suspense fallback={<p role="status" className="p-4">Loading settings…</p>}><EasySettingsDirectory compact onClose={onClose} /></Suspense>}
+          {theme === 'easy-side' || theme === 'easy-top' ? (
+            <Link to="/tool-shed" onClick={onClose} className="block rounded-md px-4 py-3 text-sm font-semibold text-slate-800 hover:bg-slate-100">Open work tools →</Link>
+          ) : <ToolShedMobileSections onLinkClick={onClose} />}
         </nav>
 
         {/* Drawer footer — account + sign-out */}
@@ -247,20 +265,12 @@ export function MobileNavDrawer({
  * doesn't have that permission. "Coming soon" items render disabled.
  */
 function ToolShedMobileSections({ onLinkClick }: { onLinkClick: () => void }) {
-  const { has, isPlatformAdmin } = usePermissions()
-  const { isRouteVisible } = useModuleVisibility()
-  const { isFranchise } = useFranchiseFeature()
+  const { sections } = useVisibleToolShedSections()
 
   return (
     <>
-      {TOOL_SHED_SECTIONS.map((section: ToolShedSection) => {
-        const items = section.items.filter(
-          (it) =>
-            !(it.hideForPlatformAdmin && isPlatformAdmin) &&
-            !(it.franchiseOnly && !isFranchise) &&
-            (!it.requires || has(it.requires)) &&
-            isRouteVisible(it.to),
-        )
+      {sections.map((section) => {
+        const items = section.items
         if (items.length === 0) return null
         return (
           <div key={section.title} className="mt-3">

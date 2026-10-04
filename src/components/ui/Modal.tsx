@@ -134,12 +134,13 @@ export function Modal({
       {/* Dialog */}
       <div
         ref={dialogRef}
+        data-work-dialog
         tabIndex={-1}
         onKeyDown={handleKeyDownTrap}
         className={`relative w-full ${SIZE_CLASS[size]} max-h-[95vh] sm:max-h-[90vh] flex flex-col bg-white rounded-t-2xl sm:rounded-lg shadow-2xl outline-none`}
       >
         {/* Header */}
-        <div className="px-4 sm:px-6 py-3 sm:py-4 border-b border-slate-200 flex items-start justify-between gap-4">
+        <div data-work-dialog-header className="px-4 sm:px-6 py-3 sm:py-4 border-b border-slate-200 flex items-start justify-between gap-4">
           <div className="min-w-0 flex-1">
             <h2 id="modal-title" className="text-lg font-semibold text-slate-900 truncate">
               {title}
@@ -179,7 +180,7 @@ export function Modal({
  * Body slot — scrollable content area. Pass content here.
  */
 function ModalBody({ children, className = '' }: { children: ReactNode; className?: string }) {
-  return <div className={`flex-1 overflow-y-auto px-4 sm:px-6 py-3 sm:py-4 ${className}`}>{children}</div>
+  return <div data-work-dialog-body className={`flex-1 overflow-y-auto px-4 sm:px-6 py-3 sm:py-4 ${className}`}>{children}</div>
 }
 
 /**
@@ -188,6 +189,7 @@ function ModalBody({ children, className = '' }: { children: ReactNode; classNam
 function ModalFooter({ children, className = '' }: { children: ReactNode; className?: string }) {
   return (
     <div
+      data-work-dialog-footer
       className={`px-4 sm:px-6 py-3 border-t border-slate-200 flex items-center justify-end gap-2 sm:gap-3 flex-shrink-0 flex-wrap ${className}`}
     >
       {children}

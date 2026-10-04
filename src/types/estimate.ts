@@ -116,6 +116,7 @@ export interface Estimate {
   scheduled_end_at: string | null
   estimated_duration_minutes: number | null
   lead_tech_account_id: string | null
+  project_manager_account_id: string | null
 
   money: EstimateMoney
 
@@ -179,6 +180,7 @@ export interface EstimateInput {
   scheduled_end_at?: string | null
   estimated_duration_minutes?: number | null
   lead_tech_account_id?: string | null
+  project_manager_account_id?: string | null
 }
 
 /**

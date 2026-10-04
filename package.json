@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
+    "audit:help": "node scripts/audit-help-links.mjs",
     "preview": "vite preview"
   },
   "dependencies": {
@@ -25,6 +26,7 @@
     "driver.js": "^1.4.0",
     "jspdf": "^4.2.1",
     "laravel-echo": "^2.3.7",
+    "pdfjs-dist": "^6.3.289",
     "pusher-js": "^8.5.0",
     "qrcode": "^1.5.4",
     "qrcode.react": "^4.2.0",

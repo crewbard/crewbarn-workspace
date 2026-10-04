@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { useTheme } from '@/hooks/useTheme'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { WorkOrderForm } from '@/components/WorkOrderForm'
@@ -11,7 +12,7 @@ import { getAiIntakeDraft, linkConversation } from '@/lib/comms'
 import type { WorkOrderInput } from '@/types/workOrder'
 import type { WorkOrderLineItemDraft } from '@/types/workOrderLineItem'
 import { apiRequest } from '@/lib/api'
-import { uploadCustomValues, type CustomValues } from '@/components/CustomFieldsSection'
+import { type CustomValues } from '@/components/CustomFieldsSection'
 import { uploadCreatedFormPdf } from '@/components/workorders/CreateFormPdfPicker'
 import {
   uploadDraftAttachment,
@@ -35,6 +36,7 @@ import {
  *     can re-add them there.
  */
 export function WorkOrderCreatePage() {
+  const { theme } = useTheme()
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
   const customerId = searchParams.get('customer_id') ?? undefined
@@ -55,7 +57,11 @@ export function WorkOrderCreatePage() {
   const [templatePdf, setTemplatePdf] = useState<File | null>(null)
   const [attachments, setAttachments] = useState<DraftAttachment[]>([])
   const [guidedMode, setGuidedMode] = useState(() => {
-    try { return localStorage.getItem('crewbarn:job-form:guided') === '1' } catch { return false }
+    const easyDefault = theme === 'easy-side' || theme === 'easy-top'
+    try {
+      const saved = localStorage.getItem('crewbarn:job-form:guided')
+      return saved === null ? easyDefault : saved === '1'
+    } catch { return easyDefault }
   })
 
   function setEntryMode(nextGuidedMode: boolean) {
@@ -101,17 +107,7 @@ export function WorkOrderCreatePage() {
     setServerErrors({})
 
     try {
-      const wo = await createWorkOrder.mutateAsync(input)
-
-      // Persist tenant-defined custom field values now that we have the
-      // WO id. Best-effort — surface failures but don't roll back the WO.
-      if (customValues && Object.keys(customValues).length > 0) {
-        try {
-          await uploadCustomValues('work_order', wo.id, customValues)
-        } catch (err) {
-          console.error('Custom field values failed to persist:', err)
-        }
-      }
+      const wo = await createWorkOrder.mutateAsync({ ...input, ai_intake_draft_id: aiIntakeDraftId, custom_values: customValues ?? {} })
 
       // Sequentially POST drafts. Failures don't abort.
       const lineFailures: string[] = []
@@ -241,41 +237,46 @@ export function WorkOrderCreatePage() {
   // Both the Job/Estimate workspace and the Sub form now use the 2-column
   // workspace layout, so both get the wide container.
   const isWorkspaceLayout = true
+  const easy = theme === 'easy-side' || theme === 'easy-top'
 
   return (
     <div className={`${isWorkspaceLayout ? 'max-w-[1640px]' : 'max-w-5xl'} mx-auto px-3 sm:px-6 lg:px-8 py-4 sm:py-6`}>
-      <div className="mb-4 rounded-xl border border-slate-200 bg-white px-4 py-3 shadow-sm sm:px-5">
+      <div className={easy ? 'mb-5 rounded-2xl border border-emerald-900 bg-emerald-950 px-5 py-6 shadow-sm sm:px-7' : 'mb-4 rounded-xl border border-slate-200 bg-white px-4 py-3 shadow-sm sm:px-5'}>
         <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
           <div className="min-w-0">
-            <Link to="/jobs" className="inline-flex items-center gap-1 text-sm font-medium text-amber-700 hover:underline mb-1">
+            <Link to="/jobs" className={`inline-flex items-center gap-1 text-sm font-medium hover:underline mb-1 ${easy ? 'text-emerald-200' : 'text-amber-700'}`}>
               ← Back to Jobs
             </Link>
             <div className="flex flex-wrap items-end gap-3">
-              <h1 className="text-2xl font-semibold tracking-tight text-slate-950">
+              <h1 className={easy ? 'text-3xl font-semibold tracking-tight text-white sm:text-4xl' : 'text-2xl font-semibold tracking-tight text-slate-950'}>
                 {isSubKind ? 'New Sub Job' : 'New Job'}
               </h1>
               {!isSubKind && (
-                <span className="mb-1 text-xs font-medium uppercase tracking-[0.18em] text-slate-400">
+                <span className={`mb-1 text-xs font-medium uppercase tracking-[0.18em] ${easy ? 'text-emerald-200' : 'text-slate-400'}`}>
                   Intake workspace
                 </span>
               )}
             </div>
             {!isSubKind && (
-              <p className="mt-1 max-w-3xl text-sm text-slate-500">
+              <p className={`mt-2 max-w-3xl text-sm ${easy ? 'text-emerald-100' : 'text-slate-500'}`}>
                 Capture the customer, scope, schedule, files, and billing details without leaving the form.
               </p>
             )}
           </div>
           <div className="inline-flex shrink-0 self-start rounded-md border border-slate-300 bg-slate-100 p-1 lg:self-center" role="group" aria-label="Job entry mode">
-            <button type="button" onClick={() => setEntryMode(true)} aria-pressed={guidedMode} className={`rounded px-3 py-1.5 text-sm font-semibold transition-colors ${guidedMode ? 'bg-amber-500 text-white shadow-sm' : 'text-slate-600 hover:bg-white'}`}>
+            <button type="button" data-easy-view-option onClick={() => setEntryMode(true)} aria-pressed={guidedMode} className={`rounded px-3 py-1.5 text-sm font-semibold transition-colors ${guidedMode ? 'bg-amber-500 text-white shadow-sm' : 'text-slate-600 hover:bg-white'}`}>
               Step-by-step
             </button>
-            <button type="button" onClick={() => setEntryMode(false)} aria-pressed={!guidedMode} className={`rounded px-3 py-1.5 text-sm font-semibold transition-colors ${!guidedMode ? 'bg-slate-950 text-white shadow-sm' : 'text-slate-600 hover:bg-white'}`}>
+            <button type="button" data-easy-view-option onClick={() => setEntryMode(false)} aria-pressed={!guidedMode} className={`rounded px-3 py-1.5 text-sm font-semibold transition-colors ${!guidedMode ? 'bg-slate-950 text-white shadow-sm' : 'text-slate-600 hover:bg-white'}`}>
               Full page
             </button>
           </div>
         </div>
       </div>
+      {(theme === 'easy-side' || theme === 'easy-top') && !isSubKind && <aside className="mb-5 rounded-xl border border-slate-200 bg-white p-4" aria-label="Creating a job">
+        <h2 className="text-sm font-semibold text-slate-900">Start with the customer. Build the job from there.</h2>
+        <p className="mt-1 text-sm text-slate-600">Choose the customer and service location, describe the work, then review scheduling, line items, files, and billing before submitting. Use Step-by-step or Full page above without leaving this form.</p>
+      </aside>}
       {isSubKind ? (
         <SubJobForm guidedMode={guidedMode} />
       ) : (

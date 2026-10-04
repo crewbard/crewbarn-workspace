@@ -1,4 +1,6 @@
 import { useState } from 'react'
+import { useTheme } from '@/hooks/useTheme'
+import { EasyPageHeading } from '@/components/easy/EasyPageHeading'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { apiRequest, ApiError, setFranchiseActAs } from '@/lib/api'
 import { usePermissions } from '@/hooks/usePermissions'
@@ -39,6 +41,8 @@ const usd = (cents: number) =>
   `$${(cents / 100).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
 
 export function FranchiseDashboardPage() {
+  const { theme } = useTheme()
+  const easy = theme === 'easy-side' || theme === 'easy-top'
   const { has } = usePermissions()
   const franchise = useFranchiseFeature()
   const canManage = has('franchises.manage')
@@ -65,9 +69,10 @@ export function FranchiseDashboardPage() {
   const franchises = data?.data.franchises ?? []
 
   return (
-    <div className="max-w-6xl mx-auto p-6 space-y-6">
+    <div className={easy ? 'w-full min-w-0 p-3 sm:p-6 space-y-6' : 'max-w-6xl mx-auto p-6 space-y-6'}>
+      {easy && <EasyPageHeading title="Franchise dashboard" description="Compare your locations, review network totals, and open a franchise for its details. Access remains limited to your existing franchise permissions." />}
       <div className="flex items-start justify-between gap-4">
-        <div>
+        <div className={easy ? 'hidden' : undefined}>
           <h1 className="text-3xl font-semibold text-navy-900">Franchise Dashboard</h1>
           <p className="text-sm text-slate-600 mt-1">
             Your whole network at a glance — sales, jobs, and progress across every franchise.

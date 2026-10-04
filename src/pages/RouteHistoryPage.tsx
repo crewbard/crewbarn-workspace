@@ -3,6 +3,8 @@ import { useQuery } from '@tanstack/react-query'
 import { Link, useSearchParams } from 'react-router-dom'
 import { apiRequest } from '@/lib/api'
 import { loadGoogleMaps } from '@/lib/googleMaps'
+import { useTheme } from '@/hooks/useTheme'
+import { EasyPageHeading } from '@/components/easy/EasyPageHeading'
 import { initialsOf, monogramColor } from '@/components/Avatar'
 
 /**
@@ -55,6 +57,7 @@ interface ReplayResponse {
     account_id: string
     date: string
     points: ReplayPoint[]
+    jobs?: { id: string; number: number | null; customer: string | null; lat: number; lng: number; starts_at: string; ends_at: string | null }[]
     total_fixes: number
     returned: number
     thinned: boolean
@@ -289,6 +292,40 @@ function RouteReplay({ accountId, techName }: { accountId: string; techName: str
   useEffect(() => {
     const g = gRef.current
     const map = mapRef.current
+    if (!open || mapStatus !== 'ready' || !g || !map) return
+    const start = new Date(`${date}T00:00:00`)
+    start.setHours(fromHour)
+    const end = new Date(`${date}T00:00:00`)
+    end.setHours(toHour)
+    const info = new g.maps.InfoWindow()
+    const markers = (q.data?.data.jobs ?? []).filter(job => {
+      const a = new Date(job.starts_at).getTime()
+      const b = job.ends_at ? new Date(job.ends_at).getTime() : a
+      return a < end.getTime() && (b > start.getTime() || (a === b && a >= start.getTime()))
+    }).map(job => {
+      const marker = new g.maps.Marker({ map, position: { lat: job.lat, lng: job.lng }, title: `Job #${job.number ?? '—'} · ${job.customer ?? 'Customer'}`, icon: { path: g.maps.SymbolPath.CIRCLE, scale: 8, fillColor: '#f59e0b', fillOpacity: 1, strokeColor: '#ffffff', strokeWeight: 2 }, zIndex: 5 })
+      marker.addListener('click', () => {
+        const content = document.createElement('div')
+        const title = document.createElement('strong')
+        title.textContent = `Job #${job.number ?? '—'}`
+        const customer = document.createElement('p')
+        customer.textContent = job.customer ?? 'Customer not listed'
+        const link = document.createElement('a')
+        link.href = `/jobs/${encodeURIComponent(job.id)}`
+        link.textContent = 'Open job · logs and customer details →'
+        link.style.color = '#b45309'
+        content.append(title, customer, link)
+        info.setContent(content)
+        info.open({ map, anchor: marker })
+      })
+      return marker
+    })
+    return () => { info.close(); markers.forEach(marker => { g.maps.event.clearInstanceListeners(marker); marker.setMap(null) }) }
+  }, [open, mapStatus, q.data, date, fromHour, toHour])
+
+  useEffect(() => {
+    const g = gRef.current
+    const map = mapRef.current
     if (mapStatus !== 'ready' || !g || !map) return
 
     fullLine.current?.setMap(null)
@@ -427,7 +464,7 @@ function RouteReplay({ accountId, techName }: { accountId: string; techName: str
 
       {mapStatus === 'unavailable' ? (
         <div className="flex h-64 items-center justify-center rounded-lg border border-slate-200 bg-slate-50 px-3 text-center text-sm text-slate-500">
-          Connect Google Maps in Tool Shed → Connections → Integrations to replay routes.
+          Ask your administrator to configure Google Maps in CrewBarn Connect to replay routes.
         </div>
       ) : (
         <div className="relative h-[360px] overflow-hidden rounded-lg border border-slate-200">
@@ -435,7 +472,7 @@ function RouteReplay({ accountId, techName }: { accountId: string; techName: str
           {(mapStatus === 'loading' || q.isLoading) && (
             <div className="absolute inset-0 animate-pulse bg-slate-100" />
           )}
-          {mapStatus === 'ready' && !q.isLoading && points.length === 0 && (
+          {mapStatus === 'ready' && !q.isLoading && !q.isError && points.length === 0 && (
             <div className="pointer-events-none absolute inset-x-0 top-0 flex justify-center pt-3">
               <span className="rounded-md border border-slate-200 bg-white/95 px-3 py-1.5 text-sm text-slate-600 shadow-sm">
                 No GPS fixes for this day yet.
@@ -445,6 +482,9 @@ function RouteReplay({ accountId, techName }: { accountId: string; techName: str
         </div>
       )}
 
+      {q.isError && <div role="alert" className="mt-3 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">
+        GPS replay data could not be loaded. <button type="button" onClick={() => void q.refetch()} className="ml-2 underline">Retry replay</button>
+      </div>}
       {/* Transport controls */}
       {windowed.length > 1 && (
         <div className="mt-3 space-y-2">
@@ -519,6 +559,8 @@ function fmtHour(h: number): string {
 }
 
 export function RouteHistoryPage() {
+  const { theme } = useTheme()
+  const easy = theme === 'easy-side' || theme === 'easy-top'
   // Deep-linkable tech: the dispatch roster's right-click menu lands here
   // with ?account=<id> already set.
   const [searchParams, setSearchParams] = useSearchParams()
@@ -688,22 +730,25 @@ export function RouteHistoryPage() {
     })
 
   return (
-    <div className="max-w-6xl mx-auto px-3 sm:px-6 py-4 sm:py-6">
+    <div className={easy ? 'w-full min-w-0 px-3 sm:px-6 py-4 sm:py-6' : 'max-w-6xl mx-auto px-3 sm:px-6 py-4 sm:py-6'}>
       <div className="mb-4">
         <Link to="/dispatch" className="inline-flex items-center gap-1 text-sm text-amber-700 hover:underline mb-1">
           ← Back to Dispatch
         </Link>
+        {easy ? <EasyPageHeading title="Route history" description="Choose an app user and week. Routes require recorded GPS locations. Use the day replay to inspect the route, or toggle days in the table to compare them on the map. Weekly routes appear after the nightly rollup." /> : <>
         <h1 className="text-xl sm:text-2xl font-semibold text-slate-900">Route history</h1>
         <p className="text-sm text-slate-500 mt-1">
           Where each tech drove, day by day. Routes are rolled up nightly — a day appears the
           morning after it ends.
         </p>
+        </>}
       </div>
 
       {/* Tech + week pickers */}
       <div className="flex flex-wrap items-center gap-2 mb-4">
         <select
           value={accountId}
+          aria-label="App user for route history"
           onChange={(e) => {
             setAccountId(e.target.value)
             setHiddenDates(new Set())
@@ -711,7 +756,7 @@ export function RouteHistoryPage() {
           }}
           className="border border-slate-300 rounded-md px-2 py-1.5 text-sm bg-white"
         >
-          {techs.length === 0 && <option value="">Loading techs…</option>}
+          {techs.length === 0 && <option value="">{q.isError ? 'App users unavailable' : q.isLoading ? 'Loading app users…' : 'No app users found'}</option>}
           {techs.map((t) => (
             <option key={t.id} value={t.id}>{t.name}</option>
           ))}
@@ -755,25 +800,28 @@ export function RouteHistoryPage() {
         )}
       </div>
 
+      {q.isError && <div role="alert" className="mb-4 rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-700">
+        Route history could not be loaded. <button type="button" onClick={() => void q.refetch()} className="ml-2 underline">Retry history</button>
+      </div>}
       {/* Animated single-day replay with an hour window. Reads raw fixes, so
           it covers today; the week view below reads the nightly rollup. */}
       {accountId && (
         <RouteReplay
           accountId={accountId}
-          techName={techs.find((t) => t.id === accountId)?.name ?? 'Tech'}
+          techName={techs.find((t) => t.id === accountId)?.name ?? 'App user'}
         />
       )}
 
       {/* Map */}
       {mapStatus === 'unavailable' ? (
         <div className="flex items-center justify-center text-center text-sm text-slate-500 bg-slate-50 rounded-lg border border-slate-200 px-3 h-64">
-          Connect Google Maps in Tool Shed → Connections → Integrations to see routes on a map.
+          Ask your administrator to configure Google Maps in CrewBarn Connect to see routes on a map.
         </div>
       ) : (
         <div className="relative rounded-lg overflow-hidden border border-slate-200 h-[420px]">
           <div ref={mapEl} className="absolute inset-0" />
           {mapStatus === 'loading' && <div className="absolute inset-0 bg-slate-100 animate-pulse" />}
-          {mapStatus === 'ready' && accountId && !q.isLoading && logs.length === 0 && (
+          {mapStatus === 'ready' && accountId && !q.isLoading && !q.isError && logs.length === 0 && (
             <div className="absolute inset-x-0 top-0 flex justify-center pt-3 pointer-events-none">
               <span className="bg-white/95 border border-slate-200 rounded-md px-3 py-1.5 text-sm text-slate-600 shadow-sm">
                 No route logs for this week.
@@ -803,7 +851,7 @@ export function RouteHistoryPage() {
             {q.isLoading && (
               <tr><td colSpan={9} className="px-3 py-6 text-center text-slate-400">Loading…</td></tr>
             )}
-            {!q.isLoading && logs.length === 0 && (
+            {!q.isLoading && !q.isError && logs.length === 0 && (
               <tr>
                 <td colSpan={9} className="px-3 py-6 text-center text-slate-400">
                   No route logs for this tech this week. Days appear the morning after they end.

@@ -263,8 +263,15 @@ export function CustomerPicker({
                         : 'border-transparent hover:bg-slate-50'
                     }`}
                   >
-                    <div className="flex items-center justify-between gap-2">
-                      <span className="font-medium truncate text-slate-900">
+                    {/* The name WRAPS here rather than truncating. Two
+                        customers whose names differ only past the cut both
+                        render as the same "Gary Yeomans…", and picking
+                        between them becomes a guess — which is the one
+                        thing this list exists to prevent. The selected
+                        value above still truncates: one line is right once
+                        the choice is made. */}
+                    <div className="flex items-start justify-between gap-2">
+                      <span className="font-medium break-words text-slate-900">
                         {customer.display_name}
                       </span>
                       <div className="flex items-center gap-1.5 flex-shrink-0">

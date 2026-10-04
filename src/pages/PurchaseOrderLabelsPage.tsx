@@ -11,8 +11,10 @@ import {
   type ThermalSizeKey,
 } from '@/lib/thermalLabels'
 import { printLabelPdf, type PdfLabel } from '@/lib/pdfLabels'
+import { LabelStudio } from '@/components/labels/LabelStudio'
+import type { LabelFaceData } from '@/components/labels/LabelFace'
 import { downloadLabelPng } from '@/lib/pngLabels'
-import { isWebBluetoothSupported, printLabelsViaBluetooth } from '@/lib/escposBluetooth'
+import { printLabelsViaBluetooth } from '@/lib/escposBluetooth'
 
 /**
  * Print-friendly QR sticker sheet for a single PO line.
@@ -70,6 +72,28 @@ export function PurchaseOrderLabelsPage() {
   const isSnTracked = units.length > 0
   const fallbackQrValue = lineItem.catalog_item?.sku ?? lineItem.id
 
+  /** One face per label, serial-tracked or not, like the builder below. */
+  const faces: LabelFaceData[] = buildFaces()
+
+  function buildFaces(): LabelFaceData[] {
+    if (!lineItem) return []
+    return isSnTracked
+      ? units.map((u) => ({
+          qrValue: u.serial_number,
+          name: itemName,
+          code: `SN ${u.serial_number}`,
+          tag: 'SERIAL',
+          path: u.bin?.name ?? undefined,
+        }))
+      : Array.from({ length: fallbackCount }).map(() => ({
+          qrValue: fallbackQrValue,
+          name: itemName,
+          code: itemSku ?? undefined,
+          tag: 'ITEM',
+          path: vendorOrderNumber ? `Vendor #${vendorOrderNumber}` : undefined,
+        }))
+  }
+
   function buildPoLabels(): PdfLabel[] {
     if (!lineItem) return []
     return isSnTracked
@@ -82,7 +106,7 @@ export function PurchaseOrderLabelsPage() {
             u.vendor_order_number || vendorOrderNumber
               ? `Vendor #: ${u.vendor_order_number ?? vendorOrderNumber}`
               : '',
-            u.bin?.name ? `📍 ${u.bin.name}` : '',
+            u.bin?.name ?? '',
             lineItem.catalog_item?.short_description ?? '',
           ].filter(Boolean),
         }))
@@ -97,22 +121,16 @@ export function PurchaseOrderLabelsPage() {
         }))
   }
 
-  function poFilename(ext: string): string {
-    return `${poQuery.data!.po_number}-${itemName}-labels.${ext}`.replace(
-      /[^A-Za-z0-9.-]+/g,
-      '-'
-    )
-  }
   const fallbackCount = isSnTracked ? 0 : Math.max(0, Math.floor(lineItem.qty_received ?? 0)) || 1
 
   const itemName = lineItem.catalog_item?.name ?? lineItem.description
   const itemSku = lineItem.catalog_item?.sku ?? null
   const vendorOrderNumber = poQuery.data.vendor_order_number ?? null
 
-  function setSizeMode(next: 'regular' | 'mini') {
+  function setParam(key: string, value: string | null) {
     const np = new URLSearchParams(search)
-    if (next === 'mini') np.set('size', 'mini')
-    else np.delete('size')
+    if (value === null) np.delete(key)
+    else np.set(key, value)
     setSearch(np, { replace: true })
   }
 
@@ -123,186 +141,30 @@ export function PurchaseOrderLabelsPage() {
       {/* Print CSS — applied via Tailwind print: variants below */}
       <style>{thermalPrintCss(thermal, multiUp)}</style>
 
-      <div className="no-print bg-slate-100 border-b border-slate-200 px-6 py-3 flex items-center justify-between gap-3">
-        <div>
-          <div className="text-sm font-medium text-slate-800">
-            Labels — {poQuery.data.po_number} · {itemName}
-          </div>
-          <div className="text-xs text-slate-500">
-            {isSnTracked
-              ? `${units.length} SN unit${units.length === 1 ? '' : 's'}`
-              : `${fallbackCount} sticker${fallbackCount === 1 ? '' : 's'} (non-SN line)`}
-            {' · Ctrl+P to print'}
-          </div>
-        </div>
-        <div className="flex items-center gap-2">
-          {!isThermal && (
-            <div className="inline-flex rounded-md border border-slate-300 overflow-hidden text-xs">
-              <button
-                type="button"
-                onClick={() => setSizeMode('regular')}
-                className={`px-3 py-1.5 ${
-                  !isMini
-                    ? 'bg-amber-600 text-white'
-                    : 'bg-white text-slate-700 hover:bg-slate-50'
-                }`}
-              >
-                Regular
-              </button>
-              <button
-                type="button"
-                onClick={() => setSizeMode('mini')}
-                className={`px-3 py-1.5 border-l border-slate-300 ${
-                  isMini
-                    ? 'bg-amber-600 text-white'
-                    : 'bg-white text-slate-700 hover:bg-slate-50'
-                }`}
-                title="Tiny stickers (~0.5 in) for circuit boards / inside parts"
-              >
-                Mini
-              </button>
-            </div>
-          )}
-          <select
-            value={thermal}
-            onChange={(e) => {
-              const np = new URLSearchParams(search)
-              if (e.target.value === 'sheet') np.delete('thermal')
-              else np.set('thermal', e.target.value)
-              setSearch(np, { replace: true })
-            }}
-            className="text-xs px-3 py-1.5 border border-slate-300 rounded bg-white"
-            title="Pick a thermal label size when using a Dymo / Brother / Zebra printer."
-          >
-            {Object.values(THERMAL_SIZES).map((s) => (
-              <option key={s.key} value={s.key}>
-                {s.label}
-              </option>
-            ))}
-          </select>
-          {isThermal && (
-            <select
-              value={String(copies)}
-              onChange={(e) => {
-                const np = new URLSearchParams(search)
-                if (e.target.value === '1') np.delete('copies')
-                else np.set('copies', e.target.value)
-                setSearch(np, { replace: true })
-              }}
-              className="text-xs px-3 py-1.5 border border-slate-300 rounded bg-white"
-              title="Print this many of each sticker"
-            >
-              {[1, 2, 3, 4, 5, 10, 20, 50].map((n) => (
-                <option key={n} value={String(n)}>
-                  {n} cop{n === 1 ? 'y' : 'ies'} each
-                </option>
-              ))}
-            </select>
-          )}
-          {isThermal && (
-            <label className="flex items-center gap-1 text-xs text-slate-700">
-              <input
-                type="checkbox"
-                checked={multiUp}
-                onChange={(e) => {
-                  const np = new URLSearchParams(search)
-                  if (e.target.checked) np.set('multiup', '1')
-                  else np.delete('multiup')
-                  setSearch(np, { replace: true })
-                }}
-                className="rounded border-slate-300 text-amber-600 focus:ring-amber-500"
-                title="Lay out N labels on a letter-sized PDF"
-              />
-              Multi-up sheet
-            </label>
-          )}
-          {isThermal && multiUp && (
-            <input
-              type="number"
-              step="0.0625"
-              min="0"
-              max="0.5"
-              value={String(gap)}
-              onChange={(e) => {
-                const np = new URLSearchParams(search)
-                if (e.target.value === '0' || !e.target.value) np.delete('gap')
-                else np.set('gap', e.target.value)
-                setSearch(np, { replace: true })
-              }}
-              className="text-xs px-2 py-1 border border-slate-300 rounded w-20"
-              title="Gap (inches) between adjacent labels"
-            />
-          )}
-          {isThermal && !multiUp && (
-            <>
-              <button
-                type="button"
-                onClick={async () => {
-                  const labels = buildPoLabels()
-                  if (labels.length === 0) return
-                  await downloadLabelPng({
-                    label: labels[0],
-                    thermalSize: thermal,
-                    filename: poFilename('png'),
-                  })
-                }}
-                className="text-sm px-3 py-1.5 border border-slate-300 text-slate-700 hover:bg-slate-50 rounded"
-                title="Download a PNG of one label"
-              >
-                🖼 PNG
-              </button>
-              {isWebBluetoothSupported() && (
-                <button
-                  type="button"
-                  onClick={async () => {
-                    try {
-                      await printLabelsViaBluetooth({
-                        labels: buildPoLabels(),
-                        thermalSize: thermal,
-                        copies,
-                      })
-                    } catch (err) {
-                      alert(err instanceof Error ? err.message : String(err))
-                    }
-                  }}
-                  className="text-sm px-3 py-1.5 border border-blue-300 text-blue-700 hover:bg-blue-50 rounded"
-                  title="Print directly to a Bluetooth thermal printer"
-                >
-                  📡 Bluetooth
-                </button>
-              )}
-            </>
-          )}
-          <button
-            type="button"
-            onClick={
-              isThermal
-                ? async () => {
-                    await printLabelPdf({
-                      labels: buildPoLabels(),
-                      thermalSize: thermal,
-                      copies,
-                      multiUp,
-                      gap,
-                      filename: poFilename('pdf'),
-                    })
-                  }
-                : () => window.print()
-            }
-            className="text-sm px-4 py-1.5 bg-amber-600 hover:bg-amber-700 text-white rounded"
-            title={
-              isThermal
-                ? multiUp
-                  ? 'Generate a letter-size PDF with multiple labels per page'
-                  : 'Generate the labels and open your printer dialog'
-                : 'Print the sticker sheet'
-            }
-          >
-            Print
-          </button>
-        </div>
-      </div>
-
+      <LabelStudio
+        backTo={{ href: `/purchase-orders/${id}`, label: 'the purchase order' }}
+        faces={faces}
+        size={thermal}
+        onSize={(next) => setParam('thermal', next === 'sheet' ? null : next)}
+        copies={copies}
+        onCopies={(n) => setParam('copies', String(n))}
+        gap={gap}
+        onGap={(g) => setParam('gap', g === 0 ? null : String(g))}
+        onPrint={async () => {
+          await printLabelPdf({ labels: buildPoLabels(), thermalSize: thermal, copies, multiUp, gap })
+        }}
+        onBluetooth={async () => {
+          try {
+            await printLabelsViaBluetooth({ labels: buildPoLabels(), thermalSize: thermal, copies })
+          } catch (err) {
+            alert(err instanceof Error ? err.message : String(err))
+          }
+        }}
+        onDownloadImage={async () => {
+          const first = buildPoLabels()[0]
+          if (first) await downloadLabelPng({ label: first, thermalSize: thermal, filename: `${itemName}.png` })
+        }}
+      />
       <div className={`print-stage ${isThermal ? 'p-0' : isMini ? 'p-2' : 'p-4'}`}>
         <div
           className={

@@ -4,6 +4,7 @@ import { useNavigate } from 'react-router-dom'
 import { apiRequest } from '@/lib/api'
 import { useAuth } from '@/hooks/useAuth'
 import { useRealtimePositions, type Position } from '@/hooks/useRealtimePositions'
+import { newestPosition } from '@/lib/positionFreshness'
 
 interface CrewJob {
   id: string
@@ -128,10 +129,18 @@ export function CrewRightNowPanel() {
     refetchInterval: 120_000,
   })
 
+  const positionsQ = useQuery({
+    queryKey: ['dashboard', 'crew-positions', account?.id],
+    queryFn: async () => (await apiRequest<{ data: { positions: Position[] } }>('/v1/dispatch/positions')).data,
+    refetchInterval: 30_000,
+  })
+
   const rows = useMemo(() => {
     const jobs = boardQ.data?.jobs ?? []
     return (boardQ.data?.techs ?? []).map((tech) => {
-      const position = livePositions.get(tech.id) ?? tech.position
+      const snapshot = tech.position ? { ...tech.position, received_at: boardQ.dataUpdatedAt } : null
+      const polled = positionsQ.data?.positions.find((p) => p.account_id === tech.id)
+      const position = newestPosition(nowMs, snapshot, polled ? { ...polled, received_at: positionsQ.dataUpdatedAt } : null, livePositions.get(tech.id))
       const ageSeconds = livePositionAge(position, nowMs)
       const liveTech: CrewTech = { ...tech, position: position ? { ...position, age_seconds: ageSeconds } : null }
       const assigned = jobs
@@ -145,7 +154,7 @@ export function CrewRightNowPanel() {
       const hasWorkToday = (tech.job_count ?? assigned.length) > 0
       return { tech: liveTech, state: crewState(liveTech, hasWorkToday), current, next, ageSeconds }
     })
-  }, [boardQ.data, livePositions, nowMs])
+  }, [boardQ.data, boardQ.dataUpdatedAt, positionsQ.data, positionsQ.dataUpdatedAt, livePositions, nowMs])
 
   const counts = useMemo(() => rows.reduce<Record<CrewState, number>>(
     (out, row) => ({ ...out, [row.state]: out[row.state] + 1 }),
@@ -158,7 +167,7 @@ export function CrewRightNowPanel() {
         <span className="h-2.5 w-2.5 rounded-full bg-emerald-500" />
         <h2 className="text-sm font-bold text-navy-900">Crew right now</h2>
         <span className="text-xs font-medium text-slate-400">
-          Live · {new Date(nowMs).toLocaleTimeString()}
+          {boardQ.isError || positionsQ.isError ? 'Refresh failed · showing last known GPS' : `GPS checked · ${positionsQ.dataUpdatedAt ? new Date(positionsQ.dataUpdatedAt).toLocaleTimeString() : 'checking…'}`}
         </span>
         <div className="ml-auto flex flex-wrap gap-2 text-[11px] font-semibold">
           <span className="rounded-full bg-emerald-100 px-2 py-1 text-emerald-700">{counts.on_site} on site</span>
@@ -188,14 +197,14 @@ export function CrewRightNowPanel() {
         <p className="px-4 py-8 text-center text-sm text-slate-500">No field crew found.</p>
       ) : (
         <>
-          <div className="hidden grid-cols-[180px_110px_minmax(260px,1.35fr)_120px_minmax(220px,1fr)_180px] gap-3 bg-slate-50 px-4 py-2 text-[10px] font-bold uppercase tracking-wider text-slate-400 lg:grid">
+          <div className="hidden grid-cols-[180px_110px_minmax(260px,1.35fr)_120px_minmax(220px,1fr)_max-content] gap-3 bg-slate-50 px-4 py-2 text-[10px] font-bold uppercase tracking-wider text-slate-400 lg:grid">
             <span>Tech</span><span>Status</span><span>Working on</span><span>GPS update</span><span>Next</span><span />
           </div>
           <div className="divide-y divide-slate-100">
             {rows.map(({ tech, state, current, next, ageSeconds }) => {
               const style = stateStyle[state]
               return (
-                <div key={tech.id} className={`grid gap-3 border-l-4 px-4 py-3 lg:grid-cols-[180px_110px_minmax(260px,1.35fr)_120px_minmax(220px,1fr)_180px] lg:items-center ${style.border} ${style.row}`}>
+                <div key={tech.id} className={`grid gap-3 border-l-4 px-4 py-3 lg:grid-cols-[180px_110px_minmax(260px,1.35fr)_120px_minmax(220px,1fr)_max-content] lg:items-center ${style.border} ${style.row}`}>
                   <div className="flex min-w-0 items-center gap-2.5">
                     <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-slate-200 bg-white text-[11px] font-bold text-slate-600">{initials(tech.name)}</span>
                     <span className="truncate text-sm font-semibold text-navy-900">{tech.name}</span>
@@ -213,9 +222,9 @@ export function CrewRightNowPanel() {
                   <div className="min-w-0 text-xs text-slate-500">
                     {next ? <><span className="font-medium text-slate-700">{timeLabel(next.scheduled_start_at)}</span> {next.customer_name ?? next.title}</> : 'Nothing assigned'}
                   </div>
-                  <div className="flex justify-end gap-2">
-                    <button type="button" onClick={() => navigate('/communications')} className="rounded-md border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-50">Message</button>
-                    <button type="button" onClick={() => navigate(current ? `/jobs/${current.id}` : state === 'driving' ? '/dispatch' : '/schedule')} className="rounded-md bg-navy-950 px-3 py-2 text-xs font-semibold text-white hover:bg-navy-900">
+                  <div className="flex flex-wrap justify-end gap-2 lg:flex-nowrap">
+                    <button type="button" onClick={() => navigate('/communications')} className="shrink-0 whitespace-nowrap rounded-md border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-50">Message</button>
+                    <button type="button" onClick={() => navigate(current ? `/jobs/${current.id}` : state === 'driving' ? '/dispatch' : '/schedule')} className="shrink-0 whitespace-nowrap rounded-md bg-navy-950 px-3 py-2 text-xs font-semibold text-white hover:bg-navy-900">
                       {current ? 'Open job' : state === 'driving' ? 'Track' : 'Assign job'}
                     </button>
                   </div>

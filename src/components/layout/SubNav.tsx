@@ -1,5 +1,6 @@
 ﻿import { useEffect, useState } from 'react'
 import { useLocation, NavLink } from 'react-router-dom'
+import { useId, useRef } from 'react'
 
 interface SubNavItem {
   to: string
@@ -60,6 +61,9 @@ const SUB_NAV_BY_SECTION: Record<string, SubNavItem[]> = {
   '/jobs': [
     { to: '/jobs', label: 'All Jobs', end: true },
     { to: '/jobs/new', label: 'New Job' },
+    // Work you have agreed to do on a schedule is still work, and this is
+    // where somebody is standing when they decide to put it on one.
+    { to: '/maintenance-contracts/new', label: 'New Service Agreement' },
   ],
   '/customers': [
     { to: '/customers', label: 'All Customers', end: true },
@@ -68,6 +72,9 @@ const SUB_NAV_BY_SECTION: Record<string, SubNavItem[]> = {
   '/estimates': [
     { to: '/estimates', label: 'All Estimates', end: true },
     { to: '/estimates/new', label: 'New Estimate' },
+    // An estimate a customer accepts for recurring work is an agreement,
+    // so the door is here too rather than only under Contracts.
+    { to: '/maintenance-contracts/new', label: 'New Service Agreement' },
   ],
   /*
    * Five workflows, not eleven destinations.
@@ -127,11 +134,23 @@ function findActiveSection(pathname: string): string | null {
 export function SubNav() {
   const location = useLocation()
   const [moreOpen, setMoreOpen] = useState(false)
+  const moreId = useId()
+  const moreButton = useRef<HTMLButtonElement>(null)
   const section = findActiveSection(location.pathname)
 
   // Close the overflow when the route changes, or it hangs open over the page
   // you just navigated to.
   useEffect(() => setMoreOpen(false), [location.pathname])
+  useEffect(() => {
+    if (!moreOpen) return
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape') return
+      setMoreOpen(false)
+      moreButton.current?.focus()
+    }
+    document.addEventListener('keydown', closeOnEscape)
+    return () => document.removeEventListener('keydown', closeOnEscape)
+  }, [moreOpen])
 
   if (!section) return null
 
@@ -151,7 +170,7 @@ export function SubNav() {
     ].join(' ')
 
   return (
-    <div className="relative border-b border-slate-200 bg-slate-50">
+    <div data-traditional-subnav className="relative border-b border-slate-200 bg-slate-50">
       <div className="flex h-10 items-center gap-2 px-6 text-sm">
         {primary.map((item, idx) => (
           <span key={item.to} className="flex items-center gap-2">
@@ -169,6 +188,9 @@ export function SubNav() {
             <button
               type="button"
               onClick={() => setMoreOpen((v) => !v)}
+              ref={moreButton}
+              aria-expanded={moreOpen}
+              aria-controls={moreOpen ? moreId : undefined}
               className={[
                 'transition-colors',
                 inSecondary ? 'text-navy-900 font-medium' : 'text-slate-600 hover:text-navy-700',
@@ -188,7 +210,7 @@ export function SubNav() {
             className="fixed inset-0 z-10 cursor-default"
             onClick={() => setMoreOpen(false)}
           />
-          <div className="absolute right-6 z-20 mt-1 grid w-[420px] grid-cols-2 gap-1 rounded-lg border border-slate-200 bg-white p-2 shadow-lg">
+          <div id={moreId} data-traditional-more className="absolute right-6 z-20 mt-1 grid w-[420px] grid-cols-2 gap-1 rounded-lg border border-slate-200 bg-white p-2 shadow-lg">
             {secondary.map((item) => (
               <NavLink
                 key={item.to}

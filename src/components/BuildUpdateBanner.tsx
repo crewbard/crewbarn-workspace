@@ -95,10 +95,10 @@ const clean = (xs: unknown): string[] =>
  * this browser saw; a browser that has never seen the card gets just the
  * newest release. Versions sort as strings (YYYY-MM-DD + letter).
  */
-async function deployedWhatsNew(): Promise<{ items: string[]; latest: string }> {
+async function deployedWhatsNew(): Promise<{ items: string[]; latest: string; catchUp: boolean }> {
   try {
     const res = await fetch(`/whats-new.json?_v=${Date.now()}`, { cache: 'no-store' })
-    if (!res.ok) return { items: [], latest: '' }
+    if (!res.ok) return { items: [], latest: '', catchUp: false }
     const data = (await res.json()) as WhatsNew
     const releases: Release[] = Array.isArray(data.releases)
       ? data.releases.map((r) => ({ version: String(r?.version ?? ''), items: clean(r?.items) })).filter((r) => r.version)
@@ -109,48 +109,121 @@ async function deployedWhatsNew(): Promise<{ items: string[]; latest: string }> 
     const latest = releases[0]?.version ?? ''
     const seen = seenVersion()
     const fresh = seen ? releases.filter((r) => r.version > seen) : releases.slice(0, 1)
-    return { items: fresh.flatMap((r) => r.items).slice(0, 40), latest }
+
+    /*
+     * Not every deploy carries release notes — a docs change, a fix with
+     * nothing worth announcing, a rebuild. The build hash moves, this card
+     * appears, and with nothing newer than the last version this browser
+     * saw it appeared EMPTY: "Reload to get the new changes", and then no
+     * changes. From the outside that is indistinguishable from the notes
+     * never being written.
+     *
+     * So when there is nothing newer, fall back to the most recent notes
+     * and say that is what they are. A card that repeats itself is a great
+     * deal better than one that asks you to reload for changes it will not
+     * name.
+     */
+    const catchUp = fresh.length === 0
+    const shown = catchUp ? releases.slice(0, 1) : fresh
+
+    return { items: shown.flatMap((r) => r.items).slice(0, 40), latest, catchUp }
   } catch {
-    return { items: [], latest: '' }
+    return { items: [], latest: '', catchUp: false }
   }
 }
 
 /** Reload from the server, not the cache: a plain reload can hand back the same stale HTML that caused this. */
 function reloadNow() {
-  window.location.replace(window.location.href)
+  // Change the query, not only the fragment: same-URL replace can be a
+  // same-document navigation on settings tabs and can reuse cached HTML.
+  const url = new URL(window.location.href)
+  url.searchParams.set('_crewbarn_update', `${Date.now()}-${Math.random().toString(36).slice(2)}`)
+  window.location.replace(url.href)
 }
 
 export function BuildUpdateBanner() {
   const [stale, setStale] = useState(false)
   const [items, setItems] = useState<string[]>([])
+  const [catchUp, setCatchUp] = useState(false)
   const [latest, setLatest] = useState('')
   // 'card' once; 'pill' after Close for now.
   const [mode, setMode] = useState<'card' | 'pill'>('card')
+
+  /**
+   * Say so. `reason` only has to be stable per stale build, so the
+   * signed-out auto-reload cannot loop on a bad deploy.
+   */
+  const announce = useCallback(
+    async (reason: string) => {
+      if (stale) return
+      // Signed out (the login screen): nothing in this tab can be lost, and
+      // the what's-new card is for people using the app — just take the new
+      // build quietly. Once per stale build, so a bad deploy can't loop us.
+      if (!getStoredToken()) {
+        const key = 'crewbarn:auto-reloaded-for'
+        if (sessionStorage.getItem(key) !== reason) {
+          sessionStorage.setItem(key, reason)
+          reloadNow()
+        }
+        return
+      }
+      const notes = await deployedWhatsNew()
+      setItems(notes.items)
+      setCatchUp(notes.catchUp)
+      setLatest(notes.latest)
+      setStale(true)
+    },
+    [stale],
+  )
 
   const check = useCallback(async () => {
     if (stale) return
     const loaded = loadedEntryPath()
     if (!loaded) return // dev server / no hashed entry — nothing to compare
     const deployed = await deployedEntryPath()
-    if (deployed && deployed !== loaded) {
-      // Signed out (the login screen): nothing in this tab can be lost, and
-      // the what's-new card is for people using the app — just take the new
-      // build quietly. Once per stale build, so a bad deploy can't loop us.
-      if (!getStoredToken()) {
-        const key = 'crewbarn:auto-reloaded-for'
-        if (sessionStorage.getItem(key) !== deployed) {
-          sessionStorage.setItem(key, deployed)
-          reloadNow()
-          return
-        }
-        return
-      }
-      const notes = await deployedWhatsNew()
-      setItems(notes.items)
-      setLatest(notes.latest)
-      setStale(true)
+    if (deployed && deployed !== loaded) await announce(deployed)
+  }, [stale, announce])
+
+  /**
+   * The failure itself, which arrives before any poll can.
+   *
+   * Polling every five minutes is fine for telling somebody a new build
+   * exists. It is useless for the moment a tab actually breaks, which is
+   * the first request for a retired asset — the first lazy route they
+   * open after a deploy. By then the app is already unstyled or stuck on
+   * a Suspense fallback with nothing on screen to explain it.
+   *
+   * Two signals, both raised by the browser for free:
+   *
+   *   vite:preloadError  a lazy chunk could not be imported. Pages answers
+   *                      a retired /assets path with index.html and a 200,
+   *                      so the import gets HTML where a module should be.
+   *   error (capture)    a <link> or <script> that was refused. The same
+   *                      HTML-for-CSS is blocked outright rather than
+   *                      sniffed, because _headers sets nosniff — which is
+   *                      what turns the page into raw unstyled markup.
+   *
+   * Resource errors do not bubble, hence the capture phase; and a script
+   * error reaching the same listener has window as its target, which the
+   * tag check filters out.
+   */
+  useEffect(() => {
+    const onPreload = () => void announce('retired-chunk')
+
+    const onResource = (e: Event) => {
+      const el = e.target as (HTMLLinkElement & HTMLScriptElement) | null
+      if (!el || (el.tagName !== 'LINK' && el.tagName !== 'SCRIPT')) return
+      const url = el.href || el.src || ''
+      if (url.includes('/assets/')) void announce('retired-asset')
     }
-  }, [stale])
+
+    window.addEventListener('vite:preloadError', onPreload)
+    window.addEventListener('error', onResource, true)
+    return () => {
+      window.removeEventListener('vite:preloadError', onPreload)
+      window.removeEventListener('error', onResource, true)
+    }
+  }, [announce])
 
   // Either button means "I've read this" — next time, only what's newer.
   const dismiss = useCallback(() => {
@@ -236,13 +309,15 @@ export function BuildUpdateBanner() {
             Reload to get the new changes
           </h2>
           <p className="mt-1 text-sm text-amber-900/80">
-            This tab is still running the old version. Nothing you've saved is affected.
+            This tab is still running the old version. Saved work is safe. Finish or save any unsaved changes before reloading.
           </p>
         </div>
 
         {items.length > 0 && (
           <div className="min-h-0 overflow-y-auto px-5 py-4">
-            <div className="text-[11px] font-bold uppercase tracking-wider text-slate-500">What's new</div>
+            <div className="text-[11px] font-bold uppercase tracking-wider text-slate-500">
+              {catchUp ? 'Most recent changes' : "What's new"}
+            </div>
             <ul className="mt-2 space-y-1.5">
               {items.map((it, i) => (
                 <li key={i} className="flex gap-2 text-sm text-slate-700">

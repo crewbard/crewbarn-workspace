@@ -1,4 +1,5 @@
-import { useLayoutEffect, useState, type CSSProperties, type RefObject } from 'react'
+import { lazy, Suspense, useLayoutEffect, useState, type CSSProperties, type RefObject } from 'react'
+import { useTheme } from '@/hooks/useTheme'
 import { Link } from 'react-router-dom'
 import { IconHelpCircle } from '@tabler/icons-react'
 import { usePermissions, PERM } from '@/hooks/usePermissions'
@@ -7,6 +8,11 @@ import { useOnboardingStatus } from '@/hooks/useOnboarding'
 import { useFranchiseFeature } from '@/hooks/useFranchiseFeature'
 import { openHelpTopic } from '@/lib/helpTopics'
 import { settingsHelpForRoute, settingsHelpTopicId } from '@/lib/settingsHelp'
+import { useSettingsInWorkspace } from '@/hooks/useSettingsInWorkspace'
+import { CONNECT_URL, isCompanySetting } from '@/lib/workspaceScope'
+import { canViewSetting } from '@/lib/settingAccess'
+
+const EasySettingsDirectory = lazy(() => import('./EasySettingsDirectory'))
 
 export interface ToolShedItem {
   label: string
@@ -41,6 +47,7 @@ export const TOOL_SHED_SECTIONS: ToolShedSection[] = [
     items: [
       { label: 'Automations', to: '/tool-shed/automations', requires: PERM.SETTINGS_VIEW },
       { label: 'Templates & Forms', to: '/custom-documents', requires: PERM.TEMPLATES_VIEW },
+      { label: 'Service Agreements', to: '/tool-shed/service-agreements', requires: PERM.SETTINGS_VIEW },
       { label: 'Import Data', to: '/tool-shed/import', requires: PERM.SETTINGS_VIEW },
       { label: 'Data Export', to: '/tool-shed/data-export', requires: PERM.SETTINGS_EDIT },
     ],
@@ -60,7 +67,7 @@ export const TOOL_SHED_SECTIONS: ToolShedSection[] = [
       { label: 'Vendors', to: '/vendors', requires: PERM.INVENTORY_VIEW },
       { label: 'Purchase Orders', to: '/purchase-orders', requires: PERM.INVENTORY_VIEW },
       { label: 'Warranties', to: '/warranties', requires: PERM.WARRANTIES_VIEW },
-      { label: 'Warranty Settings', to: '/tool-shed/warranty-settings', requires: PERM.SETTINGS_VIEW },
+      { label: 'Warranty Settings', to: '/tool-shed/warranty-settings', requires: 'settings_warranty.view' },
     ],
   },
   {
@@ -102,9 +109,18 @@ export const TOOL_SHED_SECTIONS: ToolShedSection[] = [
     items: [
       { label: 'Integrations', to: '/tool-shed/integrations', requires: PERM.SETTINGS_VIEW },
       { label: 'Phone, SMS & Email', to: '/tool-shed/communication', requires: PERM.SETTINGS_VIEW },
-      { label: 'CBI AI Settings', to: '/tool-shed/ai', requires: PERM.SETTINGS_EDIT },
+      { label: 'Call transcription', to: '/tool-shed/communication/transcription', requires: PERM.SETTINGS_VIEW },
+      { label: 'Where your email comes from', to: '/tool-shed/communication/email', requires: PERM.SETTINGS_EDIT },
+      // The old single AI page is fully sliced now. It stays routed, so links
+      // and bookmarks still work; the menu lists the pages it became.
+      // One row, not seven. Every one of these settings is on the CBI AI
+      // page, which also links the focused one-at-a-time versions — so the
+      // cluster keeps its way in without burying the rest of Connections.
+      { label: 'CBI AI', to: '/tool-shed/ai', requires: PERM.SETTINGS_EDIT },
       { label: 'Storage & Maps', to: '/tool-shed/storage-maps', requires: PERM.SETTINGS_VIEW },
       { label: 'GPS Devices', to: '/tool-shed/gps', requires: PERM.JOBS_VIEW },
+      { label: 'Label Printer', to: '/tool-shed/label-printer', requires: PERM.SETTINGS_VIEW },
+      { label: 'Shop TV', to: '/tool-shed/shop-tv', requires: PERM.SETTINGS_VIEW },
       { label: 'API Tokens', to: '/tool-shed/api-tokens', requires: PERM.SETTINGS_EDIT },
       { label: 'API Endpoint Guide', to: '/tool-shed/api-endpoints', requires: PERM.SETTINGS_VIEW },
       { label: 'Self-hosted Console', to: '/tool-shed/self-hosted', requires: PERM.SETTINGS_VIEW },
@@ -117,21 +133,29 @@ export const TOOL_SHED_SECTIONS: ToolShedSection[] = [
   {
     title: 'Business Controls',
     items: [
-      { label: 'Company Info', to: '/tool-shed/company-info', requires: PERM.SETTINGS_VIEW },
+      { label: 'Company Info', to: '/tool-shed/company-info', requires: 'settings_company.view' },
       { label: 'Brand & Logo', to: '/tool-shed/brand', requires: PERM.SETTINGS_EDIT },
-      { label: 'Website Builder', to: '/tool-shed/website', requires: PERM.SETTINGS_EDIT },
+      { label: 'Your website', to: '/website-builder', requires: PERM.SETTINGS_EDIT },
       { label: 'Customer App', to: '/tool-shed/customer-app', requires: PERM.SETTINGS_EDIT },
       { label: 'Google Reviews', to: '/tool-shed/google-reviews', requires: PERM.SETTINGS_VIEW },
-      { label: 'Shop Rules', to: '/tool-shed/preferences', requires: PERM.SETTINGS_VIEW },
+      { label: 'Shop Rules', to: '/tool-shed/preferences', requires: 'settings_preferences.view' },
       { label: 'Pricing & Discounts', to: '/tool-shed/pricing', requires: PERM.CATALOG_VIEW },
       { label: 'Cost Model', to: '/tool-shed/cost-model', requires: PERM.REVENUE_VIEW },
       { label: 'Tax Classes', to: '/catalog/tax-classes', requires: PERM.CATALOG_VIEW },
       { label: 'Payment Terms', to: '/tool-shed/payment-terms', requires: PERM.INVOICES_VIEW },
       { label: 'Payment Types', to: '/tool-shed/payment-types', requires: PERM.SETTINGS_VIEW },
       { label: 'Payments', to: '/tool-shed/payments', requires: PERM.SETTINGS_EDIT },
+      { label: 'Let customers pay by bank transfer', to: '/tool-shed/payments/bank-transfer', requires: PERM.SETTINGS_EDIT },
+      { label: 'Watch your bank for payments', to: '/tool-shed/payments/watch-bank', requires: PERM.SETTINGS_EDIT },
       { label: 'Connect Cloudflare', to: '/tool-shed/cloudflare', requires: PERM.SETTINGS_EDIT },
-      { label: 'Modules', to: '/tool-shed/modules', requires: PERM.SETTINGS_EDIT },
-      { label: 'App Layout', to: '/tool-shed/appearance', requires: PERM.SETTINGS_VIEW },
+      { label: 'Modules', to: '/tool-shed/modules', requires: 'settings_modules.view' },
+      // App Layout is not here on purpose. It is a per-person, per-browser
+      // preference — which sidebar you like, how dense the pages are — and it
+      // lives in the avatar menu under "Layout preview" with the rest of what
+      // belongs to you. Listing it in the Tool Shed put a personal choice
+      // among the company's settings and implied an owner could set it for
+      // everybody, which is not what it does. See ALWAYS_IN_WORKSPACE in
+      // lib/workspaceScope.ts for the longer version.
       { label: 'Onboarding', to: '/onboarding', requires: PERM.SETTINGS_VIEW },
       { label: 'Subscription', to: '/tool-shed/subscription', requires: PERM.SETTINGS_VIEW },
       { label: 'Usage & Limits', to: '/tool-shed/usage', requires: PERM.SETTINGS_VIEW },
@@ -163,6 +187,7 @@ export function useVisibleToolShedSections(): {
   const { has, isLoading, isPlatformAdmin } = usePermissions()
   const { isRouteVisible } = useModuleVisibility()
   const { isFranchise } = useFranchiseFeature()
+  const { show: showCompanySettings } = useSettingsInWorkspace()
   const canViewSettings = !isLoading && has(PERM.SETTINGS_VIEW)
   const onboardingQuery = useOnboardingStatus(canViewSettings)
   const onboarding = onboardingQuery.data?.data
@@ -182,6 +207,11 @@ export function useVisibleToolShedSections(): {
           if (item.hideForPlatformAdmin && isPlatformAdmin) return false
           if (item.franchiseOnly && !isFranchise) return false
           if (!isRouteVisible(item.to)) return false
+          if (!canViewSetting(item.to, has)) return false
+          // Company settings are run from connect.crewbarn.com unless this
+          // workspace has asked for them here too. App layout is exempt: it
+          // is a per-browser preference about the screen you are looking at.
+          if (!showCompanySettings && isCompanySetting(item.to)) return false
           return !item.requires || has(item.requires)
         }),
       })).filter((section) => section.items.length > 0)
@@ -190,18 +220,19 @@ export function useVisibleToolShedSections(): {
 }
 
 export function ToolShedMenu({ onClose, triggerRef }: ToolShedMenuProps) {
-  const { sections: filtered } = useVisibleToolShedSections()
+  const { theme } = useTheme()
+  const easy = theme === 'easy-side' || theme === 'easy-top'
+  const { sections: filtered, isLoading } = useVisibleToolShedSections()
+  const { show: showCompanySettings } = useSettingsInWorkspace()
 
-  // Position the panel against the VIEWPORT: horizontally CENTERED, dropping
-  // from just under the Tool Shed button (measured, so it's banner-safe), and
-  // clamped on-screen so it never cuts off either edge at any width. Fallback
-  // (pre-measure) is CSS-centered.
+  // Anchor to the trigger, not the viewport center. Clamp wide menus to
+  // the viewport so both compact and full directories remain reachable.
   const [pos, setPos] = useState<CSSProperties>(() => ({
     position: 'fixed',
     top: 56,
     left: '50%',
     transform: 'translateX(-50%)',
-    width: 'min(1180px, calc(100vw - 1rem))',
+    width: 'min(980px, calc(100vw - 1rem))',
     maxHeight: 'calc(100vh - 4rem)',
   }))
 
@@ -212,20 +243,29 @@ export function ToolShedMenu({ onClose, triggerRef }: ToolShedMenuProps) {
       const rect = triggerRef?.current?.getBoundingClientRect()
       const width = Math.min(preferredWidth(vw), vw - 16)
       const top = rect ? rect.bottom : 56
-      // Center horizontally in the viewport, clamped to an 8px left margin.
-      const left = Math.max(8, Math.round((vw - width) / 2))
+      const left = Math.max(8, Math.min(rect?.left ?? 8, vw - width - 8))
       setPos({
         position: 'fixed',
         top,
         left,
         width,
-        maxHeight: vh - top - 12,
+        maxHeight: Math.max(0, vh - top - 12),
       })
     }
     place()
     window.addEventListener('resize', place)
-    return () => window.removeEventListener('resize', place)
-  }, [triggerRef])
+    window.addEventListener('scroll', place, true)
+    const observer = new ResizeObserver(place)
+    if (triggerRef?.current) {
+      observer.observe(triggerRef.current)
+      if (triggerRef.current.parentElement) observer.observe(triggerRef.current.parentElement)
+    }
+    return () => {
+      window.removeEventListener('resize', place)
+      window.removeEventListener('scroll', place, true)
+      observer.disconnect()
+    }
+  }, [triggerRef, easy])
 
   // NOTE: no onMouseLeave here. This menu is a DOM descendant of the
   // TopBar trigger wrapper, which owns hover-intent (open on enter,
@@ -233,17 +273,20 @@ export function ToolShedMenu({ onClose, triggerRef }: ToolShedMenuProps) {
   // the menu shut the instant the cursor moved from the menu back up
   // to the trigger button — the classic flicker. Let the parent handle it.
   //
-  // FIT-EVERY-SCREEN: the panel is right-anchored to the trigger (Tool Shed
-  // sits right-of-center), its width is capped to the viewport, its height
+  // FIT-EVERY-SCREEN: the panel is anchored to the trigger, its width
+  // is capped to the viewport, its height
   // is capped with vertical scroll, and sections flow via CSS multi-columns
   // (3 → 2 → 1 as width shrinks). That keeps the whole menu reachable on a
-  // 24"/27" monitor, a laptop, or a tablet — no JS measuring, no cut-off.
+  // monitor, a laptop, or a tablet without cutting off menu entries.
   return (
     <div
       style={pos}
       className="z-40 overflow-y-auto overscroll-contain
                  bg-white border border-slate-200 rounded-xl shadow-2xl"
     >
+      <Suspense fallback={<p role="status" className="p-4">Loading settings…</p>}><EasySettingsDirectory onClose={onClose} /></Suspense>
+      {isLoading && <p role="status" className="p-4 text-sm text-slate-500">Loading your tools…</p>}
+      {!isLoading && filtered.length === 0 && <p className="p-4 text-sm text-slate-500">No workspace tools are available with your current access.</p>}
       <div className="columns-1 sm:columns-2 xl:columns-3 2xl:columns-4 gap-3 p-4">
         {filtered.map((section) => (
           <div
@@ -297,7 +340,22 @@ export function ToolShedMenu({ onClose, triggerRef }: ToolShedMenuProps) {
       </div>
       <div className="sticky bottom-0 flex items-center justify-between gap-3 border-t border-slate-100 px-6 py-3 bg-slate-50 rounded-b-xl">
         <p className="text-xs text-slate-500">
-          Items visible per your role. Owner sees everything; ask the shop owner if you&apos;re missing something.
+          {showCompanySettings ? (
+            <>Items visible per your role. Owner sees everything; ask the shop owner if you&apos;re missing something.</>
+          ) : (
+            <>
+              Company settings are on{' '}
+              <a
+                href={CONNECT_URL}
+                target="_blank"
+                rel="noreferrer"
+                className="font-semibold text-amber-700 hover:text-amber-800"
+              >
+                connect.crewbarn.com
+              </a>
+              . This menu keeps what you open while working.
+            </>
+          )}
         </p>
         <Link
           to="/tool-shed"

@@ -160,7 +160,7 @@ function ThreadRow({
   active: boolean
   onClick: () => void
 }) {
-  const unread = conversation.unread_count > 0
+  const unread = conversation.unread_for_me ?? conversation.unread_count > 0
   const channelLabel = conversation.channel === 'email' ? 'Email' : conversation.channel === 'call' ? 'Call' : 'Text'
   const title = conversation.channel === 'email'
     ? (conversation.external_email ?? 'Email thread')
