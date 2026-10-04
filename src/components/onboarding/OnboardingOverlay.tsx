@@ -5,6 +5,7 @@ import type { Account } from '@/lib/auth'
 import { useAuth } from '@/hooks/useAuth'
 import { useApplySeedPack, useCompleteOnboardingStep, useOnboardingStatus, useSeedPacks } from '@/hooks/useOnboarding'
 import { buildOnboardingStages, firstOpenStage } from '@/components/onboarding/onboardingStages'
+import { OnboardingNarratedTour } from '@/components/onboarding/OnboardingNarratedTour'
 import { AiSetupStep } from '@/components/onboarding/steps/AiSetupStep'
 import { BetaAgreementStep } from '@/components/onboarding/steps/BetaAgreementStep'
 import { CommunicationsStep } from '@/components/onboarding/steps/CommunicationsStep'
@@ -100,6 +101,7 @@ export function OnboardingOverlay({ open, onClose, startAtFirst = false }: Onboa
         <div className="max-h-[calc(100vh-3rem)] w-full max-w-6xl overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl">
           <div className="grid grid-cols-1 lg:grid-cols-[360px_minmax(0,1fr)]">
             <aside className="max-h-[calc(100vh-3rem)] overflow-y-auto border-r border-slate-200 bg-white p-6">
+              <div data-tour="onboarding-intro">
               <div className="text-xs font-semibold uppercase tracking-wide text-amber-700">
                 CrewBarn setup
               </div>
@@ -111,8 +113,9 @@ export function OnboardingOverlay({ open, onClose, startAtFirst = false }: Onboa
                 goes out to a customer until the last step.
               </p>
 
+              </div>
               {onboarding && (
-                <div className="mt-6">
+                <div data-tour="onboarding-progress" className="mt-6">
                   {/* "25%" on its own tells you nothing you can act on. How many
                       are left does. */}
                   <div className="flex items-baseline justify-between">
@@ -146,7 +149,7 @@ export function OnboardingOverlay({ open, onClose, startAtFirst = false }: Onboa
                 boxes, each contradicting itself. The state now lives in one
                 place, the dot, and the row says what the step is.
               */}
-              <ol className="mt-6 -mx-2">
+              <ol data-tour="onboarding-stages" className="mt-6 -mx-2">
                 {stages.map((stage) => {
                   const current = stage.key === activeStage?.key
                   return (
@@ -197,7 +200,8 @@ export function OnboardingOverlay({ open, onClose, startAtFirst = false }: Onboa
             </aside>
 
             <main className="max-h-[calc(100vh-3rem)] min-h-[640px] overflow-y-auto bg-slate-50 p-6">
-              <div className="flex items-center justify-between gap-3">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <OnboardingNarratedTour />
                 {onboarding && (
                   <button
                     type="button"
@@ -237,7 +241,7 @@ export function OnboardingOverlay({ open, onClose, startAtFirst = false }: Onboa
                 </div>
               ) : (
                 <div className="mt-8 space-y-5">
-                  <section className="rounded-2xl border border-slate-200 bg-white p-7 shadow-sm">
+                  <section data-tour="onboarding-current-stage" className="rounded-2xl border border-slate-200 bg-white p-7 shadow-sm">
                     <div className="text-xs font-semibold uppercase tracking-wide text-amber-700">
                       {activeStage.eyebrow}
                     </div>
@@ -361,7 +365,7 @@ export function OnboardingOverlay({ open, onClose, startAtFirst = false }: Onboa
                     they are quiet text now: still there, still reachable by
                     keyboard, no longer shouting over the thing that matters.
                   */}
-                  <div className="flex items-center justify-between px-1">
+                  <div data-tour="onboarding-stage-navigation" className="flex items-center justify-between px-1">
                     <button
                       type="button"
                       disabled={activeIndex <= 0}
