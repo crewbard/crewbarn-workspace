@@ -3,6 +3,10 @@ import { createPortal } from 'react-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { apiRequest, type ApiError } from '@/lib/api'
 import { PERM, usePermissions } from '@/hooks/usePermissions'
+import { FromJobs } from '@/components/reference/FromJobs'
+import type { FromJobs as FromJobsSummary } from '@/lib/referenceCards'
+import type { FitsCardData } from '@/lib/fitment'
+import { PartsThatFit } from '@/components/fitment/PartsThatFit'
 
 /**
  * Everything about one vehicle, on one card.
@@ -22,6 +26,14 @@ import { PERM, usePermissions } from '@/hooks/usePermissions'
  * Tenant side only. There is no portal route to this and there should
  * not be — it carries what the shop pays, what it owns and where its
  * stock sits.
+ *
+ * **Two views, Keys and Parts that fit.** Keys is everything the card has
+ * always shown, in the same order. Parts that fit is the company's products
+ * whose fitment rows match this vehicle and year (catalog_item_fitments),
+ * each opening into its flash card. The trade decides which comes first: a
+ * locksmith opens on Keys, a mobile mechanic on Parts that fit with the key
+ * sections folded behind a "Key info" button (one click, never removed).
+ * A company with no vehicle fitment sees the key card exactly as before.
  *
  * **Part numbers, not suppliers.** The card gives the number and
  * stops. Every shop buys from somebody different, so there is nothing
@@ -175,7 +187,7 @@ type LishiGuideRow = {
 }
 
 type Card = {
-  vehicle: { make?: string; model?: string; year?: number; category?: string }
+  vehicle: { make?: string; model?: string; year?: number; year_to?: number; category?: string }
   key: {
     candidates: Candidate[]
     match_count: number
@@ -206,6 +218,14 @@ type Card = {
   parts_matched_on?: { oem: string; lock: string }
   editable_fields: Record<string, string[]>
   library_version: string | null
+  /** The shop's own card for this vehicle, with what worked on its jobs. */
+  shop_card?: { id: string; title: string; from_jobs: FromJobsSummary } | null
+  /** Parts that fit, from the company's fitment rows; null without a vehicle subject or with fitment off. */
+  fits?: FitsCardData | null
+  /** Which view the trade opens on. */
+  trade_view?: 'keys' | 'parts'
+  /** Fold the key sections behind a button (a trade that does not cut keys). */
+  hide_keys?: boolean
 }
 
 const ROUTE_TONE: Record<string, string> = {
@@ -257,6 +277,35 @@ function Field({
   const [reason, setReason] = useState('')
   const [propose, setPropose] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  // The shop's own name for this row (a label:<field> correction); the value is untouched.
+  const [renaming, setRenaming] = useState(false)
+  const [labelDraft, setLabelDraft] = useState(ownLabel ?? '')
+
+  const rename = useMutation({
+    mutationFn: () =>
+      apiRequest('/v1/vehicle-keys/corrections', {
+        method: 'POST',
+        body: {
+          subject,
+          subject_id: subjectId,
+          field: `label:${field}`,
+          // Empty goes back to the book's name.
+          value: labelDraft.trim() === '' ? null : labelDraft.trim(),
+          was: ownLabel || label(field),
+          reason: null,
+          propose_to_platform: false,
+        },
+      }),
+    onSuccess: () => {
+      setRenaming(false)
+      setError(null)
+      onSaved()
+    },
+    onError: (e: ApiError | Error) => {
+      const detail = (e as ApiError)?.details as { message?: string } | undefined
+      setError(detail?.message ?? (e as Error).message ?? 'Could not rename that row.')
+    },
+  })
 
   const save = useMutation({
     mutationFn: () =>
@@ -328,10 +377,50 @@ function Field({
     )
   }
 
+  if (renaming) {
+    return (
+      <div className="py-1.5">
+        <div className="text-[11px] font-semibold text-slate-500 uppercase tracking-wide">
+          Rename “{ownLabel || label(field)}”
+        </div>
+        <input
+          autoFocus
+          value={labelDraft}
+          maxLength={60}
+          onChange={(e) => setLabelDraft(e.target.value)}
+          onKeyDown={(e) => { if (e.key === 'Enter') rename.mutate(); if (e.key === 'Escape') setRenaming(false) }}
+          className="mt-1 w-full px-2 py-1 text-sm border border-sky-400 rounded"
+          placeholder={`Your name for this row. Empty uses the book's: ${label(field)}`}
+        />
+        {error && <div className="mt-1 text-[11px] text-red-700">{error}</div>}
+        <div className="flex gap-2 mt-2">
+          <button
+            type="button"
+            disabled={rename.isPending}
+            onClick={() => rename.mutate()}
+            className="px-2.5 py-1 text-xs rounded bg-slate-900 text-white disabled:opacity-50"
+          >
+            {rename.isPending ? 'Saving…' : 'Save name'}
+          </button>
+          <button
+            type="button"
+            onClick={() => { setRenaming(false); setError(null); setLabelDraft(ownLabel ?? '') }}
+            className="px-2.5 py-1 text-xs rounded border border-slate-300 text-slate-700"
+          >
+            Cancel
+          </button>
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div className="py-1 group">
       <div className="flex items-baseline gap-2">
-        <span className="text-[11px] font-semibold text-slate-500 uppercase tracking-wide min-w-[7.5rem]">
+        <span
+          className="text-[11px] font-semibold text-slate-500 uppercase tracking-wide min-w-[7.5rem]"
+          title={ownLabel ? `Our name. The book calls it ${label(field)}.` : undefined}
+        >
           {ownLabel || label(field)}
         </span>
         <span className="text-sm text-slate-900 font-mono break-all">{show(value)}</span>
@@ -352,9 +441,19 @@ function Field({
           <button
             type="button"
             onClick={() => setEditing(true)}
-            className="opacity-0 group-hover:opacity-100 text-[11px] text-sky-700 hover:underline"
+            className="opacity-0 group-hover:opacity-100 focus:opacity-100 text-[11px] text-[var(--accent-700)] hover:underline"
           >
             edit
+          </button>
+        )}
+        {/* Only a key-spec row can take the shop's own name (label:<field>). */}
+        {editable && subject === 'vehicle_key_spec' && (
+          <button
+            type="button"
+            onClick={() => { setLabelDraft(ownLabel ?? ''); setRenaming(true) }}
+            className="opacity-0 group-hover:opacity-100 focus:opacity-100 text-[11px] text-[var(--accent-700)] hover:underline"
+          >
+            rename
           </button>
         )}
       </div>
@@ -656,7 +755,7 @@ function AddEntry({
         <button
           type="button"
           onClick={() => setExtra((p) => [...p, { label: '', value: '' }])}
-          className="self-start text-xs font-medium text-sky-700 hover:text-sky-900"
+          className="self-start text-xs font-medium text-[var(--accent-700)] hover:text-[var(--accent-800)]"
         >
           + Add a row of your own
         </button>
@@ -697,10 +796,95 @@ function AddEntry({
   )
 }
 
+/**
+ * Keys | Parts that fit. In the trade's order; when the trade folds the keys
+ * (hide_keys) they sit behind a quiet "Key info" button instead of a tab.
+ */
+function ViewTabs({ shown, onShow, partsFirst, foldKeys, partsCount }: {
+  shown: 'keys' | 'parts'
+  onShow: (v: 'keys' | 'parts') => void
+  partsFirst: boolean
+  foldKeys: boolean
+  partsCount: number
+}) {
+  const tabClass = (on: boolean) =>
+    'border-b-2 px-3 py-1.5 text-sm font-medium ' +
+    (on
+      ? 'border-[var(--accent-500)] text-[var(--accent-700)]'
+      : 'border-transparent text-[var(--bins-muted)] hover:text-[var(--bins-text)]')
+  const parts = (
+    <button key="parts" type="button" data-vk-view="parts" onClick={() => onShow('parts')} className={tabClass(shown === 'parts')}>
+      Parts that fit{partsCount > 0 ? ` (${partsCount})` : ''}
+    </button>
+  )
+  const keys = foldKeys && shown !== 'keys' ? (
+    <button key="keys" type="button" data-vk-view="keys" onClick={() => onShow('keys')}
+      className="ml-auto self-center rounded-md border border-[var(--bins-border)] px-2.5 py-1 text-xs font-medium text-[var(--bins-text-2)] hover:bg-[var(--bins-soft)]">
+      Key info
+    </button>
+  ) : (
+    <button key="keys" type="button" data-vk-view="keys" onClick={() => onShow('keys')} className={tabClass(shown === 'keys')}>
+      {foldKeys ? 'Key info' : 'Keys'}
+    </button>
+  )
+  return (
+    <div data-bins-ui="" data-tour="vk-views" className="border-b border-[var(--bins-border)]">
+      <div className="-mb-px flex flex-wrap gap-1">{partsFirst ? [parts, keys] : [keys, parts]}</div>
+    </div>
+  )
+}
+
+/**
+ * What the shop keeps for this vehicle, found by name (the model on the
+ * label), with "this year" when the label names the year. On the Keys view
+ * as always, and under Parts that fit for items that have no fit saved yet.
+ */
+function ShelfList({ shelf, heading = 'On your shelf for this vehicle' }: { shelf: ShelfRow[]; heading?: string }) {
+  return (
+    <div className="rounded border border-slate-200">
+      <div className="border-b border-slate-200 px-3 py-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
+        {heading}
+      </div>
+      <ul className="divide-y divide-slate-100">
+        {shelf.map((item) => (
+          <li key={item.catalog_item_id} className="flex items-center gap-2.5 px-3 py-2">
+            {item.image && (
+              <img
+                src={item.image}
+                alt=""
+                loading="lazy"
+                className="h-8 w-8 shrink-0 rounded border border-slate-200 object-cover"
+              />
+            )}
+            <span className="min-w-0">
+              <span className="block text-sm text-slate-900">{item.name}</span>
+              {item.sku && <span className="block text-xs text-slate-500">{item.sku}</span>}
+            </span>
+            {item.names_year && (
+              <span className="shrink-0 rounded-full bg-emerald-50 px-2 py-0.5 text-[11px] font-semibold text-emerald-700">
+                this year
+              </span>
+            )}
+            <span
+              className={
+                'ml-auto shrink-0 text-sm tabular-nums ' +
+                (item.in_stock ? 'font-semibold text-slate-900' : 'text-slate-400')
+              }
+            >
+              {item.in_stock ? item.total_available : 'none'}
+            </span>
+          </li>
+        ))}
+      </ul>
+    </div>
+  )
+}
+
 export function VehicleKeyOverlay({
   make,
   model,
   year,
+  yearTo,
   keysInHand,
   category,
   onClose,
@@ -708,6 +892,8 @@ export function VehicleKeyOverlay({
   make: string
   model?: string | null
   year?: number | null
+  /** End of a range from a mention ("15-18 Tacoma"): keys for the first year, parts for all of them. */
+  yearTo?: number | null
   keysInHand?: number | null
   category?: string | null
   onClose: () => void
@@ -725,14 +911,17 @@ export function VehicleKeyOverlay({
   // Which option is on screen. Reset whenever the vehicle changes,
   // or a two-option truck opens showing the second one's answer.
   const [tab, setTab] = useState(0)
+  // Keys or Parts that fit; null until somebody picks, so the trade decides.
+  const [view, setView] = useState<'keys' | 'parts' | null>(null)
 
   const params = new URLSearchParams({ make })
   if (model) params.set('model', model)
   if (year) params.set('year', String(year))
+  if (year && yearTo && yearTo > year) params.set('year_to', String(yearTo))
   if (keysInHand !== null && keysInHand !== undefined) params.set('keys_in_hand', String(keysInHand))
   if (category) params.set('category', category)
 
-  const queryKey = ['vehicle-key-overlay', make, model, year, keysInHand, category]
+  const queryKey = ['vehicle-key-overlay', make, model, year, yearTo, keysInHand, category]
   const cardQ = useQuery({
     queryKey,
     queryFn: () => apiRequest<Card>(`/v1/vehicle-keys/overlay?${params.toString()}`),
@@ -752,11 +941,17 @@ export function VehicleKeyOverlay({
   if (shownVehicle !== `${make}|${model}|${year}`) {
     setShownVehicle(`${make}|${model}|${year}`)
     setTab(0)
+    setView(null)
   }
+  const fits = card?.fits ?? null
+  const shown: 'keys' | 'parts' = fits ? (view ?? (card?.trade_view === 'parts' ? 'parts' : 'keys')) : 'keys'
+  const fitIds = new Set((fits?.items ?? []).map((i) => i.item_id))
+  const shelfOnly = (card?.shelf ?? []).filter((i) => !fitIds.has(i.catalog_item_id))
   const editableFor = (subject: string) =>
     mayCorrect ? (card?.editable_fields?.[subject] ?? []) : []
 
-  const title = [year, make, model].filter(Boolean).join(' ')
+  const years = year && yearTo && yearTo > year ? `${year}–${yearTo}` : year
+  const title = [years, make, model].filter(Boolean).join(' ')
 
   /*
    * Into the body, not into the sentence this opened from. A job
@@ -805,12 +1000,47 @@ export function VehicleKeyOverlay({
             </div>
           )}
 
-          {card && (
+          {card && fits && (
+            <ViewTabs
+              shown={shown}
+              onShow={setView}
+              partsFirst={card.trade_view === 'parts'}
+              foldKeys={!!card.hide_keys}
+              partsCount={fits.total}
+            />
+          )}
+
+          {card && fits && shown === 'parts' && (
+            <PartsThatFit data={fits} title={title || make}>
+              {shelfOnly.length > 0 && (
+                <ShelfList shelf={shelfOnly} heading="Named for this vehicle, no fit saved yet" />
+              )}
+            </PartsThatFit>
+          )}
+
+          {card && shown === 'keys' && (
             <>
               {/* The question that decides whether a tech is sent at all. */}
               {card.key.keys_question && (
                 <div className="bg-amber-50 border border-amber-200 rounded px-3 py-2 text-sm text-amber-900">
                   {card.key.keys_question}
+                </div>
+              )}
+
+              {/*
+                The shop's own card for this vehicle, first: what its techs
+                found on the job beats what the catalogue printed.
+              */}
+              {card.shop_card && (
+                <div data-tour="vk-shop-card" className="space-y-1.5">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                    Your shop&apos;s card · <span className="normal-case text-slate-700">{card.shop_card.title}</span>
+                  </p>
+                  {card.shop_card.from_jobs.jobs > 0 ? (
+                    <FromJobs fromJobs={card.shop_card.from_jobs} />
+                  ) : (
+                    <p className="text-xs italic text-slate-500">No finished job has said what worked yet.</p>
+                  )}
                 </div>
               )}
 
@@ -828,44 +1058,7 @@ export function VehicleKeyOverlay({
                 know about. An item labelled with the year is not a nearest
                 guess -- somebody chose it for this truck.
               */}
-              {(card.shelf ?? []).length > 0 && (
-                <div className="rounded border border-slate-200">
-                  <div className="border-b border-slate-200 px-3 py-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
-                    On your shelf for this vehicle
-                  </div>
-                  <ul className="divide-y divide-slate-100">
-                    {(card.shelf ?? []).map((item) => (
-                      <li key={item.catalog_item_id} className="flex items-center gap-2.5 px-3 py-2">
-                        {item.image && (
-                          <img
-                            src={item.image}
-                            alt=""
-                            loading="lazy"
-                            className="h-8 w-8 shrink-0 rounded border border-slate-200 object-cover"
-                          />
-                        )}
-                        <span className="min-w-0">
-                          <span className="block text-sm text-slate-900">{item.name}</span>
-                          {item.sku && <span className="block text-xs text-slate-500">{item.sku}</span>}
-                        </span>
-                        {item.names_year && (
-                          <span className="shrink-0 rounded-full bg-emerald-50 px-2 py-0.5 text-[11px] font-semibold text-emerald-700">
-                            this year
-                          </span>
-                        )}
-                        <span
-                          className={
-                            'ml-auto shrink-0 text-sm tabular-nums ' +
-                            (item.in_stock ? 'font-semibold text-slate-900' : 'text-slate-400')
-                          }
-                        >
-                          {item.in_stock ? item.total_available : 'none'}
-                        </span>
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              )}
+              {(card.shelf ?? []).length > 0 && <ShelfList shelf={card.shelf ?? []} />}
 
               {/*
                 An empty library and an uncovered vehicle look identical
@@ -874,23 +1067,12 @@ export function VehicleKeyOverlay({
               */}
               {card.library_loaded === false ? (
                 <div className="text-sm bg-amber-50 border border-amber-200 text-amber-900 rounded p-4">
-                  <p className="font-semibold">The key library is not loaded on this server.</p>
+                  <p className="font-semibold">The key reference library isn&apos;t available right now.</p>
                   <p className="mt-1">
                     Every section below will be empty until it is, and nothing here is a
-                    statement about this vehicle. Run the reference seeders against this
-                    database:
+                    statement about this vehicle. Contact CrewBarn support to get the key
+                    library turned on for your account.
                   </p>
-                  <code className="mt-2 block text-[11px] font-mono bg-white/60 rounded px-2 py-1">
-                    crewbarn:seed-vehicle-keys · crewbarn:seed-oem-parts ·
-                    crewbarn:seed-lock-parts · crewbarn:seed-asp-locks ·
-                    crewbarn:seed-lishi-guide
-                  </code>
-                  {card.library_database && (
-                    <p className="mt-2 text-[11px]">
-                      This server is reading <code className="font-mono">{card.library_database}</code>.
-                      Run them against that one — not whichever database you were last in.
-                    </p>
-                  )}
                 </div>
               ) : card.key.candidates.length === 0 ? (
                 <div className="text-sm text-slate-600 bg-slate-50 border border-slate-200 rounded p-4">
@@ -1427,7 +1609,7 @@ export function VehicleKeyLink({
         onClick={() => setOpen(true)}
         className={
           className ??
-          'text-sky-700 underline decoration-dotted underline-offset-2 hover:decoration-solid text-left'
+          'text-[var(--accent-700)] underline decoration-[var(--accent-300)] decoration-dotted underline-offset-2 hover:decoration-solid text-left'
         }
         title="Keys, parts and tools for this vehicle"
       >

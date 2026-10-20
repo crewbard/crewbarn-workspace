@@ -15,18 +15,20 @@ export function CommunicationsStep({ onMarkStep, onboarding, saving }: StepProps
 
     return (
       <div className="space-y-4">
-        <div className="rounded-lg border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-900">
+        <div data-tour="onboarding-phone-intro" className="rounded-lg border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-900">
           Choose one CrewBarn number for technicians to call and text customers from the mobile app.
           Calls and messages are recorded on the customer and job timeline. Normal outbound US texting
           starts after the number's required 10DLC registration is approved.
         </div>
         {!onboarding.beta_agreement?.byo_only && (
-          <HostedNumberSection
-            activeProvider="twilio_hosted"
-            onActiveChange={setHostedNumberReady}
-          />
+          <div data-tour="onboarding-phone-number">
+            <HostedNumberSection
+              activeProvider="twilio_hosted"
+              onActiveChange={setHostedNumberReady}
+            />
+          </div>
         )}
-        <div className="flex flex-wrap gap-3">
+        <div className="flex flex-wrap gap-3" data-guide="comms-choices" data-tour="onboarding-phone-choices">
           {!onboarding.beta_agreement?.byo_only && (
           <button
             type="button"

@@ -1,4 +1,5 @@
 import { API_URL, apiRequest, getActingTenant, getStoredToken } from '@/lib/api'
+import { assertFileResponse } from '@/lib/fileResponse'
 
 /**
  * Company (tenant-internal) secure files — the business's own encrypted vault
@@ -135,7 +136,58 @@ export async function fetchCompanySecureFileBlob(fileId: string, download = fals
   return response.blob()
 }
 
-async function authedFormRequest<T>(path: string, form: FormData): Promise<T> {
+/**
+ * Taking every secure file elsewhere as one AES-256 encrypted zip. The
+ * password comes back once, from startSecureFileExport; CrewBarn doesn't
+ * keep it.
+ */
+export interface SecureFileExport {
+  id: string
+  status: 'queued' | 'building' | 'ready' | 'failed' | 'expired'
+  file_count: number
+  customer_count: number
+  skipped_count: number
+  size_bytes: number
+  error: string | null
+  requested_by_name: string | null
+  created_at: string | null
+  built_at: string | null
+  expires_at: string | null
+  last_downloaded_at: string | null
+  download_count: number
+  download_name: string
+}
+
+export function listSecureFileExports() {
+  return apiRequest<{ data: SecureFileExport[] }>(`/v1/secure-files/exports`)
+}
+
+export function startSecureFileExport() {
+  return apiRequest<{ data: SecureFileExport; passphrase: string }>(`/v1/secure-files/exports`, { method: 'POST', body: {} })
+}
+
+export async function downloadSecureFileExport(exportId: string, filename: string): Promise<void> {
+  const response = await fetch(`${API_URL}/v1/secure-files/exports/${exportId}/download`, { headers: authHeaders() })
+  if (!response.ok) {
+    let message = response.status === 423 ? 'Unlock company files first.' : `Download failed (${response.status})`
+    try {
+      const body = await response.json()
+      if (typeof body.message === 'string') message = body.message
+    } catch {
+      // not json
+    }
+    throw new Error(message)
+  }
+  assertFileResponse(response)
+  const url = URL.createObjectURL(await response.blob())
+  const a = document.createElement('a')
+  a.href = url
+  a.download = filename
+  a.click()
+  setTimeout(() => URL.revokeObjectURL(url), 1000)
+}
+
+export async function authedFormRequest<T>(path: string, form: FormData): Promise<T> {
   const response = await fetch(`${API_URL}${path}`, {
     method: 'POST',
     headers: authHeaders(),
@@ -154,7 +206,7 @@ async function authedFormRequest<T>(path: string, form: FormData): Promise<T> {
   return response.json()
 }
 
-function authHeaders(): Record<string, string> {
+export function authHeaders(): Record<string, string> {
   const headers: Record<string, string> = { Accept: 'application/json' }
   const token = getStoredToken()
   if (token) headers.Authorization = `Bearer ${token}`

@@ -48,6 +48,7 @@ const missingTopicIds = [...new Set(routeTopicIds.filter((id) => !knownTopicIds.
 if (brokenLinks.length || legacyRedirectLinks.length || duplicateTopicIds.length || missingTopicIds.length) {
   console.error('Help audit failed.')
   if (brokenLinks.length) console.error(`Broken internal links:\n- ${brokenLinks.join('\n- ')}`)
+if (legacyRedirectLinks.length) console.error(`Links using legacy redirects:\n- ${legacyRedirectLinks.join('\n- ')}`)
   if (duplicateTopicIds.length) console.error(`Duplicate topic slugs:\n- ${[...new Set(duplicateTopicIds)].join('\n- ')}`)
   if (missingTopicIds.length) console.error(`Route mappings with missing topic slugs:\n- ${missingTopicIds.join('\n- ')}`)
   process.exit(1)

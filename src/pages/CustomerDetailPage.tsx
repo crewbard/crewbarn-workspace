@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { EquipmentSharingCard } from '@/components/assets/EquipmentSharingCard'
+import { AgreementBuilderButton } from '@/components/agreements/AgreementBuilderButton'
 import { formatPhone } from '@/lib/comms'
 import { CONNECT_URL } from '@/lib/workspaceScope'
 import { Avatar } from '@/components/Avatar'
@@ -10,7 +11,9 @@ import { useAssets } from '@/hooks/useAssets'
 import { useWorkOrders } from '@/hooks/useWorkOrders'
 import { useEstimates } from '@/hooks/useEstimates'
 import { Button } from '@/components/ui/Button'
+import { Modal } from '@/components/ui/Modal'
 import { CustomerForm } from '@/components/CustomerForm'
+import { uploadCustomValues, type CustomValues } from '@/components/CustomFieldsSection'
 import { CustomerStatementButton } from '@/components/CustomerStatementButton'
 import { LocationPickerModal } from '@/components/LocationPickerModal'
 import { LocationMapPlaceholder } from '@/components/LocationMapPlaceholder'
@@ -53,6 +56,9 @@ import type { CustomerContact } from '@/types/customer'
 import type { Invoice, InvoiceStatus } from '@/types/invoice'
 import { NewAssetWizardModal } from '@/components/NewAssetWizardModal'
 import { CustomerPortalSection } from '@/components/customers/CustomerPortalSection'
+import { CustomerKeysTab } from '@/components/customers/CustomerKeysTab'
+import { CallSettingsCard } from '@/components/calls/CallSettingsCard'
+import { ContactPortalAccess } from '@/components/customers/ContactPortalAccess'
 import { CustomerFieldPolicySection } from '@/components/customers/CustomerFieldPolicySection'
 import { CustomerMessagesTab } from '@/components/comms/CustomerMessagesTab'
 import { ClickToCallButton } from '@/components/comms/ClickToCallButton'
@@ -65,11 +71,15 @@ import type { CustomerContactInput, CustomerServiceLocationInput } from '@/types
 import type { Asset } from '@/types/asset'
 import { ApiError, apiRequest, isDeleteCancelled } from '@/lib/api'
 import { fetchCustomerSecureFileBlob, type CustomerSecureFile } from '@/lib/customerSecureFiles'
+import { CustomerTagDot } from '@/components/customers/CustomerTagDot'
 import {
   createCustomerContact,
   deleteCustomerContact,
   updateCustomerContact,
 } from '@/lib/customerContacts'
+import { PortalUpdatesBox } from '@/components/customers/PortalUpdatesBox'
+import { PropertyRecordsCard } from '@/components/customers/PropertyRecordsCard'
+import { usePortalUpdates } from '@/lib/portalUpdates'
 import {
   createCustomerServiceLocation,
   deleteCustomerServiceLocation,
@@ -77,8 +87,9 @@ import {
 } from '@/lib/customerServiceLocations'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useTheme } from '@/hooks/useTheme'
+import { useRecordShortcuts } from '@/hooks/useShortcuts'
 
-type TabKey = 'overview' | 'edit' | 'contacts' | 'locations' | 'assets' | 'jobs' | 'estimates' | 'invoices' | 'tasks' | 'messages' | 'documents' | 'secure-files' | 'templates' | 'activity'
+type TabKey = 'overview' | 'edit' | 'contacts' | 'locations' | 'assets' | 'keys' | 'jobs' | 'estimates' | 'invoices' | 'tasks' | 'messages' | 'documents' | 'secure-files' | 'templates' | 'activity'
 
 const TABS: { key: TabKey; label: string }[] = [
   { key: 'overview', label: 'Overview' },
@@ -86,6 +97,7 @@ const TABS: { key: TabKey; label: string }[] = [
   { key: 'contacts', label: 'Contacts' },
   { key: 'locations', label: 'Locations' },
   { key: 'assets', label: 'Assets' },
+  { key: 'keys', label: 'Keys' },
   { key: 'jobs', label: 'Jobs' },
   { key: 'estimates', label: 'Estimates' },
   { key: 'invoices', label: 'Invoices' },
@@ -102,7 +114,7 @@ type TabGroupKey = 'overview' | 'details' | 'work' | 'files' | 'log'
 const TAB_GROUPS: { key: TabGroupKey; label: string; count?: number; tabs: TabKey[] }[] = [
   { key: 'overview', label: 'Overview', tabs: ['overview'] },
   { key: 'details', label: 'Details', count: 3, tabs: ['edit', 'contacts', 'locations'] },
-  { key: 'work', label: 'Records', count: 5, tabs: ['jobs', 'estimates', 'invoices', 'assets', 'tasks'] },
+  { key: 'work', label: 'Records', count: 6, tabs: ['jobs', 'estimates', 'invoices', 'assets', 'keys', 'tasks'] },
   { key: 'files', label: 'Files', count: 3, tabs: ['documents', 'secure-files', 'templates'] },
   { key: 'log', label: 'Log', tabs: ['messages', 'activity'] },
 ]
@@ -112,11 +124,25 @@ type ContactInputWithId = CustomerContactInput & { id?: string }
 // Same tab keys/components/permissions; Easy changes only their grouping.
 const EASY_CUSTOMER_GROUPS: { key: string; label: string; count?: number; tabs: TabKey[] }[] = [
   { key: 'overview', label: 'Overview', tabs: ['overview'] },
-  { key: 'work', label: 'Jobs & equipment', tabs: ['jobs', 'tasks', 'assets'] },
+  { key: 'work', label: 'Jobs & equipment', tabs: ['jobs', 'tasks', 'assets', 'keys'] },
   { key: 'money', label: 'Estimates & invoices', tabs: ['invoices', 'estimates'] },
   { key: 'people', label: 'People & places', tabs: ['contacts', 'locations'] },
   { key: 'files', label: 'Files', tabs: ['documents', 'secure-files', 'templates'] },
   { key: 'more', label: 'More', tabs: ['edit', 'messages', 'activity'] },
+]
+
+// The Focus draft puts the account's everyday work one click away. Less-used
+// sections stay under More; no tab, permission check, or record is removed.
+const FOCUS_CUSTOMER_GROUPS: { key: string; label: string; count?: number; tabs: TabKey[] }[] = [
+  { key: 'overview', label: 'Overview', tabs: ['overview'] },
+  { key: 'contacts', label: 'Contacts', tabs: ['contacts'] },
+  { key: 'locations', label: 'Locations', tabs: ['locations'] },
+  { key: 'assets', label: 'Assets', tabs: ['assets'] },
+  { key: 'jobs', label: 'Jobs', tabs: ['jobs'] },
+  { key: 'estimates', label: 'Estimates', tabs: ['estimates'] },
+  { key: 'invoices', label: 'Invoices', tabs: ['invoices'] },
+  { key: 'messages', label: 'Messages', tabs: ['messages'] },
+  { key: 'more', label: 'More', tabs: ['edit', 'keys', 'tasks', 'documents', 'secure-files', 'templates', 'activity'] },
 ]
 type LocationInputWithId = CustomerServiceLocationInput & { id?: string }
 type SecureFileViewerState = {
@@ -171,10 +197,12 @@ async function syncCustomerChildren(
 export function CustomerDetailPage() {
   const { theme } = useTheme()
   const easy = theme === 'easy-side' || theme === 'easy-top'
-  const tabGroups = easy ? EASY_CUSTOMER_GROUPS : TAB_GROUPS
+  const focus = theme === 'focus'
+  const tabGroups = focus ? FOCUS_CUSTOMER_GROUPS : easy ? EASY_CUSTOMER_GROUPS : TAB_GROUPS
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
   const { has } = usePermissions()
+  const canEditCustomer = has('customers.edit')
   const { data: customer, isLoading, isError, error } = useCustomer(id)
   const queryClient = useQueryClient()
   const deleteCustomer = useDeleteCustomer()
@@ -182,10 +210,19 @@ export function CustomerDetailPage() {
   const [messagesOpen, setMessagesOpen] = useState(false)
   const [mergeOpen, setMergeOpen] = useState(false)
   const [actionsOpen, setActionsOpen] = useState(false)
+  const [focusIdentityOpen, setFocusIdentityOpen] = useState(false)
+  const [focusOtherLocationsState, setFocusOtherLocationsState] = useState<{ customerId?: string; open: boolean }>({ open: false })
+  const focusOtherLocationsOpen = focusOtherLocationsState.customerId === id && focusOtherLocationsState.open
   const [searchParams, setSearchParams] = useSearchParams()
   const [editServerErrors, setEditServerErrors] = useState<Record<string, string[]>>()
 
-  const activeTab = (searchParams.get('tab') as TabKey) || 'overview'
+  const tabVisible = (key: TabKey) =>
+    !(key === 'activity' && !has('settings.view'))
+    && !(key === 'secure-files' && !has('customers.secure_files.list') && !has('customers.secure_files.manage'))
+    && !(key === 'edit' && !canEditCustomer)
+  const requestedTab = (searchParams.get('tab') as TabKey) || 'overview'
+  const activeTab: TabKey = tabVisible(requestedTab) ? requestedTab : 'overview'
+  const activeGroupTabs = (tabGroups.find((group) => group.tabs.includes(activeTab))?.tabs ?? []).filter(tabVisible)
   const setTab = (tab: TabKey) => {
     const next = new URLSearchParams(searchParams)
     next.set('tab', tab)
@@ -205,13 +242,17 @@ export function CustomerDetailPage() {
     }
   }
 
-  const handleEditSubmit = async (input: CustomerInput) => {
+  const handleEditSubmit = async (input: CustomerInput, customValues: CustomValues) => {
     if (!customer) return
     setEditServerErrors(undefined)
     try {
       const { contacts, service_locations, ...customerInput } = input
       await updateCustomer.mutateAsync({ id: customer.id, input: customerInput })
       await syncCustomerChildren(customer, contacts ?? [], service_locations ?? [])
+      if (Object.keys(customValues).length > 0) {
+        await uploadCustomValues('customer', customer.id, customValues)
+        await queryClient.invalidateQueries({ queryKey: ['custom-field-values', 'customer', customer.id] })
+      }
       await queryClient.invalidateQueries({ queryKey: customerKeys.lists() })
       await queryClient.invalidateQueries({ queryKey: customerKeys.detail(customer.id) })
       await queryClient.refetchQueries({ queryKey: customerKeys.detail(customer.id) })
@@ -221,8 +262,12 @@ export function CustomerDetailPage() {
         const details = err.details as { [field: string]: string[] } | undefined
         if (details) setEditServerErrors(details)
       } else {
-        console.error('Update failed:', err)
-        alert('Failed to update customer. Check console for details.')
+        if (isDeleteCancelled(err)) {
+          alert('Save stopped when a removal was cancelled. Changes made before that point were saved; review the customer and try again.')
+        } else {
+          alert(`Could not save all changes. ${err instanceof Error ? err.message : ''} Some changes may have saved; review the customer and try again.`)
+        }
+        await queryClient.invalidateQueries({ queryKey: customerKeys.detail(customer.id) })
       }
     }
   }
@@ -234,6 +279,12 @@ export function CustomerDetailPage() {
 
   // Slice 13c polish: removed local TopBar — duplicated the global TopBar
   // that AppLayout already renders above every authenticated page.
+
+  // Keyboard shortcuts on this customer: E opens Edit, M the Messages tab.
+  useRecordShortcuts({
+    edit: canEditCustomer && customer ? () => setTab('edit') : undefined,
+    messages: customer ? () => setTab('messages') : undefined,
+  })
 
   if (isLoading) {
     return (
@@ -258,8 +309,8 @@ export function CustomerDetailPage() {
     )
   }
 
-  const Section = ({ title, children, action }: { title: string; children: React.ReactNode; action?: React.ReactNode }) => (
-    <section className="bg-white rounded-lg border border-navy-100 p-6">
+  const Section = ({ title, children, action, tour }: { title: string; children: React.ReactNode; action?: React.ReactNode; tour?: string }) => (
+    <section data-tour={tour} className="bg-white rounded-lg border border-navy-100 p-6">
       <div className="flex items-center justify-between mb-4">
         <h2 className="text-sm font-semibold text-navy-800 uppercase tracking-wider">{title}</h2>
         {action}
@@ -275,18 +326,31 @@ export function CustomerDetailPage() {
     </div>
   )
 
+  const serviceLocations = customer.service_locations ?? []
+  const primaryLocation = serviceLocations.find((location) => location.is_primary) ?? serviceLocations[0]
+  const otherLocations = serviceLocations.filter((location) => location !== primaryLocation)
+
   // ===========================================================================
   // TAB CONTENT RENDERERS
   // ===========================================================================
 
   const renderOverview = () => (
-    <div className="space-y-6">
-      <div className="grid gap-5 lg:grid-cols-[minmax(0,1.35fr)_minmax(300px,.75fr)] items-start">
-        <div className="space-y-5">
-          <Section title="Identity" action={<button onClick={() => setTab('edit')} className="text-sm font-semibold text-amber-700 hover:text-amber-800">Edit info</button>}>
-            <div className="grid grid-cols-2 md:grid-cols-3 gap-x-6 gap-y-5">
-              {customer.customer_type === 'commercial' ? (
-                <Field label="Business name" value={customer.business_name} />
+    <div data-focus-overview={focus ? '' : undefined} className={focus ? '' : 'space-y-6'}>
+      <div className={focus ? 'grid items-start gap-4 lg:grid-cols-[minmax(0,1.15fr)_minmax(320px,.85fr)]' : 'grid gap-5 lg:grid-cols-[minmax(0,1.35fr)_minmax(300px,.75fr)] items-start'}>
+        <div className={focus ? 'contents' : 'space-y-5'}>
+          <div data-tour="customer-overview-identity">
+          <Section title={focus ? 'Account details' : 'Identity'} action={<div className="flex items-center gap-3">
+            {focus && <button type="button" data-tour="customer-details-toggle" aria-expanded={focusIdentityOpen} onClick={() => setFocusIdentityOpen((open) => !open)} className="text-sm font-semibold text-emerald-800 hover:underline">{focusIdentityOpen ? 'Show less' : 'View all details'}</button>}
+            {canEditCustomer && <button type="button" onClick={() => setTab('edit')} className="text-sm font-semibold text-amber-700 hover:text-amber-800">Edit info</button>}
+          </div>}>
+            {focus && !focusIdentityOpen && <div className="focus-customer-identity-summary">
+              <div><span>Account type</span><strong className="capitalize">{customer.customer_type}</strong></div>
+              <div><span>Last contact</span><strong>{formatDate(customer.last_contact_at) || 'No contact recorded'}</strong></div>
+              <div><span>Industry</span><strong>{customer.industry || 'Not specified'}</strong></div>
+            </div>}
+            {(!focus || focusIdentityOpen) && <div className="grid grid-cols-2 md:grid-cols-3 gap-x-6 gap-y-5">
+              {customer.customer_type !== 'residential' ? (
+                <Field label={customer.customer_type === 'government' ? 'Agency / organization name' : 'Business name'} value={customer.business_name} />
               ) : (
                 <>
                   <Field label="First name" value={customer.first_name} />
@@ -300,22 +364,27 @@ export function CustomerDetailPage() {
               <Field label="Referral source" value={customer.referral_source} />
               <Field label="Birthday" value={formatDate(customer.birthday)} />
               <Field label="Anniversary" value={formatDate(customer.anniversary)} />
-            </div>
-            <div className="mt-5 inline-flex items-center rounded-md border border-dashed border-slate-300 px-3 py-2 text-sm font-medium text-slate-500">
-              + Add industry, referral source, key dates
-            </div>
+            </div>}
+            {canEditCustomer && (!focus || focusIdentityOpen) && (!customer.industry || !customer.referral_source || !customer.birthday || !customer.anniversary) && (
+              <button type="button" onClick={() => setTab('edit')} className="mt-5 inline-flex items-center rounded-md border border-dashed border-slate-300 px-3 py-2 text-sm font-medium text-slate-500 hover:border-amber-400 hover:text-amber-700">
+                + Add industry, referral source, key dates
+              </button>
+            )}
           </Section>
+          </div>
 
           <CustomerPortalSection
             customerId={customer.id}
             customerEmail={customer.email ?? null}
           />
+          <PropertyRecordsCard customerId={customer.id} canEdit={canEditCustomer} locations={customer.service_locations ?? []} />
         </div>
 
-        <CustomerFieldPolicySection customer={customer} />
+        {!focus && <CustomerFieldPolicySection customer={customer} />}
       </div>
 
       <Section
+        tour="customer-overview-contacts"
         title={`Contacts (${customer.contacts?.length ?? 0})`}
         action={
           <button onClick={() => setTab('contacts')} className="text-xs text-amber-600 hover:text-amber-700 font-medium">
@@ -327,7 +396,7 @@ export function CustomerDetailPage() {
           <p className="text-sm text-navy-400">No contacts yet.</p>
         ) : (
           <div className="space-y-3">
-            {customer.contacts.map((c) => (
+            {customer.contacts.slice(0, focus ? 2 : undefined).map((c) => (
               <div key={c.id} className="border border-navy-200 rounded-md p-4 bg-navy-50/30">
                 <div className="flex items-center justify-between mb-2 flex-wrap gap-2">
                   <div className="flex items-center gap-2 flex-wrap">
@@ -368,25 +437,28 @@ export function CustomerDetailPage() {
                   )}
                 </div>
                 {c.notes && <div className="mt-2 text-sm text-navy-600 italic">{c.notes}</div>}
+                <ContactPortalAccess customerId={customer.id} contact={c} />
               </div>
             ))}
+            {focus && customer.contacts.length > 2 && <button type="button" onClick={() => setTab('contacts')} className="text-sm font-semibold text-amber-700 hover:underline">View all {customer.contacts.length} contacts →</button>}
           </div>
         )}
       </Section>
 
       <Section
-        title={`Service Locations (${customer.service_locations?.length ?? 0})`}
+        tour="customer-overview-locations"
+        title={focus ? `Properties (${serviceLocations.length})` : `Service Locations (${serviceLocations.length})`}
         action={
           <button onClick={() => setTab('locations')} className="text-xs text-amber-600 hover:text-amber-700 font-medium">
             Manage →
           </button>
         }
       >
-        {(!customer.service_locations || customer.service_locations.length === 0) ? (
+        {serviceLocations.length === 0 ? (
           <p className="text-sm text-navy-400">No service locations yet.</p>
         ) : (
           <div className="space-y-3">
-            {customer.service_locations.map((loc) => (
+            {(focus ? [primaryLocation] : serviceLocations).map((loc) => (
               <div key={loc.id} className="border border-navy-200 rounded-md p-4 bg-navy-50/30">
                 <div className="flex items-center justify-between mb-2 flex-wrap gap-2">
                   <div className="flex items-center gap-2 flex-wrap">
@@ -409,12 +481,28 @@ export function CustomerDetailPage() {
                 )}
               </div>
             ))}
+            {focus && otherLocations.length > 0 && (
+              <div className="relative">
+                <button type="button" aria-expanded={focusOtherLocationsOpen} aria-controls="customer-other-properties" onClick={() => setFocusOtherLocationsState({ customerId: id, open: !focusOtherLocationsOpen })} className="flex w-full items-center justify-between rounded-md border border-navy-200 bg-white px-3 py-2 text-left text-sm font-semibold text-navy-800 hover:bg-navy-50">
+                  <span>{focusOtherLocationsOpen ? 'Hide' : 'Show'} {otherLocations.length} other {otherLocations.length === 1 ? 'property' : 'properties'}</span>
+                  <span aria-hidden="true">{focusOtherLocationsOpen ? '▴' : '▾'}</span>
+                </button>
+                <div id="customer-other-properties" hidden={!focusOtherLocationsOpen} className="mt-2 max-h-64 space-y-1 overflow-y-auto rounded-md border border-navy-200 bg-white p-1" aria-label="Other properties">
+                  {otherLocations.map((loc) => <div key={loc.id} className="rounded px-3 py-2 text-sm hover:bg-navy-50">
+                    <div className="font-semibold text-navy-800">{loc.nickname || loc.address.formatted}</div>
+                    <div className="text-navy-600">{loc.address.formatted}</div>
+                    {loc.gated_property && <span className="text-xs font-semibold text-amber-700">Gated property</span>}
+                  </div>)}
+                  <button type="button" onClick={() => setTab('locations')} className="w-full rounded px-3 py-2 text-left text-sm font-semibold text-amber-700 hover:bg-amber-50">View and manage all properties →</button>
+                </div>
+              </div>
+            )}
           </div>
         )}
       </Section>
 
       {(customer.internal_notes || customer.public_notes) && (
-        <Section title="Notes">
+        <Section title="Notes" tour="customer-overview-notes">
           <div className="space-y-3">
             {customer.internal_notes && (
               <div>
@@ -432,7 +520,7 @@ export function CustomerDetailPage() {
         </Section>
       )}
 
-      <Section title="Tax & Billing">
+      <Section title="Tax & Billing" tour="customer-overview-billing">
         <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
           <Field label="Taxable" value={customer.taxable ? 'Yes' : 'No'} />
           <Field label="Tax item / rate" value={customer.tax_item} />
@@ -441,6 +529,7 @@ export function CustomerDetailPage() {
           <Field label="Currency" value={customer.default_currency} />
         </div>
       </Section>
+      {focus && <CustomerFieldPolicySection customer={customer} />}
     </div>
   )
 
@@ -457,7 +546,11 @@ export function CustomerDetailPage() {
   )
 
   const renderContacts = () => (
-    <CustomerContactsTab customer={customer} />
+    <div className="space-y-4">
+      <CustomerContactsTab customer={customer} />
+      {/* Calling them: late warnings and automated calls for this customer. */}
+      <CallSettingsCard kind="customer" id={customer.id} canEdit={has('customers.edit')} />
+    </div>
   )
 
   const renderLocations = () => (
@@ -466,7 +559,7 @@ export function CustomerDetailPage() {
 
   return (
     <div className="min-h-screen bg-background">
-      <main className="max-w-screen-2xl mx-auto px-3 sm:px-6 py-4 sm:py-8 space-y-4 sm:space-y-6">
+      <main data-focus-record="customer" className="max-w-screen-2xl mx-auto px-3 sm:px-6 py-4 sm:py-8 space-y-4 sm:space-y-6">
 
         <div>
           <Link to="/customers" className="text-sm font-medium text-amber-700 hover:text-amber-800 inline-flex items-center gap-1">
@@ -474,7 +567,7 @@ export function CustomerDetailPage() {
           </Link>
         </div>
 
-        <div className={easy ? 'rounded-2xl border border-emerald-900 bg-emerald-950 p-5 shadow-sm sm:p-7' : 'bg-white rounded-xl border border-slate-200 shadow-sm p-5 sm:p-7'}>
+        <div data-tour="customer-header" data-service-agreement={customer.service_agreement ? 'yes' : 'no'} className={easy ? 'rounded-2xl border border-emerald-900 bg-emerald-950 p-5 shadow-sm sm:p-7' : 'bg-white rounded-xl border border-slate-200 shadow-sm p-5 sm:p-7'}>
           <div className="flex flex-col gap-5">
             <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
               <div className="flex items-start gap-3 min-w-0">
@@ -489,24 +582,27 @@ export function CustomerDetailPage() {
                   <div className={`mt-1 font-mono text-sm ${easy ? 'text-emerald-200' : 'text-slate-600'}`}>Account #{customer.account_number}</div>
                   {customer.tags && customer.tags.length > 0 && (
                     <div className="mt-2 flex flex-wrap gap-1.5">
-                      {customer.tags.map((tag) => <span key={tag} className="rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-600">{tag}</span>)}
+                      {customer.tags.map((tag) => <span key={tag} className="inline-flex items-center gap-1.5 rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-600"><CustomerTagDot name={tag} />{tag}</span>)}
                     </div>
                   )}
                   {customer.service_agreement && <div className={`mt-2 text-xs font-medium ${easy ? 'text-emerald-100' : 'text-slate-500'}`}>Service agreement customer</div>}
                 </div>
               </div>
               <div className="relative flex flex-wrap items-center gap-2 sm:shrink-0">
-                <button type="button" onClick={() => setMessagesOpen(true)} className="inline-flex items-center justify-center rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-800 hover:bg-slate-50 whitespace-nowrap" title="View and send customer messages">
+                <button type="button" data-tour="customer-messages-btn" onClick={() => setMessagesOpen(true)} className="inline-flex items-center justify-center rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-800 hover:bg-slate-50 whitespace-nowrap" title="View and send customer messages">
                   💬 Messages
                 </button>
-                <Link to={`/jobs/new?customer_id=${customer.id}`} className="inline-flex items-center justify-center rounded-lg bg-amber-500 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-amber-600 whitespace-nowrap">
-                  + New job
-                </Link>
-                <button type="button" onClick={() => setActionsOpen((open) => !open)} className="inline-flex h-10 w-10 items-center justify-center rounded-lg border border-slate-300 bg-white text-lg font-bold text-slate-700 hover:bg-slate-50" aria-label="More customer actions" aria-expanded={actionsOpen}>
+                {has('jobs.edit') && (
+                  <Link to={`/jobs/new?customer_id=${customer.id}`} data-tour="customer-new-job" className="inline-flex items-center justify-center rounded-lg bg-amber-500 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-amber-600 whitespace-nowrap">
+                    + New job
+                  </Link>
+                )}
+                <AgreementBuilderButton source={{ type: 'customer', id: customer.id }} tour="customer-build-agreement" className="inline-flex items-center justify-center rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-800 hover:bg-slate-50 whitespace-nowrap" label="Service agreement" />
+                {canEditCustomer && <button type="button" data-tour="customer-more-actions" onClick={() => setActionsOpen((open) => !open)} className="inline-flex h-10 w-10 items-center justify-center rounded-lg border border-slate-300 bg-white text-lg font-bold text-slate-700 hover:bg-slate-50" aria-label="More customer actions" aria-expanded={actionsOpen}>
                   ...
-                </button>
-                {actionsOpen && (
-                  <div className="absolute right-0 top-12 z-20 w-52 rounded-lg border border-slate-200 bg-white p-1 shadow-lg">
+                </button>}
+                {canEditCustomer && actionsOpen && (
+                  <div data-tour="customer-actions-menu" className="absolute right-0 top-12 z-20 w-52 rounded-lg border border-slate-200 bg-white p-1 shadow-lg">
                     <button type="button" onClick={() => { setActionsOpen(false); setMergeOpen(true) }} className="block w-full rounded-md px-3 py-2 text-left text-sm font-semibold text-slate-700 hover:bg-slate-50">Merge duplicate</button>
                     <button type="button" onClick={() => { setActionsOpen(false); handleDelete() }} className="block w-full rounded-md px-3 py-2 text-left text-sm font-semibold text-red-700 hover:bg-red-50">Delete customer</button>
                   </div>
@@ -519,16 +615,18 @@ export function CustomerDetailPage() {
         <CustomerRevenueStats customerId={customer.id} customer={customer} lastContact={formatDate(customer.last_contact_at)} />
 
         <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
-          <div role="group" aria-label="Customer sections" className={easy ? 'grid grid-cols-2 gap-2 border-b border-slate-200 p-3 sm:grid-cols-3 xl:grid-cols-6' : 'flex overflow-x-auto border-b border-slate-200'}>
+          <div role="group" aria-label="Customer sections" data-tour="customer-tabs" className={easy ? 'grid grid-cols-2 gap-2 border-b border-slate-200 p-3 sm:grid-cols-3 xl:grid-cols-6' : 'flex overflow-x-auto border-b border-slate-200'}>
             {tabGroups.map((group) => {
               const isActive = group.tabs.includes(activeTab)
+              const visibleTabs = group.tabs.filter(tabVisible)
+              if (visibleTabs.length === 0) return null
+              const visibleCount = group.count ? visibleTabs.length : undefined
               return (
-                <button key={group.key} type="button" aria-pressed={isActive} onClick={() => setTab(group.tabs[0])} className={easy ? `rounded-xl border px-3 py-3 text-left text-sm font-semibold ${isActive ? 'border-emerald-900 bg-emerald-950 text-white' : 'border-slate-200 text-slate-600 hover:bg-emerald-50'}` : `whitespace-nowrap border-b-2 px-4 py-3 text-sm font-semibold transition-colors ${isActive ? 'border-amber-500 bg-amber-50/70 text-slate-950' : 'border-transparent text-slate-600 hover:bg-slate-50 hover:text-slate-950'}`}>
-                  {group.label}{group.count ? <span className="ml-2 text-xs text-slate-400">{group.count}</span> : null}
-                  {easy && group.tabs.length > 1 && (
+                <button key={group.key} type="button" data-tour={`customer-group-${group.key}`} data-tabs={visibleTabs.join(' ')} aria-pressed={isActive} onClick={() => setTab(visibleTabs[0])} className={easy ? `rounded-xl border px-3 py-3 text-left text-sm font-semibold ${isActive ? 'border-emerald-900 bg-emerald-950 text-white' : 'border-slate-200 text-slate-600 hover:bg-emerald-50'}` : `whitespace-nowrap border-b-2 px-4 py-3 text-sm font-semibold transition-colors ${isActive ? 'border-amber-500 bg-amber-50/70 text-slate-950' : 'border-transparent text-slate-600 hover:bg-slate-50 hover:text-slate-950'}`}>
+                  {group.label}{visibleCount ? <span className="ml-2 text-xs text-slate-400">{visibleCount}</span> : null}
+                  {easy && visibleTabs.length > 1 && (
                     <span className="mt-1 block text-xs font-normal opacity-80">
-                      {group.tabs
-                        .filter(key => !(key === 'activity' && !has('settings.view')) && !(key === 'secure-files' && !has('customers.secure_files.list') && !has('customers.secure_files.manage')))
+                      {visibleTabs
                         .map(key => TABS.find(tab => tab.key === key)?.label)
                         .filter(Boolean)
                         .join(' · ')}
@@ -538,13 +636,13 @@ export function CustomerDetailPage() {
               )
             })}
           </div>
-          {activeTab !== 'overview' && (
-            <div role="group" aria-label="Customer section tools" className={`flex ${easy ? 'flex-wrap' : 'overflow-x-auto'} border-b border-slate-100 bg-slate-50/70 px-2`}>
-              {(tabGroups.find((group) => group.tabs.includes(activeTab))?.tabs ?? []).map((key) => {
+          {activeTab !== 'overview' && activeGroupTabs.length > 1 && (
+            <div role="group" aria-label="Customer section tools" data-tour="customer-subtabs" className={`flex ${easy ? 'flex-wrap' : 'overflow-x-auto'} border-b border-slate-100 bg-slate-50/70 px-2`}>
+              {activeGroupTabs.map((key) => {
                 const tab = TABS.find((item) => item.key === key)
-                if (!tab || (key === 'activity' && !has('settings.view')) || (key === 'secure-files' && !has('customers.secure_files.list') && !has('customers.secure_files.manage'))) return null
+                if (!tab || !tabVisible(key)) return null
                 return (
-                  <button key={key} type="button" data-easy-view-option aria-pressed={activeTab === key} onClick={() => setTab(key)} className={`${easy ? 'my-1 rounded-lg' : ''} whitespace-nowrap px-3 py-2 text-xs font-semibold ${activeTab === key ? 'text-slate-950' : 'text-slate-500 hover:text-slate-800'}`}>
+                  <button key={key} type="button" data-easy-view-option data-tour={`customer-subtab-${key}`} aria-pressed={activeTab === key} onClick={() => setTab(key)} className={`${easy ? 'my-1 rounded-lg' : ''} whitespace-nowrap px-3 py-2 text-xs font-semibold ${activeTab === key ? 'text-slate-950' : 'text-slate-500 hover:text-slate-800'}`}>
                     {tab.label}
                   </button>
                 )
@@ -561,20 +659,25 @@ export function CustomerDetailPage() {
         {activeTab === 'jobs' && <CustomerJobsTab key={customer.id} customer={customer} />}
         {activeTab === 'estimates' && <CustomerEstimatesTab key={customer.id} customer={customer} />}
         {activeTab === 'invoices' && <CustomerInvoicesTab key={customer.id} customer={customer} />}
-        {activeTab === 'activity' && has('settings.view') && (
-          <EntityActivityPanel entityId={customer.id} noun="customer" />
+        {activeTab === 'activity' && (
+          <div data-tour="customer-activity-tab">
+            <EntityActivityPanel entityId={customer.id} noun="customer" />
+          </div>
         )}
         {activeTab === 'tasks' && (
-          <TasksPanel
-            anchorType="customer"
-            anchorId={customer.id}
-            anchorLabel={customer.display_name}
-            canEdit={has('customers.edit')}
-          />
+          <div data-tour="customer-tasks-tab">
+            <TasksPanel
+              anchorType="customer"
+              anchorId={customer.id}
+              anchorLabel={customer.display_name}
+              canEdit={has('customers.edit')}
+            />
+          </div>
         )}
-        {activeTab === 'messages' && <CustomerMessagesTab customer={customer} />}
+        {activeTab === 'messages' && <div data-tour="customer-messages-tab"><CustomerMessagesTab customer={customer} /></div>}
         {activeTab === 'documents' && <CustomerDocumentsTab customer={customer} />}
         {activeTab === 'secure-files' && <CustomerSecureFilesTab customer={customer} />}
+        {activeTab === 'keys' && <CustomerKeysTab customerId={customer.id} />}
         {activeTab === 'templates' && <CustomerTemplatesTab customer={customer} />}
 
       </main>
@@ -738,11 +841,13 @@ function CustomerAssetsTab({ customer }: { customer: Customer }) {
     per_page: 100,
   })
   const [showWizard, setShowWizard] = useState(false)
+  const { has } = usePermissions()
+  const canAddAsset = has('assets.edit')
 
   const assets = data?.data ?? []
 
   return (
-    <section className="bg-white rounded-lg border border-navy-100 p-6">
+    <section data-tour="customer-assets-tab" className="bg-white rounded-lg border border-navy-100 p-6">
       <div className="flex items-center justify-between mb-4">
         <div>
           <h2 className="text-sm font-semibold text-navy-800 uppercase tracking-wider">
@@ -752,13 +857,16 @@ function CustomerAssetsTab({ customer }: { customer: Customer }) {
             Physical things at this customer's locations.
           </p>
         </div>
-        <button
-          type="button"
-          onClick={() => setShowWizard(true)}
-          className="text-sm px-4 py-2 bg-amber-500 hover:bg-amber-600 text-white rounded-md font-medium"
-        >
-          + New Asset
-        </button>
+        {canAddAsset && (
+          <button
+            type="button"
+            data-tour="customer-new-asset"
+            onClick={() => setShowWizard(true)}
+            className="text-sm px-4 py-2 bg-amber-500 hover:bg-amber-600 text-white rounded-md font-medium"
+          >
+            + New Asset
+          </button>
+        )}
       </div>
 
       {isLoading && (
@@ -778,15 +886,20 @@ function CustomerAssetsTab({ customer }: { customer: Customer }) {
 
       {!isLoading && !isError && assets.length === 0 && (
         <div className="text-center text-sm text-slate-500 py-8">
-          No assets yet for {customer.display_name}.{' '}
-          <button
-            type="button"
-            onClick={() => setShowWizard(true)}
-            className="text-amber-700 hover:underline font-medium"
-          >
-            Add the first one
-          </button>
-          .
+          No assets yet for {customer.display_name}.
+          {canAddAsset && (
+            <>
+              {' '}
+              <button
+                type="button"
+                onClick={() => setShowWizard(true)}
+                className="text-amber-700 hover:underline font-medium"
+              >
+                Add the first one
+              </button>
+              .
+            </>
+          )}
         </div>
       )}
 
@@ -956,13 +1069,15 @@ function CustomerAssetsTable({ assets }: { assets: Asset[] }) {
 // ============================================================
 
 function CustomerLocationsTab({ customer }: { customer: Customer }) {
+  const { has } = usePermissions()
+  const canEdit = has('customers.edit')
   const [modalState, setModalState] = useState<
     | { open: false }
     | { open: true; view: 'list' | 'add' | 'edit'; editId?: string }
   >({ open: false })
 
   return (
-    <section className="bg-white rounded-xl border border-slate-200 shadow-sm p-4 sm:p-6">
+    <section data-tour="customer-locations-tab" className="bg-white rounded-xl border border-slate-200 shadow-sm p-4 sm:p-6">
       <div className="flex items-center justify-between mb-4 gap-2 flex-wrap">
         <div>
           <h2 className="text-sm font-semibold text-navy-800 uppercase tracking-wider">
@@ -973,32 +1088,43 @@ function CustomerLocationsTab({ customer }: { customer: Customer }) {
             {customer.service_locations?.length === 1 ? '' : 's'} on this customer
           </p>
         </div>
-        <button
-          type="button"
-          onClick={() => setModalState({ open: true, view: 'add' })}
-          className="text-sm px-4 py-2 bg-amber-500 hover:bg-amber-600 text-white rounded-md font-medium whitespace-nowrap"
-        >
-          + Add location
-        </button>
+        {canEdit && (
+          <button
+            type="button"
+            data-tour="customer-add-location"
+            onClick={() => setModalState({ open: true, view: 'add' })}
+            className="text-sm px-4 py-2 bg-amber-500 hover:bg-amber-600 text-white rounded-md font-medium whitespace-nowrap"
+          >
+            + Add location
+          </button>
+        )}
       </div>
+
+      <PortalUpdatesBox customerId={customer.id} canEdit={canEdit} subject="address" />
 
       {!customer.service_locations || customer.service_locations.length === 0 ? (
         <div className="text-center text-sm text-slate-500 py-8">
-          No service locations yet.{' '}
-          <button
-            type="button"
-            onClick={() => setModalState({ open: true, view: 'add' })}
-            className="text-amber-700 hover:underline font-medium"
-          >
-            Add the first one
-          </button>
-          .
+          No service locations yet.
+          {canEdit && (
+            <>
+              {' '}
+              <button
+                type="button"
+                onClick={() => setModalState({ open: true, view: 'add' })}
+                className="text-amber-700 hover:underline font-medium"
+              >
+                Add the first one
+              </button>
+              .
+            </>
+          )}
         </div>
       ) : (
         <ul className="space-y-3">
           {customer.service_locations.map((loc) => (
             <li
               key={loc.id}
+              data-tour="customer-location-card"
               className="border border-slate-200 rounded-lg p-4 hover:border-slate-300 transition-colors"
             >
               <div className="flex items-start justify-between gap-3 mb-2 flex-wrap">
@@ -1017,13 +1143,18 @@ function CustomerLocationsTab({ customer }: { customer: Customer }) {
                     </span>
                   )}
                 </div>
-                <button
-                  type="button"
-                  onClick={() => setModalState({ open: true, view: 'edit', editId: loc.id })}
-                  className="text-xs px-3 py-1.5 rounded border border-slate-300 text-slate-700 hover:bg-slate-50"
-                >
-                  Edit
-                </button>
+                <div className="flex flex-wrap items-center gap-2">
+                  <AgreementBuilderButton source={{ type: 'location', id: loc.id }} tour="customer-location-build-agreement" />
+                  {canEdit && (
+                    <button
+                      type="button"
+                      onClick={() => setModalState({ open: true, view: 'edit', editId: loc.id })}
+                      className="text-xs px-3 py-1.5 rounded border border-slate-300 text-slate-700 hover:bg-slate-50"
+                    >
+                      Edit
+                    </button>
+                  )}
+                </div>
               </div>
               <div className="text-sm text-slate-700 leading-relaxed">
                 {loc.address.formatted}
@@ -1064,6 +1195,7 @@ function CustomerLocationsTab({ customer }: { customer: Customer }) {
           onSelect={() => setModalState({ open: false })}
           initialView={modalState.view}
           initialEditId={modalState.editId}
+          manageOnly
         />
       )}
     </section>
@@ -1081,12 +1213,11 @@ function CustomerLocationsTab({ customer }: { customer: Customer }) {
  *
  * Cards:
  *   - Total billed     (SUM of all invoice total_cents, excluding cancelled)
- *   - Paid             (SUM of amount_paid_cents)
- *   - Due              (Total − Paid)
+ *   - Lifetime paid    (SUM of amount_paid_cents)
+ *   - Balance due      (Total − Paid)
  *   - Open invoices    (count where balance > 0 and not cancelled)
  *
- * Hidden entirely if the customer has zero invoices — keeps the
- * header tidy for fresh accounts.
+ * Always shown (zeros for a fresh account).
  */
 interface CustomerInvoiceSummary {
   invoice_count: number
@@ -1135,9 +1266,9 @@ function CustomerRevenueStats({
     }).format(cents / 100)
 
   return (
-    <div className="mt-4 grid grid-cols-2 gap-px overflow-hidden rounded-xl border border-slate-200 bg-slate-200 sm:grid-cols-3 lg:grid-cols-7">
-      <Stat label="Lifetime value" value={fmt(totalBilled)} />
-      <Stat label="Paid" value={fmt(totalPaid)} tone="paid" />
+    <div data-tour="customer-money" className="mt-4 grid grid-cols-2 gap-px overflow-hidden rounded-xl border border-slate-200 bg-slate-200 sm:grid-cols-3 lg:grid-cols-7">
+      <Stat label="Total billed" value={fmt(totalBilled)} />
+      <Stat label="Lifetime paid" value={fmt(totalPaid)} tone="paid" />
       <Stat label="Balance due" value={fmt(due)} tone={due > 0 ? 'due' : undefined} />
       <Stat label="Open invoices" value={String(openCount)} tone={openCount > 0 ? 'due' : undefined} />
       <div className="min-w-0 bg-white px-3 py-3 text-slate-900 sm:px-4 lg:col-span-2">
@@ -1230,6 +1361,8 @@ function Stat({
 }
 
 function CustomerJobsTab({ customer }: { customer: Customer }) {
+  const { has } = usePermissions()
+  const canCreateJob = has('jobs.edit')
   const [filter, setFilter] = useState<'all' | 'uninvoiced' | 'invoiced'>('all')
   const [page, setPage] = useState(1)
   // Switching filters restarts paging from the top.
@@ -1260,7 +1393,7 @@ function CustomerJobsTab({ customer }: { customer: Customer }) {
   const filterTotal = data?.meta?.total ?? rows.length
 
   return (
-    <section className="bg-white rounded-xl border border-slate-200 shadow-sm p-4 sm:p-6">
+    <section data-tour="customer-jobs-tab" className="bg-white rounded-xl border border-slate-200 shadow-sm p-4 sm:p-6">
       <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
         <div>
           <h2 className="text-sm font-semibold text-navy-800 uppercase tracking-wider">Jobs</h2>
@@ -1268,16 +1401,19 @@ function CustomerJobsTab({ customer }: { customer: Customer }) {
             Work orders for {customer.display_name}.
           </p>
         </div>
-        <Link
-          to={`/jobs/new?customer_id=${customer.id}`}
-          className="text-sm px-4 py-2 bg-amber-500 hover:bg-amber-600 text-white rounded-md font-medium whitespace-nowrap"
-        >
-          + New Job
-        </Link>
+        {canCreateJob && (
+          <Link
+            to={`/jobs/new?customer_id=${customer.id}`}
+            data-tour="customer-jobs-new"
+            className="text-sm px-4 py-2 bg-amber-500 hover:bg-amber-600 text-white rounded-md font-medium whitespace-nowrap"
+          >
+            + New Job
+          </Link>
+        )}
       </div>
 
       {/* Sub-tabs */}
-      <div role="group" aria-label="Customer job filters" className="flex flex-wrap gap-1 mb-3 border-b border-slate-200">
+      <div role="group" aria-label="Customer job filters" data-tour="customer-jobs-filters" className="flex flex-wrap gap-1 mb-3 border-b border-slate-200">
         <SubTab active={filter === 'all'} onClick={() => pickFilter('all')}>
           All ({isLoading || isError ? '—' : totalJobs})
         </SubTab>
@@ -1314,14 +1450,19 @@ function CustomerJobsTab({ customer }: { customer: Customer }) {
       )}
       {!isLoading && !isError && rows.length === 0 && (
         <div className="text-center text-sm text-slate-500 py-8">
-          {filter === 'all' ? 'No jobs yet.' : 'No jobs match this filter.'}{' '}
-          <Link
-            to={`/jobs/new?customer_id=${customer.id}`}
-            className="text-amber-700 hover:underline font-medium"
-          >
-            Create the first one
-          </Link>
-          .
+          {filter === 'all' ? 'No jobs yet.' : 'No jobs match this filter.'}
+          {canCreateJob && (
+            <>
+              {' '}
+              <Link
+                to={`/jobs/new?customer_id=${customer.id}`}
+                className="text-amber-700 hover:underline font-medium"
+              >
+                Create the first one
+              </Link>
+              .
+            </>
+          )}
         </div>
       )}
       {!isLoading && !isError && rows.length > 0 && (
@@ -1468,6 +1609,8 @@ function CustomerJobsTab({ customer }: { customer: Customer }) {
 // ============================================================
 
 function CustomerEstimatesTab({ customer }: { customer: Customer }) {
+  const { has } = usePermissions()
+  const canCreateEstimate = has('estimates.edit')
   const [page, setPage] = useState(1)
   const { data, isLoading, isError, error, refetch, isFetching } = useEstimates({
     customer_id: customer.id,
@@ -1477,7 +1620,7 @@ function CustomerEstimatesTab({ customer }: { customer: Customer }) {
   const rows = data?.data ?? []
 
   return (
-    <section className="bg-white rounded-xl border border-slate-200 shadow-sm p-4 sm:p-6">
+    <section data-tour="customer-estimates-tab" className="bg-white rounded-xl border border-slate-200 shadow-sm p-4 sm:p-6">
       <div className="flex items-center justify-between mb-4 gap-2 flex-wrap">
         <div>
           <h2 className="text-sm font-semibold text-navy-800 uppercase tracking-wider">Estimates</h2>
@@ -1485,12 +1628,15 @@ function CustomerEstimatesTab({ customer }: { customer: Customer }) {
             Quotes given to {customer.display_name}.
           </p>
         </div>
-        <Link
-          to={`/estimates/new?customer_id=${customer.id}`}
-          className="text-sm px-4 py-2 bg-amber-500 hover:bg-amber-600 text-white rounded-md font-medium whitespace-nowrap"
-        >
-          + New Estimate
-        </Link>
+        {canCreateEstimate && (
+          <Link
+            to={`/estimates/new?customer_id=${customer.id}`}
+            data-tour="customer-estimates-new"
+            className="text-sm px-4 py-2 bg-amber-500 hover:bg-amber-600 text-white rounded-md font-medium whitespace-nowrap"
+          >
+            + New Estimate
+          </Link>
+        )}
       </div>
 
       {!isLoading && !isError && data?.meta && (
@@ -1519,14 +1665,19 @@ function CustomerEstimatesTab({ customer }: { customer: Customer }) {
       )}
       {!isLoading && !isError && rows.length === 0 && (
         <div className="text-center text-sm text-slate-500 py-8">
-          No estimates yet.{' '}
-          <Link
-            to={`/estimates/new?customer_id=${customer.id}`}
-            className="text-amber-700 hover:underline font-medium"
-          >
-            Create the first one
-          </Link>
-          .
+          No estimates yet.
+          {canCreateEstimate && (
+            <>
+              {' '}
+              <Link
+                to={`/estimates/new?customer_id=${customer.id}`}
+                className="text-amber-700 hover:underline font-medium"
+              >
+                Create the first one
+              </Link>
+              .
+            </>
+          )}
         </div>
       )}
       {!isLoading && !isError && rows.length > 0 && (
@@ -1625,6 +1776,10 @@ function CustomerContactsTab({ customer }: { customer: Customer }) {
     | { open: true; contact: CustomerContact | null }
   >({ open: false })
   const deleteContact = useDeleteCustomerContact()
+  const { has } = usePermissions()
+  const canEdit = has('customers.edit')
+  // Contacts with changes from the portal waiting for the office.
+  const waitingFor = new Set((usePortalUpdates(customer.id).data ?? []).filter((u) => u.subject !== 'address').map((u) => u.contact_id).filter(Boolean))
 
   async function handleDelete(c: CustomerContact) {
     // Confirmation handled by the global delete modal (password + reason).
@@ -1638,7 +1793,7 @@ function CustomerContactsTab({ customer }: { customer: Customer }) {
   const contacts = customer.contacts ?? []
 
   return (
-    <section className="bg-white rounded-xl border border-slate-200 shadow-sm p-4 sm:p-6">
+    <section data-tour="customer-contacts-tab" className="bg-white rounded-xl border border-slate-200 shadow-sm p-4 sm:p-6">
       <div className="flex items-center justify-between mb-4 gap-2 flex-wrap">
         <div>
           <h2 className="text-sm font-semibold text-navy-800 uppercase tracking-wider">Contacts</h2>
@@ -1646,26 +1801,36 @@ function CustomerContactsTab({ customer }: { customer: Customer }) {
             {contacts.length} contact{contacts.length === 1 ? '' : 's'} on this customer
           </p>
         </div>
-        <button
-          type="button"
-          onClick={() => setEditorState({ open: true, contact: null })}
-          className="text-sm px-4 py-2 bg-amber-500 hover:bg-amber-600 text-white rounded-md font-medium whitespace-nowrap"
-        >
-          + Add contact
-        </button>
+        {canEdit && (
+          <button
+            type="button"
+            data-tour="customer-add-contact"
+            onClick={() => setEditorState({ open: true, contact: null })}
+            className="text-sm px-4 py-2 bg-amber-500 hover:bg-amber-600 text-white rounded-md font-medium whitespace-nowrap"
+          >
+            + Add contact
+          </button>
+        )}
       </div>
+
+      <PortalUpdatesBox customerId={customer.id} canEdit={canEdit} subject="contact" />
 
       {contacts.length === 0 ? (
         <div className="text-center text-sm text-slate-500 py-8">
-          No contacts yet.{' '}
-          <button
-            type="button"
-            onClick={() => setEditorState({ open: true, contact: null })}
-            className="text-amber-700 hover:underline font-medium"
-          >
-            Add the first one
-          </button>
-          .
+          No contacts yet.
+          {canEdit && (
+            <>
+              {' '}
+              <button
+                type="button"
+                onClick={() => setEditorState({ open: true, contact: null })}
+                className="text-amber-700 hover:underline font-medium"
+              >
+                Add the first one
+              </button>
+              .
+            </>
+          )}
         </div>
       ) : (
         <ul className="space-y-3">
@@ -1705,8 +1870,13 @@ function CustomerContactsTab({ customer }: { customer: Customer }) {
                       Inactive
                     </span>
                   )}
+                  {waitingFor.has(c.id) && (
+                    <span className="inline-flex items-center rounded-full border border-amber-300 bg-amber-50 px-2 py-0.5 text-[11px] font-semibold text-amber-800">
+                      Changes from the portal
+                    </span>
+                  )}
                 </div>
-                <div className="flex items-center gap-2 shrink-0">
+                {canEdit && <div className="flex items-center gap-2 shrink-0">
                   <button
                     type="button"
                     onClick={() => setEditorState({ open: true, contact: c })}
@@ -1722,7 +1892,7 @@ function CustomerContactsTab({ customer }: { customer: Customer }) {
                   >
                     Delete
                   </button>
-                </div>
+                </div>}
               </div>
               {(c.job_title || c.department) && (
                 <div className="text-xs text-slate-500 mb-2">
@@ -1764,6 +1934,7 @@ function CustomerContactsTab({ customer }: { customer: Customer }) {
                   {c.notes}
                 </div>
               )}
+              <ContactPortalAccess customerId={customer.id} contact={c} />
             </li>
           ))}
         </ul>
@@ -1947,7 +2118,7 @@ function CustomerSecureFilesTab({ customer }: { customer: Customer }) {
   }
 
   return (
-    <section className="rounded-lg border border-slate-200 bg-white p-6">
+    <section data-tour="customer-secure-files-tab" className="rounded-lg border border-slate-200 bg-white p-6">
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
           <h2 className="text-sm font-semibold uppercase tracking-wider text-navy-800">Secure Files</h2>
@@ -1955,7 +2126,7 @@ function CustomerSecureFilesTab({ customer }: { customer: Customer }) {
             Encrypted customer files for safe photos, keys, access notes, private documents, and field-sensitive records.
           </p>
         </div>
-        <div className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-700">
+        <div data-tour="customer-secure-status" className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-700">
           {unlocked ? 'Unlocked' : 'Locked'}
         </div>
       </div>
@@ -2029,7 +2200,7 @@ function CustomerSecureFilesTab({ customer }: { customer: Customer }) {
       {keyConfigured && (
         <>
           {!unlocked && (
-            <div className="mt-5 rounded-lg border border-slate-200 bg-slate-50 p-4">
+            <div data-tour="customer-secure-unlock" className="mt-5 rounded-lg border border-slate-200 bg-slate-50 p-4">
               <div className="text-sm font-semibold text-navy-900">Unlock secure files</div>
               <div className="mt-3 flex flex-wrap items-center gap-2">
                 <select value={channel} onChange={(e) => setChannel(e.target.value as 'sms' | 'email')} className="rounded-md border border-slate-300 bg-white px-3 py-2 text-sm">
@@ -2306,6 +2477,8 @@ function isSecureTextFile(file: CustomerSecureFile, blob: Blob): boolean {
 // ============================================================
 
 function CustomerDocumentsTab({ customer }: { customer: Customer }) {
+  const { has } = usePermissions()
+  const canEdit = has('customers.edit')
   const { data: docs, isLoading, isError, error } = useCustomerDocuments(customer.id)
   const upload = useUploadCustomerDocument()
   const remove = useDeleteCustomerDocument()
@@ -2381,7 +2554,7 @@ function CustomerDocumentsTab({ customer }: { customer: Customer }) {
   const extractedMap = extractedLookup.data?.data ?? {}
 
   return (
-    <section className="bg-white rounded-lg border border-navy-100 p-6">
+    <section data-tour="customer-documents-tab" className="bg-white rounded-lg border border-navy-100 p-6">
       <div className="flex items-center justify-between mb-4 flex-wrap gap-3">
         <div>
           <h2 className="text-sm font-semibold text-navy-800 uppercase tracking-wider">Documents</h2>
@@ -2389,7 +2562,7 @@ function CustomerDocumentsTab({ customer }: { customer: Customer }) {
             Contracts, COIs, tax-exempt forms, signed agreements. PDF / Word / Excel / image, up to 25 MB.
           </p>
         </div>
-        <label className="text-sm px-4 py-2 bg-amber-500 hover:bg-amber-600 text-white rounded-md font-medium cursor-pointer">
+        {canEdit && <label data-tour="customer-documents-upload" className="text-sm px-4 py-2 bg-amber-500 hover:bg-amber-600 text-white rounded-md font-medium cursor-pointer">
           {upload.isPending ? 'Uploading…' : '+ Upload'}
           <input
             type="file"
@@ -2402,7 +2575,7 @@ function CustomerDocumentsTab({ customer }: { customer: Customer }) {
               e.target.value = ''
             }}
           />
-        </label>
+        </label>}
       </div>
 
       {uploadError && (
@@ -2423,7 +2596,7 @@ function CustomerDocumentsTab({ customer }: { customer: Customer }) {
       )}
       {!isLoading && !isError && rows.length === 0 && (
         <div className="text-center text-sm text-slate-500 py-8">
-          No documents yet. Drop one in via the Upload button above.
+          No documents yet.{canEdit ? ' Add one with + Upload above.' : ''}
         </div>
       )}
       {!isLoading && !isError && rows.length > 0 && (
@@ -2490,14 +2663,14 @@ function CustomerDocumentsTab({ customer }: { customer: Customer }) {
                     Open
                   </button>
                 )}
-                <button
+                {canEdit && <button
                   type="button"
                   onClick={() => handleDelete(doc)}
                   disabled={remove.isPending}
                   className="text-xs px-3 py-1.5 rounded border border-red-200 text-red-700 hover:bg-red-50 disabled:opacity-50"
                 >
                   Delete
-                </button>
+                </button>}
               </div>
             </li>
           ))}
@@ -2582,6 +2755,10 @@ function CustomerInvoicesTab({ customer }: { customer: Customer }) {
   const cancelInv = useCancelInvoice()
   const deleteInv = useDeleteInvoice()
   const [actionError, setActionError] = useState<string | null>(null)
+  const { has } = usePermissions()
+  const canEditInvoices = has('invoices.edit')
+  const [markPaidFor, setMarkPaidFor] = useState<Invoice | null>(null)
+  const [markPaidMethod, setMarkPaidMethod] = useState('')
   const [creatorOpen, setCreatorOpen] = useState(false)
   const [receivePaymentOpen, setReceivePaymentOpen] = useState(false)
   const [filter, setFilter] = useState<'all' | 'unpaid' | 'paid' | 'cancelled'>('all')
@@ -2622,20 +2799,29 @@ function CustomerInvoicesTab({ customer }: { customer: Customer }) {
       setActionError(e instanceof Error ? e.message : String(e))
     }
   }
-  async function handleMarkPaid(id: string, totalCents: number) {
+  function openMarkPaid(inv: Invoice) {
     setActionError(null)
-    const method = window.prompt('Payment method (e.g. Check #1234, Visa, ACH):')
-    if (method === null) return
+    setMarkPaidMethod('')
+    setMarkPaidFor(inv)
+  }
+  async function handleMarkPaid() {
+    if (!markPaidFor) return
+    setActionError(null)
+    // Record what is still owed, not the invoice total: a partly paid
+    // invoice would otherwise be over-credited.
+    const balanceCents = markPaidFor.money.balance_due_cents
     try {
       await markPaid.mutateAsync({
-        id,
+        id: markPaidFor.id,
         input: {
-          amount_paid_cents: totalCents,
-          payment_method: method || null,
+          amount_paid_cents: balanceCents,
+          payment_method: markPaidMethod.trim() || null,
         },
       })
+      setMarkPaidFor(null)
     } catch (e) {
       setActionError(e instanceof Error ? e.message : String(e))
+      setMarkPaidFor(null)
     }
   }
   async function handleCancel(id: string) {
@@ -2654,31 +2840,31 @@ function CustomerInvoicesTab({ customer }: { customer: Customer }) {
   }
 
   return (
-    <section className="bg-white rounded-xl border border-slate-200 shadow-sm p-4 sm:p-6">
+    <section data-tour="customer-invoices-tab" className="bg-white rounded-xl border border-slate-200 shadow-sm p-4 sm:p-6">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between mb-4 flex-wrap gap-3">
         <div>
           <h2 className="text-sm font-semibold text-navy-800 uppercase tracking-wider">Invoices</h2>
           <p className="text-xs text-navy-500 mt-1">
-            Bills sent to {customer.display_name}. v1: one invoice per work order, payment marked as a single lump sum.
+            Bills for {customer.display_name}, with what's still owed.
           </p>
         </div>
-        <div className="flex items-center gap-2 flex-wrap">
-          <button
+        <div className="flex items-center gap-2 flex-wrap" data-tour="customer-invoices-actions">
+          {canEditInvoices && <button
             type="button"
             onClick={() => setReceivePaymentOpen(true)}
             className="text-sm px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-md font-medium whitespace-nowrap"
             title="Apply one check/card/cash payment across multiple invoices"
           >
             Receive payment
-          </button>
+          </button>}
           <CustomerStatementButton customer={customer} />
-          <button
+          {canEditInvoices && <button
             type="button"
             onClick={() => setCreatorOpen(true)}
             className="text-sm px-4 py-2 bg-amber-500 hover:bg-amber-600 text-white rounded-md font-medium whitespace-nowrap"
           >
             + New invoice
-          </button>
+          </button>}
         </div>
       </div>
 
@@ -2699,7 +2885,7 @@ function CustomerInvoicesTab({ customer }: { customer: Customer }) {
 
       {/* Sub-tab filter — defaults to "All" but "Unpaid" is where the
           office spends most of their time at month-end. */}
-      <div role="group" aria-label="Customer invoice filters" className="flex flex-wrap gap-1 mb-3 border-b border-slate-200">
+      <div role="group" aria-label="Customer invoice filters" data-tour="customer-invoices-filters" className="flex flex-wrap gap-1 mb-3 border-b border-slate-200">
         <SubTab active={filter === 'all'} onClick={() => setFilter('all')}>
           All ({summary?.invoice_count ?? (invoiceQuery.isSuccess ? allInvoices.length : '—')})
         </SubTab>
@@ -2742,15 +2928,20 @@ function CustomerInvoicesTab({ customer }: { customer: Customer }) {
       )}
       {!isLoading && !isError && invoices.length === 0 && (
         <div className="text-center text-sm text-slate-500 py-8">
-          {filter === 'all' ? 'No invoices yet.' : 'No invoices match this filter.'}{' '}
-          <button
-            type="button"
-            onClick={() => setCreatorOpen(true)}
-            className="text-amber-700 hover:underline font-medium"
-          >
-            Create an invoice
-          </button>
-          .
+          {filter === 'all' ? 'No invoices yet.' : 'No invoices match this filter.'}
+          {canEditInvoices && (
+            <>
+              {' '}
+              <button
+                type="button"
+                onClick={() => setCreatorOpen(true)}
+                className="text-amber-700 hover:underline font-medium"
+              >
+                Create an invoice
+              </button>
+              .
+            </>
+          )}
         </div>
       )}
       {!isLoading && !isError && invoices.length > 0 && (
@@ -2809,7 +3000,7 @@ function CustomerInvoicesTab({ customer }: { customer: Customer }) {
                   </div>
                 </div>
                 {/* Action row — buttons wrap; minimum touch target ~36px */}
-                <div className="mt-2 flex flex-wrap gap-1.5">
+                {canEditInvoices && <div className="mt-2 flex flex-wrap gap-1.5">
                   {inv.status === 'draft' && (
                     <button
                       type="button"
@@ -2820,10 +3011,10 @@ function CustomerInvoicesTab({ customer }: { customer: Customer }) {
                       Send
                     </button>
                   )}
-                  {(inv.status === 'sent' || inv.status === 'draft') && (
+                  {(inv.status === 'sent' || inv.status === 'draft') && inv.money.balance_due_cents > 0 && (
                     <button
                       type="button"
-                      onClick={() => handleMarkPaid(inv.id, inv.money.total_cents)}
+                      onClick={() => openMarkPaid(inv)}
                       disabled={markPaid.isPending}
                       className="text-xs px-3 py-1.5 rounded border border-emerald-500 text-emerald-700 hover:bg-emerald-50 disabled:opacity-50"
                     >
@@ -2848,7 +3039,7 @@ function CustomerInvoicesTab({ customer }: { customer: Customer }) {
                       Delete
                     </button>
                   )}
-                </div>
+                </div>}
               </div>
             ))}
           </div>
@@ -2897,7 +3088,7 @@ function CustomerInvoicesTab({ customer }: { customer: Customer }) {
                     {inv.issued_at ? new Date(inv.issued_at).toLocaleDateString() : <span className="text-slate-400">—</span>}
                   </td>
                   <td className="px-4 py-3 text-right">
-                    <div className="flex items-center justify-end gap-1.5 flex-wrap">
+                    {canEditInvoices && <div className="flex items-center justify-end gap-1.5 flex-wrap">
                       {inv.status === 'draft' && (
                         <button
                           type="button"
@@ -2908,10 +3099,10 @@ function CustomerInvoicesTab({ customer }: { customer: Customer }) {
                           Send
                         </button>
                       )}
-                      {(inv.status === 'sent' || inv.status === 'draft') && (
+                      {(inv.status === 'sent' || inv.status === 'draft') && inv.money.balance_due_cents > 0 && (
                         <button
                           type="button"
-                          onClick={() => handleMarkPaid(inv.id, inv.money.total_cents)}
+                          onClick={() => openMarkPaid(inv)}
                           disabled={markPaid.isPending}
                           className="text-xs px-2.5 py-1 rounded border border-emerald-500 text-emerald-700 hover:bg-emerald-50 disabled:opacity-50"
                         >
@@ -2936,7 +3127,7 @@ function CustomerInvoicesTab({ customer }: { customer: Customer }) {
                           Delete
                         </button>
                       )}
-                    </div>
+                    </div>}
                   </td>
                 </tr>
               ))}
@@ -2944,6 +3135,44 @@ function CustomerInvoicesTab({ customer }: { customer: Customer }) {
           </table>
           </div>
         </>
+      )}
+
+      {markPaidFor && (
+        <Modal
+          isOpen
+          onClose={() => setMarkPaidFor(null)}
+          title={`Mark ${markPaidFor.invoice_number} paid`}
+          size="sm"
+        >
+          <form
+            className="space-y-4 p-5"
+            onSubmit={(e) => { e.preventDefault(); void handleMarkPaid() }}
+          >
+            <p className="text-sm text-slate-700">
+              This records a payment of{' '}
+              <span className="font-mono font-semibold">{fmtMoney(markPaidFor.money.balance_due_cents)}</span>
+              {markPaidFor.money.balance_due_cents !== markPaidFor.money.total_cents && (
+                <> (the remaining balance of the {fmtMoney(markPaidFor.money.total_cents)} total)</>
+              )}
+              . To record a different amount, use Receive payment.
+            </p>
+            <div>
+              <label htmlFor="mark-paid-method" className="block text-xs font-medium text-navy-600 mb-1">Payment method</label>
+              <input
+                id="mark-paid-method"
+                value={markPaidMethod}
+                onChange={(e) => setMarkPaidMethod(e.target.value)}
+                placeholder="e.g. Check #1234, card, ACH"
+                className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
+                autoFocus
+              />
+            </div>
+            <div className="flex justify-end gap-2">
+              <Button type="button" variant="secondary" onClick={() => setMarkPaidFor(null)}>Cancel</Button>
+              <Button type="submit" loading={markPaid.isPending}>Record payment</Button>
+            </div>
+          </form>
+        </Modal>
       )}
 
       {creatorOpen && (
@@ -3000,6 +3229,8 @@ const OVERRIDABLE_DOC_TYPES: Array<{ value: string; label: string; hint: string 
 
 function CustomerTemplatesTab({ customer }: { customer: Customer }) {
   const qc = useQueryClient()
+  const { has } = usePermissions()
+  const canEdit = has('customers.edit')
   // All tenant document templates, grouped by type so the dropdowns
   // only show options matching the row's doc type.
   const templates = useQuery({
@@ -3085,24 +3316,27 @@ function CustomerTemplatesTab({ customer }: { customer: Customer }) {
   return (
     <div className="space-y-4">
       <CustomerFormWorkflowCards customer={customer} />
-      <section className="bg-white rounded-lg border border-navy-100 p-6">
+      <section data-tour="customer-templates" className="bg-white rounded-lg border border-navy-100 p-6">
       <div className="flex items-baseline justify-between mb-1 flex-wrap gap-2">
         <h2 className="text-sm font-semibold text-navy-800 uppercase tracking-wider">
           Templates for this customer
         </h2>
-        <a href={`${CONNECT_URL}/custom-documents`} target="_blank" rel="noopener noreferrer" className="text-sm font-semibold text-amber-700 hover:underline">
+        <a href={`${CONNECT_URL}/custom-documents`} target="_blank" rel="noopener noreferrer" data-tour="customer-templates-create" className="text-sm font-semibold text-amber-700 hover:underline">
           Create templates in Connect ↗ <span className="sr-only">(opens in a new tab)</span>
         </a>
-        <button
-          type="button"
-          onClick={() => save.mutate()}
-          disabled={save.isPending || !hydrated}
-          className="text-sm px-4 py-2 rounded-md bg-amber-500 hover:bg-amber-600 text-white font-medium disabled:opacity-50"
-        >
-          {save.isPending ? 'Saving…' : 'Save overrides'}
-        </button>
+        {canEdit && (
+          <button
+            type="button"
+            data-tour="customer-templates-save"
+            onClick={() => save.mutate()}
+            disabled={save.isPending || !hydrated}
+            className="text-sm px-4 py-2 rounded-md bg-amber-500 hover:bg-amber-600 text-white font-medium disabled:opacity-50"
+          >
+            {save.isPending ? 'Saving…' : 'Save overrides'}
+          </button>
+        )}
       </div>
-      <p className="text-xs text-slate-600 leading-relaxed mb-5">
+      <p data-tour="customer-templates-intro" className="text-xs text-slate-600 leading-relaxed mb-5">
         Pin a specific template for each doc type when this customer needs a different
         layout than your default. Anything left as <strong>Use tenant default</strong>{' '}
         falls back to whichever template you&apos;ve marked as the default on the{' '}
@@ -3123,20 +3357,22 @@ function CustomerTemplatesTab({ customer }: { customer: Customer }) {
         </div>
       )}
 
-      <div className="divide-y divide-slate-100">
+      <div className="divide-y divide-slate-100" data-tour="customer-template-rows">
         {OVERRIDABLE_DOC_TYPES.map((dt) => {
           const choices = templatesByType[dt.value] ?? []
           const selected = draft[dt.value] ?? ''
           const defaultTpl = choices.find((c) => c.is_default)
           return (
-            <div key={dt.value} className="py-3 flex items-start gap-4 flex-wrap">
+            <div key={dt.value} data-tour={`customer-template-row-${dt.value}`} className="py-3 flex items-start gap-4 flex-wrap">
               <div className="min-w-[180px] flex-1">
                 <div className="text-sm font-medium text-slate-900">{dt.label}</div>
                 <div className="text-[11px] text-slate-500">{dt.hint}</div>
               </div>
               <div className="flex-[2] min-w-[260px]">
                 <select
+                  data-tour={`customer-template-doc-${dt.value}`}
                   value={selected}
+                  disabled={!canEdit}
                   onChange={(e) => setOverride(dt.value, e.target.value)}
                   className="w-full text-sm px-3 py-2 border border-slate-300 rounded-md focus:outline-none focus:border-amber-500"
                 >
@@ -3160,19 +3396,20 @@ function CustomerTemplatesTab({ customer }: { customer: Customer }) {
                   </p>
                 )}
                 {selected && (
-                  <p className="text-[11px] text-emerald-700 mt-1">
+                  <p data-tour="customer-template-picked" className="text-[11px] text-emerald-700 mt-1">
                     ★ This customer gets <strong>{templateLabel(selected)}</strong> for{' '}
                     {dt.label.toLowerCase()}s.
                   </p>
                 )}
 
                 {/* Text (SMS) message template for this category. */}
-                <div className="mt-2">
+                <div className="mt-2" data-tour={`customer-template-sms-${dt.value}`}>
                   <label className="block text-[11px] font-medium text-slate-500 mb-1">
                     Text message
                   </label>
                   <select
                     value={smsDraft[dt.value] ?? ''}
+                    disabled={!canEdit}
                     onChange={(e) => setSmsOverride(dt.value, e.target.value)}
                     className="w-full text-sm px-3 py-2 border border-slate-300 rounded-md focus:outline-none focus:border-amber-500"
                   >
@@ -3247,7 +3484,7 @@ function CustomerFormWorkflowCards({ customer }: { customer: Customer }) {
   }
 
   return (
-    <section className="rounded-lg border border-navy-100 bg-white p-5">
+    <section data-tour="customer-form-workflows" className="rounded-lg border border-navy-100 bg-white p-5">
       <div className="flex items-end justify-between gap-3">
         <div>
           <h2 className="text-sm font-semibold uppercase tracking-wider text-navy-800">
@@ -3316,6 +3553,8 @@ interface CustomerCreditRow {
 }
 
 function CustomerCreditsSection({ customerId }: { customerId: string }) {
+  const { has } = usePermissions()
+  const canApply = has('invoices.edit')
   const q = useQuery({
     queryKey: ['customer-credits', customerId],
     queryFn: () =>
@@ -3330,7 +3569,7 @@ function CustomerCreditsSection({ customerId }: { customerId: string }) {
   const total = credits.reduce((acc, c) => acc + c.balance_cents, 0)
 
   return (
-    <section className="mb-4 bg-sky-50 border border-sky-200 rounded-lg p-4">
+    <section data-tour="customer-credits" className="mb-4 bg-sky-50 border border-sky-200 rounded-lg p-4">
       <div className="flex items-center justify-between mb-3 gap-3">
         <div>
           <h3 className="text-sm font-semibold text-sky-900 uppercase tracking-wider">
@@ -3371,13 +3610,15 @@ function CustomerCreditsSection({ customerId }: { customerId: string }) {
                 <div className="text-[11px] text-slate-600 italic mt-1">{c.notes}</div>
               )}
             </div>
-            <button
-              type="button"
-              onClick={() => setApplying(c)}
-              className="text-xs font-semibold bg-sky-600 hover:bg-sky-700 text-white rounded px-3 py-1.5 shrink-0"
-            >
-              Apply to invoice →
-            </button>
+            {canApply && (
+              <button
+                type="button"
+                onClick={() => setApplying(c)}
+                className="text-xs font-semibold bg-sky-600 hover:bg-sky-700 text-white rounded px-3 py-1.5 shrink-0"
+              >
+                Apply to invoice →
+              </button>
+            )}
           </div>
         ))}
       </div>

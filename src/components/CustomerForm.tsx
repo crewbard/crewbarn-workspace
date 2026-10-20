@@ -1,5 +1,6 @@
 ﻿import { useState, useCallback } from 'react'
 import { useForm, useFieldArray } from 'react-hook-form'
+import { useEffect } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { Link } from 'react-router-dom'
 import { apiRequest } from '@/lib/api'
@@ -16,10 +17,13 @@ import {
   useUploadCustomerDocument,
 } from '@/hooks/useCustomerDocuments'
 import type { Customer, CustomerInput, CustomerType, CustomerTag } from '@/types/customer'
+import { useCustomer } from '@/hooks/useCustomers'
+import { useCustomerTagColor, useCustomerTags } from '@/lib/customerTags'
+import { usePermissions } from '@/hooks/usePermissions'
+import { useTheme } from '@/hooks/useTheme'
+import { CustomFieldsSection, type CustomValues } from '@/components/CustomFieldsSection'
+import { InvoiceSubjectField } from '@/components/customers/InvoiceSubjectField'
 
-const ALL_TAGS: CustomerTag[] = [
-  'vip', 'commercial', 'recurring', 'warning', 'do-not-call', 'referred', 'priority',
-]
 
 interface ContactRow {
   id?: string
@@ -146,7 +150,7 @@ const emptyLocation = (isPrimary = false): LocationRow => ({
   street_address: '',
   apt_unit: '',
   city: '',
-  state: 'FL',
+  state: '',
   postal_code: '',
   country: 'US',
   latitude: '',
@@ -456,7 +460,12 @@ function cleanFormData(data: FormData): CustomerInput {
 // ---------- Component ----------
 
 interface CustomerFormProps {
-  onSubmit: (data: CustomerInput) => Promise<void>
+  /**
+   * customValues: tenant-defined customer custom fields (keyed by
+   * custom_field_id). The parent saves them with uploadCustomValues()
+   * once it has the customer id. Empty when the tenant has none.
+   */
+  onSubmit: (data: CustomerInput, customValues: CustomValues) => Promise<void>
   onCancel: () => void
   submitLabel: string
   serverErrors?: Record<string, string[]>
@@ -464,9 +473,23 @@ interface CustomerFormProps {
   mode?: 'create' | 'edit'
   onOpenTemplates?: () => void
   profileOnly?: boolean
+  /**
+   * New customer from a call: the caller's number goes on the main contact.
+   * Only the number: caller-ID names are often a city or "WIRELESS CALLER".
+   */
+  prefill?: { phone?: string | null }
 }
 
-export function CustomerForm({ onSubmit, onCancel, submitLabel, serverErrors, initialData, mode: _mode = 'create', onOpenTemplates, profileOnly = false }: CustomerFormProps) {
+type CreateTab = 'account' | 'contacts' | 'locations' | 'billing' | 'review'
+const createTabs: { id: CreateTab; label: string }[] = [
+  { id: 'account', label: 'Account' },
+  { id: 'contacts', label: 'Contacts' },
+  { id: 'locations', label: 'Locations' },
+  { id: 'billing', label: 'Billing & notes' },
+  { id: 'review', label: 'Review' },
+]
+
+export function CustomerForm({ onSubmit, onCancel, submitLabel, serverErrors, initialData, mode = 'create', onOpenTemplates, profileOnly = false, prefill }: CustomerFormProps) {
   const defaultValues: FormData = initialData
     ? customerToFormData(initialData)
     : {
@@ -502,7 +525,7 @@ export function CustomerForm({ onSubmit, onCancel, submitLabel, serverErrors, in
         birthday: '',
         anniversary: '',
         sms_consent: false,
-        contacts: [emptyContact(true)],
+        contacts: [{ ...emptyContact(true), phone: prefill?.phone ?? '' }],
         service_locations: [emptyLocation(true)],
       }
 
@@ -515,8 +538,32 @@ export function CustomerForm({ onSubmit, onCancel, submitLabel, serverErrors, in
     formState: { isSubmitting, isDirty },
   } = useForm<FormData>({ defaultValues })
 
+  const { theme } = useTheme()
   const customerType = watch('customer_type')
+  const newCustomer = mode === 'create' && !initialData && !profileOnly
+  const focusCreate = newCustomer && theme === 'focus'
+  const [createLayout, setCreateLayout] = useState<'tabbed' | 'canvas'>('tabbed')
+  const tabbedCreate = focusCreate && createLayout === 'tabbed'
+  const canvasCreate = focusCreate && createLayout === 'canvas'
+  const [activeTab, setActiveTab] = useState<CreateTab>('account')
+  const previewFirstName = watch('first_name')
+  const previewLastName = watch('last_name')
+  const previewBusinessName = watch('business_name')
+  const previewName = customerType === 'residential'
+    ? [previewFirstName, previewLastName].filter(Boolean).join(' ') || 'New customer'
+    : previewBusinessName || 'New business account'
+  // Match cleanFormData: untouched placeholder rows are not saved as contacts or locations.
+  const reviewContacts = (watch('contacts') ?? []).filter((contact) => !!contact.id || hasContactContent(contact))
+  const reviewLocations = (watch('service_locations') ?? []).filter((location) => !!location.id || hasLocationContent(location))
+  const { data: paymentTerms = [] } = usePaymentTerms({ active: true })
+  const paymentTermId = watch('payment_term_id')
+  const selectedPaymentTerm = paymentTerms.find((term) => term.id === paymentTermId)
   const watchedTags = watch('tags') ?? []
+  const { has } = usePermissions()
+  // Field definitions live behind the settings permission family; without
+  // it the section would only show a load error, so skip it.
+  const showCustomFields = !profileOnly && (has('settings.view') || has('settings.edit'))
+  const [customValues, setCustomValues] = useState<CustomValues>({})
 
   const {
     fields: contactFields,
@@ -529,6 +576,35 @@ export function CustomerForm({ onSubmit, onCancel, submitLabel, serverErrors, in
     append: appendLocation,
     remove: removeLocation,
   } = useFieldArray({ control, name: 'service_locations' })
+
+  useEffect(() => {
+    if (!tabbedCreate || !serverErrors || Object.keys(serverErrors).length === 0) return
+    const keys = Object.keys(serverErrors)
+    const nextTab: CreateTab = keys.some((key) => key.startsWith('contacts')) ? 'contacts'
+      : keys.some((key) => key.startsWith('service_locations')) ? 'locations'
+      : keys.some((key) => /tax|payment|statement|invoice|currency/i.test(key)) ? 'billing'
+      : 'account'
+    setActiveTab(nextTab)
+  }, [serverErrors, tabbedCreate])
+
+  const goToTab = (tab: CreateTab) => {
+    setActiveTab(tab)
+    requestAnimationFrame(() => document.getElementById('customer-create-tabs')?.scrollIntoView({ block: 'start' }))
+  }
+
+  const handleCreateTabKeyDown = (event: React.KeyboardEvent<HTMLButtonElement>, tab: CreateTab) => {
+    const currentIndex = createTabs.findIndex(({ id }) => id === tab)
+    const nextIndex = event.key === 'Home' ? 0
+      : event.key === 'End' ? createTabs.length - 1
+      : event.key === 'ArrowRight' ? (currentIndex + 1) % createTabs.length
+      : event.key === 'ArrowLeft' ? (currentIndex - 1 + createTabs.length) % createTabs.length
+      : -1
+    if (nextIndex < 0) return
+    event.preventDefault()
+    const nextTab = createTabs[nextIndex].id
+    goToTab(nextTab)
+    document.getElementById(`customer-create-tab-${nextTab}`)?.focus()
+  }
 
   /**
    * setValue wrapper that snapshots scroll position and restores it on
@@ -547,6 +623,9 @@ export function CustomerForm({ onSubmit, onCancel, submitLabel, serverErrors, in
     requestAnimationFrame(() => window.scrollTo(0, y))
   }
 
+  const customerTags = useCustomerTags()
+  const libraryTags = customerTags.data?.data ?? []
+  const tagColor = useCustomerTagColor()
   const toggleTag = (tag: CustomerTag) => {
     if (watchedTags.includes(tag)) {
       setValue('tags', watchedTags.filter((t) => t !== tag))
@@ -557,7 +636,7 @@ export function CustomerForm({ onSubmit, onCancel, submitLabel, serverErrors, in
 
   const handleFormSubmit = async (data: FormData) => {
     const cleaned = cleanFormData(data)
-    await onSubmit(cleaned)
+    await onSubmit(cleaned, showCustomFields ? customValues : {})
   }
 
   const errorFor = (key: string): string | undefined => {
@@ -569,8 +648,8 @@ export function CustomerForm({ onSubmit, onCancel, submitLabel, serverErrors, in
   // Stable identity (empty deps): defined-in-render components remount the whole
   // subtree each keystroke, so a wrapped input loses focus after one letter.
   const Section = useCallback(
-    ({ title, subtitle, children }: { title: string; subtitle?: string; children: React.ReactNode }) => (
-      <section className="bg-white rounded-lg border border-navy-100 p-4 sm:p-6">
+    ({ title, subtitle, tour, children }: { title: string; subtitle?: string; tour?: string; children: React.ReactNode }) => (
+      <section data-tour={tour} className="bg-white rounded-lg border border-navy-100 p-4 sm:p-6">
         <div className="mb-4 sm:mb-5">
           <h2 className="text-sm font-semibold text-navy-800 uppercase tracking-wider">{title}</h2>
           {subtitle && <p className="text-xs text-navy-500 mt-1">{subtitle}</p>}
@@ -595,7 +674,7 @@ export function CustomerForm({ onSubmit, onCancel, submitLabel, serverErrors, in
   }
 
   return (
-    <form onSubmit={handleSubmit(handleFormSubmit)} className="space-y-6 pb-24">
+    <form onSubmit={handleSubmit(handleFormSubmit)} className={focusCreate ? 'pb-24' : 'space-y-6 pb-24'}>
 
       {serverErrors && Object.keys(serverErrors).length > 0 && (
         <div className="bg-red-50 border border-red-200 rounded-lg p-4">
@@ -608,14 +687,56 @@ export function CustomerForm({ onSubmit, onCancel, submitLabel, serverErrors, in
         </div>
       )}
 
-      <Section title="Identity" subtitle="Who is this customer?">
+      {focusCreate && (
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-navy-100 bg-white px-4 py-3">
+          <div>
+            <p className="text-sm font-semibold text-navy-900">Choose how to work</p>
+            <p className="text-xs text-navy-500">Switch layouts without losing what you entered.</p>
+          </div>
+          <div data-tour="customer-new-layout" role="group" aria-label="Customer form layout" className="inline-flex overflow-hidden rounded-lg border border-navy-200">
+            <button type="button" aria-pressed={createLayout === 'tabbed'} onClick={() => setCreateLayout('tabbed')} className={`px-3 py-2 text-sm font-semibold ${createLayout === 'tabbed' ? 'bg-navy-800 text-white' : 'bg-white text-navy-600 hover:bg-navy-50'}`}>Tabbed workspace</button>
+            <button type="button" aria-pressed={createLayout === 'canvas'} onClick={() => setCreateLayout('canvas')} className={`border-l border-navy-200 px-3 py-2 text-sm font-semibold ${createLayout === 'canvas' ? 'bg-navy-800 text-white' : 'bg-white text-navy-600 hover:bg-navy-50'}`}>Grouped canvas</button>
+          </div>
+        </div>
+      )}
+
+      {focusCreate && (
+        <nav id="customer-create-tabs" data-tour="customer-new-tabs" role="tablist" aria-label="New customer sections" className={`${tabbedCreate ? 'grid' : 'hidden'} mb-4 grid-cols-2 gap-2 rounded-xl border border-navy-100 bg-white p-2 sm:grid-cols-5`}>
+          {createTabs.map(({ id, label }) => (
+            <button
+              key={id}
+              id={`customer-create-tab-${id}`}
+              data-tour={`customer-new-tab-${id}`}
+              type="button"
+              role="tab"
+              aria-selected={activeTab === id}
+              aria-controls={`customer-create-panel-${id}`}
+              tabIndex={activeTab === id ? 0 : -1}
+              onClick={() => goToTab(id)}
+              onKeyDown={(event) => handleCreateTabKeyDown(event, id)}
+              className={`rounded-lg px-3 py-2.5 text-sm font-semibold transition-colors ${activeTab === id ? 'bg-amber-50 text-amber-900 ring-1 ring-amber-400' : 'text-navy-600 hover:bg-navy-50'}`}
+            >
+              {label}
+              {id === 'contacts' && <span className="ml-1 text-xs text-navy-500">{reviewContacts.length}</span>}
+              {id === 'locations' && <span className="ml-1 text-xs text-navy-500">{reviewLocations.length}</span>}
+            </button>
+          ))}
+        </nav>
+      )}
+
+      <div className={tabbedCreate ? 'grid items-start gap-4 xl:grid-cols-[minmax(0,1fr)_260px]' : ''}>
+      <div className={canvasCreate ? 'grid min-w-0 gap-4 xl:grid-cols-2' : 'space-y-6 min-w-0'}>
+      <div id={tabbedCreate ? 'customer-create-panel-account' : undefined} role={tabbedCreate ? 'tabpanel' : undefined} aria-labelledby={tabbedCreate ? 'customer-create-tab-account' : undefined} hidden={tabbedCreate && activeTab !== 'account'} className={canvasCreate ? 'xl:col-span-2' : undefined}>
+
+      <Section title="Identity" subtitle="Who is this customer?" tour="customer-identity">
         <div className="space-y-4">
           <div>
             <Label>Customer type</Label>
-            <div className="flex gap-3">
+            <div className="flex gap-3" data-tour="customer-type-picker">
               {(['residential', 'commercial', 'government'] as CustomerType[]).map((t) => (
                 <label
                   key={t}
+                  data-tour={`customer-type-${t}`}
                   className={`flex-1 px-4 py-3 border rounded-md cursor-pointer text-sm font-medium text-center transition-colors capitalize ${
                     customerType === t
                       ? 'border-amber-400 bg-amber-50 text-amber-700'
@@ -631,28 +752,28 @@ export function CustomerForm({ onSubmit, onCancel, submitLabel, serverErrors, in
           </div>
 
           {customerType !== 'residential' && (
-            <div>
+            <div data-tour="customer-business-name">
               <Label>{customerType === 'government' ? 'Agency / organization name *' : 'Business name *'}</Label>
-              <Input {...register('business_name')} placeholder={customerType === 'government' ? 'City of Melbourne' : 'Acme Locksmiths LLC'} />
+              <Input {...register('business_name')} placeholder={customerType === 'government' ? 'City of Springfield' : 'Acme Services'} />
               <FieldError name="business_name" />
             </div>
           )}
           {customerType === 'residential' && (
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3" data-tour="customer-person-name">
               <div>
                 <Label>First name *</Label>
-                <Input {...register('first_name')} placeholder="Jane" />
+                <Input {...register('first_name')} placeholder="Jordan" />
                 <FieldError name="first_name" />
               </div>
               <div>
                 <Label>Last name *</Label>
-                <Input {...register('last_name')} placeholder="Doe" />
+                <Input {...register('last_name')} placeholder="Lee" />
                 <FieldError name="last_name" />
               </div>
             </div>
           )}
 
-          <div className="flex flex-wrap gap-3 pt-2">
+          <div className="flex flex-wrap gap-3 pt-2" data-tour="customer-flags">
             <label className="inline-flex items-center gap-2 text-sm text-navy-700 cursor-pointer">
               <input type="checkbox" {...register('vip')} className="rounded border-navy-300" />
               <span>VIP</span>
@@ -667,7 +788,7 @@ export function CustomerForm({ onSubmit, onCancel, submitLabel, serverErrors, in
             </label>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2 border-t border-navy-100">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2 border-t border-navy-100" data-tour="customer-account-parent">
             <div>
               <Label>Account number (auto-assigned)</Label>
               <Input {...register('account_number')} placeholder="Auto-assigned on save" disabled />
@@ -691,15 +812,18 @@ export function CustomerForm({ onSubmit, onCancel, submitLabel, serverErrors, in
         </div>
       </Section>
 
-      <Section title="Contacts" subtitle="People to reach at this customer. The main contact gets job notifications. Billing contacts get invoices.">
+      </div>
+      <div id={tabbedCreate ? 'customer-create-panel-contacts' : undefined} role={tabbedCreate ? 'tabpanel' : undefined} aria-labelledby={tabbedCreate ? 'customer-create-tab-contacts' : undefined} hidden={tabbedCreate && activeTab !== 'contacts'}>
+
+      <Section title="Contacts" subtitle="People to reach at this customer. The main contact gets job notifications. Billing contacts get invoices." tour="customer-contacts">
         <div className="space-y-4">
           {contactFields.map((field, index) => {
             const showAdvanced = watch(`contacts.${index}.showAdvanced`)
             const showMailing = watch(`contacts.${index}.showMailing`)
             return (
               <div key={field.id} className="border border-navy-200 rounded-md p-4 bg-navy-50/30">
-                <div className="flex items-center justify-between mb-3 pb-3 border-b border-navy-200">
-                  <div className="flex items-center gap-4 text-sm">
+                <div className="flex items-start justify-between gap-2 mb-3 pb-3 border-b border-navy-200">
+                  <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-sm" data-tour="customer-contact-roles">
                     <span className="font-semibold text-navy-700">Contact {index + 1}</span>
                     <label className="inline-flex items-center gap-2 cursor-pointer" title="Receives scheduling, on-the-way, and completion notifications">
                       <input type="checkbox" {...register(`contacts.${index}.is_main_contact`)} className="rounded border-navy-300" />
@@ -729,18 +853,18 @@ export function CustomerForm({ onSubmit, onCancel, submitLabel, serverErrors, in
                   )}
                 </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-3">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-3" data-tour="customer-contact-fields">
                   <div>
                     <Label>First name</Label>
-                    <Input {...register(`contacts.${index}.first_name`)} placeholder="Jane" />
+                    <Input {...register(`contacts.${index}.first_name`)} placeholder="Jordan" />
                   </div>
                   <div>
                     <Label>Last name</Label>
-                    <Input {...register(`contacts.${index}.last_name`)} placeholder="Doe" />
+                    <Input {...register(`contacts.${index}.last_name`)} placeholder="Lee" />
                   </div>
                   <div>
                     <Label>Email</Label>
-                    <Input {...register(`contacts.${index}.email`)} type="email" placeholder="jane@example.com" />
+                    <Input {...register(`contacts.${index}.email`)} type="email" placeholder="jordan@example.com" />
                   </div>
                   <div>
                     <Label>Email alt</Label>
@@ -748,11 +872,11 @@ export function CustomerForm({ onSubmit, onCancel, submitLabel, serverErrors, in
                   </div>
                   <div>
                     <Label>Phone</Label>
-                    <Input {...phoneField(register(`contacts.${index}.phone`))} placeholder="(321) 555-0100" />
+                    <Input {...phoneField(register(`contacts.${index}.phone`))} placeholder="(555) 555-0123" />
                   </div>
                   <div>
                     <Label>Phone alt</Label>
-                    <Input {...phoneField(register(`contacts.${index}.phone_alt`))} placeholder="(321) 555-0101" />
+                    <Input {...phoneField(register(`contacts.${index}.phone_alt`))} placeholder="(555) 555-0124" />
                   </div>
                   <div>
                     <Label>Job title</Label>
@@ -769,7 +893,7 @@ export function CustomerForm({ onSubmit, onCancel, submitLabel, serverErrors, in
                   <textarea {...register(`contacts.${index}.notes`)} rows={2} className="w-full rounded-md border border-navy-200 px-3 py-2 text-sm text-navy-800 focus:outline-none focus:ring-2 focus:ring-amber-400" placeholder="e.g. Prefers to be called after 3pm" />
                 </div>
 
-                <button type="button" onClick={(e) => { e.preventDefault(); const y = window.scrollY; setValue(`contacts.${index}.showMailing`, !showMailing); requestAnimationFrame(() => window.scrollTo(0, y)); }} className="text-xs text-navy-500 hover:text-amber-600 inline-flex items-center gap-1 mb-2">
+                <button type="button" onClick={(e) => { e.preventDefault(); const y = window.scrollY; setValue(`contacts.${index}.showMailing`, !showMailing); requestAnimationFrame(() => window.scrollTo(0, y)); }} data-tour="customer-contact-mailing" className="text-xs text-navy-500 hover:text-amber-600 inline-flex items-center gap-1 mb-2">
                   {showMailing ? '▼' : '▶'} {showMailing ? 'Hide' : 'Show'} mailing address
                 </button>
                 {showMailing && (
@@ -795,15 +919,15 @@ export function CustomerForm({ onSubmit, onCancel, submitLabel, serverErrors, in
                     <div className="grid grid-cols-3 gap-2">
                       <div>
                         <Label>City</Label>
-                        <Input {...register(`contacts.${index}.mailing_city`)} placeholder="Melbourne" />
+                        <Input {...register(`contacts.${index}.mailing_city`)} placeholder="Springfield" />
                       </div>
                       <div>
                         <Label>State</Label>
-                        <Input {...register(`contacts.${index}.mailing_state`)} placeholder="FL" maxLength={2} />
+                        <Input {...register(`contacts.${index}.mailing_state`)} placeholder="ST" maxLength={2} />
                       </div>
                       <div>
                         <Label>Zip</Label>
-                        <Input {...register(`contacts.${index}.mailing_postal_code`)} placeholder="32901" />
+                        <Input {...register(`contacts.${index}.mailing_postal_code`)} placeholder="12345" />
                       </div>
                     </div>
                     <label className="inline-flex items-center gap-2 text-sm text-navy-700">
@@ -813,7 +937,7 @@ export function CustomerForm({ onSubmit, onCancel, submitLabel, serverErrors, in
                   </div>
                 )}
 
-                <button type="button" onClick={(e) => { e.preventDefault(); const y = window.scrollY; setValue(`contacts.${index}.showAdvanced`, !showAdvanced); requestAnimationFrame(() => window.scrollTo(0, y)); }} className="text-xs text-navy-500 hover:text-amber-600 inline-flex items-center gap-1">
+                <button type="button" onClick={(e) => { e.preventDefault(); const y = window.scrollY; setValue(`contacts.${index}.showAdvanced`, !showAdvanced); requestAnimationFrame(() => window.scrollTo(0, y)); }} data-tour="customer-contact-advanced" className="text-xs text-navy-500 hover:text-amber-600 inline-flex items-center gap-1">
                   {showAdvanced ? '▼' : '▶'} {showAdvanced ? 'Hide' : 'Show'} advanced (prefix, birthday, SMS consent)
                 </button>
                 {showAdvanced && (
@@ -834,13 +958,16 @@ export function CustomerForm({ onSubmit, onCancel, submitLabel, serverErrors, in
             )
           })}
 
-          <button type="button" onClick={(e) => { e.preventDefault(); const y = window.scrollY; appendContact(emptyContact(false)); requestAnimationFrame(() => window.scrollTo(0, y)); }} className="w-full py-3 border-2 border-dashed border-navy-200 rounded-md text-sm text-navy-500 hover:border-amber-400 hover:text-amber-600 transition-colors">
+          <button type="button" onClick={(e) => { e.preventDefault(); const y = window.scrollY; appendContact(emptyContact(false)); requestAnimationFrame(() => window.scrollTo(0, y)); }} data-tour="customer-add-contact-row" className="w-full py-3 border-2 border-dashed border-navy-200 rounded-md text-sm text-navy-500 hover:border-amber-400 hover:text-amber-600 transition-colors">
             + Add another contact
           </button>
         </div>
       </Section>
 
-      <Section title="Service Locations" subtitle="Physical addresses where techs are dispatched. The primary location is the default for new jobs.">
+      </div>
+      <div id={tabbedCreate ? 'customer-create-panel-locations' : undefined} role={tabbedCreate ? 'tabpanel' : undefined} aria-labelledby={tabbedCreate ? 'customer-create-tab-locations' : undefined} hidden={tabbedCreate && activeTab !== 'locations'}>
+
+      <Section title="Service Locations" subtitle="Physical addresses where techs are dispatched. The primary location is the default for new jobs." tour="customer-locations">
         <div className="space-y-4">
           {locationFields.map((field, index) => {
             const isGated = watch(`service_locations.${index}.gated_property`)
@@ -848,13 +975,13 @@ export function CustomerForm({ onSubmit, onCancel, submitLabel, serverErrors, in
             return (
               <div key={field.id} className="border border-navy-200 rounded-md p-4 bg-navy-50/30">
                 <div className="flex items-center justify-between mb-3 pb-3 border-b border-navy-200">
-                  <div className="flex items-center gap-4 text-sm">
+                  <div className="flex items-center gap-4 text-sm" data-tour="customer-location-flags">
                     <span className="font-semibold text-navy-700">Location {index + 1}</span>
                     <label className="inline-flex items-center gap-2 cursor-pointer">
                       <input type="checkbox" {...register(`service_locations.${index}.is_primary`)} className="rounded border-navy-300" />
                       <span className="text-navy-700">Primary</span>
                     </label>
-                    <label className="inline-flex items-center gap-2 cursor-pointer">
+                    <label className="inline-flex items-center gap-2 cursor-pointer" data-tour="customer-location-gated">
                       <input type="checkbox" {...register(`service_locations.${index}.gated_property`)} className="rounded border-navy-300" />
                       <span className="text-navy-700">Gated property</span>
                     </label>
@@ -865,6 +992,7 @@ export function CustomerForm({ onSubmit, onCancel, submitLabel, serverErrors, in
                         at a property that does not exist. */}
                     {!profileOnly && watch(`service_locations.${index}.id`) && initialData?.id && (
                       <a
+                        data-tour="customer-location-agreement"
                         href={`/maintenance-contracts/new?customer=${initialData.id}&location=${watch(`service_locations.${index}.id`)}`}
                         className="text-xs font-semibold text-amber-700 hover:underline"
                       >
@@ -882,7 +1010,7 @@ export function CustomerForm({ onSubmit, onCancel, submitLabel, serverErrors, in
                     <Label>Nickname (e.g. &ldquo;Main warehouse&rdquo;, &ldquo;North store&rdquo;)</Label>
                     <Input {...register(`service_locations.${index}.nickname`)} placeholder="Optional label" />
                   </div>
-                  <div>
+                  <div data-tour="customer-location-address">
                     <Label>Street address</Label>
                     <AddressAutocomplete
                       value={watch(`service_locations.${index}.street_address`) ?? ''}
@@ -908,20 +1036,20 @@ export function CustomerForm({ onSubmit, onCancel, submitLabel, serverErrors, in
                     </div>
                     <div>
                       <Label>City</Label>
-                      <Input {...register(`service_locations.${index}.city`)} placeholder="Melbourne" />
+                      <Input {...register(`service_locations.${index}.city`)} placeholder="Springfield" />
                     </div>
                     <div>
                       <Label>State</Label>
-                      <Input {...register(`service_locations.${index}.state`)} placeholder="FL" maxLength={2} />
+                      <Input {...register(`service_locations.${index}.state`)} placeholder="ST" maxLength={2} />
                     </div>
                     <div>
                       <Label>Zip</Label>
-                      <Input {...register(`service_locations.${index}.postal_code`)} placeholder="32901" />
+                      <Input {...register(`service_locations.${index}.postal_code`)} placeholder="12345" />
                     </div>
                   </div>
 
                   {isGated && (
-                    <div className="p-3 bg-amber-50 border border-amber-200 rounded space-y-3">
+                    <div className="p-3 bg-amber-50 border border-amber-200 rounded space-y-3" data-tour="customer-location-gate">
                       <div>
                         <Label>Gate code</Label>
                         <Input {...register(`service_locations.${index}.gate_code`)} placeholder="1234" />
@@ -934,13 +1062,13 @@ export function CustomerForm({ onSubmit, onCancel, submitLabel, serverErrors, in
                     </div>
                   )}
 
-                  <button type="button" onClick={(e) => { e.preventDefault(); const y = window.scrollY; setValue(`service_locations.${index}.showLatLng`, !showLatLng); requestAnimationFrame(() => window.scrollTo(0, y)); }} className="text-xs text-navy-500 hover:text-amber-600 inline-flex items-center gap-1">
+                  <button type="button" onClick={(e) => { e.preventDefault(); const y = window.scrollY; setValue(`service_locations.${index}.showLatLng`, !showLatLng); requestAnimationFrame(() => window.scrollTo(0, y)); }} data-tour="customer-location-latlng" className="text-xs text-navy-500 hover:text-amber-600 inline-flex items-center gap-1">
                     {showLatLng ? '▼' : '▶'} {showLatLng ? 'Hide' : 'Show'} lat/lng coords
                   </button>
                   {showLatLng && (
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                      <Input {...register(`service_locations.${index}.latitude`)} placeholder="27.0658" />
-                      <Input {...register(`service_locations.${index}.longitude`)} placeholder="-80.6034" />
+                      <Input {...register(`service_locations.${index}.latitude`)} placeholder="Latitude" />
+                      <Input {...register(`service_locations.${index}.longitude`)} placeholder="Longitude" />
                     </div>
                   )}
                 </div>
@@ -948,14 +1076,18 @@ export function CustomerForm({ onSubmit, onCancel, submitLabel, serverErrors, in
             )
           })}
 
-          <button type="button" onClick={(e) => { e.preventDefault(); const y = window.scrollY; appendLocation(emptyLocation(false)); requestAnimationFrame(() => window.scrollTo(0, y)); }} className="w-full py-3 border-2 border-dashed border-navy-200 rounded-md text-sm text-navy-500 hover:border-amber-400 hover:text-amber-600 transition-colors">
+          <button type="button" onClick={(e) => { e.preventDefault(); const y = window.scrollY; appendLocation(emptyLocation(false)); requestAnimationFrame(() => window.scrollTo(0, y)); }} data-tour="customer-add-location-row" className="w-full py-3 border-2 border-dashed border-navy-200 rounded-md text-sm text-navy-500 hover:border-amber-400 hover:text-amber-600 transition-colors">
             + Add another location
           </button>
         </div>
       </Section>
 
-      <Section title="Notes & Tags" subtitle="Internal notes are staff-only. Public notes appear on invoices and work orders.">
+      </div>
+      <div id={tabbedCreate ? 'customer-create-panel-billing' : undefined} role={tabbedCreate ? 'tabpanel' : undefined} aria-labelledby={tabbedCreate ? 'customer-create-tab-billing' : undefined} hidden={tabbedCreate && activeTab !== 'billing'} className={canvasCreate ? 'grid gap-4 xl:col-span-2 xl:grid-cols-2' : 'space-y-6'}>
+
+      <Section title="Notes & Tags" subtitle="Internal notes are staff-only. Public notes appear on invoices and work orders." tour="customer-notes-tags">
         <div className="space-y-4">
+          <div className="space-y-4" data-tour="customer-notes">
           <div>
             <Label>Internal notes (staff only)</Label>
             <textarea {...register('internal_notes')} rows={3} className="w-full rounded-md border border-navy-200 px-3 py-2 text-sm text-navy-800 focus:outline-none focus:ring-2 focus:ring-amber-400" placeholder="Anything important about this customer that customers shouldn't see..." />
@@ -964,31 +1096,58 @@ export function CustomerForm({ onSubmit, onCancel, submitLabel, serverErrors, in
             <Label>Public notes (visible on invoices)</Label>
             <textarea {...register('public_notes')} rows={2} className="w-full rounded-md border border-navy-200 px-3 py-2 text-sm text-navy-800 focus:outline-none focus:ring-2 focus:ring-amber-400" placeholder="e.g. Thank you for your continued business!" />
           </div>
-          <div>
+          </div>
+          <div data-tour="customer-tags">
             <Label>Tags</Label>
+            {/* From the Tags library; one the library switched off stays
+                on a customer that has it until it's removed here. */}
             <div className="flex flex-wrap gap-2">
-              {ALL_TAGS.map((tag) => {
+              {[...libraryTags.map((t) => t.name), ...watchedTags.filter((name) => !libraryTags.some((t) => t.name === name))].map((tag) => {
                 const selected = watchedTags.includes(tag)
+                const inLibrary = libraryTags.some((t) => t.name === tag)
                 return (
-                  <button key={tag} type="button" onClick={() => toggleTag(tag)} className={`px-3 py-1 rounded-full text-xs font-medium transition-colors ${selected ? 'bg-amber-500 text-white' : 'bg-navy-50 text-navy-600 hover:bg-navy-100'}`}>
+                  <button
+                    key={tag}
+                    type="button"
+                    onClick={() => toggleTag(tag)}
+                    aria-pressed={selected}
+                    title={inLibrary ? undefined : 'No longer in your Tags library. Click to remove it from this customer.'}
+                    className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium transition-colors ${selected ? 'text-white' : 'bg-navy-50 text-navy-600 hover:bg-navy-100'}`}
+                    style={selected ? { background: tagColor(tag) } : undefined}
+                  >
+                    {!selected && <span aria-hidden="true" className="h-2 w-2 rounded-full" style={{ background: tagColor(tag) }} />}
                     {tag}
                   </button>
                 )
               })}
+              {customerTags.isSuccess && libraryTags.length === 0 && watchedTags.length === 0 && (
+                <span className="text-xs text-navy-500">No tags in your library yet.</span>
+              )}
             </div>
+            <p className="mt-1.5 text-xs text-navy-500">
+              Add, rename or recolor tags under <Link to="/tool-shed/tags" className="font-medium text-amber-700 hover:underline">Tool Shed → Tags</Link>.
+            </p>
           </div>
         </div>
       </Section>
 
-      <Section title="Tax & Billing" subtitle="Taxable status, payment defaults.">
+      {showCustomFields && (
+        <CustomFieldsBlock
+          customerId={initialData?.id ?? null}
+          values={customValues}
+          onChange={setCustomValues}
+        />
+      )}
+
+      <Section title="Tax & Billing" subtitle="Taxable status, payment defaults." tour="customer-billing">
         <div className="space-y-4">
-          <label className="inline-flex items-center gap-2 text-sm text-navy-700 cursor-pointer">
+          <label className="inline-flex items-center gap-2 text-sm text-navy-700 cursor-pointer" data-tour="customer-taxable">
             <input type="checkbox" {...register('taxable')} className="rounded border-navy-300" />
             <span>Taxable</span>
           </label>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <div>
+            <div data-tour="customer-tax-class">
               <Label>Default tax class</Label>
               <TaxClassSelect
                 value={watch('default_tax_class_id')}
@@ -1005,7 +1164,7 @@ export function CustomerForm({ onSubmit, onCancel, submitLabel, serverErrors, in
               <Label>Default payment method</Label>
               <Input {...register('payment_method')} placeholder="Credit card / Check / ACH" />
             </div>
-            <div>
+            <div data-tour="customer-payment-terms">
               <Label>Payment terms</Label>
               <PaymentTermSelect
                 value={watch('payment_term_id')}
@@ -1019,7 +1178,7 @@ export function CustomerForm({ onSubmit, onCancel, submitLabel, serverErrors, in
               <Input {...register('default_currency')} placeholder="USD" maxLength={3} />
             </div>
             {customerType !== 'residential' && (
-              <div className="rounded-lg border border-amber-200 bg-amber-50 p-3">
+              <div data-tour="customer-statement-day" className="rounded-lg border border-amber-200 bg-amber-50 p-3">
                 <label htmlFor="statement-send-day" className="mb-1 block text-sm font-medium text-slate-700">Statement send day (every month)</label>
                 <select id="statement-send-day" {...register('statement_day')} className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900">
                   <option value="">No monthly schedule</option>
@@ -1040,10 +1199,9 @@ export function CustomerForm({ onSubmit, onCancel, submitLabel, serverErrors, in
             )}
           </div>
 
-          {/* Hidden — kept so legacy 'tax_item' on existing customers
-              doesn't get nulled silently on save. Pure passthrough. */}
+          {/* Monthly statement pack (commercial / government only). */}
           {customerType !== 'residential' && (
-            <div className="rounded-xl border border-slate-200 bg-slate-50 p-4 space-y-3">
+            <div className="rounded-xl border border-slate-200 bg-slate-50 p-4 space-y-3" data-tour="customer-statement-pack">
               <h3 className="font-semibold text-navy-900">Monthly statement pack</h3>
               <p className="text-sm text-slate-500">Save your schedule here, then use Preview statement to enable or pause monthly delivery. Pause delivery before editing an active schedule. Packs include all unpaid invoices, including overdue balances, without changing their NET due dates.</p>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -1053,10 +1211,14 @@ export function CustomerForm({ onSubmit, onCancel, submitLabel, serverErrors, in
               <p className="text-xs text-slate-500">Days 29–31 use the last day in shorter months. Select this customer's statement template before enabling delivery. System-wide sending must also be enabled.</p>
             </div>
           )}
-          <div className="rounded-xl border border-slate-200 p-4 space-y-2">
+          <div data-tour="customer-invoice-subject" className="rounded-xl border border-slate-200 p-4 space-y-2">
             <Label>Invoice email subject for this customer</Label>
-            <Input {...register('invoice_email_subject')} maxLength={200} placeholder="Leave blank to use your normal invoice subject" />
-            <p className="text-xs text-slate-500">Use {'{{invoice.number}}'}, {'{{job.number}}'}, or your field tag such as {'{{custom.po_number}}'} / {'{{custom.wo_number}}'}. Applies when this customer receives the invoice. Missing values stop sending so an incomplete subject is not emailed.</p>
+            <input type="hidden" {...register('invoice_email_subject')} />
+            <InvoiceSubjectField
+              value={watch('invoice_email_subject') ?? ''}
+              onChange={(v) => setValuePreservingScroll('invoice_email_subject', v, { shouldDirty: true })}
+              customerName={watch('business_name') || [watch('first_name'), watch('last_name')].filter(Boolean).join(' ') || undefined}
+            />
             <FieldError name="invoice_email_subject" />
           </div>
           {/* Hidden — kept so legacy 'tax_item' on existing customers
@@ -1066,6 +1228,7 @@ export function CustomerForm({ onSubmit, onCancel, submitLabel, serverErrors, in
           {/* Tax exempt certificate. Only renderable for an existing
               customer (need an id to upload against). For new
               customers the field is suppressed with a hint. */}
+          <div data-tour="customer-tax-exempt">
           <TaxExemptCertField
             customerId={initialData?.id ?? null}
             isTaxable={!!watch('taxable')}
@@ -1076,12 +1239,13 @@ export function CustomerForm({ onSubmit, onCancel, submitLabel, serverErrors, in
               })
             }
           />
+          </div>
         </div>
       </Section>
 
-      <Section title="Advanced" subtitle="Optional. Most customers don't need anything here.">
+      <Section title="Advanced" subtitle="Optional. Most customers don't need anything here." tour="customer-advanced">
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          <div><Label>Industry</Label><Input {...register('industry')} placeholder="Auto Dealership" /></div>
+          <div><Label>Industry</Label><Input {...register('industry')} placeholder="Property management" /></div>
           <div><Label>Referral source</Label><Input {...register('referral_source')} placeholder="Google / Word of mouth" /></div>
           <div><Label>Birthday (residential)</Label><Input {...register('birthday')} type="date" /></div>
           <div><Label>Anniversary</Label><Input {...register('anniversary')} type="date" /></div>
@@ -1102,12 +1266,87 @@ export function CustomerForm({ onSubmit, onCancel, submitLabel, serverErrors, in
         </div>
       </Section>
 
-      <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-navy-100 px-3 sm:px-6 py-3 sm:py-4 z-10">
-        <div className="max-w-3xl mx-auto flex items-center justify-end gap-2 sm:gap-3">
-          <Button type="button" variant="secondary" onClick={onCancel}>Cancel</Button>
-          <Button type="submit" loading={isSubmitting}>
-            {isSubmitting ? 'Saving...' : submitLabel}
-          </Button>
+      </div>
+      {tabbedCreate && (
+        <section id="customer-create-panel-review" data-tour="customer-new-review" role="tabpanel" aria-labelledby="customer-create-tab-review" hidden={activeTab !== 'review'} className="rounded-xl border border-navy-100 bg-white p-4 sm:p-6">
+          <h2 className="text-lg font-semibold text-navy-900">Review before creating</h2>
+          <p className="mt-1 text-sm text-navy-500">Check the account at a glance. Choose a tab above to change anything.</p>
+          <div className="mt-5 grid gap-3 sm:grid-cols-2">
+            <div className="rounded-lg bg-navy-50 p-4">
+              <div className="flex items-center justify-between gap-2"><p className="text-xs font-semibold uppercase tracking-wide text-navy-500">Account</p><button type="button" onClick={() => goToTab('account')} className="text-xs font-semibold text-amber-700 hover:underline">Edit</button></div>
+              <p className="mt-1 text-sm font-semibold text-navy-900">{previewName}</p>
+              <p className="text-xs capitalize text-navy-600">{customerType} · {watch('active') ? 'Active' : 'Inactive'}</p>
+              <p className="mt-2 text-xs text-navy-600">{watch('vip') ? 'VIP · ' : ''}Account number assigned on save</p>
+            </div>
+            <div className="rounded-lg bg-navy-50 p-4">
+              <div className="flex items-center justify-between gap-2"><p className="text-xs font-semibold uppercase tracking-wide text-navy-500">Contacts</p><button type="button" onClick={() => goToTab('contacts')} className="text-xs font-semibold text-amber-700 hover:underline">Edit</button></div>
+              <p className="mt-1 text-sm font-semibold text-navy-900">{reviewContacts.length} {reviewContacts.length === 1 ? 'contact' : 'contacts'} to save</p>
+              <ul className="mt-2 max-h-40 space-y-2 overflow-y-auto text-xs text-navy-600">
+                {reviewContacts.map((contact, index) => <li key={contact.id ?? index} className="border-t border-navy-100 pt-2 first:border-0 first:pt-0">
+                  <span className="font-medium text-navy-900">{[contact.first_name, contact.last_name].filter(Boolean).join(' ') || contact.email || contact.phone || `Contact ${index + 1}`}</span>
+                  {(contact.email || contact.phone) && <span className="block break-all">{[contact.email, contact.phone].filter(Boolean).join(' · ')}</span>}
+                  <span className="block">{[contact.is_main_contact && 'Main', contact.is_billing_contact && 'Billing', contact.is_service_contact && 'Service', contact.is_intake_contact && 'Intake', contact.is_intake_approver && 'Intake approver'].filter(Boolean).join(' · ') || 'No contact role selected'}</span>
+                </li>)}
+                {reviewContacts.length === 0 && <li>No contacts entered.</li>}
+              </ul>
+            </div>
+            <div className="rounded-lg bg-navy-50 p-4">
+              <div className="flex items-center justify-between gap-2"><p className="text-xs font-semibold uppercase tracking-wide text-navy-500">Service locations</p><button type="button" onClick={() => goToTab('locations')} className="text-xs font-semibold text-amber-700 hover:underline">Edit</button></div>
+              <p className="mt-1 text-sm font-semibold text-navy-900">{reviewLocations.length} {reviewLocations.length === 1 ? 'location' : 'locations'} to save</p>
+              <ul className="mt-2 max-h-40 space-y-2 overflow-y-auto text-xs text-navy-600">
+                {reviewLocations.map((location, index) => <li key={location.id ?? index} className="border-t border-navy-100 pt-2 first:border-0 first:pt-0">
+                  <span className="font-medium text-navy-900">{location.nickname || `Location ${index + 1}`}{location.is_primary ? ' · Primary' : ''}</span>
+                  <span className="block">{[location.street_address, location.apt_unit, location.city, location.state, location.postal_code].filter(Boolean).join(', ') || 'Address not entered'}</span>
+                </li>)}
+                {reviewLocations.length === 0 && <li>No service locations entered.</li>}
+              </ul>
+            </div>
+            <div className="rounded-lg bg-navy-50 p-4">
+              <div className="flex items-center justify-between gap-2"><p className="text-xs font-semibold uppercase tracking-wide text-navy-500">Billing</p><button type="button" onClick={() => goToTab('billing')} className="text-xs font-semibold text-amber-700 hover:underline">Edit</button></div>
+              <p className="mt-1 text-sm font-semibold text-navy-900">{watch('taxable') ? 'Taxable' : 'Not marked taxable'} · {watch('default_currency') || 'USD'}</p>
+              <p className="mt-2 text-xs text-navy-600">Payment terms: {selectedPaymentTerm?.name ?? (paymentTermId ? 'Selected term' : 'Tenant default (COD if none)')}</p>
+              {watch('payment_method') && <p className="text-xs text-navy-600">Payment method: {watch('payment_method')}</p>}
+              {customerType !== 'residential' && <p className="text-xs text-navy-600">Monthly statement: {watch('statement_day') ? `Day ${watch('statement_day')} (delivery enabled separately)` : 'Not scheduled'}</p>}
+            </div>
+          </div>
+          <p className="mt-5 text-sm text-navy-600">This review shows the key details. Notes, tags, custom fields, and advanced settings entered in the tabs are also saved.</p>
+        </section>
+      )}
+      </div>
+
+      {tabbedCreate && (
+        <aside data-tour="customer-new-preview" aria-label="Customer account preview" className="hidden rounded-xl border border-navy-100 bg-white p-4 xl:sticky xl:top-4 xl:block">
+          <h2 className="text-sm font-semibold text-navy-900">Account preview</h2>
+          <p className="mt-1 text-xs text-navy-500">Your entries stay in place as you move through tabs.</p>
+          <p className="mt-5 break-words text-lg font-semibold text-navy-900">{previewName}</p>
+          <p className="text-xs capitalize text-navy-500">{customerType} · {watch('active') ? 'Active' : 'Inactive'}</p>
+          <dl className="mt-5 divide-y divide-navy-100 text-sm">
+            <div className="py-3"><dt className="text-xs font-medium text-navy-500">Account number</dt><dd className="mt-1 text-navy-800">Assigned on save</dd></div>
+            <div className="py-3"><dt className="text-xs font-medium text-navy-500">Contacts</dt><dd className="mt-1 text-navy-800">{reviewContacts.length} {reviewContacts.length === 1 ? 'contact' : 'contacts'} entered</dd></div>
+            <div className="py-3"><dt className="text-xs font-medium text-navy-500">Service locations</dt><dd className="mt-1 text-navy-800">{reviewLocations.length} {reviewLocations.length === 1 ? 'location' : 'locations'} entered</dd></div>
+            <div className="py-3"><dt className="text-xs font-medium text-navy-500">Billing</dt><dd className="mt-1 text-navy-800">{watch('taxable') ? 'Taxable' : 'Not marked taxable'}</dd></div>
+          </dl>
+        </aside>
+      )}
+      </div>
+
+      <div data-tour="customer-save" className="fixed bottom-0 left-0 right-0 bg-white border-t border-navy-100 px-3 sm:px-6 py-3 sm:py-4 z-10">
+        <div className={`${focusCreate ? 'max-w-[1760px]' : 'max-w-3xl'} mx-auto flex items-center justify-end gap-2 sm:gap-3`}>
+          <Button type="button" variant="secondary" onClick={onCancel} data-tour="customer-cancel">Cancel</Button>
+          {tabbedCreate && activeTab !== 'account' && (
+            <Button type="button" variant="secondary" onClick={() => goToTab(createTabs[createTabs.findIndex((tab) => tab.id === activeTab) - 1]?.id ?? 'account')}>
+              Back
+            </Button>
+          )}
+          {tabbedCreate && activeTab !== 'review' ? (
+            <Button type="button" onClick={() => goToTab(createTabs[createTabs.findIndex((tab) => tab.id === activeTab) + 1]?.id ?? 'review')}>
+              {activeTab === 'billing' ? 'Review & create' : `Next: ${createTabs[createTabs.findIndex((tab) => tab.id === activeTab) + 1]?.label ?? 'Review'}`}
+            </Button>
+          ) : (
+            <Button type="submit" loading={isSubmitting}>
+              {isSubmitting ? 'Saving...' : submitLabel}
+            </Button>
+          )}
         </div>
       </div>
     </form>
@@ -1140,7 +1379,7 @@ function TerritoryField({
   if (territories.length === 0) return null
 
   return (
-    <div>
+    <div data-tour="customer-territory">
       <label className="block text-xs font-medium text-navy-600 mb-1">
         Territory (county / operating area)
       </label>
@@ -1421,18 +1660,67 @@ function ParentCustomerPickerField({
   value: string | null | undefined
   onChange: (id: string | null) => void
 }) {
-  // We only need to display the picker — when value is set on edit, the
-  // CustomerPicker shows its collapsed "selected" state. We fetch the full
-  // customer once so the collapsed state has a name to show.
+  // When value is set on edit, fetch the saved parent once so the picker's
+  // collapsed "selected" state has a name to show.
   const [resolved, setResolved] = useState<Customer | null>(null)
+  const [cleared, setCleared] = useState(false)
+  const saved = useCustomer(value && !resolved && !cleared ? value : undefined)
+  const shown = resolved ?? (!cleared && value && saved.data?.id === value ? saved.data : null)
   return (
     <CustomerPicker
-      value={resolved}
+      value={shown}
       onChange={(c) => {
         setResolved(c)
+        setCleared(!c)
         onChange(c?.id ?? null)
       }}
       placeholder={value ? 'Reset to search…' : 'Start typing a parent customer…'}
     />
+  )
+}
+
+/**
+ * Customer custom fields (Tool Shed › Custom Fields › Customer). Renders
+ * nothing when the tenant has no active customer fields.
+ */
+function CustomFieldsBlock({
+  customerId,
+  values,
+  onChange,
+}: {
+  customerId: string | null
+  values: CustomValues
+  onChange: (next: CustomValues) => void
+}) {
+  return (
+    <div data-tour="customer-custom-fields" className="empty:hidden">
+      <CustomFieldsSectionCard customerId={customerId} values={values} onChange={onChange} />
+    </div>
+  )
+}
+
+function CustomFieldsSectionCard({
+  customerId,
+  values,
+  onChange,
+}: {
+  customerId: string | null
+  values: CustomValues
+  onChange: (next: CustomValues) => void
+}) {
+  const { data } = useQuery({
+    queryKey: ['custom-fields', 'customer', 'active', []],
+    queryFn: () => apiRequest<{ data: unknown[] }>('/v1/custom-fields?entity_type=customer&active=true'),
+    staleTime: 0,
+  })
+  if (!data || data.data.length === 0) return null
+  return (
+    <section className="bg-white rounded-lg border border-navy-100 p-4 sm:p-6">
+      <div className="mb-4 sm:mb-5">
+        <h2 className="text-sm font-semibold text-navy-800 uppercase tracking-wider">Custom fields</h2>
+        <p className="text-xs text-navy-500 mt-1">Your company's own fields for customers. Each one is also a {'{{custom.key}}'} merge tag.</p>
+      </div>
+      <CustomFieldsSection entityType="customer" entityId={customerId} values={values} onChange={onChange} />
+    </section>
   )
 }

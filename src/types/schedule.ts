@@ -52,6 +52,8 @@ export interface ScheduleWorkOrder {
   approval_status?: string | null
   id: string
   work_order_number: string | null
+  planned_session_id?: string | null
+  calendar_event_id?: string
   title: string | null
   priority?: string | null
   job_type?: { id: string; name: string; color: string | null; icon?: string | null } | null
@@ -94,6 +96,8 @@ export interface ScheduleWorkOrder {
   bill_to?: { name: string; initials: string } | null
   /** At-a-glance dispatch flags → small badges on the card. */
   flags?: ScheduleFlags
+  /** Sent to a sub company: shown in that company's lane, "Sub · tech". */
+  sub?: import('@/lib/subLane').JobSub | null
 }
 
 export interface ScheduleFlags {

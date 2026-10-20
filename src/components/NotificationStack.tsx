@@ -1,8 +1,10 @@
 import { useSyncExternalStore, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
+import { startToastPlacement } from '@/lib/toastPlacement'
 
 const subscribers = new Set<() => void>()
 let host: HTMLDivElement | null = null
+let stopPlacement: (() => void) | null = null
 const snapshot = () => host
 const serverSnapshot = () => null
 
@@ -27,6 +29,27 @@ export function subscribeToastPause(listener: () => void) {
   pauseListeners.add(listener)
   return () => {
     pauseListeners.delete(listener)
+  }
+}
+
+/**
+ * Pause every toast while the pointer or focus is inside `el`.
+ *
+ * The shared stack binds its host; the call layer binds its own, so hovering
+ * a ringing call freezes the texts behind it too and the other way round.
+ */
+export function bindToastPause(el: HTMLElement): () => void {
+  const on = () => setPaused(true)
+  const off = () => setPaused(false)
+  el.addEventListener('mouseenter', on)
+  el.addEventListener('mouseleave', off)
+  el.addEventListener('focusin', on)
+  el.addEventListener('focusout', off)
+  return () => {
+    el.removeEventListener('mouseenter', on)
+    el.removeEventListener('mouseleave', off)
+    el.removeEventListener('focusin', on)
+    el.removeEventListener('focusout', off)
   }
 }
 
@@ -63,10 +86,9 @@ function subscribe(listener: () => void) {
     host = document.createElement('div')
     host.className = 'cb-toast-stack print:hidden'
     host.setAttribute('aria-label', 'Notifications')
-    host.addEventListener('mouseenter', () => setPaused(true))
-    host.addEventListener('mouseleave', () => setPaused(false))
-    host.addEventListener('focusin', () => setPaused(true))
-    host.addEventListener('focusout', () => setPaused(false))
+    bindToastPause(host)
+    // Under the measured top bar, not a guessed 5rem (lib/toastPlacement).
+    stopPlacement = startToastPlacement()
     document.body.appendChild(host)
     ;(host as HTMLDivElement & { _cbObserver?: MutationObserver })._cbObserver = watchCount(host)
   }
@@ -79,6 +101,8 @@ function subscribe(listener: () => void) {
       ;(host as (HTMLDivElement & { _cbObserver?: MutationObserver }) | null)?._cbObserver?.disconnect()
       host?.remove()
       host = null
+      stopPlacement?.()
+      stopPlacement = null
       paused = false
     }
   }

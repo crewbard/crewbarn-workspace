@@ -18,6 +18,7 @@ import { CrewRightNowPanel } from '@/components/dashboard/CrewRightNowPanel'
 import { SupervisedProjectsPanel } from '@/components/dashboard/SupervisedProjectsPanel'
 import { IncomingRequestsPanel } from '@/components/dispatch/IncomingRequestsPanel'
 import { IncomingEstimateRequestsPanel } from '@/components/dispatch/IncomingEstimateRequestsPanel'
+import { CustomerMixCard } from '@/components/dashboard/CustomerMixCard'
 import {
   useTodayJobs,
   useDashboardSpotlight,
@@ -130,6 +131,8 @@ export function OpsTab() {
   const navigate = useNavigate()
   const { theme } = useTheme()
   const easy = theme === 'easy-side' || theme === 'easy-top'
+  const focus = theme === 'focus'
+  const [focusWorkQueue, setFocusWorkQueue] = useState<'schedule' | 'quotes' | 'attention' | 'calls'>('schedule')
   const jobsQ = useTodayJobs()
   const spotlightQ = useDashboardSpotlight()
   const unscheduledQ = useUnscheduledCount()
@@ -214,6 +217,10 @@ export function OpsTab() {
   )
 
   const noMatchCalls = calls.filter((c) => !c.customer_id).length
+  // Unanswered calls belong on the Calls page; people without calls.view
+  // fall back to the Messages inbox, where call threads also show.
+  const canViewCalls = !permissions.isLoading && permissions.has(PERM.CALLS_VIEW)
+  const callsHref = canViewCalls ? '/calls' : '/communications'
   const currentJob = stats.current
   const canClearDone = stats.done > 0 && !clearCompleted.isPending
   const goJob = (id: string) => navigate(`/jobs/${id}`)
@@ -253,16 +260,17 @@ export function OpsTab() {
         setCtxPos({ x: e.clientX, y: e.clientY })
       }}
     >
-      {easy && permissions.has(PERM.JOBS_VIEW) && <EasyActionCards label="Your workday" actions={[
+      {easy && permissions.has(PERM.JOBS_VIEW) && <div data-tour="dash-easy-workday"><EasyActionCards label="Your workday" actions={[
         { key: 'jobs', title: 'Find a job', description: 'Search jobs and open the customer, schedule, and work details.', onClick: () => navigate('/jobs') },
         { key: 'parts', title: 'Waiting on parts', description: 'Review jobs flagged as needing parts.', count: staleQ.isSuccess ? staleQ.data.needs_parts.count : undefined, onClick: () => navigate('/jobs?stale=needs_parts') },
         { key: 'billing', title: 'Ready for billing', description: 'Review completed, unbilled jobs before invoicing.', count: staleQ.isSuccess ? staleQ.data.unbilled_completed.count : undefined, onClick: () => navigate('/jobs?stale=unbilled_completed') },
-      ]} />}
-      {[jobsQ, unscheduledQ, staleQ, rxQ, callsQ, estQ, spotlightQ].some(query => query.isError) &&
-        <div role="alert" className="rounded-xl border border-amber-300 bg-amber-50 p-4 text-sm text-amber-900">
+      ]} /></div>}
+      {/* timeOffQ too: otherwise a failed load just drops time off from Needs attention. */}
+      {[jobsQ, unscheduledQ, staleQ, rxQ, callsQ, estQ, spotlightQ, timeOffQ].some(query => query.isError) &&
+        <div role="alert" data-tour="dash-load-error" className="rounded-xl border border-amber-300 bg-amber-50 p-4 text-sm text-amber-900">
           Some dashboard information could not be loaded. Totals and attention items may be incomplete.
           <button type="button" className="ml-2 underline font-semibold" onClick={() => {
-            for (const query of [jobsQ, unscheduledQ, staleQ, rxQ, callsQ, estQ, spotlightQ]) {
+            for (const query of [jobsQ, unscheduledQ, staleQ, rxQ, callsQ, estQ, spotlightQ, timeOffQ]) {
               if (query.isError) void query.refetch()
             }
           }}>Retry failed sections</button>
@@ -270,6 +278,7 @@ export function OpsTab() {
       {/* Stat cards */}
       <div data-tour="dash-stats" className="grid grid-cols-2 lg:grid-cols-5 gap-3">
         <StatCard
+          tour="dash-stat-jobs-today"
           label="Jobs today"
           value={String(stats.total)}
           sub={`${stats.done} done · ${stats.remaining} remaining`}
@@ -277,26 +286,29 @@ export function OpsTab() {
           error={jobsQ.isError}
         />
         <StatCard
+          tour="dash-stat-unscheduled"
           label="Unscheduled"
           value={String(unscheduled)}
           valueClass={unscheduled > 0 ? 'text-red-600' : 'text-navy-900'}
           sub={unscheduled > 0 ? 'Oldest needs a date' : 'All scheduled'}
-          action={unscheduled > 0 ? { label: 'Schedule now →', to: '/dispatch' } : undefined}
+          action={unscheduled > 0 ? { label: 'Schedule now →', to: '/schedule' } : undefined}
           onNavigate={navigate}
           loading={unscheduledQ.isLoading}
           error={unscheduledQ.isError}
         />
         <StatCard
+          tour="dash-stat-calls"
           label="Unanswered calls"
           value={String(calls.length)}
           valueClass={calls.length > 0 ? 'text-sky-600' : 'text-navy-900'}
           sub={noMatchCalls > 0 ? `${noMatchCalls} no customer match` : 'All returned'}
-          action={{ label: 'Open inbox →', to: '/communications' }}
+          action={{ label: canViewCalls ? 'Open calls →' : 'Open inbox →', to: callsHref }}
           onNavigate={navigate}
           loading={callsQ.isLoading}
           error={callsQ.isError}
         />
         <StatCard
+          tour="dash-stat-ready-to-invoice"
           label="Ready to invoice"
           value={String(unbilled?.count ?? 0)}
           valueClass={(unbilled?.count ?? 0) > 0 ? 'text-amber-600' : 'text-navy-900'}
@@ -315,6 +327,7 @@ export function OpsTab() {
           error={staleQ.isError}
         />
         <StatCard
+          tour="dash-stat-intake"
           label="AI Intake"
           value={String(intakeCount)}
           valueClass={intakeCount > 0 ? 'text-violet-600' : 'text-navy-900'}
@@ -323,6 +336,8 @@ export function OpsTab() {
           onNavigate={navigate}
         />
       </div>
+
+      {permissions.has(PERM.JOBS_VIEW) && <CustomerMixCard />}
 
       <StickyNoteStrip />
       {ctxPos && (
@@ -335,10 +350,12 @@ export function OpsTab() {
       {/* Customer requests from the portal / marketplace: the same panels
           dispatch shows, so a request is seen wherever the office starts
           its day. Both render nothing when empty. */}
-      <IncomingRequestsPanel />
-      <IncomingEstimateRequestsPanel />
+      <div data-tour="dash-incoming" className="space-y-4 empty:hidden">
+        <IncomingRequestsPanel />
+        <IncomingEstimateRequestsPanel />
+      </div>
       {(spotlightQ.isLoading || spotlightJobs.length > 0) && (
-        <section className="rounded-xl border border-amber-300 bg-white shadow-sm overflow-hidden">
+        <section data-tour="dash-spotlight" className="rounded-xl border border-amber-300 bg-white shadow-sm overflow-hidden">
           <div className="flex flex-wrap items-center gap-3 border-b border-amber-200 bg-amber-50 px-4 py-3">
             <div className="min-w-0 flex-1">
               <h2 className="text-sm font-bold text-navy-900">Dormant job spotlight</h2>
@@ -349,7 +366,7 @@ export function OpsTab() {
             <span className="rounded-full bg-amber-500 px-2.5 py-1 text-xs font-bold text-white tabular-nums">
               {visibleSpotlightJobs.length}
             </span>
-            <label className="flex items-center gap-2 text-xs font-medium text-slate-600">
+            <label data-tour="dash-spotlight-filter" className="flex items-center gap-2 text-xs font-medium text-slate-600">
               Status
               <select
                 value={spotlightStatus}
@@ -408,6 +425,7 @@ export function OpsTab() {
       {stats.next && stats.next.id !== currentJob?.id && (
         <button
           type="button"
+          data-tour="dash-next"
           onClick={() => goJob(stats.next!.id)}
           className="w-full rounded-xl border border-slate-200 bg-white px-5 py-3 flex items-center gap-4 text-left hover:shadow-sm transition-shadow"
         >
@@ -432,6 +450,27 @@ export function OpsTab() {
       )}
 
       {/* Bottom row */}
+      {focus && (
+        <nav data-focus-queue-tabs data-tour="dash-queue-tabs" aria-label="Dashboard work queues" className="flex flex-wrap gap-2">
+          {([
+            { key: 'schedule', label: 'Today', count: stats.total },
+            { key: 'quotes', label: 'Needs a quote', count: needsQuote.length },
+            { key: 'attention', label: 'Needs attention', count: attention.length },
+            { key: 'calls', label: 'Callbacks', count: calls.length },
+          ] as const).map(({ key, label, count }) => (
+            <button
+              key={key}
+              type="button"
+              data-tour={`dash-queue-${key}`}
+              aria-pressed={focusWorkQueue === key}
+              onClick={() => setFocusWorkQueue(key)}
+              className="rounded-lg border px-3 py-2 text-sm font-semibold transition-colors"
+            >
+              {label} <span className="ml-1 tabular-nums opacity-70">{count}</span>
+            </button>
+          ))}
+        </nav>
+      )}
       <div data-easy-ops-grid className="grid grid-cols-1 lg:grid-cols-3 gap-3">
         {/* Today's schedule */}
         <Panel
@@ -440,7 +479,9 @@ export function OpsTab() {
           toLabel="full view →"
           navigate={navigate}
           tour="dash-schedule"
+          focusActive={focus ? focusWorkQueue === 'schedule' : undefined}
           action={stats.done > 0 ? {
+            tour: 'dash-schedule-clear',
             label: clearCompleted.isPending ? 'clearing...' : `clear ${stats.done} done`,
             disabled: !canClearDone,
             onClick: () => clearCompleted.mutate(),
@@ -488,6 +529,7 @@ export function OpsTab() {
           toLabel="view all →"
           navigate={navigate}
           tour="dash-needs-quote"
+          focusActive={focus ? focusWorkQueue === 'quotes' : undefined}
         >
           {needsQuoteQ.isPending ? (
             <Empty>Loading…</Empty>
@@ -526,8 +568,7 @@ export function OpsTab() {
                   <p className="text-xs text-slate-600">
                     {visit.property}
                     {visit.property && ' — '}
-                    {visit.item_count} item{visit.item_count === 1 ? '' : 's'} need
-                    {visit.item_count === 1 ? 's' : ''} parts
+                    {visit.item_count} item{visit.item_count === 1 ? '' : 's'} to price
                   </p>
                   {visit.covered_by_agreement && (
                     /* The one most likely to be missed: the agreement's
@@ -538,6 +579,7 @@ export function OpsTab() {
                   <div className="mt-1.5 flex flex-wrap gap-2">
                     <button
                       type="button"
+                      data-tour="dash-quote-parts"
                       onClick={() => {
                         setQuoteError(null)
                         quote.mutate(visit.work_order_id)
@@ -570,7 +612,7 @@ export function OpsTab() {
         </Panel>
 
         {/* Needs attention */}
-        <Panel title="Needs attention" to="/jobs" toLabel="view all →" navigate={navigate} tour="dash-attention">
+        <Panel title="Needs attention" to="/jobs" toLabel="view all →" navigate={navigate} tour="dash-attention" focusActive={focus ? focusWorkQueue === 'attention' : undefined}>
           {attention.length === 0 ? (
             <Empty>{[unscheduledQ, staleQ, rxQ, estQ, timeOffQ].some(query => query.isError)
               ? 'Attention items are incomplete. Retry the unavailable sections.'
@@ -580,7 +622,7 @@ export function OpsTab() {
           ) : (
             <ul className="space-y-1">
               {attention.map((a) => (
-                <li key={a.key}>
+                <li key={a.key} data-tour={`dash-attention-${a.key}`} data-severity={a.severity}>
                   <button
                     type="button"
                     onClick={() => navigate(a.href)}
@@ -614,9 +656,15 @@ export function OpsTab() {
         </Panel>
 
         {/* Unanswered calls */}
-        <Panel title="Unanswered calls" to="/communications" toLabel="open inbox →" navigate={navigate}>
+        <Panel title="Unanswered calls" to={callsHref} toLabel={canViewCalls ? 'open calls →' : 'open inbox →'} navigate={navigate} tour="dash-calls" focusActive={focus ? focusWorkQueue === 'calls' : undefined}>
           {callsQ.isLoading ? (
             <SkeletonRows />
+          ) : callsQ.isError ? (
+            // A 403 never gets here: the hook treats it as no calls.
+            <p role="alert" className="text-sm text-amber-800 py-6 text-center">
+              Couldn&apos;t load unanswered calls.
+              <button type="button" className="ml-1 underline font-semibold" onClick={() => void callsQ.refetch()}>Try again</button>
+            </p>
           ) : calls.length === 0 ? (
             <Empty>No calls waiting on a callback.</Empty>
           ) : (
@@ -625,7 +673,7 @@ export function OpsTab() {
                 <li key={c.id}>
                   <button
                     type="button"
-                    onClick={() => navigate('/communications')}
+                    onClick={() => navigate(callsHref)}
                     className="w-full flex items-center justify-between gap-2 py-2 px-1 text-left hover:bg-slate-50 rounded-lg"
                   >
                     <span className="min-w-0">
@@ -656,6 +704,7 @@ export function OpsTab() {
 // ---------- small building blocks ----------
 
 function StatCard({
+  tour,
   label,
   value,
   sub,
@@ -665,6 +714,8 @@ function StatCard({
   loading,
   error,
 }: {
+  /** data-tour id so the guided tour can point at this one tile. */
+  tour?: string
   label: string
   value: string
   sub: string
@@ -675,7 +726,7 @@ function StatCard({
   error?: boolean
 }) {
   return (
-    <div className="bg-white border border-slate-200 rounded-xl shadow-sm px-4 py-3">
+    <div data-tour={tour} className="bg-white border border-slate-200 rounded-xl shadow-sm px-4 py-3">
       <div className="text-xs font-medium text-slate-500">{label}</div>
       {error ? <p className="mt-1 text-sm text-amber-800">Unavailable</p> : loading ? (
         <div className="mt-1 h-7 w-12 bg-slate-100 rounded animate-pulse" />
@@ -703,6 +754,7 @@ function Panel({
   navigate,
   tour,
   action,
+  focusActive,
   children,
 }: {
   title: string
@@ -710,12 +762,14 @@ function Panel({
   toLabel: string
   navigate: (to: string) => void
   tour?: string
-  action?: { label: string; disabled?: boolean; onClick: () => void }
+  action?: { label: string; disabled?: boolean; onClick: () => void; tour?: string }
+  focusActive?: boolean
   children: React.ReactNode
 }) {
   return (
     <div
       data-tour={tour}
+      data-focus-active={focusActive === undefined ? undefined : String(focusActive)}
       className="bg-white border border-slate-200 rounded-xl shadow-sm p-4 min-h-[18rem] flex flex-col"
     >
       <div className="flex items-baseline justify-between gap-3 mb-2">
@@ -724,6 +778,7 @@ function Panel({
           {action && (
             <button
               type="button"
+              data-tour={action.tour}
               onClick={action.onClick}
               disabled={action.disabled}
               className="text-xs font-medium text-red-700 hover:underline disabled:opacity-50 disabled:no-underline"
@@ -733,6 +788,7 @@ function Panel({
           )}
           <button
             type="button"
+            data-tour={tour ? `${tour}-link` : undefined}
             onClick={() => navigate(to)}
             className="text-xs font-medium text-amber-700 hover:underline"
           >

@@ -34,6 +34,7 @@ import {
   IconFile,
   IconFileCertificate,
   IconFileInvoice,
+  IconFolder,
   IconForms,
   IconGauge,
   IconGps,
@@ -137,9 +138,9 @@ export const SETTINGS_MENU: Record<SectionKey, { groups: MenuGroup[] }> = {
       blurb: 'Name, address, logo and colours on everything you send.',
       icon: IconBuilding,
       items: [
-        { label: 'Company info', to: '/tool-shed/company-info', blurb: 'Legal name, address, phone, license numbers, hours.', icon: IconBuilding },
-        { label: 'Brand & logo', to: '/tool-shed/brand', blurb: 'Logo, colours and fonts on invoices, texts and the portal.', icon: IconPalette },
-        { label: 'Where your settings live', to: '/tool-shed/settings-location', blurb: 'Which settings stay in Connect and which open in the work app.', icon: IconAdjustments },
+        { label: 'Company info', to: '/tool-shed/company-info', blurb: 'Name, phone, email, address, website, license number and timezone.', icon: IconBuilding },
+        { label: 'Brand & logo', to: '/tool-shed/brand', blurb: 'Your logo and accent colour on estimates, invoices, emails and the portal.', icon: IconPalette },
+        { label: 'Where your settings live', to: '/tool-shed/settings-location', blurb: 'Keep company settings only in Connect, or list them in the work app too.', icon: IconAdjustments },
       ],
     },
     {
@@ -148,8 +149,8 @@ export const SETTINGS_MENU: Record<SectionKey, { groups: MenuGroup[] }> = {
       icon: IconWorld,
       items: [
         { label: 'Your website', to: '/website-builder', blurb: 'Build and publish your site.', icon: IconWorld },
-        { label: 'Customer app', to: '/tool-shed/customer-app', blurb: 'What customers can do in the portal: pay, request service, see history.', icon: IconDeviceMobile },
-        { label: 'Google Reviews', to: '/tool-shed/google-reviews', blurb: 'Ask for reviews after a job and show your rating.', icon: IconStar },
+        { label: 'Customer app', to: '/tool-shed/customer-app', blurb: 'Build your own branded phone app that opens your customer portal.', icon: IconDeviceMobile },
+        { label: 'Google Reviews', to: '/tool-shed/google-reviews', blurb: 'Pick your Google listing, ask for reviews after a job, and reply to them.', icon: IconStar },
         { label: 'Marketplace listing', to: '/tool-shed/marketplace', blurb: 'How you show up in the CrewBarn marketplace.', icon: IconBuildingStore, movedFrom: 'Connections' },
       ],
     },
@@ -158,7 +159,7 @@ export const SETTINGS_MENU: Record<SectionKey, { groups: MenuGroup[] }> = {
       blurb: 'Turn parts of CrewBarn on or off for your company.',
       icon: IconPuzzle,
       items: [
-        { label: 'Modules', to: '/tool-shed/modules', blurb: 'Which tools your crew sees: inventory, assets, hiring, trade toolkits.', icon: IconPuzzle },
+        { label: 'Modules', to: '/tool-shed/modules', blurb: 'Switch whole areas of CrewBarn on or off for everyone.', icon: IconPuzzle },
       ],
     },
     ],
@@ -171,7 +172,7 @@ export const SETTINGS_MENU: Record<SectionKey, { groups: MenuGroup[] }> = {
       icon: IconUsers,
       items: [
         { label: 'Customer types', to: '/tool-shed/customer-types', blurb: 'Residential, commercial, property manager — each with its own defaults.', icon: IconUsers, movedFrom: 'Jobs & workflow' },
-        { label: 'Tags', to: '/tool-shed/tags', blurb: 'Labels for customers and jobs, used in filters and automations.', icon: IconTag, movedFrom: 'Jobs & workflow' },
+        { label: 'Tags', to: '/tool-shed/tags', blurb: 'Customer tags: the ones the customer form offers, with their colors.', icon: IconTag, movedFrom: 'Jobs & workflow' },
       ],
     },
     {
@@ -197,8 +198,8 @@ export const SETTINGS_MENU: Record<SectionKey, { groups: MenuGroup[] }> = {
       blurb: 'Recurring service and how it is billed.',
       icon: IconFileCertificate,
       items: [
-        { label: 'Service agreements', to: '/tool-shed/service-agreements', blurb: 'Maintenance plans, visit frequency, what is covered.', icon: IconFileCertificate, movedFrom: 'Tool Shed' },
-        { label: 'Contract invoices', to: '/tool-shed/preferences/contract-invoices', blurb: 'When agreement invoices go out and what they include.', icon: IconFileInvoice, movedFrom: 'Shop rules' },
+        { label: 'Service agreements', to: '/tool-shed/service-agreements', blurb: 'Your agreement template and who reviews your contracts.', icon: IconFileCertificate, movedFrom: 'Tool Shed' },
+        { label: 'Contract invoices', to: '/tool-shed/preferences/contract-invoices', blurb: 'Whether invoices an agreement raises wait as drafts for you.', icon: IconFileInvoice, movedFrom: 'Shop rules' },
       ],
     },
     ],
@@ -211,6 +212,7 @@ export const SETTINGS_MENU: Record<SectionKey, { groups: MenuGroup[] }> = {
       icon: IconBriefcase,
       items: [
         { label: 'Job types', to: '/tool-shed/job-types', blurb: 'Each kind of job you do, with its own defaults.', icon: IconBriefcase },
+        { label: 'Task groups', to: '/tool-shed/task-groups', blurb: 'Sets of job tasks to pull onto a job, ticked off on the phone.', icon: IconListCheck },
         { label: 'Job statuses', to: '/tool-shed/job-statuses', blurb: 'The steps a job moves through and what each one means.', icon: IconListCheck },
         { label: 'New job & estimate intake', to: '/tool-shed/preferences#intake', blurb: 'What the intake form asks before a job is created.', icon: IconForms, movedFrom: 'Shop rules' },
         { label: 'Auto-numbering', to: '/tool-shed/preferences#numbering', blurb: 'How job, estimate and invoice numbers are made.', icon: IconHash, movedFrom: 'Shop rules' },
@@ -223,7 +225,8 @@ export const SETTINGS_MENU: Record<SectionKey, { groups: MenuGroup[] }> = {
       icon: IconGps,
       items: [
         { label: 'Checking a tech in when they arrive', to: '/tool-shed/preferences/auto-check-in', blurb: 'GPS check-in when the tech reaches the site.', icon: IconGps, movedFrom: 'Shop rules' },
-        { label: 'When a job counts as stalled', to: '/tool-shed/preferences/stalled-jobs', blurb: 'Days before a job is dormant, nudges, the note to restart it.', icon: IconHourglass, movedFrom: 'Shop rules' },
+        { label: 'Flashing Schedule when a tech may be late', to: '/tool-shed/preferences/late-techs', blurb: 'Schedule flashes red and blue until somebody answers; then a toast.', icon: IconAlarm },
+        { label: 'When a job counts as stalled', to: '/tool-shed/preferences/stalled-jobs', blurb: 'How many days without activity before a job is flagged as stalled.', icon: IconHourglass, movedFrom: 'Shop rules' },
         { label: 'Closing a job properly', to: '/tool-shed/preferences#field-rules', blurb: 'Stop a job being closed before photos, signature and payment.', icon: IconCircleCheck, movedFrom: 'Shop rules' },
         { label: 'How long a field video can be', to: '/tool-shed/preferences/video-length', blurb: 'Longest clip a tech can upload.', icon: IconVideo, movedFrom: 'Shop rules' },
       ],
@@ -233,8 +236,8 @@ export const SETTINGS_MENU: Record<SectionKey, { groups: MenuGroup[] }> = {
       blurb: 'Things CrewBarn does for you on a trigger.',
       icon: IconBolt,
       items: [
-        { label: 'Automations', to: '/tool-shed/automations', blurb: 'When something happens, do something: text, assign, change status.', icon: IconBolt },
-        { label: 'Reminders before an appointment', to: '/tool-shed/preferences/reminders', blurb: 'Texts and emails that go to the customer before a visit.', icon: IconBell, movedFrom: 'Shop rules' },
+        { label: 'Automations', to: '/tool-shed/automations', blurb: 'Things CrewBarn does for you when something happens, each with its own switch.', icon: IconBolt },
+        { label: 'Reminders before an appointment', to: '/tool-shed/preferences/reminders', blurb: 'Turn appointment reminders on or off for the whole company.', icon: IconBell, movedFrom: 'Shop rules' },
       ],
     },
     {
@@ -250,8 +253,8 @@ export const SETTINGS_MENU: Record<SectionKey, { groups: MenuGroup[] }> = {
       blurb: 'What you guarantee and when you hear about it.',
       icon: IconShield,
       items: [
-        { label: 'Warranty settings', to: '/tool-shed/warranty-settings', blurb: 'Default warranty lengths by job type and part.', icon: IconShield },
-        { label: 'When to warn you a warranty is running out', to: '/tool-shed/warranty-settings/expiring', blurb: 'How early and who gets told.', icon: IconAlarm },
+        { label: 'Warranty settings', to: '/tool-shed/warranty-settings', blurb: 'What a claim does, and when coverage counts as expiring. Lengths are set on catalog items.', icon: IconShield },
+        { label: 'When to warn you a warranty is running out', to: '/tool-shed/warranty-settings/expiring', blurb: 'How many days of notice before a warranty ends.', icon: IconAlarm },
       ],
     },
     ],
@@ -271,13 +274,20 @@ export const SETTINGS_MENU: Record<SectionKey, { groups: MenuGroup[] }> = {
     },
     {
       label: 'Reference',
-      blurb: 'Manuals, catalogues and what your shop knows.',
+      blurb: 'Catalogs, manuals and what your shop knows.',
       icon: IconBook2,
       items: [
         {
+          label: 'Catalogs',
+          to: '/catalogs',
+          blurb: 'Your price books and manuals as PDFs that open like the printed book, with tabs, find and ordering.',
+          icon: IconBook2,
+          requires: 'catalog.view',
+        },
+        {
           label: 'Reference cards',
           to: '/reference-cards',
-          blurb: 'Write down what your shop knows and add PDFs. A word in a job opens the card; a manual opens as a book with tabs.',
+          blurb: 'Write down what your shop knows. A word or part number in a job opens the card, with the catalog page it is on.',
           icon: IconBook2,
           requires: 'catalog.view',
         },
@@ -309,7 +319,8 @@ export const SETTINGS_MENU: Record<SectionKey, { groups: MenuGroup[] }> = {
       blurb: 'Cards, bank transfers and the ways customers can pay.',
       icon: IconCreditCard,
       items: [
-        { label: 'Where card payments go', to: '/tool-shed/payments', blurb: 'Connect your own card processor.', icon: IconCreditCard },
+        { label: 'Payments', to: '/tool-shed/payments', blurb: 'Connect Stripe or GoDaddy for cards, and your own bank for transfers.', icon: IconCreditCard },
+        { label: 'Where card payments go', to: '/tool-shed/payments/card-processor', blurb: 'Pick which connected processor charges your customers.', icon: IconCreditCard },
         { label: 'Let customers pay by bank transfer', to: '/tool-shed/payments/bank-transfer', blurb: 'ACH details shown on invoices.', icon: IconBuildingBank },
         { label: 'Watch your bank for payments', to: '/tool-shed/payments/watch-bank', blurb: 'Match bank deposits to open invoices.', icon: IconEye },
         { label: 'Payment types', to: '/tool-shed/payment-types', blurb: 'Cash, check, card, Zelle — what a tech can record.', icon: IconCash },
@@ -320,7 +331,7 @@ export const SETTINGS_MENU: Record<SectionKey, { groups: MenuGroup[] }> = {
       blurb: 'Terms and tax on what you bill.',
       icon: IconReceipt,
       items: [
-        { label: 'Payment terms', to: '/tool-shed/payment-terms', blurb: 'Due on receipt, net 15, net 30 and late rules.', icon: IconCalendar },
+        { label: 'Payment terms', to: '/tool-shed/payment-terms', blurb: 'Due on receipt, net 15, net 30, and which one new customers get.', icon: IconCalendar },
         { label: 'Tax classes', to: '/catalog/tax-classes', blurb: 'Tax rates for labor and parts by area.', icon: IconReceipt },
       ],
     },
@@ -353,6 +364,8 @@ export const SETTINGS_MENU: Record<SectionKey, { groups: MenuGroup[] }> = {
         { label: 'Staff & crews', to: '/tool-shed/staff', blurb: 'Add people, set crews and lead techs.', icon: IconUsers },
         { label: 'Subcontractors', to: '/tool-shed/subcontractors', blurb: 'Outside techs you send work to.', icon: IconUsersGroup },
         { label: 'Hiring', to: '/tool-shed/hiring', blurb: 'Job posts and applicants.', icon: IconUserPlus },
+        { label: 'Responsibilities', to: '/tool-shed/responsibilities', blurb: 'Who owns jobs, billing, the books and the rest, and the daily to-dos that keep them on top of it.', icon: IconListCheck },
+        { label: 'Employee settings', to: '/tool-shed/employee-settings', blurb: 'Quiet hours, task reminder emails, and how far back daily duties look. Each person can keep their own.', icon: IconUsers },
       ],
     },
     {
@@ -371,7 +384,7 @@ export const SETTINGS_MENU: Record<SectionKey, { groups: MenuGroup[] }> = {
       icon: IconClock,
       items: [
         { label: 'Time off', to: '/tool-shed/time-off', blurb: 'Requests, approvals and balances.', icon: IconBeach },
-        { label: 'When pay is earned', to: '/tool-shed/preferences#pay', blurb: 'On job finished, invoiced or paid; card fee on tips.', icon: IconCoin, movedFrom: 'Shop rules' },
+        { label: 'When pay is earned', to: '/tool-shed/preferences#pay', blurb: 'Commission when a job is invoiced or when it is paid; who carries the card fee on tips.', icon: IconCoin, movedFrom: 'Shop rules' },
         { label: 'Vacation earned', to: '/tool-shed/preferences#vacation', blurb: 'Accrual for hourly and salaried staff.', icon: IconSun, movedFrom: 'Shop rules' },
         { label: 'Clock in and out by GPS', to: '/tool-shed/preferences#clock', blurb: 'Auto clock-in/out at the shop geofence.', icon: IconClock, movedFrom: 'Shop rules' },
       ],
@@ -394,9 +407,9 @@ export const SETTINGS_MENU: Record<SectionKey, { groups: MenuGroup[] }> = {
       blurb: 'Which AI does the work and how it sounds.',
       icon: IconCpu,
       items: [
-        { label: 'Which AI does the thinking', to: '/tool-shed/ai/provider', blurb: 'CrewBarn AI or your own provider.', icon: IconCpu, movedFrom: 'Connections' },
-        { label: 'Your AI key', to: '/tool-shed/ai/key', blurb: 'Bring your own API key.', icon: IconKey, movedFrom: 'Connections' },
-        { label: 'Phone voice', to: '/tool-shed/ai/voice', blurb: 'How CBI sounds when it answers the phone.', icon: IconMicrophone, movedFrom: 'Connections' },
+        { label: 'Which AI does the thinking', to: '/tool-shed/ai/provider', blurb: 'Pick the AI company you bring your own account with.', icon: IconCpu, movedFrom: 'Connections' },
+        { label: 'Your AI key', to: '/tool-shed/ai/key', blurb: 'Paste your AI key and check it works.', icon: IconKey, movedFrom: 'Connections' },
+        { label: 'Talking to CBI', to: '/tool-shed/ai/voice', blurb: 'Turn the “Hey CrewBarn” wake word on or off in the crew app.', icon: IconMicrophone, movedFrom: 'Connections' },
       ],
     },
     {
@@ -404,7 +417,15 @@ export const SETTINGS_MENU: Record<SectionKey, { groups: MenuGroup[] }> = {
       blurb: 'The jobs you let CBI handle on its own.',
       icon: IconListCheck,
       items: [
-        { label: 'Allowed actions', to: '/tool-shed/ai/allowed', blurb: 'Answer calls, create jobs, assign, send invoices and reminders.', icon: IconListCheck, movedFrom: 'Connections' },
+        { label: 'Allowed actions', to: '/tool-shed/ai/allowed', blurb: 'Wake AI up and pick the tasks it may help with. It drafts; it does not send.', icon: IconListCheck, movedFrom: 'Connections' },
+      ],
+    },
+    {
+      label: 'Calls',
+      blurb: 'CBI phoning a late tech or their customer.',
+      icon: IconPhone,
+      items: [
+        { label: 'CBI calls', to: '/tool-shed/call-scripts', blurb: 'What CBI says when it calls a late tech or their customer, the voice, and what pressing 1 or 2 does.', icon: IconPhone, movedFrom: 'Phone, text & email' },
       ],
     },
     {
@@ -412,8 +433,8 @@ export const SETTINGS_MENU: Record<SectionKey, { groups: MenuGroup[] }> = {
       blurb: 'What CBI knows about your business.',
       icon: IconSchool,
       items: [
-        { label: 'Learning', to: '/tool-shed/ai/learning', blurb: 'Corrections and the rules it picked up.', icon: IconSchool, movedFrom: 'Connections' },
-        { label: 'Memory', to: '/tool-shed/ai/memory', blurb: 'Facts it keeps: prices, areas, how you like things done.', icon: IconBrain, movedFrom: 'Connections' },
+        { label: 'Learning policy', to: '/tool-shed/ai/learning', blurb: 'Controls for allowed learning sources and retention.', icon: IconSchool, movedFrom: 'Connections' },
+        { label: 'Knowledge & review', to: '/tool-shed/ai/memory', blurb: 'Review queued lessons and authorized saved knowledge.', icon: IconBrain, movedFrom: 'Connections' },
       ],
     },
     {
@@ -421,7 +442,7 @@ export const SETTINGS_MENU: Record<SectionKey, { groups: MenuGroup[] }> = {
       blurb: 'Everything CBI did, in one list.',
       icon: IconActivity,
       items: [
-        { label: 'Activity', to: '/tool-shed/ai/activity', blurb: 'Calls, jobs and messages CBI handled.', icon: IconActivity, movedFrom: 'Connections' },
+        { label: 'Activity', to: '/tool-shed/ai/activity', blurb: 'The latest things AI did, with cost and any failures.', icon: IconActivity, movedFrom: 'Connections' },
       ],
     },
     ],
@@ -434,9 +455,9 @@ export const SETTINGS_MENU: Record<SectionKey, { groups: MenuGroup[] }> = {
       icon: IconPhone,
       items: [
         { label: 'Phone, SMS & email', to: '/tool-shed/communication', blurb: 'Your numbers, texting and email in one place.', icon: IconPhone },
-        { label: 'Phone number setup', to: '/tool-shed/communication/twilio', blurb: 'Connect or buy a number for calls and texts.', icon: IconPhonePlus },
-        { label: 'Call transcription', to: '/tool-shed/communication/transcription', blurb: 'Turn calls into text on the job.', icon: IconMessage2 },
-        { label: 'Where your email comes from', to: '/tool-shed/communication/email', blurb: 'Your domain, the sender name and reply-to.', icon: IconMail },
+        { label: 'Texting from your own Twilio number', to: '/tool-shed/communication/twilio', blurb: 'Send customer texts from a Twilio number you already own.', icon: IconPhonePlus },
+        { label: 'Call transcription', to: '/tool-shed/communication/transcription', blurb: 'Who turns your call recordings into text. Opens on the Phone, SMS & email page.', icon: IconMessage2 },
+        { label: 'Where your email comes from', to: '/tool-shed/communication/email', blurb: 'Send from your own domain so quotes and invoices stay out of spam.', icon: IconMail },
         { label: 'Outbound sender', to: '/tool-shed/preferences#sender', blurb: 'Which name and number customers see.', icon: IconSend, movedFrom: 'Shop rules' },
       ],
     },
@@ -445,9 +466,9 @@ export const SETTINGS_MENU: Record<SectionKey, { groups: MenuGroup[] }> = {
       blurb: 'Other software and companies you share work with.',
       icon: IconPlug,
       items: [
-        { label: 'Integrations', to: '/tool-shed/integrations', blurb: 'QuickBooks, Google, suppliers and more.', icon: IconPlug },
+        { label: 'Integrations', to: '/tool-shed/integrations', blurb: 'Which outside services are connected, and where each one is set up.', icon: IconPlug },
         { label: 'Connected apps', to: '/tool-shed/connected-apps', blurb: 'Apps you have allowed into your account.', icon: IconApps },
-        { label: 'Partner connections', to: '/tool-shed/partner-connections', blurb: 'Companies you trade jobs with.', icon: IconHeartHandshake },
+        { label: 'Partner connections', to: '/tool-shed/partner-connections', blurb: 'Approve partners who read your work records, and see what they looked at.', icon: IconHeartHandshake },
       ],
     },
     {
@@ -455,7 +476,7 @@ export const SETTINGS_MENU: Record<SectionKey, { groups: MenuGroup[] }> = {
       blurb: 'Where files live and how maps load.',
       icon: IconCloud,
       items: [
-        { label: 'Storage & maps', to: '/tool-shed/storage-maps', blurb: 'File storage and your maps key.', icon: IconDatabase },
+        { label: 'Storage & maps', to: '/tool-shed/storage-maps', blurb: 'File storage, large uploads and your maps key.', icon: IconDatabase },
         { label: 'Connect Cloudflare', to: '/tool-shed/cloudflare', blurb: 'Your domain and files on your Cloudflare.', icon: IconCloud, movedFrom: 'Your business' },
       ],
     },
@@ -464,7 +485,7 @@ export const SETTINGS_MENU: Record<SectionKey, { groups: MenuGroup[] }> = {
       blurb: 'Screens in the shop.',
       icon: IconDeviceTv,
       items: [
-        { label: 'Shop TV', to: '/tool-shed/shop-tv', blurb: 'The board on the shop TV.', icon: IconDeviceTv },
+        { label: 'Shop TV', to: '/tool-shed/shop-tv', blurb: 'Pair shop TVs and design the live boards they show.', icon: IconDeviceTv },
       ],
     },
     ],
@@ -493,7 +514,7 @@ export const SETTINGS_MENU: Record<SectionKey, { groups: MenuGroup[] }> = {
       blurb: 'Running the shop server.',
       icon: IconServer,
       items: [
-        { label: 'Self-hosted console', to: '/tool-shed/self-hosted', blurb: 'The local server at the shop that pulls from CrewBarn.', icon: IconServer },
+        { label: 'Self-hosted console', to: '/tool-shed/self-hosted', blurb: 'Run the CrewBarn console on your own domain.', icon: IconServer },
       ],
     },
     ],
@@ -506,7 +527,7 @@ export const SETTINGS_MENU: Record<SectionKey, { groups: MenuGroup[] }> = {
       icon: IconReceipt,
       items: [
         { label: 'Subscription', to: '/tool-shed/subscription', blurb: 'Plan, seats and payment method.', icon: IconReceipt },
-        { label: 'Usage & limits', to: '/tool-shed/usage', blurb: 'Texts, AI minutes and storage this month.', icon: IconGauge },
+        { label: 'Usage & limits', to: '/tool-shed/usage', blurb: 'How many records your business keeps, and your plan.', icon: IconGauge },
       ],
     },
     {
@@ -515,8 +536,9 @@ export const SETTINGS_MENU: Record<SectionKey, { groups: MenuGroup[] }> = {
       icon: IconDatabase,
       items: [
         { label: 'Import data', to: '/tool-shed/import', blurb: 'Customers, jobs and parts from another system.', icon: IconUpload, movedFrom: 'Jobs & workflow' },
-        { label: 'Data export', to: '/tool-shed/data-export', blurb: 'Download everything.', icon: IconDownload, movedFrom: 'Jobs & workflow' },
+        { label: 'Data export', to: '/tool-shed/data-export', blurb: 'Download a CSV file for each kind of record.', icon: IconDownload, movedFrom: 'Jobs & workflow' },
         { label: 'Data encryption (BYOK)', to: '/tool-shed/encryption', blurb: 'Your own key for sensitive records and private files.', icon: IconLock, movedFrom: 'Team' },
+        { label: 'Company files', to: '/tool-shed/company-files', blurb: 'Your encrypted vault for company documents that are not tied to a customer.', icon: IconFolder, requires: 'company.secure_files.list' },
       ],
     },
     {
@@ -524,7 +546,7 @@ export const SETTINGS_MENU: Record<SectionKey, { groups: MenuGroup[] }> = {
       blurb: 'Who changed what.',
       icon: IconHistory,
       items: [
-        { label: 'Audit log', to: '/tool-shed/audit-log', blurb: 'Every settings change with who and when.', icon: IconHistory },
+        { label: 'Audit log', to: '/tool-shed/audit-log', blurb: 'Who changed what, and every deletion with its reason.', icon: IconHistory },
       ],
     },
     {

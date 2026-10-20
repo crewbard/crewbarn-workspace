@@ -15,6 +15,7 @@ import {
   useVerifyCompanySecureFileAccess,
 } from '@/hooks/useCompanySecureFiles'
 import { fetchCompanySecureFileBlob, type CompanySecureFile } from '@/lib/companySecureFiles'
+import { SecureFileExportPanel } from '@/components/SecureFileExportPanel'
 
 type SecureFileViewerState = {
   file: CompanySecureFile
@@ -28,7 +29,7 @@ type SecureFileViewerState = {
 /**
  * Tool Shed → Company Files. A tenant-internal encrypted vault for the
  * business's OWN sensitive documents (bank statements, EIN/insurance docs,
- * master-key charts) — protected exactly like customer Secure Files: per-file
+ * licenses) — protected exactly like customer Secure Files: per-file
  * AES-256-GCM under the per-tenant wrapping key (KMS/BYOK envelope), a step-up
  * code to unlock, and a full audit trail. Not attached to any customer.
  */
@@ -57,6 +58,8 @@ export function CompanySecureFilesPage() {
 
   const keyConfigured = !!status.data?.data.key.configured
   const unlocked = !!files.data?.meta.unlocked
+  const canUpload = has('company.secure_files.upload')
+  const canCreateNote = has('company.secure_files.create')
   const canManage = !!status.data?.data.can_manage
   const rows = files.data?.data ?? []
 
@@ -194,14 +197,14 @@ export function CompanySecureFilesPage() {
   }
 
   return (
-    <div className="mx-auto max-w-5xl px-4 py-6 sm:px-6 sm:py-8">
+    <div data-focus-page="secure-files" className="mx-auto max-w-5xl px-4 py-6 sm:px-6 sm:py-8">
       <section className="rounded-lg border border-slate-200 bg-white p-6">
-        <div className="flex flex-wrap items-start justify-between gap-4">
+        <div data-tour="company-files-header" data-unlocked={unlocked ? 'yes' : 'no'} className="flex flex-wrap items-start justify-between gap-4">
           <div>
             <h1 className="text-xl font-bold text-navy-900">Company Files</h1>
             <p className="mt-1 max-w-2xl text-sm text-slate-500">
-              Your company's own encrypted vault — bank statements, EIN/insurance docs, master-key
-              charts, and other sensitive records that aren't tied to a customer. Same protection as
+              Your company's own encrypted vault — bank statements, EIN/insurance docs, licenses,
+              contracts, and other sensitive records that aren't tied to a customer. Same protection as
               customer Secure Files: encrypted per file, a step-up code to open, and a full audit trail.
             </p>
           </div>
@@ -215,7 +218,7 @@ export function CompanySecureFilesPage() {
         ) : (
           <>
             {!keyConfigured && (
-              <div className="mt-5 rounded-lg border border-amber-200 bg-amber-50 p-4">
+              <div data-tour="company-files-setup" className="mt-5 rounded-lg border border-amber-200 bg-amber-50 p-4">
                 <div className="text-sm font-semibold text-amber-950">Secure Files setup required</div>
                 <p className="mt-1 text-sm text-amber-900">
                   Setup generates tenant-specific encryption keys and a one-time recovery key. Store the
@@ -238,7 +241,7 @@ export function CompanySecureFilesPage() {
             )}
 
             {recoveryKey && (
-              <div className="mt-5 rounded-lg border border-red-200 bg-red-50 p-4">
+              <div data-tour="company-files-recovery-key" className="mt-5 rounded-lg border border-red-200 bg-red-50 p-4">
                 <div className="text-sm font-semibold text-red-900">Recovery key shown once</div>
                 <p className="mt-1 text-sm text-red-800">Store this in a safe place now. CrewBarn will not show it again.</p>
                 <code className="mt-3 block rounded border border-red-200 bg-white p-3 text-sm font-bold text-red-950">{recoveryKey}</code>
@@ -249,7 +252,7 @@ export function CompanySecureFilesPage() {
             )}
 
             {keyConfigured && canManage && (
-              <div className="mt-5 rounded-lg border border-slate-200 bg-white p-4">
+              <div data-tour="company-files-recovery" className="mt-5 rounded-lg border border-slate-200 bg-white p-4">
                 <div className="text-sm font-semibold text-navy-900">Owner/admin recovery controls</div>
                 <p className="mt-1 text-xs text-slate-500">
                   Rotate shows a new recovery key one time. Recover rewraps tenant key material from the stored recovery key.
@@ -282,10 +285,14 @@ export function CompanySecureFilesPage() {
               </div>
             )}
 
+            {keyConfigured && canManage && has('customers.secure_files.manage') && (
+              <SecureFileExportPanel unlocked={unlocked} />
+            )}
+
             {keyConfigured && (
               <>
                 {!unlocked && (
-                  <div className="mt-5 rounded-lg border border-slate-200 bg-slate-50 p-4">
+                  <div data-tour="company-files-unlock" className="mt-5 rounded-lg border border-slate-200 bg-slate-50 p-4">
                     <div className="text-sm font-semibold text-navy-900">Unlock company files</div>
                     <div className="mt-3 flex flex-wrap items-center gap-2">
                       <select value={channel} onChange={(e) => setChannel(e.target.value as 'sms' | 'email')} className="rounded-md border border-slate-300 bg-white px-3 py-2 text-sm">
@@ -311,8 +318,9 @@ export function CompanySecureFilesPage() {
                   </div>
                 )}
 
-                {unlocked && (
-                  <div className="mt-5 grid gap-4 lg:grid-cols-[1fr_1fr]">
+                {unlocked && (canUpload || canCreateNote) && (
+                  <div data-tour="company-files-add" className="mt-5 grid gap-4 lg:grid-cols-[1fr_1fr]">
+                    {canUpload && (
                     <div className="rounded-lg border border-slate-200 p-4">
                       <div className="text-sm font-semibold text-navy-900">Upload encrypted file</div>
                       <label className="mt-3 inline-block cursor-pointer rounded-md bg-amber-500 px-4 py-2 text-sm font-semibold text-white hover:bg-amber-600">
@@ -320,6 +328,8 @@ export function CompanySecureFilesPage() {
                         <input type="file" multiple className="hidden" onChange={(e) => { handleUpload(e.target.files); e.target.value = '' }} />
                       </label>
                     </div>
+                    )}
+                    {canCreateNote && (
                     <div className="rounded-lg border border-slate-200 p-4">
                       <div className="text-sm font-semibold text-navy-900">Create secure note</div>
                       <input value={noteTitle} onChange={(e) => setNoteTitle(e.target.value)} placeholder="Title" className="mt-3 w-full rounded-md border border-slate-300 px-3 py-2 text-sm" />
@@ -328,6 +338,7 @@ export function CompanySecureFilesPage() {
                         Save encrypted note
                       </button>
                     </div>
+                    )}
                   </div>
                 )}
               </>
@@ -335,7 +346,7 @@ export function CompanySecureFilesPage() {
 
             {uploadError && <div className="mt-4 rounded border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{uploadError}</div>}
 
-            <div className="mt-5 overflow-hidden rounded-lg border border-slate-200">
+            <div data-tour="company-files-list" data-empty={rows.length === 0 ? 'yes' : 'no'} className="mt-5 overflow-hidden rounded-lg border border-slate-200">
               {files.isLoading ? (
                 <div className="p-4 text-sm text-slate-500">Loading secure files...</div>
               ) : rows.length === 0 ? (
@@ -358,6 +369,7 @@ export function CompanySecureFilesPage() {
                       </div>
                       <div className="flex flex-wrap gap-2 md:justify-end">
                         <button type="button" onClick={() => openSecureFile(file)} disabled={!unlocked || !has('company.secure_files.view')} className="rounded-md border border-slate-300 px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50">View</button>
+                        {has('company.secure_files.download') && <button type="button" onClick={() => openSecureFile(file, true)} disabled={!unlocked} title={!unlocked ? 'Unlock company files first' : undefined} className="rounded-md border border-slate-300 px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50">Download</button>}
                         {has('company.secure_files.audit') && <button type="button" onClick={() => setAuditFile(file)} className="rounded-md border border-slate-300 px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-50">Audit</button>}
                         {has('company.secure_files.delete') && <button type="button" onClick={() => handleDelete(file)} className="rounded-md border border-red-200 px-3 py-1.5 text-sm font-medium text-red-700 hover:bg-red-50">Delete</button>}
                       </div>
@@ -548,6 +560,8 @@ function formatSecureFileSize(bytes: number | null): string {
 }
 
 function sourceLabel(source: string): string {
+  if (source === 'sub_document') return 'from a subcontract job'
+  if (source === 'web_creator') return 'secure note'
   return source.replace(/_/g, ' ')
 }
 

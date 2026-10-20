@@ -1,4 +1,5 @@
-﻿import { clearSnapshots } from './snapshots'
+import { ClockSyncError, StorageUnavailableError, readSessionToken, storeSession, clearSession, isDeviceUploadResponse, installDeviceTransport, isApiUrl, sendProgressUpload, signUpload, type BoundSession } from './deviceProof'
+import { clearSnapshots } from './snapshots'
 
 export const API_URL = import.meta.env.VITE_API_URL || 'https://api.crewbarn.com'
 
@@ -21,6 +22,11 @@ if (typeof window !== 'undefined' && !(window as Window & { __cbFetchPatched?: b
   ;(window as Window & { __cbFetchPatched?: boolean }).__cbFetchPatched = true
   const originalFetch = window.fetch.bind(window)
   window.fetch = async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+    const requestToken = getStoredToken()
+    const authorization = new Headers(init?.headers ?? (input instanceof Request ? input.headers : undefined)).get('Authorization')
+    const sentCurrentSession = requestToken
+      ? authorization === `Bearer ${requestToken}` || authorization === `DPoP ${requestToken}`
+      : !authorization
     const response = await originalFetch(input, init)
     if (response.status === 401) {
       const url =
@@ -29,7 +35,7 @@ if (typeof window !== 'undefined' && !(window as Window & { __cbFetchPatched?: b
           : input instanceof URL
           ? input.href
           : (input as Request).url
-      if (url.startsWith(API_URL)) {
+      if (isApiUrl(url, API_URL) && sentCurrentSession && getStoredToken() === requestToken) {
         handleUnauthorized(url)
       }
     }
@@ -37,18 +43,23 @@ if (typeof window !== 'undefined' && !(window as Window & { __cbFetchPatched?: b
   }
 }
 
+if (typeof window !== 'undefined') installDeviceTransport(API_URL, 'crewbarn_token', (token) => { if (getStoredToken() === token) handleUnauthorized('/v1/auth/me') })
+
+export const signApiUpload = (xhr: XMLHttpRequest, url: string, token: string | null) => signUpload(xhr, url, API_URL, 'crewbarn_token', token).catch((error: unknown) => { if (!(error instanceof ClockSyncError) && !(error instanceof StorageUnavailableError) && getStoredToken() === token) handleUnauthorized('/v1/auth/me'); throw error })
+
+export const sendApiUpload = (xhr: XMLHttpRequest, url: string, token: string | null, body: FormData, complete: (status: number, text: string) => void) => sendProgressUpload(xhr, url, API_URL, 'crewbarn_token', token, body, { Accept: 'application/json', ...(getActingTenant() ? { 'X-Act-As-Tenant': getActingTenant()! } : {}) }, complete)
+
 export function getStoredToken(): string | null {
-  return localStorage.getItem(TOKEN_STORAGE_KEY)
+  try { return readSessionToken(TOKEN_STORAGE_KEY) } catch { return null }
 }
 
-export function setStoredToken(token: string): void {
-  // A new session is a new person as far as the shell snapshots are concerned.
+export function setStoredToken(token: string, session?: BoundSession): void {
+  storeSession(TOKEN_STORAGE_KEY, token, session)
   clearSnapshots()
-  localStorage.setItem(TOKEN_STORAGE_KEY, token)
 }
 
 export function clearStoredToken(): void {
-  localStorage.removeItem(TOKEN_STORAGE_KEY)
+  clearSession(TOKEN_STORAGE_KEY)
   clearSnapshots()
 }
 
@@ -57,7 +68,7 @@ export function clearStoredToken(): void {
  * Used to set the X-Act-As-Tenant header on writes.
  */
 export function getActingTenant(): string | null {
-  return localStorage.getItem(ACTING_TENANT_STORAGE_KEY)
+  try { return localStorage.getItem(ACTING_TENANT_STORAGE_KEY) } catch { return null }
 }
 
 /**
@@ -66,7 +77,7 @@ export function getActingTenant(): string | null {
 export function setActingTenant(tenantId: string | null): void {
   clearSnapshots() // permissions, modules and subscription are per tenant
   if (tenantId === null) {
-    localStorage.removeItem(ACTING_TENANT_STORAGE_KEY)
+    try { localStorage.removeItem(ACTING_TENANT_STORAGE_KEY) } catch { /* Storage may be blocked on sign-out. */ }
   } else {
     localStorage.setItem(ACTING_TENANT_STORAGE_KEY, tenantId)
   }
@@ -79,9 +90,9 @@ export function setActingTenant(tenantId: string | null): void {
  * support grant is active). Cleared on logout / "Exit franchise".
  */
 export function getFranchiseActAs(): { id: string; name: string } | null {
-  const raw = localStorage.getItem(FRANCHISE_ACT_AS_KEY)
-  if (!raw) return null
   try {
+    const raw = localStorage.getItem(FRANCHISE_ACT_AS_KEY)
+    if (!raw) return null
     return JSON.parse(raw) as { id: string; name: string }
   } catch {
     return null
@@ -91,7 +102,7 @@ export function getFranchiseActAs(): { id: string; name: string } | null {
 export function setFranchiseActAs(franchise: { id: string; name: string } | null): void {
   clearSnapshots()
   if (franchise === null) {
-    localStorage.removeItem(FRANCHISE_ACT_AS_KEY)
+    try { localStorage.removeItem(FRANCHISE_ACT_AS_KEY) } catch { /* Storage may be blocked on sign-out. */ }
   } else {
     localStorage.setItem(FRANCHISE_ACT_AS_KEY, JSON.stringify(franchise))
   }
@@ -110,6 +121,8 @@ export function setFranchiseActAs(franchise: { id: string; name: string } | null
  * timeout — those screens handle their own error messaging.
  */
 let bouncingToLogin = false
+/** Screens anyone can open without signing in (see the public routes in main.tsx). */
+const PUBLIC_SCREEN = /^\/(login|sign-up|beta|verify-signup|forgot-password|reset-password\/|download|scan\/|verify\/|r\/|accept-invite\/|auth\/accept-invite|sub-onboarding|sign\/|sign-agreement\/|staff-onboarding)/
 export function handleUnauthorized(reqPath: string): void {
   if (bouncingToLogin) return
   // The login + public sign / accept-invite flows surface their own
@@ -118,14 +131,22 @@ export function handleUnauthorized(reqPath: string): void {
   if (
     path.startsWith('/v1/auth/login') ||
     path.startsWith('/v1/auth/accept-invite') ||
+    path.startsWith('/v1/sub-onboarding') ||
     path.startsWith('/v1/sign/')
   ) {
     return
   }
-  // Don't bounce if we're already on a public screen (no auth needed
-  // to view login / sign / accept-invite).
-  const onPublic = typeof window !== 'undefined' && /^\/(login|sign\/|auth\/accept-invite)/.test(window.location.pathname)
-  if (onPublic) return
+  // Don't bounce if we're already on a public screen: login, sign-up and
+  // the beta gate, password reset, signing and invite links, QR scans,
+  // public reports. A stale sign-in left in this browser answers 401 when
+  // the app checks it, and that must not throw someone off the beta page
+  // onto the login screen. Drop the dead sign-in quietly and stay put.
+  if (typeof window !== 'undefined' && PUBLIC_SCREEN.test(window.location.pathname)) {
+    clearStoredToken()
+    setActingTenant(null)
+    setFranchiseActAs(null)
+    return
+  }
 
   bouncingToLogin = true
   clearStoredToken()
@@ -138,6 +159,18 @@ export function handleUnauthorized(reqPath: string): void {
     // subscriptions, mutable refs etc. get torn down cleanly.
     window.location.replace(target)
   }
+}
+
+/**
+ * The free Sub plan answers 402 plan_upgrade_required for what it leaves out.
+ * When the person did something (not a page loading), this event opens the
+ * upgrade sheet (components/SubPlan.tsx).
+ */
+export const PLAN_UPGRADE_EVENT = 'crewbarn:plan-upgrade'
+
+export interface PlanUpgradeDetail {
+  feature: string
+  message: string
 }
 
 export class ApiError extends Error {
@@ -160,6 +193,7 @@ export class ApiError extends Error {
 }
 
 interface ApiRequestOptions {
+  signal?: AbortSignal
   responseType?: 'json' | 'blob'
   method?: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE'
   body?: unknown
@@ -172,6 +206,10 @@ interface ApiRequestOptions {
   _retriedDeleteConfirm?: boolean
   /** Internal: set true once we've stepped up to avoid loops. */
   _retriedStepUp?: boolean
+  /** Internal: set true once the completion dialog has answered. */
+  _retriedCompletion?: boolean
+  /** Internal: set true once the text-agreement dialog has answered. */
+  _retriedSmsConsent?: boolean
 }
 
 /**
@@ -199,12 +237,74 @@ export function setDeleteConfirmHandler(fn: DeleteConfirmHandler | null): void {
 }
 
 /**
- * True when an error is the benign "user cancelled the delete-confirm
- * modal" signal. Callers use this to suppress error toasts/alerts on
- * cancel (the user chose not to delete — nothing went wrong).
+ * The delete prompt that's open, if any. DELETEs that hit the gate while it
+ * is open wait for the same answer: removing two items in one save sends
+ * them together, and the second used to replace the first prompt so the
+ * first never finished (the save sat on "saving" for good). The prompt
+ * covers the screen, so anything arriving while it's up comes from the same
+ * action.
+ */
+let pendingDeleteConfirm: Promise<{ password: string; reason: string } | null> | null = null
+
+/**
+ * Prompts that each need their own answer (which job, which person) are
+ * asked one after another, never on top of each other: a second one used
+ * to replace the first, which then never finished.
+ */
+function oneAtATime<T>(queue: { tail: Promise<unknown> }, ask: () => Promise<T>): Promise<T> {
+  const run = queue.tail.then(ask, ask)
+  queue.tail = run.catch(() => undefined)
+  return run
+}
+const completionQueue = { tail: Promise.resolve() as Promise<unknown> }
+const smsConsentQueue = { tail: Promise.resolve() as Promise<unknown> }
+
+/**
+ * Global completion-requirements bridge. Completing a job (any move to a
+ * Complete status, or a check-out) without the proof its customer account,
+ * job type or company asks for is refused with 422 completion_requirements
+ * and a list of what's missing. apiRequest hands that to the registered
+ * handler (CompletionRequirementsProvider), which shows the list; someone
+ * with jobs.override_requirements can give a reason, and the request is
+ * retried once with override_reason. Every status control gets this
+ * without its own wiring.
+ */
+export type CompletionRequirementsRequest = {
+  path: string
+  message: string
+  violations: { code: string; message: string }[]
+}
+export type CompletionRequirementsHandler = (req: CompletionRequirementsRequest) => Promise<string | null>
+
+let completionHandler: CompletionRequirementsHandler | null = null
+export function setCompletionRequirementsHandler(fn: CompletionRequirementsHandler | null): void {
+  completionHandler = fn
+}
+
+/**
+ * Global text-agreement bridge. A text to somebody who hasn't agreed to
+ * texts (and hasn't texted the company first) is refused with 422
+ * needs_sms_consent. apiRequest asks the registered handler
+ * (SmsConsentProvider) whether they agreed; yes retries once with
+ * consent_confirmed, which also saves the agreement on their record.
+ */
+export type SmsConsentRequest = { path: string; message: string; name: string | null }
+export type SmsConsentHandler = (req: SmsConsentRequest) => Promise<boolean>
+
+let smsConsentHandler: SmsConsentHandler | null = null
+export function setSmsConsentHandler(fn: SmsConsentHandler | null): void {
+  smsConsentHandler = fn
+}
+
+/**
+ * True when an error is a benign "the user closed the dialog" signal: the
+ * delete-confirm modal, the completion-requirements dialog (which already
+ * showed what's missing), or "Don't send" on the text-agreement question.
+ * Callers use this to suppress error toasts/alerts.
  */
 export function isDeleteCancelled(err: unknown): boolean {
-  return err instanceof ApiError && err.code === 'delete_cancelled'
+  return err instanceof ApiError
+    && (err.code === 'delete_cancelled' || err.code === 'completion_cancelled' || err.code === 'sms_consent_cancelled')
 }
 
 /**
@@ -234,6 +334,7 @@ export async function apiRequest<T>(
   options: ApiRequestOptions = {}
 ): Promise<T> {
   const { method = 'GET', body, requireAuth = true } = options
+  const requestToken = requireAuth ? readSessionToken(TOKEN_STORAGE_KEY) : getStoredToken()
 
   const headers: Record<string, string> = {
     'Accept': 'application/json',
@@ -244,7 +345,7 @@ export async function apiRequest<T>(
   if (options.deleteReason) headers['X-Delete-Reason'] = options.deleteReason
 
   if (requireAuth) {
-    const token = getStoredToken()
+    const token = requestToken
     if (token) {
       headers['Authorization'] = `Bearer ${token}`
     }
@@ -267,11 +368,13 @@ export async function apiRequest<T>(
   }
 
   const response = await fetch(`${API_URL}${path}`, {
+    signal: options.signal,
     method,
     headers,
     body: body ? JSON.stringify(body) : undefined,
   })
 
+  const stagedFinal = isDeviceUploadResponse(response)
   if (!response.ok) {
     let errorBody: {
       error?: unknown
@@ -288,24 +391,31 @@ export async function apiRequest<T>(
     // Session expired / token revoked / wasn't sent — kick the user
     // to the login screen. handleUnauthorized() is idempotent and
     // skips public auth paths.
-    if (response.status === 401) {
+    if (response.status === 401 && getStoredToken() === requestToken) {
       handleUnauthorized(path)
     }
 
     // Delete-confirm gate: prompt for password + reason, then retry once.
     const gateCode = typeof errorBody.error === 'string' ? errorBody.error : undefined
     if (
+      !stagedFinal &&
       method === 'DELETE' &&
       response.status === 422 &&
       (gateCode === 'password_required' || gateCode === 'reason_required') &&
       !options._retriedDeleteConfirm &&
       deleteConfirmHandler
     ) {
-      const creds = await deleteConfirmHandler({
-        path,
-        code: gateCode,
-        message: errorText(errorBody.message) || errorText(errorBody.error) || 'Confirm this deletion.',
-      })
+      const handler = deleteConfirmHandler
+      if (!pendingDeleteConfirm) {
+        pendingDeleteConfirm = handler({
+          path,
+          code: gateCode,
+          message: errorText(errorBody.message) || errorText(errorBody.error) || 'Confirm this deletion.',
+        }).finally(() => {
+          pendingDeleteConfirm = null
+        })
+      }
+      const creds = await pendingDeleteConfirm
       if (creds) {
         return apiRequest<T>(path, {
           ...options,
@@ -318,10 +428,67 @@ export async function apiRequest<T>(
       throw new ApiError(response.status, 'delete_cancelled', 'Deletion cancelled.', errorBody.details)
     }
 
+    // Completion requirements: show what's missing; someone allowed may
+    // give a reason and complete anyway (retried once with override_reason).
+    if (
+      response.status === 422 &&
+      !stagedFinal &&
+      gateCode === 'completion_requirements' &&
+      (method === 'PATCH' || method === 'POST') &&
+      body !== null && typeof body === 'object' && !Array.isArray(body) &&
+      !options._retriedCompletion &&
+      completionHandler
+    ) {
+      const violations = Array.isArray((errorBody as { violations?: unknown }).violations)
+        ? ((errorBody as { violations: { code: string; message: string }[] }).violations)
+        : []
+      const message = errorText(errorBody.message) || "This job can't be completed yet."
+      const handler = completionHandler
+      const reason = await oneAtATime(completionQueue, () => handler({ path, message, violations }))
+      if (reason) {
+        return apiRequest<T>(path, {
+          ...options,
+          body: { ...(body as Record<string, unknown>), override_reason: reason },
+          _retriedCompletion: true,
+        })
+      }
+      throw new ApiError(response.status, 'completion_cancelled', message, errorBody.details)
+    }
+
+    // Text agreement: ask whether they agreed, then send once more with
+    // consent_confirmed, or not at all.
+    if (
+      response.status === 422 &&
+      !stagedFinal &&
+      (errorBody as { needs_sms_consent?: unknown }).needs_sms_consent === true &&
+      method === 'POST' &&
+      body !== null && typeof body === 'object' && !Array.isArray(body) &&
+      !options._retriedSmsConsent &&
+      smsConsentHandler
+    ) {
+      const consent = (errorBody as { consent?: { name?: unknown } }).consent
+      const message = errorText(errorBody.error) || errorText(errorBody.message) || 'This person hasn’t agreed to get texts.'
+      const handler = smsConsentHandler
+      const agreed = await oneAtATime(smsConsentQueue, () => handler({
+        path,
+        message,
+        name: typeof consent?.name === 'string' ? consent.name : null,
+      }))
+      if (agreed) {
+        return apiRequest<T>(path, {
+          ...options,
+          body: { ...(body as Record<string, unknown>), consent_confirmed: true },
+          _retriedSmsConsent: true,
+        })
+      }
+      throw new ApiError(response.status, 'sms_consent_cancelled', 'Not sent.', errorBody.details)
+    }
+
     // Step-up gate: platform admin acting in a tenant without a live grant.
     // Run the verify flow (deduped per tenant), then retry the request once.
     if (
       response.status === 403 &&
+      !stagedFinal &&
       gateCode === 'step_up_required' &&
       !options._retriedStepUp &&
       stepUpHandler
@@ -343,6 +510,17 @@ export async function apiRequest<T>(
         return apiRequest<T>(path, { ...options, _retriedStepUp: true })
       }
       throw new ApiError(response.status, 'step_up_cancelled', 'Tenant access cancelled.', errorBody.details)
+    }
+
+    const planCode = (errorBody as { code?: unknown }).code
+    if (response.status === 402 && planCode === 'plan_upgrade_required') {
+      const rawFeature = (errorBody as { feature?: unknown }).feature
+      const detail: PlanUpgradeDetail = {
+        feature: typeof rawFeature === 'string' ? rawFeature : 'this',
+        message: errorText(errorBody.message) || 'This needs a paid plan.',
+      }
+      if (method !== 'GET') window.dispatchEvent(new CustomEvent(PLAN_UPGRADE_EVENT, { detail }))
+      throw new ApiError(402, 'plan_upgrade_required', detail.message, detail)
     }
 
     throw new ApiError(

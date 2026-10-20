@@ -7,7 +7,7 @@ import { PERM, usePermissions } from '@/hooks/usePermissions'
 import { useModuleVisibility } from '@/hooks/useModuleVisibility'
 import { useUnhandledIncomingCalls } from '@/hooks/useUnhandledIncomingCalls'
 import { useIntakePendingCount } from '@/hooks/useIntakePendingCount'
-import { useVisibleToolShedSections } from './ToolShedMenu'
+import { toolShedSectionSlug, useVisibleToolShedSections } from './ToolShedMenu'
 
 interface PrimaryNavItem {
   to: string
@@ -36,6 +36,7 @@ export function MobileNavDrawer({
   primaryNav,
   badges,
   accountEmail,
+  onOpenPhoneApp,
   onSignOut,
   wide = false,
 }: {
@@ -45,13 +46,15 @@ export function MobileNavDrawer({
   /** Badge counts keyed by route — drives the colored bubbles on items
    *  like /jobs (sub reviews), /dispatch (incoming requests), /money
    *  (pending turnover). */
-  badges: Record<string, { count: number; color: 'amber' | 'emerald' | 'sky' }[]>
+  badges: Record<string, { count: number; color: 'amber' | 'emerald' | 'sky' | 'red' }[]>
   accountEmail: string | null
+  /** The account menu's Phone app window (the QR code and download link). */
+  onOpenPhoneApp: () => void
   onSignOut: () => void
   wide?: boolean
 }) {
   const { has, isLoading } = usePermissions()
-  const { isRouteVisible } = useModuleVisibility()
+  const { isRouteVisibleInWork: isRouteVisible } = useModuleVisibility()
   const { theme } = useTheme()
   const desktopBreakpoint = wide ? (theme === 'easy-top' ? 1920 : 1280) : 768
   useEffect(() => {
@@ -64,6 +67,10 @@ export function MobileNavDrawer({
   }, [open, onClose, desktopBreakpoint])
   const callAlerts = useUnhandledIncomingCalls()
   const intakeCount = useIntakePendingCount()
+  // Each communication link needs its route permission and its own module.
+  const canMessages = has('customers.view') && isRouteVisible('/communications')
+  const canCalls = !isLoading && has(PERM.CALLS_VIEW) && isRouteVisible('/calls')
+  const canIntake = has('customers.view') && isRouteVisible('/intake')
 
   // Esc closes — standard modal affordance.
   useEffect(() => {
@@ -97,7 +104,7 @@ export function MobileNavDrawer({
       />
 
       {/* Drawer panel — slides in from left */}
-      <div className="absolute inset-y-0 left-0 w-[85vw] max-w-sm bg-white shadow-xl overflow-y-auto flex flex-col">
+      <div data-tour="mobile-drawer" className="absolute inset-y-0 left-0 w-[85vw] max-w-sm bg-white shadow-xl overflow-y-auto flex flex-col">
         {/* Drawer header — brand + close */}
         <div className="sticky top-0 bg-white border-b border-slate-200 px-4 py-3 flex items-center justify-between z-10">
           <Link
@@ -110,6 +117,7 @@ export function MobileNavDrawer({
           <button
             type="button"
             onClick={onClose}
+            data-tour="drawer-close"
             aria-label="Close menu"
             className="w-10 h-10 rounded-md hover:bg-slate-100 flex items-center justify-center text-slate-600 text-2xl leading-none"
           >
@@ -130,12 +138,15 @@ export function MobileNavDrawer({
                 to={item.to}
                 end={item.end}
                 onClick={onClose}
+                data-tour={`drawer-${item.to === '/' ? 'dashboard' : item.to.slice(1)}`}
                 className={({ isActive }) =>
                   [
                     'flex items-center justify-between px-4 py-3 text-base font-medium border-l-4 transition-colors',
                     isActive
                       ? 'border-amber-500 bg-amber-50 text-navy-900'
                       : 'border-transparent text-slate-700 hover:bg-slate-50',
+                    // A tech may be late (TopBar passes a red badge on /schedule).
+                    itemBadges.some((b) => b.color === 'red') ? 'cb-strobe cb-strobe--light' : '',
                   ].join(' ')
                 }
               >
@@ -151,7 +162,9 @@ export function MobileNavDrawer({
                             ? 'bg-amber-500'
                             : b.color === 'emerald'
                               ? 'bg-emerald-600'
-                              : 'bg-sky-600')
+                              : b.color === 'red'
+                                ? 'bg-red-600 ring-1 ring-white'
+                                : 'bg-sky-600')
                         }
                       >
                         {b.count > 99 ? '99+' : b.count}
@@ -162,10 +175,11 @@ export function MobileNavDrawer({
               </NavLink>
             )
           })}
-          {isRouteVisible('/communications') && <>
+          {canMessages && (
           <NavLink
             to="/communications"
             onClick={onClose}
+            data-tour="drawer-communications"
             className={({ isActive }) =>
               [
                 'flex items-center px-4 py-3 text-base font-medium border-l-4 transition-colors',
@@ -177,10 +191,12 @@ export function MobileNavDrawer({
           >
             Messages
           </NavLink>
-          {!isLoading && has(PERM.CALLS_VIEW) && (
+          )}
+          {canCalls && (
             <NavLink
               to="/calls"
               onClick={onClose}
+              data-tour="drawer-calls"
               className={({ isActive }) =>
                 [
                   'flex items-center justify-between px-4 py-3 text-base font-medium border-l-4 transition-colors',
@@ -198,9 +214,11 @@ export function MobileNavDrawer({
               )}
             </NavLink>
           )}
+          {canIntake && (
           <NavLink
             to="/intake"
             onClick={onClose}
+            data-tour="drawer-intake"
             className={({ isActive }) =>
               [
                 'flex items-center justify-between px-4 py-3 text-base font-medium border-l-4 transition-colors',
@@ -217,17 +235,16 @@ export function MobileNavDrawer({
               </span>
             )}
           </NavLink>
-
-          </>}
+          )}
           {/* Tool Shed sections */}
           {(theme === 'easy-side' || theme === 'easy-top') && <Suspense fallback={<p role="status" className="p-4">Loading settings…</p>}><EasySettingsDirectory compact onClose={onClose} /></Suspense>}
           {theme === 'easy-side' || theme === 'easy-top' ? (
-            <Link to="/tool-shed" onClick={onClose} className="block rounded-md px-4 py-3 text-sm font-semibold text-slate-800 hover:bg-slate-100">Open work tools →</Link>
+            <Link to="/tool-shed" onClick={onClose} data-tour="toolshed-open-full" className="block rounded-md px-4 py-3 text-sm font-semibold text-slate-800 hover:bg-slate-100">Open work tools →</Link>
           ) : <ToolShedMobileSections onLinkClick={onClose} />}
         </nav>
 
         {/* Drawer footer — account + sign-out */}
-        <div className="border-t border-slate-200 px-4 py-3 sticky bottom-0 bg-white">
+        <div data-tour="drawer-account" className="border-t border-slate-200 px-4 py-3 sticky bottom-0 bg-white">
           {accountEmail && (
             <div className="text-xs text-slate-500 mb-2 truncate">{accountEmail}</div>
           )}
@@ -238,6 +255,16 @@ export function MobileNavDrawer({
           >
             My time off
           </Link>
+          <button
+            type="button"
+            onClick={() => {
+              onClose()
+              onOpenPhoneApp()
+            }}
+            className="w-full text-left py-2 text-sm font-medium text-slate-700 hover:text-navy-900"
+          >
+            Phone app
+          </button>
           {has(PERM.SETTINGS_EDIT) && (
             <Link to="/me/ai-connectors" onClick={onClose} className="block py-2 text-sm font-medium text-slate-700 hover:text-navy-900">
               AI connectors
@@ -273,7 +300,7 @@ function ToolShedMobileSections({ onLinkClick }: { onLinkClick: () => void }) {
         const items = section.items
         if (items.length === 0) return null
         return (
-          <div key={section.title} className="mt-3">
+          <div key={section.title} data-tour={`toolshed-section-${toolShedSectionSlug(section.title)}`} className="mt-3">
             <div className="px-3 py-1 text-[10px] uppercase tracking-wide font-semibold text-slate-400">
               {section.title}
             </div>

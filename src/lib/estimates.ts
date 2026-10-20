@@ -4,6 +4,8 @@ import type {
   EstimateInput,
   EstimateUpdateInput,
   EstimateListParams,
+  EstimateOptionCreateInput,
+  EstimateOptionUpdateInput,
 } from '@/types/estimate'
 import type {
   EstimateLineItem,
@@ -95,9 +97,50 @@ export async function sendEstimate(
 /**
  * POST /v1/estimates/{id}/approve - sent -> approved.
  */
-export async function approveEstimate(id: string): Promise<Estimate> {
+export async function approveEstimate(id: string, optionId?: string | null): Promise<Estimate> {
   const response = await apiRequest<ResourceResponse<Estimate>>(
     `/v1/estimates/${id}/approve`,
+    // Good / better / best: which option the customer chose.
+    { method: 'POST', body: optionId ? { option_id: optionId } : undefined }
+  )
+  return response.data
+}
+
+// ---------- Good / better / best options ----------
+
+/**
+ * POST /v1/estimates/{id}/options - add an option, a copy of another.
+ * The first one turns the quote into Good and adds Better.
+ * Returns the whole estimate with its options.
+ */
+export async function addEstimateOption(id: string, input: EstimateOptionCreateInput = {}): Promise<Estimate> {
+  const response = await apiRequest<ResourceResponse<Estimate>>(
+    `/v1/estimates/${id}/options`,
+    { method: 'POST', body: input }
+  )
+  return response.data
+}
+
+/** PATCH /v1/estimates/{id}/options/{option} - rename, describe, recommend. */
+export async function updateEstimateOption(
+  id: string,
+  optionId: string,
+  input: EstimateOptionUpdateInput,
+): Promise<Estimate> {
+  const response = await apiRequest<ResourceResponse<Estimate>>(
+    `/v1/estimates/${id}/options/${optionId}`,
+    { method: 'PATCH', body: input }
+  )
+  return response.data
+}
+
+/**
+ * POST /v1/estimates/{id}/options/{option}/remove - takes the option and
+ * its lines off. One option left is a single quote again.
+ */
+export async function removeEstimateOption(id: string, optionId: string): Promise<Estimate> {
+  const response = await apiRequest<ResourceResponse<Estimate>>(
+    `/v1/estimates/${id}/options/${optionId}/remove`,
     { method: 'POST' }
   )
   return response.data

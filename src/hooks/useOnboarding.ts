@@ -87,7 +87,8 @@ export function useSeedOnboardingCompanyAssets() {
 export function useSeedOnboardingInventoryStock() {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: (items: SeedOnboardingInventoryStockInput[]) => seedOnboardingInventoryStock(items),
+    mutationFn: (input: SeedOnboardingInventoryStockInput[] | { items: SeedOnboardingInventoryStockInput[]; override: { override_reason?: string } }) =>
+      Array.isArray(input) ? seedOnboardingInventoryStock(input) : seedOnboardingInventoryStock(input.items, input.override),
     onSuccess: (resp) => {
       qc.setQueryData(onboardingKeys.status, { data: resp.data.onboarding })
     },

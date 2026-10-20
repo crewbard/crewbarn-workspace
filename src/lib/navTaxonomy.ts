@@ -27,7 +27,7 @@ export interface NavItem {
   /** Permission required to see it. Omitted means everyone. */
   requires?: string
   /** Badge source, resolved by the rail against useNavBadges. */
-  badge?: 'jobs' | 'dispatch' | 'subReviews' | 'inbound' | 'payments' | 'calls' | 'intake'
+  badge?: 'jobs' | 'dispatch' | 'subReviews' | 'inbound' | 'payments' | 'calls' | 'intake' | 'tasks'
   /** Gated on a tenant feature as well as a permission. */
   feature?: 'franchise'
 }
@@ -72,7 +72,7 @@ export const NAV_CATEGORIES: NavCategory[] = [
           // shipped before this line existed, so the only way in was to
           // type the URL.
           { to: '/maintenance-contracts', label: 'Contracts', requires: 'contracts.view' },
-          { to: '/tasks', label: 'Tasks', requires: PERM.TASKS_VIEW },
+          { to: '/tasks', label: 'Tasks', requires: PERM.TASKS_VIEW, badge: 'tasks' },
           { to: '/sub-reviews', label: 'Sub reviews', badge: 'subReviews' },
           { to: '/inbound-sub-jobs', label: 'Inbound sub jobs', badge: 'inbound' },
         ],
@@ -125,6 +125,7 @@ export const NAV_CATEGORIES: NavCategory[] = [
       {
         title: 'Paying out',
         items: [
+          { to: '/order-parts', label: 'Order parts', requires: PERM.INVENTORY_ORDER },
           { to: '/purchase-orders', label: 'Purchase orders', requires: PERM.INVENTORY_VIEW },
           { to: '/vendors', label: 'Vendors', requires: PERM.REVENUE_VIEW },
           { to: '/accounting/expenses', label: 'Expenses', requires: PERM.REVENUE_VIEW },
@@ -153,6 +154,7 @@ export const NAV_CATEGORIES: NavCategory[] = [
         items: [
           { to: '/tool-shed/company-files', label: 'Company files' },
           { to: '/custom-documents', label: 'Custom documents', requires: PERM.TEMPLATES_VIEW },
+          { to: '/catalogs', label: 'Catalogs', requires: PERM.CATALOG_VIEW },
           { to: '/reference-cards', label: 'Reference cards', requires: PERM.CATALOG_VIEW },
           { to: '/tool-shed/import', label: 'Import', requires: PERM.SETTINGS_VIEW },
           { to: '/tool-shed/data-export', label: 'Data export', requires: PERM.SETTINGS_VIEW },
@@ -182,6 +184,7 @@ export const NAV_CATEGORIES: NavCategory[] = [
           { to: '/tool-shed/roles', label: 'Roles', requires: PERM.SETTINGS_VIEW },
           { to: '/tool-shed/subcontractors', label: 'Subcontractors', requires: PERM.STAFF_VIEW },
           { to: '/tool-shed/time-off', label: 'Time off', requires: PERM.STAFF_VIEW },
+          { to: '/tool-shed/responsibilities', label: 'Responsibilities', requires: PERM.STAFF_VIEW },
         ],
       },
       {
@@ -192,6 +195,7 @@ export const NAV_CATEGORIES: NavCategory[] = [
           { to: '/tool-shed', label: 'All settings', end: true, requires: PERM.SETTINGS_VIEW },
           { to: '/tool-shed/company-info', label: 'Company info', requires: 'settings_company.view' },
           { to: '/tool-shed/integrations', label: 'Integrations', requires: PERM.SETTINGS_VIEW },
+          { to: '/tool-shed/ai/memory', label: 'CBI lesson review' },
           { to: '/me/account', label: 'My account' },
         ],
       },

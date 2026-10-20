@@ -29,7 +29,7 @@ export type SettingsSectionItem<T extends string> = {
 }
 
 export function SettingsSectionNav<T extends string>({
-  active, items, onSelect, statuses, title = 'Settings sections', grouped = false,
+  active, items, onSelect, statuses, title = 'Settings sections', grouped = false, tour,
 }: {
   active: T
   items: SettingsSectionItem<T>[]
@@ -38,10 +38,12 @@ export function SettingsSectionNav<T extends string>({
   title?: string
   compact?: boolean
   grouped?: boolean
+  /** Guided-tour target for the whole rail; each tab gets `<tour>-<id>`. */
+  tour?: string
 }) {
   const groups = Array.from(new Set(items.map(item => item.group ?? 'Settings')))
   const open = items.find(item => item.id === active)
-  return <nav aria-label={title} className="min-w-0 w-full rounded-xl border border-slate-200 bg-white">
+  return <nav aria-label={title} data-tour={tour} className="min-w-0 w-full rounded-xl border border-slate-200 bg-white">
     <label className="block p-3 md:hidden">
       <span className="sr-only">{title}</span>
       <select value={active} onChange={event => onSelect(event.target.value as T)} className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-navy-900">
@@ -57,7 +59,7 @@ export function SettingsSectionNav<T extends string>({
       {items.filter(item => !grouped || (item.group ?? 'Settings') === group).map(item => {
         const selected = item.id === active
         const status = statuses?.[item.id] ?? item.status
-        return <button key={item.id} type="button" onClick={() => onSelect(item.id)} title={item.description} aria-current={selected ? 'page' : undefined}
+        return <button key={item.id} type="button" data-tour={tour ? `${tour}-${item.id}` : undefined} onClick={() => onSelect(item.id)} title={item.description} aria-current={selected ? 'page' : undefined}
           className={`inline-flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-semibold transition-colors focus-visible:outline-2 focus-visible:outline-amber-500 ${selected ? 'bg-amber-50 text-amber-900 ring-1 ring-amber-200' : 'text-slate-600 hover:bg-slate-50'}`}>
           {item.icon && <span aria-hidden className="shrink-0">{item.icon}</span>}
           <span>{item.label}</span>

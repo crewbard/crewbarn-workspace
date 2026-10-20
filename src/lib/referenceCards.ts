@@ -41,6 +41,19 @@ export type ReferenceCardDocument = {
   mine?: boolean
 }
 
+/** Where a card's part is found: a catalog, and a page of it. */
+export type CatalogLink = {
+  id: string
+  document_id: string
+  title: string
+  vendor?: string | null
+  size_bytes?: number
+  /** The page of the file. Null: the whole book. */
+  page: number | null
+  /** The number printed on that page, when it differs. */
+  page_label: string | null
+}
+
 export type ReferenceCard = {
   id: string
   title: string
@@ -49,7 +62,33 @@ export type ReferenceCard = {
   status: string
   scope: 'shop' | 'platform'
   mine: boolean
+  /** The numbers the part goes by. What a lookup, and later a call transcript, finds it by. */
+  part_numbers?: string[]
+  /** Other names for it: what customers and suppliers call it. */
+  aliases?: string[]
+  has_picture?: boolean
+  found_in?: CatalogLink[]
+  /** Files uploaded to the card before catalogs had their own library. */
   documents?: ReferenceCardDocument[]
+  /** What worked, from this shop's finished jobs ("What worked?" at close-out). */
+  from_jobs?: FromJobs
+}
+
+/** What a card learned from this shop's jobs (App\Services\Reference\WhatWorked::summaryFor). */
+export type FromJobs = {
+  jobs: number
+  /** The parts those jobs took, most-used first. */
+  parts: { description: string; catalog_item_id: string | null; jobs: number }[]
+  typical_minutes: number | null
+  recent: {
+    note: string | null
+    minutes: number | null
+    vehicle: string | null
+    by: string | null
+    at: string
+    work_order_id: string | null
+    work_order_number: number | null
+  }[]
 }
 
 /** Matches the API: triggers, sections and the lengths it accepts. */
@@ -67,6 +106,8 @@ export const LIMITS = {
   documents: 20,
   documentTabs: 24,
   documentTabLabel: 40,
+  names: 30,
+  name: 80,
 }
 
 /**
@@ -98,12 +139,21 @@ export type DraftSection = {
   tab: string
 }
 
+/** A catalog page a card will be linked to once it is saved. */
+export type PendingLink = { document_id: string; title: string; page: number | null; page_label: string | null }
+
 export type Draft = {
   id: string | null
   title: string
   triggers: string[]
   sections: DraftSection[]
   propose: boolean
+  partNumbers: string[]
+  aliases: string[]
+  /** New cards only: catalog pages to link on save. A saved card links straight away. */
+  links: PendingLink[]
+  /** A picture waiting to go on with the save: usually cut from a catalog page. */
+  picture: Blob | null
 }
 
 let counter = 0
@@ -116,6 +166,10 @@ export function emptyDraft(): Draft {
     triggers: [],
     sections: [{ key: nextKey(), heading: '', body: '', tab: '' }],
     propose: false,
+    partNumbers: [],
+    aliases: [],
+    links: [],
+    picture: null,
   }
 }
 
@@ -131,5 +185,25 @@ export function draftOf(card: ReferenceCard): Draft {
       tab: (s.tab ?? '').trim(),
     })),
     propose: card.status === 'proposed',
+    partNumbers: [...(card.part_numbers ?? [])],
+    aliases: [...(card.aliases ?? [])],
+    links: [],
+    picture: null,
   }
+}
+
+/** "RV-200", "rv 200" and "RV200" are one number. Matches the API's fold. */
+export function foldName(text: string): string {
+  return text.toLowerCase().replace(/[^a-z0-9]+/g, '')
+}
+
+/** Every folded part number, other name and opening word a card answers to. */
+export function namesOf(card: ReferenceCard): string[] {
+  return [...(card.part_numbers ?? []), ...(card.aliases ?? []), ...card.triggers].map(foldName).filter(Boolean)
+}
+
+/** "Ilco catalog, p. 52" */
+export function linkLabel(link: { title: string; page: number | null; page_label: string | null }): string {
+  const page = link.page_label ?? (link.page !== null ? String(link.page) : null)
+  return page ? `${link.title}, p. ${page}` : link.title
 }

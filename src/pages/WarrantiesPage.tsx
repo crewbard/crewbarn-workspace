@@ -5,17 +5,17 @@ import type { WarrantyRow, WarrantyStatus } from '@/lib/warranties'
 import { useTheme } from '@/hooks/useTheme'
 import { EasyPageHeading } from '@/components/easy/EasyPageHeading'
 import { EasyActionCards } from '@/components/easy/EasyActionCards'
-import { CONNECT_URL } from '@/lib/workspaceScope'
+import { usePermissions } from '@/hooks/usePermissions'
 
 /**
- * Warranties list — full read-only browse view. Filterable by:
+ * Warranties list. Filterable by:
  *   - status (active / expired / voided / claimed)
  *   - customer / asset id (via URL params for deep-link)
  *   - free-text search across customer name + catalog item
  *
  * Status comes from the URL `?status=` so the dashboard panel + asset
- * filters can deep-link cleanly. Write actions (void / claim) are
- * deferred to round 3 extended-warranty work.
+ * filters can deep-link cleanly. Active rows can be claimed or voided by
+ * people with warranties.edit.
  */
 export function WarrantiesPage() {
   const { theme } = useTheme()
@@ -28,6 +28,9 @@ export function WarrantiesPage() {
     ? parseInt(params.get('expiring_within')!, 10) || undefined
     : undefined
 
+  const { has } = usePermissions()
+  const canEdit = has('warranties.edit')
+  const canOpenSettings = has('settings.view')
   const [searchQuery, setSearchQuery] = useState('')
   const [voidingId, setVoidingId] = useState<string | null>(null)
   const voidMutation = useVoidWarranty()
@@ -85,25 +88,29 @@ export function WarrantiesPage() {
       <div className={easy ? 'mb-6 w-full min-w-0' : 'flex items-center justify-between mb-6 flex-wrap gap-3'}>
         <div className={easy ? 'w-full min-w-0' : undefined}>
           {easy ? <EasyPageHeading title="Warranties" description="Find a customer's coverage, check expiry dates, and open the source invoice. Claim and void actions keep their existing confirmations." /> : <h1 className="text-2xl font-bold text-navy-900">Warranties</h1>}
-          <p className="text-sm text-slate-600 mt-1">
-            Coverage rows written when an invoice is sent;
-            warranty issuance is automatic. Configure rules in{' '}
-            <a href={new URL('/tool-shed/warranty-settings', CONNECT_URL).href} target="_blank" rel="noopener noreferrer" className="text-amber-700 hover:underline">
-              CrewBarn Connect → Warranty settings (new tab)
-            </a>
-            .
+          <p data-tour="warranties-header" className="text-sm text-slate-600 mt-1">
+            Coverage rows are written for you when an invoice is sent.
+            {canOpenSettings && (
+              <>
+                {' '}The rules live in{' '}
+                <Link to="/tool-shed/warranty-settings" className="text-amber-700 hover:underline">
+                  Warranty settings
+                </Link>
+                .
+              </>
+            )}
           </p>
         </div>
       </div>
-      {easy && <EasyActionCards label="Review coverage" actions={[
+      {easy && <div data-tour="warranties-action-cards"><EasyActionCards label="Review coverage" actions={[
         { key: 'all', title: 'All coverage', description: 'Browse all statuses with your current customer and asset filters.', active: status === null, onClick: () => setStatusFilter(null) },
         { key: 'active', title: 'Active coverage', description: 'Find coverage still in effect.', active: status === 'active', onClick: () => setStatusFilter('active') },
         { key: 'expired', title: 'Expired coverage', description: 'Review warranties past their coverage period.', active: status === 'expired', onClick: () => setStatusFilter('expired') },
         { key: 'claimed', title: 'Claimed coverage', description: 'Review recorded warranty claims.', active: status === 'claimed', onClick: () => setStatusFilter('claimed') },
-      ]} />}
+      ]} /></div>}
 
       {/* Filters */}
-      <div data-easy-list-toolbar className={easy ? 'bg-white border border-slate-200 rounded-lg p-4 mb-4 grid min-w-0 gap-3' : 'bg-white border border-slate-200 rounded-lg p-4 mb-4 flex flex-wrap items-end gap-3'}>
+      <div data-easy-list-toolbar data-tour="warranties-filters" className={easy ? 'bg-white border border-slate-200 rounded-lg p-4 mb-4 grid min-w-0 gap-3' : 'bg-white border border-slate-200 rounded-lg p-4 mb-4 flex flex-wrap items-end gap-3'}>
         <div className={easy ? 'min-w-0' : 'flex-1 min-w-[200px]'}>
           <label className="block text-xs font-medium text-slate-700 mb-1 uppercase tracking-wide">
             Search
@@ -149,13 +156,13 @@ export function WarrantiesPage() {
           <span className="text-slate-500">Filtering by:</span>
           {customerId && (
             <FilterChip
-              label={`customer = ${customerId.slice(0, 12)}…`}
+              label={`Customer: ${data?.[0]?.customer?.display_name ?? 'one customer'}`}
               onClear={() => { params.delete('customer_id'); setParams(params) }}
             />
           )}
           {assetId && (
             <FilterChip
-              label={`asset = ${assetId.slice(0, 12)}…`}
+              label={`Asset: ${data?.[0]?.asset?.name ?? 'one asset'}`}
               onClear={() => { params.delete('asset_id'); setParams(params) }}
             />
           )}
@@ -187,7 +194,7 @@ export function WarrantiesPage() {
       )}
 
       {!isLoading && !isError && filtered.length > 0 && (
-        <div className="bg-white border border-slate-200 rounded-lg overflow-x-auto">
+        <div data-tour="warranties-table" className="bg-white border border-slate-200 rounded-lg overflow-x-auto">
           <table className="w-full text-sm min-w-[820px]">
             <thead className="bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
               <tr>
@@ -220,6 +227,7 @@ export function WarrantiesPage() {
                     }
                   }}
                   busy={claimMutation.isPending && claimMutation.variables === w.id}
+                  canEdit={canEdit}
                 />
               ))}
             </tbody>
@@ -308,8 +316,10 @@ function WarrantyRowDisplay({
   onVoid,
   onClaim,
   busy,
+  canEdit,
 }: {
   row: WarrantyRow
+  canEdit: boolean
   fmtDate: (iso: string | null) => string
   daysUntil: (iso: string | null) => number | null
   onVoid: () => void
@@ -359,7 +369,7 @@ function WarrantyRowDisplay({
         )}
       </td>
       <td className="px-4 py-3 text-right">
-        {row.status === 'active' && (
+        {canEdit && row.status === 'active' && (
           <div className="inline-flex items-center gap-1.5">
             <button
               type="button"

@@ -43,3 +43,4 @@ export async function deleteCustomerContact(
     { method: 'DELETE' },
   )
 }
+

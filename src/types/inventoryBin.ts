@@ -36,6 +36,8 @@ export interface InventoryBin {
   active: boolean
   /** "Truck 1 / Top Shelf / Drawer A" — server-computed display path */
   path_label: string
+  /** How many units fit here. Null when not set. */
+  capacity?: number | null
   /** "DCJ1 / A" — compact "where to put it" label for QR put-away stickers */
   place_label: string
   created_at: string | null
@@ -53,6 +55,10 @@ export interface InventoryBinInput {
   notes?: string | null
   sort_order?: number
   active?: boolean
+  /** How many units fit here; null clears it. */
+  capacity?: number | null
+  /** Stock can sit directly here (false: it only holds other places). */
+  holds_stock?: boolean
 }
 
 export type InventoryBinUpdateInput = Partial<InventoryBinInput>

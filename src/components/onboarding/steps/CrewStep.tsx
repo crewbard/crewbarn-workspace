@@ -92,7 +92,7 @@ export function CrewStep({ complete, onMarkStep, saving }: StepProps) {
       </p>
 
       {staffMembers.length > 0 && (
-        <div className="rounded-xl border border-slate-200 bg-white p-4">
+        <div className="rounded-xl border border-slate-200 bg-white p-4" data-tour="onboarding-crew-already">
           <p className="text-xs font-bold uppercase tracking-wide text-slate-400">
             Already here · {staffMembers.length}
           </p>
@@ -106,30 +106,31 @@ export function CrewStep({ complete, onMarkStep, saving }: StepProps) {
         </div>
       )}
 
-      <section className="rounded-xl border border-slate-200 bg-white p-5">
+      <section className="rounded-xl border border-slate-200 bg-white p-5" data-guide="crew-invite" data-tour="onboarding-crew-invite">
         <h3 className="text-[15px] font-bold text-navy-900">Invite someone</h3>
 
-        <div className="mt-4 grid gap-4 sm:grid-cols-2">
-          <Field label="First name" value={staffFirstName} onChange={setStaffFirstName} placeholder="Dave" />
+        <div className="mt-4 grid gap-4 sm:grid-cols-2" data-tour="onboarding-crew-name">
+          <Field label="First name" value={staffFirstName} onChange={setStaffFirstName} placeholder="Jordan" />
           <Field
             label="Last name"
             hint="Optional."
             value={staffLastName}
             onChange={setStaffLastName}
-            placeholder="Hobbs"
+            placeholder="Lee"
           />
         </div>
-        <div className="mt-4">
+        <div className="mt-4" data-tour="onboarding-crew-email">
           <Field
             label="Their email"
             hint="Where the invite goes. It has to be one they can open — their own, not the office address."
             value={staffEmail}
             onChange={setStaffEmail}
-            placeholder="dave@example.com"
+            placeholder="jordan@example.com"
             type="email"
           />
         </div>
 
+        <div data-tour="onboarding-crew-roles">
         <h4 className="mt-6 text-sm font-bold text-navy-900">What they can see</h4>
         {staffRoles.length === 0 ? (
           <p className="mt-2 text-sm text-slate-500">Loading the roles…</p>
@@ -167,6 +168,7 @@ export function CrewStep({ complete, onMarkStep, saving }: StepProps) {
             })}
           </div>
         )}
+        </div>
 
         {staffError && (
           <p className="mt-4 rounded-lg border border-rose-200 bg-rose-50 p-3 text-sm leading-relaxed text-rose-800">
@@ -177,6 +179,7 @@ export function CrewStep({ complete, onMarkStep, saving }: StepProps) {
         <button
           type="button"
           onClick={inviteCrewMember}
+          data-tour="onboarding-crew-send"
           disabled={busy}
           className="mt-5 rounded-lg bg-amber-500 px-5 py-2.5 text-sm font-bold text-white hover:bg-amber-600 disabled:bg-slate-200 disabled:text-slate-500"
         >
@@ -192,6 +195,7 @@ export function CrewStep({ complete, onMarkStep, saving }: StepProps) {
       */}
       {lastInvite && (
         <div
+          data-tour="onboarding-crew-result"
           className={`rounded-xl border p-4 ${
             lastInvite.invite.email_sent ? 'border-emerald-200 bg-emerald-50' : 'border-amber-200 bg-amber-50'
           }`}
@@ -213,9 +217,11 @@ export function CrewStep({ complete, onMarkStep, saving }: StepProps) {
               </p>
             </>
           )}
-          <div className="mt-3">
-            <CopyValueBox label="Their setup link" value={lastInvite.invite.accept_url} />
-          </div>
+          {lastInvite.invite.accept_url && (
+            <div className="mt-3">
+              <CopyValueBox label="Their setup link" value={lastInvite.invite.accept_url} />
+            </div>
+          )}
         </div>
       )}
 
@@ -223,6 +229,7 @@ export function CrewStep({ complete, onMarkStep, saving }: StepProps) {
         <button
           type="button"
           onClick={() => onMarkStep({ choice: 'skip_staff_invite' })}
+          data-tour="onboarding-crew-done"
           disabled={saving}
           className="rounded-lg bg-amber-500 px-5 py-3 text-base font-bold text-white hover:bg-amber-600 disabled:bg-slate-200 disabled:text-slate-500"
         >

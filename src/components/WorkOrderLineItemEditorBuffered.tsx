@@ -7,6 +7,11 @@ import {
 } from '@/components/WorkOrderLineItemEditorCore'
 import type { WorkOrderLineItemDraft } from '@/types/workOrderLineItem'
 import type { CatalogItem } from '@/types/catalogItem'
+import { useTaxClasses } from '@/hooks/useTaxClasses'
+import { usePermissions, PERM } from '@/hooks/usePermissions'
+import { useEffect, useRef } from 'react'
+import type { PickedPart } from '@/lib/catalogOrders'
+import { exactCatalogItemForPdfPart, openPdfCatalogForLine, pdfLineReviewNote, pdfPartLineDescription } from '@/lib/pdfCatalogLine'
 
 interface WorkOrderLineItemEditorBufferedProps {
   /** Drafts held in parent component state. */
@@ -20,6 +25,8 @@ interface WorkOrderLineItemEditorBufferedProps {
 
   /** Optional: disabled state during parent submit. */
   disabled?: boolean
+  openPdfRequest?: number | null
+  onPdfRequestHandled?: () => void
 }
 
 /**
@@ -93,11 +100,32 @@ export function WorkOrderLineItemEditorBuffered({
   onChange,
   availableAssets = [],
   disabled = false,
+  openPdfRequest = null,
+  onPdfRequestHandled,
 }: WorkOrderLineItemEditorBufferedProps) {
   const defaultAssetId = availableAssets.length === 1 ? availableAssets[0].id : null
+  const { has } = usePermissions()
+  // Tenant default tax class (Catalog › Tax classes), if one is marked default.
+  const { data: taxClassesData } = useTaxClasses({ active: true })
+  const defaultTaxClass = (taxClassesData?.data ?? []).find((tc) => tc.is_default) ?? null
+  const draftsRef = useRef(drafts)
+  const pdfPickRef = useRef<(part: PickedPart) => Promise<string>>(async () => '')
+  const mountedRef = useRef(true)
+  const processedPdfRequestRef = useRef<number | null>(null)
+
+  useEffect(() => {
+    mountedRef.current = true
+    return () => { mountedRef.current = false }
+  }, [])
 
   const handleAdd = () => {
-    onChange([...drafts, blankDraft(defaultAssetId)])
+    const draft = blankDraft(defaultAssetId)
+    if (defaultTaxClass) {
+      draft.is_taxable = true
+      draft.tax_class_id = defaultTaxClass.id
+      draft.tax_rate_pct = defaultTaxClass.rate_pct
+    }
+    onChange([...drafts, draft])
   }
 
   const handleAddFee = () => {
@@ -148,10 +176,56 @@ export function WorkOrderLineItemEditorBuffered({
       // saved line is taxed — the backend inherits the rate from the class.
       catalog_item_id: item.id,
       tax_class_id: item.tax_class?.id ?? null,
+      // Preview the class rate locally so the totals match what will be saved.
+      tax_rate_pct: item.tax_class?.rate_pct ?? 0,
     }
     const money = computeMoney(draft)
     onChange([...drafts, { ...draft, ...money }])
   }
+
+  useEffect(() => {
+    draftsRef.current = drafts
+    pdfPickRef.current = async (part) => {
+    if (!mountedRef.current || disabled || !has(PERM.CATALOG_VIEW)) throw new Error('This job is no longer editable. Reopen its line items when editing is available.')
+    const item = await exactCatalogItemForPdfPart(part)
+    if (!mountedRef.current || disabled || !has(PERM.CATALOG_VIEW)) throw new Error('This job is no longer editable. Reopen its line items when editing is available.')
+    const draft: WorkOrderLineItemDraft = item ? {
+      ...blankDraft(defaultAssetId),
+      description: item.name,
+      quantity: item.default_quantity || 1,
+      unit_label: item.unit_label || 'each',
+      customer_cost_cents: item.pricing.customer_cost_cents,
+      owner_cost_cents: item.pricing.owner_cost_cents,
+      is_taxable: !!item.tax_class?.id,
+      catalog_item_id: item.id,
+      tax_class_id: item.tax_class?.id ?? null,
+      tax_rate_pct: item.tax_class?.rate_pct ?? 0,
+    } : {
+      ...blankDraft(defaultAssetId),
+      description: pdfPartLineDescription(part),
+      quantity: part.qty ?? 1,
+      customer_cost_cents: part.list_price_cents ?? 0,
+      is_taxable: !!defaultTaxClass,
+      tax_class_id: defaultTaxClass?.id ?? null,
+      tax_rate_pct: defaultTaxClass?.rate_pct ?? 0,
+      notes: [part.source_page_label && `PDF page ${part.source_page_label}`, 'Price and tax need review'].filter(Boolean).join(' · '),
+    }
+    const next = [...draftsRef.current, { ...draft, ...computeMoney(draft) }]
+    draftsRef.current = next
+    onChange(next)
+    return pdfLineReviewNote(!!item)
+    }
+  })
+
+  useEffect(() => {
+    if (!openPdfRequest) return
+    if (processedPdfRequestRef.current === openPdfRequest) return
+    processedPdfRequestRef.current = openPdfRequest
+    if (!disabled && has(PERM.CATALOG_VIEW)) openPdfCatalogForLine((part) => pdfPickRef.current(part))
+    onPdfRequestHandled?.()
+  // Run once per request, after the picker callback is ready.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [openPdfRequest])
 
   return (
     <WorkOrderLineItemEditorCore
@@ -163,6 +237,7 @@ export function WorkOrderLineItemEditorBuffered({
       onDelete={handleDelete}
       onReorder={handleReorder}
       onPickFromCatalog={handlePickFromCatalog}
+      onOpenPdf={!disabled && has(PERM.CATALOG_VIEW) ? () => openPdfCatalogForLine((part) => pdfPickRef.current(part)) : undefined}
       availableAssets={availableAssets}
       disabled={disabled}
     />

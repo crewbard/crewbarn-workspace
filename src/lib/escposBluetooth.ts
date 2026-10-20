@@ -13,36 +13,17 @@
  * companion app.
  *
  * Tested protocol: ESC/POS GS v 0 m xL xH yL yH d... (raster bitmap)
- * Common service / characteristic UUIDs are listed in CANDIDATE_SERVICES.
+ *
+ * The Bluetooth connection itself lives in bluetoothPrint.ts, which sends
+ * whichever language the printer speaks. This file is the label raster
+ * every language shares, and the ESC/POS wrapping of it.
  */
 import { buildLabelPng } from '@/lib/pngLabels'
 import { THERMAL_SIZES, type ThermalSizeKey } from '@/lib/thermalLabels'
 import type { PdfLabel } from '@/lib/pdfLabels'
 
-/** Service UUIDs known to host the printer's writable characteristic. */
-const CANDIDATE_SERVICES = [
-  '000018f0-0000-1000-8000-00805f9b34fb', // Common Phomemo / many ESC/POS BLE
-  '0000ff00-0000-1000-8000-00805f9b34fb', // HM-10 family
-  '0000ffe0-0000-1000-8000-00805f9b34fb', // HC-08 / generic
-  '49535343-fe7d-4ae5-8fa9-9fafd205e455', // Microchip BLE module
-  'e7810a71-73ae-499d-8c15-faa9aef0c3f2', // Some Brother / TPL printers
-]
-
-/**
- * The slice of a Web Bluetooth device this module touches. Declared once
- * because getDevices() and requestDevice() both return it.
- */
-interface BleDevice {
-  id?: string
-  name?: string
-  gatt?: {
-    connected?: boolean
-    connect: () => Promise<{ getPrimaryServices: () => Promise<unknown[]> }>
-  }
-}
-
 /** Most thermal BLE printers run at 203 dpi. Some at 300. We default to 203. */
-const PRINTER_DPI = 203
+export const PRINTER_DPI = 203
 
 export function isWebBluetoothSupported(): boolean {
   return (
@@ -52,124 +33,6 @@ export function isWebBluetoothSupported(): boolean {
   )
 }
 
-/**
- * Print one or more labels to a BLE thermal printer.
- * The browser will prompt the user to pick the printer from a device
- * chooser the first time. After that getDevices() reconnects silently, so
- * printing forty labels asks which printer once rather than forty times.
- */
-export async function printLabelsViaBluetooth({
-  labels,
-  thermalSize,
-  copies = 1,
-  preferId,
-}: {
-  labels: PdfLabel[]
-  thermalSize: ThermalSizeKey
-  copies?: number
-  /** Reconnect to this device if it is still permitted, rather than asking. */
-  preferId?: string
-}): Promise<void> {
-  if (!isWebBluetoothSupported()) {
-    throw new Error('Web Bluetooth is not available in this browser. Try Chrome on desktop or Android, or use the PNG download for iOS / Safari.')
-  }
-  if (thermalSize === 'sheet') {
-    throw new Error('Bluetooth printing requires a specific thermal size, not sheet.')
-  }
-
-  // A printer this browser has already been allowed to use, if there is
-  // one. acceptAllDevices + optionalServices on the chooser gives broad
-  // compatibility because we do not know the printer's MAC ahead of time.
-  const nav = navigator as Navigator & {
-    bluetooth: {
-      getDevices?: () => Promise<BleDevice[]>
-      requestDevice: (options: {
-        acceptAllDevices?: boolean
-        filters?: unknown
-        optionalServices?: string[]
-      }) => Promise<BleDevice>
-    }
-  }
-
-  let device: BleDevice | null = null
-
-  // Printing forty labels should ask which printer once, not forty times.
-  if (typeof nav.bluetooth.getDevices === 'function') {
-    try {
-      const known = await nav.bluetooth.getDevices()
-      device = known.find((d) => (preferId ? d.id === preferId : true)) ?? known[0] ?? null
-    } catch {
-      // Not supported, or the user has cleared their permissions. The
-      // chooser below is the answer either way.
-      device = null
-    }
-  }
-
-  if (!device) {
-    device = await nav.bluetooth.requestDevice({
-      acceptAllDevices: true,
-      optionalServices: CANDIDATE_SERVICES,
-    })
-  }
-
-  if (!device.gatt) {
-    throw new Error('Selected device has no GATT server.')
-  }
-
-  const server = await device.gatt.connect()
-  const services = (await server.getPrimaryServices()) as Array<{
-    uuid: string
-    getCharacteristics: () => Promise<Array<{
-      uuid: string
-      properties: { write: boolean; writeWithoutResponse: boolean }
-      writeValueWithoutResponse?: (value: BufferSource) => Promise<void>
-      writeValue: (value: BufferSource) => Promise<void>
-    }>>
-  }>
-
-  // Find any writable characteristic — most ESC/POS BLE devices have
-  // one obvious write endpoint. We pick the first that supports write.
-  let writeChar: {
-    properties: { write: boolean; writeWithoutResponse: boolean }
-    writeValueWithoutResponse?: (value: BufferSource) => Promise<void>
-    writeValue: (value: BufferSource) => Promise<void>
-  } | null = null
-  for (const svc of services) {
-    const chars = await svc.getCharacteristics()
-    for (const c of chars) {
-      if (c.properties.writeWithoutResponse || c.properties.write) {
-        writeChar = c
-        break
-      }
-    }
-    if (writeChar) break
-  }
-  if (!writeChar) {
-    throw new Error('No writable characteristic found on this printer. It may not be a generic ESC/POS device — try the PNG download instead.')
-  }
-
-  // Build commands for all labels (with copies expansion).
-  const expanded: PdfLabel[] = []
-  for (const l of labels) {
-    for (let i = 0; i < Math.max(1, copies); i++) expanded.push(l)
-  }
-
-  for (let i = 0; i < expanded.length; i++) {
-    const bytes = await buildEscPosForLabel(expanded[i], thermalSize)
-    await sendChunked(writeChar, bytes)
-  }
-}
-
-/**
- * Build the ESC/POS byte stream for one label: init → raster bitmap → feed → cut.
- */
-/**
- * A label as ESC/POS bytes.
- *
- * Exported because the Print Bridge sends the very same bytes down a USB
- * or network cable. The printer does not care which pipe they arrived
- * through, and neither should this.
- */
 /** A label rendered to one bit per pixel, before any printer language. */
 export interface LabelRaster {
   /** Rows of MSB-first bytes, each row padded to a byte boundary. */
@@ -214,6 +77,13 @@ export async function buildLabelRaster(
   }
 }
 
+/**
+ * A label as ESC/POS bytes: init → raster bitmap → feed.
+ *
+ * The Print Bridge and Bluetooth send the very same bytes, down a USB,
+ * network or radio link. The printer does not care which pipe they
+ * arrived through, and neither should this.
+ */
 export async function buildEscPosForLabel(
   label: PdfLabel,
   thermalSize: ThermalSizeKey,
@@ -222,8 +92,9 @@ export async function buildEscPosForLabel(
 
   // ESC @ — initialize printer
   // GS v 0 m xL xH yL yH ... raster bitmap
-  // LF — feed line
-  // GS V 1 — partial cut (skipped on most BLE thermals; harmless)
+  // LF LF LF — feed the label clear of the head
+  // No cut command is sent: most label thermals have no cutter, and the
+  // ones that do cut on their own setting.
   const init = new Uint8Array([0x1b, 0x40])
   const rasterHeader = new Uint8Array([
     0x1d, 0x76, 0x30, 0x00,
@@ -270,33 +141,6 @@ function pixelsToOneBitBitmap(imgData: ImageData): Uint8Array {
     }
   }
   return out
-}
-
-/**
- * Most BLE characteristics cap writes at ~150-512 bytes. Send the
- * payload in conservative 180-byte chunks with a tiny pause between
- * to avoid overruns on cheap printers.
- */
-async function sendChunked(
-  writeChar: {
-    properties: { write: boolean; writeWithoutResponse: boolean }
-    writeValueWithoutResponse?: (value: BufferSource) => Promise<void>
-    writeValue: (value: BufferSource) => Promise<void>
-  },
-  bytes: Uint8Array,
-): Promise<void> {
-  const chunkSize = 180
-  const useNoResponse = writeChar.properties.writeWithoutResponse
-  for (let off = 0; off < bytes.length; off += chunkSize) {
-    const slice = bytes.slice(off, off + chunkSize)
-    if (useNoResponse && writeChar.writeValueWithoutResponse) {
-      await writeChar.writeValueWithoutResponse(slice)
-    } else {
-      await writeChar.writeValue(slice)
-    }
-    // Tiny breath between chunks for slower printers.
-    await new Promise((resolve) => setTimeout(resolve, 8))
-  }
 }
 
 function loadImage(src: string): Promise<HTMLImageElement> {

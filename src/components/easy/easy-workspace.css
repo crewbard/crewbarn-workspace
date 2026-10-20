@@ -6,9 +6,9 @@
   min-width: 0;
   width: 100%;
 }
-/* Fixed brand colors stay readable independently of the navigation palette. */
+/* The brand strip follows the tenant chrome colour. */
 [data-easy-topbar] > [data-easy-brand-strip] {
-  background-color: #0f1a2e;
+  background-color: var(--chrome-bg);
   border-bottom: 1px solid rgb(255 255 255 / 10%);
   padding: 0.5rem 1.5rem;
   min-width: 0;
@@ -405,7 +405,7 @@
   background-color: var(--easy-selected-bg, var(--accent-50));
 }
 [data-easy-workspace] [data-easy-folder-heading] {
-  background-color: var(--easy-folder-heading-bg, #0f1a2e);
+  background-color: var(--easy-folder-heading-bg, var(--chrome-bg));
   color: var(--easy-folder-heading-text, white);
 }
 [data-easy-workspace] [data-easy-folder-body] {
@@ -507,12 +507,12 @@
   background-color: var(--easy-view-hover-bg, rgb(232 144 44 / 5%));
 }
 [data-easy-workspace] [data-easy-heading] {
-  background-color: var(--easy-heading-bg, #022c22);
+  background-color: var(--easy-heading-bg, var(--chrome-bg));
   color: var(--easy-heading-text, white);
   border-radius: var(--easy-card-radius, 16px);
 }
 [data-easy-workspace] [data-easy-heading-description] {
-  color: var(--easy-heading-muted, #d1fae5);
+  color: var(--easy-heading-muted);
 }
 [data-easy-workspace] [data-easy-action-card] {
   background-color: var(--easy-surface, white);
@@ -571,5 +571,88 @@
     transition: none;
     transform: none;
     translate: none;
+  }
+}
+
+/* ── One canvas (Easy top and Easy side) ───────────────────────────────
+   AppLayout puts the page inside [data-easy-canvas]. Sizes come from the
+   kit (themes/easy-theme.css); colours are untouched here. */
+[data-easy-canvas] {
+  width: 100%;
+  min-width: 0;
+  max-width: var(--easy-canvas-max, none);
+  margin-inline: auto;
+  padding: var(--easy-canvas-top, 1.5rem) var(--easy-canvas-pad, 1.5rem) 2.5rem;
+}
+/* Shared reset: a page root's own width, centring and side/top padding give
+   way to the canvas, so every page lines up. Bottom padding stays (some
+   pages keep room for a save bar). Overlays and board pages are left alone. */
+[data-easy-canvas] > :where(div, main, section, form):not([data-easy-board], .fixed, .absolute, [role='dialog']) {
+  max-width: none;
+  margin-inline: 0;
+  padding-inline: 0;
+  padding-top: 0;
+}
+/* Board pages (Schedule, Dispatch, Comms) use the full width and fill the
+   space under the bars, instead of guessing the chrome height. */
+[data-easy-workspace] {
+  display: flex;
+  flex-direction: column;
+}
+[data-easy-canvas]:has([data-easy-board]) {
+  max-width: none;
+  padding: 0;
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+[data-easy-canvas] [data-easy-board] {
+  flex: 1 1 auto;
+  height: auto;
+  min-height: 0;
+}
+/* Easy top: the page scrolls with the window, so a board page pins the
+   shell to the screen height and the page area scrolls instead. */
+[data-easy-top-shell]:has([data-easy-board]) {
+  height: 100dvh;
+}
+[data-easy-top-shell]:has([data-easy-board]) > [data-easy-workspace] {
+  min-height: 0;
+  overflow-y: auto;
+}
+/* Section tabs: fixed under the bar in both layouts, lined up with the canvas. */
+[data-easy-section-tabs] {
+  padding-inline: 0;
+}
+[data-easy-section-tabs] > div {
+  max-width: var(--easy-canvas-max, none);
+  margin-inline: auto;
+  padding-inline: var(--easy-canvas-pad, 1.5rem);
+}
+[data-easy-workspace] > [data-easy-section-tabs] {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  flex-shrink: 0;
+}
+/* Phones: the tabs can wrap to several rows, so they scroll with the page
+   there. The top bar itself stays pinned as before. */
+@media (max-width: 639px) {
+  [data-easy-top-chrome] {
+    display: contents;
+  }
+  [data-easy-workspace] > [data-easy-section-tabs] {
+    position: static;
+  }
+}
+/* Full canvas on every monitor: tile grids add columns as the screen gets
+   wider instead of stretching, and side panels grow with the screen. */
+[data-easy-workspace] [data-easy-auto-grid] {
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 15rem), 1fr));
+}
+@media (min-width: 1024px) {
+  [data-easy-workspace] [data-easy-split] {
+    grid-template-columns: minmax(0, 1fr) clamp(380px, 26vw, 640px);
   }
 }

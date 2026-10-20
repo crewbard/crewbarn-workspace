@@ -14,7 +14,7 @@
 
 import type { PublicScanNode, PublicScanResponse, SecuredScanUnlock, SecuredScanUnlockResponse } from '@/types/publicScan'
 
-import { getOwnerToken } from '@/lib/assetOwner'
+import { getOwnerToken, ownerFetch } from '@/lib/assetOwner'
 
 export const API_BASE = import.meta.env.VITE_API_URL || 'https://api.crewbarn.com'
 
@@ -39,7 +39,7 @@ export async function getPublicScan(code: string, tenantId?: string): Promise<Pu
    */
   const ownerToken = getOwnerToken()
 
-  const res = await fetch(url, {
+  const res = await ownerFetch(url, {
     method: 'GET',
     headers: {
       Accept: 'application/json',

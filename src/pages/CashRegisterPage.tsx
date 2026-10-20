@@ -129,20 +129,36 @@ export function CashRegisterPage() {
   const outInTrucks = byTech.reduce((n, t) => n + t.total, 0)
 
   const takeIn = useMutation({
+    // One request per payment, stopping at the first failure. If some went
+    // through, say how many: the till must not look untouched.
     mutationFn: async (ids: string[]) => {
-      for (const id of ids) {
-        await apiRequest(`/v1/payments/${id}/mark-received`, { method: 'PATCH' })
+      let done = 0
+      try {
+        for (const id of ids) {
+          await apiRequest(`/v1/payments/${id}/mark-received`, { method: 'PATCH' })
+          done++
+        }
+      } catch (e) {
+        if (done === 0) throw e
+        const reason = e instanceof Error && e.message ? ` (${e.message})` : ''
+        throw new Error(
+          `${done} of ${ids.length} taken in. The other ${ids.length - done} weren't${reason}. ` +
+            'The till now shows only what is left.',
+          { cause: e },
+        )
       }
     },
     onError: (e) => setError(e instanceof Error ? e.message : 'Could not take that in.'),
-    onSuccess: () => {
-      setError(null)
-      void qc.invalidateQueries({ queryKey: ['register'] })
-    },
+    onSuccess: () => setError(null),
+    // Refresh after a failure too. A partial take-in used to leave the old
+    // till on screen, so trying again re-sent payments already received.
+    // Returned, so the button stays busy until the fresh till is in.
+    onSettled: () => qc.invalidateQueries({ queryKey: ['register'] }),
   })
 
   return (
     <div className={easy ? 'w-full min-w-0 px-4 py-4 sm:px-6 sm:py-6 2xl:px-8' : 'mx-auto max-w-[1180px] px-6 py-8'}>
+      <div data-tour="register-header">
       {easy ? <EasyPageHeading title="Cash register" description={
         view === 'tills' ? 'Review cash and checks held by each person. Count the money before confirming that the office received it.'
         : view === 'drawer' ? 'Review money physically held by the office, record drawer activity, and prepare deposits using the controls below.'
@@ -163,7 +179,7 @@ export function CashRegisterPage() {
           </p>
         </div>}
 
-        <div className="rounded-xl border border-slate-200 bg-white px-5 py-3 text-right">
+        <div data-tour="register-total" className="rounded-xl border border-slate-200 bg-white px-5 py-3 text-right">
           <p className="text-[10.5px] font-bold uppercase tracking-[0.06em] text-slate-500">
             {view === 'uncollected' ? 'Never collected' : 'Collected, not checked in'}
           </p>
@@ -174,9 +190,17 @@ export function CashRegisterPage() {
           </p>
         </div>
       </div>
+      </div>
+
+      <p className="mt-3 text-[12.5px] text-slate-600" data-tour="register-classic">
+        Need to void or refund a payment, fix its method or handle a dispute?{' '}
+        <Link to="/accounting/cash-drawer/classic" className="font-bold text-[#86521A] underline">
+          Payments, voids and refunds
+        </Link>
+      </p>
 
       {/* view switch */}
-      <div className="mt-4 flex flex-wrap gap-2">
+      <div className="mt-4 flex flex-wrap gap-2" data-tour="register-views">
         {TABS.map((t) => {
           const on = view === t.id
           const count =
@@ -191,6 +215,7 @@ export function CashRegisterPage() {
               type="button"
               onClick={() => setView(t.id)}
               aria-pressed={on}
+              data-tour={`register-view-${t.id}`}
               data-easy-view-option
               className={[
                 'inline-flex items-center gap-2 rounded-lg border px-4 py-2.5 text-[13.5px] font-bold transition',
@@ -224,7 +249,7 @@ export function CashRegisterPage() {
 
       {/* ── tech tills ── */}
       {view === 'tills' && (
-        <div className="mt-5">
+        <div className="mt-5" data-tour="register-tills" data-holding={!tills.isSuccess ? 'loading' : byTech.length > 0 ? 'yes' : 'none'}>
           {tills.isLoading && <p className="text-sm text-slate-500">Loading tills…</p>}
           {tills.isError && <div role="alert" className="rounded-xl border border-rose-200 bg-rose-50 p-4">Tills could not be loaded. <button type="button" className="underline" onClick={() => tills.refetch()}>Try again</button></div>}
           {tills.isSuccess && byTech.length === 0 && (
@@ -311,15 +336,43 @@ export function CashRegisterPage() {
                       <button
                         type="button"
                         disabled={takeIn.isPending}
-                        onClick={() => takeIn.mutate(t.rows.map((r) => r.id))}
+                        onClick={() => {
+                          const countedCents = Math.round(Number(typed.replace(/[$,\s]/g, '')) * 100)
+                          if (!Number.isFinite(countedCents)) {
+                            setError('Type the amount you counted, for example 125.00.')
+                            return
+                          }
+                          const diff = countedCents - t.total
+                          const lines = [
+                            `Take in ${t.rows.length} payment${t.rows.length === 1 ? '' : 's'} from ${t.name}?`,
+                            `Expected ${money(t.total)}. You counted ${money(countedCents)}.`,
+                          ]
+                          if (diff !== 0) {
+                            lines.push(
+                              `That is ${money(Math.abs(diff))} ${diff < 0 ? 'short' : 'over'}. CrewBarn will still mark each payment received at its recorded amount, so sort out the difference with ${t.name} before you continue.`,
+                            )
+                          } else {
+                            lines.push('Each payment will be marked received at its recorded amount.')
+                          }
+                          if (!window.confirm(lines.join('\n\n'))) return
+                          takeIn.mutate(t.rows.map((r) => r.id), {
+                            // The old count no longer matches what's left in the till.
+                            onSettled: () => setCounted((c) => {
+                              const next = { ...c }
+                              delete next[key]
+                              return next
+                            }),
+                          })
+                        }}
                         className="shrink-0 rounded-md bg-[#E8902C] px-4 py-2 text-[13px] font-bold text-white disabled:opacity-60"
                       >
                         {takeIn.isPending ? 'Working…' : 'Take it in'}
                       </button>
                     </div>
                     <p className="mt-2 text-[11.5px] leading-snug text-slate-500">
-                      Type what you actually counted. If it doesn't match, CrewBarn records the
-                      difference instead of silently accepting it.
+                      Type what you actually counted. CrewBarn checks it against the expected
+                      total and warns you before taking it in if it doesn't match. Each payment
+                      is marked received at its recorded amount.
                     </p>
                   </div>
                 </section>
@@ -329,11 +382,11 @@ export function CashRegisterPage() {
         </div>
       )}
 
-      {view === 'drawer' && <OfficeDrawer />}
+      {view === 'drawer' && <div data-tour="register-drawer"><OfficeDrawer /></div>}
 
       {/* ── work done, no money ── */}
       {view === 'uncollected' && (
-        <div className="mt-5">
+        <div className="mt-5" data-tour="register-uncollected" data-state={!uncollected.isSuccess ? 'loading' : (uncollected.data?.meta?.blocking_count ?? 0) > 0 ? 'blocking' : (uncollected.data?.data?.length ?? 0) > 0 ? 'some' : 'none'}>
           {uncollected.isLoading && <p className="text-sm text-slate-500">Checking closed jobs…</p>}
           {uncollected.isError && <div role="alert" className="rounded-xl border border-rose-200 bg-rose-50 p-4">Uncollected jobs could not be loaded. <button type="button" className="underline" onClick={() => uncollected.refetch()}>Try again</button></div>}
 
@@ -410,7 +463,7 @@ export function CashRegisterPage() {
                   </span>
 
                   <Link
-                    to={r.invoice_id ? `/accounting/invoices/${r.invoice_id}` : `/jobs/${r.id}`}
+                    to={r.invoice_id ? `/invoices/${r.invoice_id}` : `/jobs/${r.id}`}
                     className="shrink-0 rounded-md bg-[#E8902C] px-3.5 py-2 text-[12.5px] font-bold text-white"
                   >
                     {r.reason === 'never_invoiced' ? 'Invoice it' : 'Open invoice'}

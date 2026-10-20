@@ -60,7 +60,7 @@ export function IncomingRequestsPanel() {
   if (q.isLoading || requests.length === 0) return null
 
   return (
-    <section className="bg-amber-50 border border-amber-200 rounded-xl p-4 mb-4">
+    <section data-tour="dash-incoming-portal" className="bg-amber-50 border border-amber-200 rounded-xl p-4 mb-4">
       <div className="flex items-center justify-between mb-3">
         <h3 className="text-sm font-semibold text-amber-900 uppercase tracking-wider">
           Incoming requests · {requests.length}
@@ -152,7 +152,7 @@ function RequestRow({ req }: { req: IncomingRequest }) {
       )}
 
       {!showDecline ? (
-        <div className="flex items-center gap-2">
+        <div data-tour="dispatch-portal-actions" className="flex items-center gap-2">
           <button
             type="button"
             onClick={() => accept.mutate()}

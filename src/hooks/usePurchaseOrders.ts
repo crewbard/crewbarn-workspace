@@ -5,6 +5,7 @@ import {
   deletePurchaseOrder,
   deletePurchaseOrderItem,
   getPurchaseOrder,
+  getSupplierCopy,
   listPurchaseOrderItems,
   listPurchaseOrders,
   receivePurchaseOrder,
@@ -27,6 +28,8 @@ export const purchaseOrderKeys = {
   details: () => [...purchaseOrderKeys.all, 'detail'] as const,
   detail: (id: string) => [...purchaseOrderKeys.details(), id] as const,
   items: (id: string) => [...purchaseOrderKeys.detail(id), 'items'] as const,
+  // Under the detail key, so every change to the order refreshes it too.
+  supplierCopy: (id: string) => [...purchaseOrderKeys.detail(id), 'supplier-copy'] as const,
 }
 
 export function usePurchaseOrders(params: PurchaseOrderListParams = {}) {
@@ -34,6 +37,15 @@ export function usePurchaseOrders(params: PurchaseOrderListParams = {}) {
     queryKey: purchaseOrderKeys.list(params),
     queryFn: () => listPurchaseOrders(params),
     staleTime: 30_000,
+  })
+}
+
+/** The supplier copy: the print view, and the "no supplier part number" flags on the PO page. */
+export function useSupplierCopy(id: string | undefined) {
+  return useQuery({
+    queryKey: purchaseOrderKeys.supplierCopy(id ?? ''),
+    queryFn: () => getSupplierCopy(id!),
+    enabled: !!id,
   })
 }
 

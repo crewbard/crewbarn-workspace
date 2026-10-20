@@ -1,5 +1,7 @@
+import { scheduleEventId } from '@/lib/schedule'
 import { matteStatusBorder, matteStatusFill, statusAccentColor } from '@/lib/statusColor'
 import type { ScheduleWorkOrder } from '@/types/schedule'
+import { subLine } from '@/lib/subLane'
 
 /**
  * MobileScheduleAgenda — phone-native replacement for the week/day/month
@@ -121,7 +123,7 @@ export function MobileScheduleAgenda({
             const late = isLate(wo)
             return (
               <button
-                key={wo.id}
+                key={scheduleEventId(wo)}
                 type="button"
                 onClick={() => onSelectEvent(wo)}
                 className="w-full text-left flex gap-3 rounded-lg border p-3 hover:border-amber-300 active:bg-amber-50/40"
@@ -171,7 +173,9 @@ export function MobileScheduleAgenda({
                       ` · ${wo.service_location.nickname}`}
                   </div>
                   <div className="mt-0.5 text-xs text-slate-500 truncate">
-                    {wo.lead_tech?.name ? (
+                    {wo.sub ? (
+                      <>🏢 {subLine(wo.sub)} · {wo.sub.label}</>
+                    ) : wo.lead_tech?.name ? (
                       <>👷 {wo.lead_tech.name}</>
                     ) : (
                       <span className="text-amber-700">Unassigned</span>

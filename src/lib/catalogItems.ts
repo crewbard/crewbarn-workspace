@@ -4,6 +4,8 @@ import type {
   CatalogItemInput,
   CatalogItemUpdateInput,
   CatalogItemListParams,
+  CatalogAttentionCounts,
+  BulkPriceChange,
   PaginatedResponse,
   ResourceResponse,
 } from '@/types/catalogItem'
@@ -18,12 +20,31 @@ export async function listCatalogItems(
 ): Promise<PaginatedResponse<CatalogItem>> {
   const query = new URLSearchParams()
   Object.entries(params).forEach(([key, value]) => {
+    if (key === 'fits' && value && typeof value === 'object') {
+      // Fits filter: fits[subject]=vehicle&fits[make]=Ford…
+      Object.entries(value as Record<string, string>).forEach(([field, v]) => {
+        if (v !== undefined && v !== null && v !== '') query.append(`fits[${field}]`, String(v))
+      })
+      return
+    }
     if (value !== undefined && value !== null && value !== '') {
       query.append(key, String(value))
     }
   })
   const path = '/v1/catalog-items' + (query.toString() ? `?${query.toString()}` : '')
   return apiRequest<PaginatedResponse<CatalogItem>>(path)
+}
+
+/**
+ * GET /v1/catalog-items/attention - products missing a price, photo or
+ * supplier, low, out and not stocked, for the Product catalog strip and chips.
+ */
+export async function getCatalogAttention(
+  params: { product_category_id?: string } = {}
+): Promise<CatalogAttentionCounts> {
+  const query = params.product_category_id ? `?product_category_id=${encodeURIComponent(params.product_category_id)}` : ''
+  const response = await apiRequest<{ data: CatalogAttentionCounts }>(`/v1/catalog-items/attention${query}`)
+  return response.data
 }
 
 export async function getCatalogItem(id: string): Promise<CatalogItem> {
@@ -47,6 +68,12 @@ export async function updateCatalogItem(
     method: 'PATCH',
     body: input,
   })
+  return response.data
+}
+
+/** POST /v1/catalog-items/prices: price several products at a markup over their own cost. */
+export async function bulkSetPrice(input: { items: string[]; markup_percent: number; rounding?: 'nearest_cent' | 'up_to_dollar' }): Promise<{ changed: BulkPriceChange[]; skipped: string[] }> {
+  const response = await apiRequest<{ data: { changed: BulkPriceChange[]; skipped: string[] } }>('/v1/catalog-items/prices', { method: 'POST', body: input })
   return response.data
 }
 

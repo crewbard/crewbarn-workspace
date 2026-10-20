@@ -76,7 +76,7 @@ export function AssetCustomFieldsForm({
           {assetType.name} details
         </h3>
         <p className="text-xs text-slate-500 mt-1">
-          These fields come from the selected asset type, so a fire door, camera, safe, or access panel can capture the right details.
+          These fields come from the selected asset type, so each kind of equipment can capture the right details.
         </p>
       </div>
       <div className="grid grid-cols-1 md:grid-cols-2 gap-3">

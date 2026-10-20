@@ -95,16 +95,30 @@ export default function SignAgreementPage() {
         setSubmitError(body?.message ?? 'Could not record signature.')
         return
       }
-      // Refresh preview so the success state renders
-      const fresh = await fetch(`${API_URL}/v1/sign/agreements/${token}`, {
-        headers: { Accept: 'application/json' },
-      })
-      const freshBody = await fresh.json().catch(() => ({}))
-      setPreview(freshBody.data)
+      // Refresh preview so the success state renders. The signature is already
+      // recorded, so if the refresh fails show the signed state locally rather
+      // than leaving the customer stuck on "Loading…".
+      const freshData = await refreshPreview()
+      const now = new Date().toISOString()
+      setPreview((prev) => freshData ?? (prev ? { ...prev, status: 'customer_signed', customer_signed_at: now } : prev))
     } catch (e) {
       setSubmitError(e instanceof Error ? e.message : 'Submit failed.')
     } finally {
       setSubmitting(false)
+    }
+  }
+
+  /** Re-read the agreement after a sign/decline. Null if that read fails. */
+  async function refreshPreview(): Promise<AgreementPreview | null> {
+    try {
+      const fresh = await fetch(`${API_URL}/v1/sign/agreements/${token}`, {
+        headers: { Accept: 'application/json' },
+      })
+      if (!fresh.ok) return null
+      const freshBody = await fresh.json().catch(() => null)
+      return (freshBody?.data as AgreementPreview | undefined) ?? null
+    } catch {
+      return null
     }
   }
 
@@ -122,11 +136,9 @@ export default function SignAgreementPage() {
         setSubmitError(body?.message ?? 'Could not record decline.')
         return
       }
-      const fresh = await fetch(`${API_URL}/v1/sign/agreements/${token}`, {
-        headers: { Accept: 'application/json' },
-      })
-      const freshBody = await fresh.json().catch(() => ({}))
-      setPreview(freshBody.data)
+      const freshData = await refreshPreview()
+      const now = new Date().toISOString()
+      setPreview((prev) => freshData ?? (prev ? { ...prev, status: 'declined', declined_at: now } : prev))
       setShowDecline(false)
     } catch (e) {
       setSubmitError(e instanceof Error ? e.message : 'Submit failed.')
@@ -198,7 +210,7 @@ export default function SignAgreementPage() {
   return (
     <div className="min-h-screen bg-slate-50">
       {/* Header */}
-      <header className="bg-white border-b border-slate-200">
+      <header data-tour="sign-agreement-header" className="bg-white border-b border-slate-200">
         <div className="max-w-3xl mx-auto px-5 py-4 flex items-center gap-3">
           {preview.company.logo_url && (
             <img
@@ -222,17 +234,23 @@ export default function SignAgreementPage() {
 
       <main className="max-w-3xl mx-auto px-5 py-8 space-y-6">
         {/* Title + body */}
-        <section className="bg-white border border-slate-200 rounded-xl shadow-sm p-6">
+        <section data-tour="sign-agreement-body" className="bg-white border border-slate-200 rounded-xl shadow-sm p-6">
           <h1 className="text-2xl font-bold text-navy-900 mb-1">{preview.title}</h1>
           {preview.job_title && (
             <p className="text-sm text-slate-500 mb-4">For: {preview.job_title}</p>
+          )}
+          {preview.expires_at && (
+            <p className="text-xs text-slate-500 mb-4">
+              This signing link works until{' '}
+              {new Date(preview.expires_at).toLocaleDateString(undefined, { month: 'long', day: 'numeric', year: 'numeric' })}.
+            </p>
           )}
           {/* Public, unauthenticated page — sanitize the agreement body. */}
           <SafeHtml className="prose prose-sm max-w-none" html={preview.body_html} />
         </section>
 
         {/* Signature pad */}
-        <section className="bg-white border border-slate-200 rounded-xl shadow-sm p-6">
+        <section data-tour="sign-agreement-signature" className="bg-white border border-slate-200 rounded-xl shadow-sm p-6">
           <h2 className="text-base font-semibold text-navy-900 mb-1">Your signature</h2>
           <p className="text-xs text-slate-500 mb-4">
             By signing below, you agree to the terms above. We'll record your name,
@@ -274,7 +292,7 @@ export default function SignAgreementPage() {
             </div>
           )}
 
-          <div className="flex items-center justify-between mt-5 gap-3 flex-wrap">
+          <div data-tour="sign-agreement-submit" className="flex items-center justify-between mt-5 gap-3 flex-wrap">
             <button
               type="button"
               onClick={() => setShowDecline(true)}

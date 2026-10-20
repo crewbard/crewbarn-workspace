@@ -125,7 +125,7 @@ export function NeedsAttentionBanner({
   if (flags.length === 0) return null
 
   return (
-    <div className="mb-4 rounded-xl border border-amber-200 bg-amber-50 p-3 sm:p-4">
+    <div data-tour="job-attention" className="mb-4 rounded-xl border border-amber-200 bg-amber-50 p-3 sm:p-4">
       <button
         type="button"
         onClick={() => setCollapsed((v) => !v)}

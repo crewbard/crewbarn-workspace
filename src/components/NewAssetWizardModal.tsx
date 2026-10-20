@@ -2,11 +2,13 @@ import { useEffect, useMemo, useState } from 'react'
 import { Modal } from '@/components/ui/Modal'
 import { AssetGroupTreePicker } from '@/components/AssetGroupTreePicker'
 import { AssetGroupManagerModal } from '@/components/AssetGroupManagerModal'
+import { extractScanCode } from '@/components/assets/scanUrl'
 import { QrScanButton } from '@/components/QrScanButton'
 import { AssetQrCard } from '@/components/AssetQrCard'
 import { AssetPhotoUploader } from '@/components/AssetPhotoUploader'
 import { AssetDocumentUploader } from '@/components/AssetDocumentUploader'
 import { AssetComponentsManager } from '@/components/AssetComponentsManager'
+import { AssetInstalledParts } from '@/components/AssetInstalledParts'
 import { AssetCustomFieldsForm, assetCustomFieldsAreValid, normalizeAssetCustomFields } from '@/components/AssetCustomFieldsForm'
 import type { Asset } from '@/types/asset'
 import { useCreateCustomer, useCustomer, useCustomers } from '@/hooks/useCustomers'
@@ -203,6 +205,7 @@ export function NewAssetWizardModal({
         <GroupPickStep
           location={location}
           selectedGroupId={groupId}
+          selectedGroupName={groupName}
           onSelect={(id, name) => {
             setGroupId(id)
             setGroupName(name)
@@ -282,7 +285,7 @@ function CustomerPickStep({
   return (
     <>
       <Modal.Body className="min-h-[260px]">
-        <div className="space-y-3">
+        <div data-tour="assets-new-wizard" className="space-y-3">
           <input
             type="text"
             value={query}
@@ -674,7 +677,7 @@ function LocationCreateStep({
                 value={stateAbbr}
                 onChange={(e) => setStateAbbr(e.target.value)}
                 maxLength={2}
-                placeholder="FL"
+                placeholder="ST"
                 className={inputClass()}
               />
             </Field>
@@ -722,6 +725,7 @@ function LocationCreateStep({
 function GroupPickStep({
   location,
   selectedGroupId,
+  selectedGroupName,
   onSelect,
   onContinue,
   onSkip,
@@ -730,6 +734,7 @@ function GroupPickStep({
 }: {
   location: CustomerServiceLocation
   selectedGroupId: string | null
+  selectedGroupName: string
   onSelect: (id: string | null, name: string) => void
   onContinue: () => void
   onSkip: () => void
@@ -739,7 +744,7 @@ function GroupPickStep({
   const [pickerOpen, setPickerOpen] = useState(false)
   const [managerOpen, setManagerOpen] = useState(false)
 
-  const selectedLabel = selectedGroupId ? selectedGroupId : null
+  const selectedLabel = selectedGroupId ? (selectedGroupName || 'Selected group') : null
 
   return (
     <>
@@ -929,7 +934,7 @@ function AssetDetailsStep({
               type="text"
               value={name}
               onChange={(e) => setName(e.target.value)}
-              placeholder="e.g. Fire Door 101, Lobby Camera 2, Main Lobby Safe"
+              placeholder="e.g. Water Heater 101, Rooftop Unit 2, Main Lobby Door"
               className={inputClass()}
               autoFocus
             />
@@ -964,7 +969,7 @@ function AssetDetailsStep({
                   className={inputClass() + ' font-mono'}
                 />
                 <QrScanButton
-                  onScan={(c) => setAssetCode(c)}
+                  onScan={(c) => setAssetCode(extractScanCode(c))}
                   buttonLabel="📷"
                   buttonClassName="flex-shrink-0 text-sm px-3 py-2 bg-amber-500 hover:bg-amber-600 text-white rounded-md font-medium whitespace-nowrap"
                 />
@@ -1049,8 +1054,9 @@ function AssetDetailsStep({
             <span>
               <span className="font-medium">🔒 Secured asset</span>
               <span className="block text-xs text-slate-500">
-                Sensitive data on this asset (drill points, master codes)
-                stored encrypted. Slice 9 inspector access flow gates viewing.
+                Sensitive details on this asset (access codes, private notes)
+                are stored encrypted and only open through an access request
+                you approve.
               </span>
             </span>
           </label>
@@ -1174,7 +1180,7 @@ function AssetCreatedStep({
 
           <Section
             title="Asset photo"
-            description="Upload the real door, panel, camera, extinguisher, or equipment photo before moving on."
+            description="Upload a photo of the real equipment before moving on."
           >
             <AssetPhotoUploader assetId={asset.id} />
           </Section>
@@ -1184,6 +1190,7 @@ function AssetCreatedStep({
               assetId={asset.id}
               assetName={asset.name}
               assetCode={asset.asset_code}
+              tenantId={asset.tenant_id}
             />
           </Section>
 
@@ -1193,6 +1200,10 @@ function AssetCreatedStep({
 
           <Section title="Installed components">
             <AssetComponentsManager assetId={asset.id} />
+          </Section>
+
+          <Section title="Parts fitted to it">
+            <AssetInstalledParts assetId={asset.id} />
           </Section>
         </div>
       </Modal.Body>
@@ -1286,7 +1297,7 @@ function InlineNewAssetType({ onCreated }: { onCreated: (t: AssetType) => void }
           type="text"
           value={name}
           onChange={(e) => setName(e.target.value)}
-          placeholder='Type name (e.g. "Fire Door")'
+          placeholder='Type name (e.g. "Water Heater")'
           className="flex-1 text-sm px-2 py-1.5 border border-slate-300 rounded focus:outline-none focus:border-amber-500"
           autoFocus
         />

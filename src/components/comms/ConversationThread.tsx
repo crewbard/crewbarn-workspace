@@ -1,12 +1,16 @@
+import { asPicture } from '@/lib/rasterizeIfSvg'
+import { IntakePriceSuggestion } from './IntakePriceSuggestion'
 import { createContext, useContext, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { ReferencedText } from '@/components/ReferencedText'
+import { PartsMentioned } from '@/components/flash/PartsMentioned'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { IntakeDraftHandoff } from './IntakeDraftHandoff'
 import { PhotoTeachingNotes } from './PhotoTeachingNotes'
 import { SafeHtml } from '@/components/SafeHtml'
-import { ApiError } from '@/lib/api'
+import { ApiError, apiRequest } from '@/lib/api'
+import type { CustomerServiceLocation } from '@/types/customer'
 import { AuthedAudio } from './AuthedAudio'
 import { CallJobLink } from './CallJobLink'
 import { verifyAddress } from '@/lib/verifyAddress'
@@ -94,6 +98,7 @@ export function ConversationThread({
   const readers = threadQuery.data?.read_by ?? []
   const isEmail = conversation?.channel === 'email'
   const isCallThread = conversation?.channel === 'call' || conversation?.channel === 'voicemail'
+  const isPortal = conversation?.channel === 'portal'
 
   // Switching threads is a fresh read: back to the newest message.
   useEffect(() => {
@@ -164,7 +169,7 @@ export function ConversationThread({
     setSendError(null)
     try {
       for (const file of Array.from(files)) {
-        const url = await uploadCommsImage(conversationId, file)
+        const url = await uploadCommsImage(conversationId, await asPicture(file))
         setPendingImages((prev) => [...prev, url])
       }
     } catch (e) {
@@ -189,13 +194,15 @@ export function ConversationThread({
           <div className="min-w-0">
             <div className="truncate text-sm font-semibold text-navy-900">{title || '—'}</div>
             <div className="truncate text-xs text-slate-500">
-              {isEmail
+              {isPortal
+                ? 'Customer portal · they read your reply there'
+                : isEmail
                 ? conversation?.external_email
                 : `${formatPhone(conversation?.external_number)}${conversation?.internal_number ? ` · via ${formatPhone(conversation.internal_number)}` : ''}`}
             </div>
           </div>
           <span className="flex-shrink-0 rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-medium text-slate-500">
-            {isEmail ? 'Email' : isCallThread ? 'Call' : 'Text'}
+            {isPortal ? 'Portal' : isEmail ? 'Email' : isCallThread ? 'Call' : 'Text'}
           </span>
         </div>
       )}
@@ -208,6 +215,7 @@ export function ConversationThread({
       }} />}
       <div
         ref={scrollRef}
+        data-tour="comms-messages"
         onScroll={() => {
           const el = scrollRef.current
           if (!el) return
@@ -224,14 +232,16 @@ export function ConversationThread({
             <div className="text-sm text-slate-500">No messages yet.</div>
           ) : (
             <ReadersContext.Provider value={readers}>
-              {messages.map((m) => <MessageBubble key={m.id} message={m} conversationId={conversationId} />)}
+              <ThreadCustomerContext.Provider value={conversation?.customer_id ? { id: conversation.customer_id, name: conversation.customer_name ?? null } : null}>
+                {messages.map((m) => <MessageBubble key={m.id} message={m} conversationId={conversationId} />)}
+              </ThreadCustomerContext.Provider>
             </ReadersContext.Provider>
           )}
         </div>
       </div>
 
       {/* Reply box */}
-      <div className="border-t border-slate-200 bg-white p-3">
+      <div data-tour="comms-reply" data-channel={isPortal ? 'portal' : isEmail ? 'email' : isCallThread ? 'call' : 'text'} className="border-t border-slate-200 bg-white p-3">
         {sendError && (
           <div className="mb-2 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">
             {sendError}
@@ -242,6 +252,7 @@ export function ConversationThread({
           <div className="space-y-2">
             <input
               type="text"
+              data-tour="comms-email-subject"
               value={emailSubject}
               onChange={(e) => setEmailSubject(e.target.value)}
               placeholder={conversation?.subject ? `Re: ${conversation.subject}` : 'Subject (optional)'}
@@ -269,6 +280,7 @@ export function ConversationThread({
               )}
               <button
                 type="button"
+                data-tour="comms-send"
                 onClick={handleSend}
                 disabled={draft.trim() === '' || replyMutation.isPending}
                 className="rounded-md bg-amber-500 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-amber-600 disabled:cursor-not-allowed disabled:bg-slate-300"
@@ -301,7 +313,7 @@ export function ConversationThread({
                 )}
               </div>
             )}
-            <div className="mb-2">
+            <div data-tour="comms-emoji" className="mb-2">
               <EmojiBar onPick={(emoji) => setDraft((prev) => `${prev}${emoji}`)} />
             </div>
             <div className="flex items-end gap-2">
@@ -315,6 +327,7 @@ export function ConversationThread({
               />
               <button
                 type="button"
+                data-tour="comms-attach"
                 onClick={() => fileInputRef.current?.click()}
                 disabled={uploading || replyMutation.isPending}
                 className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-md border border-slate-300 text-slate-500 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
@@ -341,6 +354,7 @@ export function ConversationThread({
                 />
               )}
               <textarea
+                data-tour="comms-reply-input"
                 value={draft}
                 onChange={(e) => setDraft(e.target.value)}
                 onKeyDown={(e) => {
@@ -355,6 +369,7 @@ export function ConversationThread({
               />
               <button
                 type="button"
+                data-tour="comms-send"
                 onClick={handleSend}
                 disabled={(draft.trim() === '' && pendingImages.length === 0) || replyMutation.isPending}
                 className="flex-shrink-0 rounded-md bg-amber-500 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-amber-600 disabled:cursor-not-allowed disabled:bg-slate-300"
@@ -445,6 +460,7 @@ function TemplatePicker({
         className="flex h-10 items-center gap-1 rounded-md border border-slate-300 px-2.5 text-sm text-slate-600 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
         title="Insert a saved template"
         aria-label="Insert a saved template"
+        data-tour="comms-template"
       >
         <svg viewBox="0 0 20 20" fill="none" className="h-4 w-4">
           <path d="M4 4h12v12H4z" stroke="currentColor" strokeWidth="1.4" strokeLinejoin="round" />
@@ -487,6 +503,9 @@ function TemplatePicker({
  * without each one being handed a list of names.
  */
 const ReadersContext = createContext<ThreadReader[]>([])
+
+/** The customer this thread is with, when it is one on file: each call card links to them. */
+const ThreadCustomerContext = createContext<{ id: string; name: string | null } | null>(null)
 
 function MessageBubble({ message, conversationId }: { message: CommsMessage; conversationId: string }) {
   const queryClient = useQueryClient()
@@ -542,7 +561,7 @@ function MessageBubble({ message, conversationId }: { message: CommsMessage; con
               detector reports, so the message itself is never
               rewritten.
             */}
-            <ReferencedText text={parsedBody.body} />
+            <ReferencedText text={parsedBody.body} source="message" />
           </div>
         )}
         {media.map((url) => {
@@ -913,7 +932,7 @@ function EmailEntry({ message }: { message: CommsMessage }) {
             html={htmlBody}
           />
         ) : (
-          <p className="mt-1 whitespace-pre-wrap break-words text-sm text-slate-700">{body}</p>
+          <p className="mt-1 whitespace-pre-wrap break-words text-sm text-slate-700"><ReferencedText text={body} source="message" /></p>
         )
       )}
       {failed && (
@@ -973,14 +992,14 @@ export function CallTranscript({ message }: { message: CommsMessage }) {
   if (!segments || segments.length === 0) {
     return (
       <p className="whitespace-pre-wrap break-words text-sm leading-relaxed text-slate-600">
-        {message.body}
+        <ReferencedText text={message.body} source="transcript" />
       </p>
     )
   }
 
   return (
     <div className="space-y-2">
-      <div className="flex gap-2" role="group" aria-label="Transcript view">
+      <div data-tour="comms-transcript-view" className="flex gap-2" role="group" aria-label="Transcript view">
         {(['conversation', 'original'] as const).map(value => <button key={value} type="button"
           aria-pressed={view === value} onClick={() => setView(value)}
           className={`rounded-md border px-3 py-1.5 text-xs font-semibold ${view === value ? 'bg-slate-900 text-white' : 'bg-white text-slate-600'}`}>
@@ -988,10 +1007,12 @@ export function CallTranscript({ message }: { message: CommsMessage }) {
         </button>)}
       </div>
       {view === 'original' ? <p className="whitespace-pre-wrap break-words text-sm leading-relaxed text-slate-600">{typeof message.meta?.original_transcript === 'string' ? message.meta.original_transcript : message.body}</p> : <>
-      <p className="text-[11px] text-slate-500">{segments.some(s => s.source === 'audio') ? 'Voices separated from audio. Customer/dispatch roles are not verified. Check the recording for uncertain words.' : 'Speaker roles are inferred from the words, not verified from voices. Check the recording when attribution matters.'}</p>
+      <p className="text-[11px] text-slate-500">{segments.every(s => s.source === 'channel') ? 'Each side of this call was recorded on its own channel, so who said what is certain. Check the recording for uncertain words.' : segments.some(s => s.source === 'audio') ? 'Voices separated from audio. Customer/dispatch roles are not verified. Check the recording for uncertain words.' : 'Speaker roles are inferred from the words, not verified from voices. Check the recording when attribution matters.'}</p>
       {segments.map((seg, i) => {
         const office = seg.speaker === 'office'
         const customer = seg.speaker === 'customer'
+        // Its own channel: the role is known, not inferred.
+        const certain = seg.source === 'channel'
         return (
           <div
             key={i}
@@ -1007,11 +1028,11 @@ export function CallTranscript({ message }: { message: CommsMessage }) {
             ].join(' ')}
           >
             <span className="mb-0.5 block text-[10px] font-bold uppercase tracking-wide text-slate-500">
-              {office ? 'Dispatch · inferred' : customer ? 'Customer · inferred' : seg.voice ? `Speaker ${seg.voice}` : 'Speaker unclear'}
+              {office ? (certain ? 'Dispatch' : 'Dispatch · inferred') : customer ? (certain ? 'Customer' : 'Customer · inferred') : seg.voice ? `Speaker ${seg.voice}` : 'Speaker unclear'}
               {seg.start != null && <span className="ml-2 font-normal">{Math.floor(seg.start / 60)}:{String(Math.floor(seg.start % 60)).padStart(2, '0')}</span>}
             </span>
             <span className="whitespace-pre-wrap break-words">
-              <ReferencedText text={seg.text} />
+              <ReferencedText text={seg.text} source="transcript" />
             </span>
           </div>
         )
@@ -1022,6 +1043,7 @@ export function CallTranscript({ message }: { message: CommsMessage }) {
 
 function CallEntry({ message }: { message: CommsMessage }) {
   const navigate = useNavigate()
+  const customer = useContext(ThreadCustomerContext)
   const isVoicemail = message.channel === 'voicemail'
   const inbound = message.direction === 'inbound'
   const label = isVoicemail ? 'Voicemail' : inbound ? 'Inbound call' : 'Outbound call'
@@ -1045,13 +1067,17 @@ function CallEntry({ message }: { message: CommsMessage }) {
   // button instead of dumping a wall of text into the thread. Long transcripts
   // collapse too, even without a summary.
   const collapsibleTranscript = hasBody && (!!intake || !!message.transcript_segments?.length || (message.body?.length ?? 0) > 280)
+  // A call CBI connected (call_out_*) is about a job already: no new job from it.
+  const cbiCall = String(message.meta?.type ?? '').startsWith('call_out_')
+  const needsSomething = !!intake && !!(intake.summary || intake.service || intake.priority || intake.area)
 
   return (
     <div className="flex justify-center">
-      <div className="w-full max-w-2xl rounded-xl border border-slate-200 bg-white px-4 py-3">
-        <div className="flex items-center gap-2 text-sm font-medium text-slate-700">
+      <div data-tour="comms-call" className="w-full max-w-2xl rounded-xl border border-slate-200 bg-white px-4 py-3">
+        <div className="flex flex-wrap items-center gap-2 text-sm font-medium text-slate-700">
           <span aria-hidden>{icon}</span>
           <span>{label}</span>
+          {intake && <IntakePriceSuggestion key={intake.id} draftId={intake.id} initialPricing={intake.pricing} />}
           <span className="ml-auto text-[11px] font-normal text-slate-400" title={fullStamp(message.created_at)}>
             {messageStamp(message.created_at)}{durationLabel && ` · ${durationLabel}`}
           </span>
@@ -1062,14 +1088,40 @@ function CallEntry({ message }: { message: CommsMessage }) {
             {message.to_number && <> → <span className="font-mono">{formatPhone(message.to_number)}</span></>}
           </div>
         )}
+        {/* Who the call was with: their account, or plainly not a customer. */}
+        <div data-tour="comms-call-customer" className="mt-1.5 flex flex-wrap items-center gap-2 text-[11px]">
+          {customer ? (
+            <>
+              <span className="font-semibold text-slate-700">{customer.name || 'Customer on file'}</span>
+              <button
+                type="button"
+                onClick={() => navigate(`/customers/${customer.id}`)}
+                className="rounded-full border border-sky-200 bg-sky-50 px-2 py-0.5 font-semibold text-sky-800 hover:bg-sky-100"
+              >
+                Open customer account →
+              </button>
+            </>
+          ) : (
+            <span className="rounded-full bg-slate-100 px-2 py-0.5 font-semibold text-slate-500">Not a customer</span>
+          )}
+        </div>
         {!inbound && message.sent_by?.name && (
           <div className="mt-1 inline-flex items-center gap-1 rounded-full bg-navy-50 px-2 py-0.5 text-[11px] font-semibold text-navy-800">
             <span aria-hidden>👤</span> Called by {message.sent_by.name}
           </div>
         )}
+        {/* The parts the caller named, with stock: whoever answers knows straight away if they have it. */}
+        {hasBody && (
+          <PartsMentioned
+            sourceType="comms_message"
+            sourceId={message.id}
+            tour="comms-call-parts"
+            className="mt-3 rounded-lg border border-amber-200 bg-amber-50/50 px-3 py-2"
+          />
+        )}
         {/* What the caller needs leads — it's what dispatch acts on. */}
-        {intake && (
-          <div className="mt-3">
+        {intake && needsSomething && (
+          <div data-tour="comms-call-need" className="mt-3">
             <div className="text-[10px] font-bold uppercase tracking-wide text-slate-400">What they need</div>
             {intake.summary && (
               <p className="mt-1 text-sm leading-relaxed text-slate-700">
@@ -1093,12 +1145,12 @@ function CallEntry({ message }: { message: CommsMessage }) {
             longer sits behind "Read transcript". */}
         {hasBody && !collapsibleTranscript && (
           <p className="mt-2 whitespace-pre-wrap break-words text-sm text-slate-600">
-            <ReferencedText text={message.body} />
+            <ReferencedText text={message.body} source="transcript" />
           </p>
         )}
 
         {(hasBody || playbackUrl) && (
-          <div className="mt-3 flex flex-wrap items-center gap-2">
+          <div data-tour="comms-call-actions" className="mt-3 flex flex-wrap items-center gap-2">
             {message.conversation_id && <CallJobLink conversationId={message.conversation_id} />}
             {intake?.created_work_order_id ? (
               <button
@@ -1108,9 +1160,10 @@ function CallEntry({ message }: { message: CommsMessage }) {
               >
                 View job →
               </button>
-            ) : hasBody ? (
+            ) : hasBody && !cbiCall ? (
               <button
                 type="button"
+                data-tour="comms-call-create"
                 onClick={() => intakeMutation.mutate()}
                 disabled={intakeMutation.isPending}
                 className="rounded-md bg-amber-500 px-3.5 py-2 text-xs font-bold text-white hover:bg-amber-600 disabled:cursor-not-allowed disabled:bg-slate-300"
@@ -1123,6 +1176,8 @@ function CallEntry({ message }: { message: CommsMessage }) {
             {playbackUrl && (
               <button
                 type="button"
+                data-tour="comms-call-recording"
+                aria-pressed={showPlayer}
                 onClick={() => setShowPlayer((open) => !open)}
                 className="rounded-md border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50"
               >
@@ -1132,13 +1187,15 @@ function CallEntry({ message }: { message: CommsMessage }) {
             {collapsibleTranscript && (
               <button
                 type="button"
+                data-tour="comms-call-transcript"
+                aria-pressed={showTranscript}
                 onClick={() => setShowTranscript((open) => !open)}
                 className="rounded-md border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50"
               >
                 {showTranscript ? 'Hide transcript' : 'Read transcript'}
               </button>
             )}
-            {intake?.confidence != null && (
+            {intake?.confidence != null && needsSomething && (
               <span className="text-[11px] text-slate-400" title="AI estimate for extracted intake details, not voice identification or transcript accuracy">Intake confidence: {Math.round(intake.confidence * 100)}%</span>
             )}
           </div>
@@ -1152,7 +1209,7 @@ function CallEntry({ message }: { message: CommsMessage }) {
           <AuthedAudio src={playbackUrl} autoPlay className="mt-3 w-full" />
         )}
         {showTranscript && collapsibleTranscript && (
-          <div className="mt-3 border-t border-slate-100 pt-3">
+          <div data-tour="comms-call-transcript-body" className="mt-3 border-t border-slate-100 pt-3">
             <CallTranscript message={message} />
           </div>
         )}
@@ -1327,6 +1384,18 @@ function PeekInput({ label, value, onChange, className = '', placeholder }: {
   )
 }
 
+/** The same street, written either way: "1200 N Atlantic Ave" and "1200 n. atlantic avenue". */
+function sameStreet(a: string | null | undefined, b: string | null | undefined): boolean {
+  const norm = (v: string | null | undefined) => (v ?? '').toLowerCase()
+    .replace(/\b(avenue|ave)\b/g, 'av').replace(/\b(street|str|st)\b/g, 'st').replace(/\b(boulevard|blvd)\b/g, 'bl')
+    .replace(/\b(road|rd)\b/g, 'rd').replace(/\b(drive|dr)\b/g, 'dr').replace(/\b(north|n)\b/g, 'n').replace(/\b(south|s)\b/g, 's')
+    .replace(/[^a-z0-9]+/g, '')
+  const x = norm(a)
+  const y = norm(b)
+  if (x.length < 4 || y.length < 4) return false
+  return x === y || x.startsWith(y) || y.startsWith(x)
+}
+
 /** Editable review before creating a job/estimate: correct the common fields
  *  here (saved back onto the AI draft), then push into the pre-filled form. */
 function CallIntakeEditor({
@@ -1355,14 +1424,14 @@ function CallIntakeEditor({
   const [name, setName] = useState(intakeName(c))
   const [phone, setPhone] = useState(intakeStr(c.phone))
   const [email, setEmail] = useState(intakeStr(c.email))
-  // For a customer already on file, start the address blank so leaving it that
-  // way means "use their address on file"; the AI's heard address only seeds
-  // the field when we're creating a brand-new customer.
-  const initiallyLinked = !!draft.matched_customer_id
-  const [street, setStreet] = useState(initiallyLinked ? '' : intakeStr(l.street_address))
-  const [city, setCity] = useState(initiallyLinked ? '' : intakeStr(l.city))
-  const [region, setRegion] = useState(initiallyLinked ? '' : intakeStr(l.state))
-  const [zip, setZip] = useState(initiallyLinked ? '' : intakeStr(l.postal_code))
+  // The address the caller said, when they said one. For a customer on file it
+  // is offered beside their addresses on file (below); for a new customer it
+  // is the address.
+  const heardStreet = intakeStr(l.street_address)
+  const [street, setStreet] = useState(heardStreet)
+  const [city, setCity] = useState(intakeStr(l.city))
+  const [region, setRegion] = useState(intakeStr(l.state))
+  const [zip, setZip] = useState(intakeStr(l.postal_code))
   // Verified coords from Google autocomplete — power the best-tech ranking and
   // give the job a mappable location. Null until an address is picked.
   const [lat, setLat] = useState<number | null>(null)
@@ -1380,7 +1449,7 @@ function CallIntakeEditor({
   // with the full job form so the same address cannot be accepted in one and
   // questioned in the other.
   useEffect(() => {
-    if (initiallyLinked || addressVerified || !street.trim()) return
+    if (addressVerified || !street.trim()) return
     let cancelled = false
     ;(async () => {
       const outcome = await verifyAddress({ street, city, state: region, zip })
@@ -1449,12 +1518,41 @@ function CallIntakeEditor({
   )
   const phoneMatches = !linkedId && phoneDigits.length >= 7 ? (phoneSearch.data?.data ?? []) : []
 
+  /*
+   * A customer on file: the job goes to one of their addresses unless the
+   * call says otherwise. Nothing said on the call -> their primary address on
+   * file, shown and chosen. Said an address they have -> that one. Said a new
+   * one -> that, with their addresses on file a tap away.
+   */
+  const placesQ = useQuery({
+    queryKey: ['intake-customer-places', linkedId],
+    queryFn: () => apiRequest<{ data: CustomerServiceLocation[] }>(`/v1/customers/${linkedId}/service-locations?per_page=50`).then((r) => r.data),
+    enabled: !!linkedId,
+    staleTime: 60_000,
+  })
+  const onFile = (placesQ.data ?? []).filter((x) => x.active !== false)
+  const heardOnFile = heardStreet ? onFile.find((x) => sameStreet(x.address.street_address, heardStreet)) : undefined
+  const defaultPlace = heardOnFile?.id
+    ?? (heardStreet ? 'other' : (onFile.find((x) => x.is_primary) ?? onFile[0])?.id)
+    ?? 'other'
+  const [placeChoice, setPlaceChoice] = useState<string | null>(null)
+  const place = linkedId ? (placeChoice ?? defaultPlace) : 'other'
+  const placeOnFile = place !== 'other' ? onFile.find((x) => x.id === place) : undefined
+  const link = (id: string | null, label: string) => {
+    setLinkedId(id)
+    setLinkedName(label)
+    setPlaceChoice(null)
+  }
+  // The tech ranking goes by where the job is: the address on file's pin, or the one picked.
+  const rankLat = placeOnFile ? placeOnFile.coordinates.latitude : lat
+  const rankLng = placeOnFile ? placeOnFile.coordinates.longitude : lng
+
   // Best-tech ranking — the same dispatch scoring the board uses. Re-ranks by
   // proximity once an address is verified; before that it ranks by availability
   // so there's always a usable, best-first list to choose from.
   const techQuery = useQuery({
-    queryKey: ['intake-tech-suggest', lat, lng],
-    queryFn: () => suggestTechsForLocation(lat, lng),
+    queryKey: ['intake-tech-suggest', rankLat, rankLng],
+    queryFn: () => suggestTechsForLocation(rankLat, rankLng),
     staleTime: 30_000,
   })
   const techSuggestions = techQuery.data ?? []
@@ -1471,7 +1569,13 @@ function CallIntakeEditor({
     // Linked to an existing customer → reuse it (no duplicate). The form
     // ignores the customer/location proposal when matched_customer_id is set.
     if (linkedId) {
-      return { matched_customer_id: linkedId, proposed_job_json: jobJson }
+      return {
+        matched_customer_id: linkedId,
+        // Which of their addresses, so the full form opens on it too.
+        matched_location_id: placeOnFile?.id ?? null,
+        ...(place === 'other' && street ? { proposed_location_json: { ...l, street_address: street, city, state: region, postal_code: zip } } : {}),
+        proposed_job_json: jobJson,
+      }
     }
     // Otherwise merge edits onto the proposal, preserving every other key the
     // form reads (vehicle, key_fob, …). For a personal name we also rewrite
@@ -1509,9 +1613,9 @@ function CallIntakeEditor({
       const start = to24Hour(reqTime)
       const startTime = /^\d{2}:\d{2}/.test(start) ? start.slice(0, 5) : undefined
       // New customer → always send the address (it becomes their location).
-      // Matched customer → only send it as an override when they actually
-      // entered one; leaving it blank keeps their location on file.
-      const sendAddress = !linkedId || !!street
+      // Matched customer → the address on file that was chosen, by id; or,
+      // "somewhere else", the address entered for this job.
+      const sendAddress = !placeOnFile && (!linkedId || !!street)
       return convertIntakeDraft(draft.id, {
         customer_type: customerType,
         lead_tech_account_id: leadTechId || null,
@@ -1523,6 +1627,7 @@ function CallIntakeEditor({
         city: sendAddress ? city || undefined : undefined,
         state: sendAddress ? region || undefined : undefined,
         postal_code: sendAddress ? zip || undefined : undefined,
+        service_location_id: placeOnFile?.id,
         latitude: sendAddress ? lat : undefined,
         longitude: sendAddress ? lng : undefined,
         scheduled_date: hasDate ? reqDate.trim() : undefined,
@@ -1567,7 +1672,7 @@ function CallIntakeEditor({
             <div className="mt-0.5 text-sm font-semibold text-emerald-900">{linkedName || 'Existing customer'}</div>
             <button
               type="button"
-              onClick={() => { setLinkedId(null); setLinkedName('') }}
+              onClick={() => link(null, '')}
               className="mt-1 text-xs font-semibold text-emerald-700 underline decoration-emerald-300 underline-offset-2 hover:text-emerald-800"
             >
               Not them — create a new customer instead
@@ -1585,7 +1690,7 @@ function CallIntakeEditor({
                     <button
                       key={m.id}
                       type="button"
-                      onClick={() => { setLinkedId(m.id); setLinkedName(m.display_name) }}
+                      onClick={() => link(m.id, m.display_name)}
                       className="flex w-full items-center justify-between gap-2 rounded-md border border-transparent bg-white/70 px-2.5 py-1.5 text-left hover:border-rose-300 hover:bg-white"
                     >
                       <span className="min-w-0 truncate text-sm font-medium text-slate-800">{m.display_name}</span>
@@ -1606,7 +1711,7 @@ function CallIntakeEditor({
                     <button
                       key={m.id}
                       type="button"
-                      onClick={() => { setLinkedId(m.id); setLinkedName(m.display_name) }}
+                      onClick={() => link(m.id, m.display_name)}
                       className="flex w-full items-center justify-between gap-2 rounded-md border border-transparent bg-white/70 px-2.5 py-1.5 text-left hover:border-amber-300 hover:bg-white"
                     >
                       <span className="min-w-0 truncate text-sm font-medium text-slate-800">{m.display_name}</span>
@@ -1637,12 +1742,48 @@ function CallIntakeEditor({
             </div>
           </>
         )}
-        {/* Service address always shows — Google-verified so quick create is
-            reliable even for an existing customer with no location on file.
-            Leaving it blank for a matched customer uses their address on file. */}
+        {/* A customer on file: their addresses, the right one already chosen. */}
+        {linkedId && (
+          <div data-tour="intake-address-on-file">
+            <span className="text-[10px] font-bold uppercase tracking-wide text-slate-400">Service address</span>
+            {placesQ.isLoading ? (
+              <p className="mt-1 text-sm text-slate-500">Loading their addresses…</p>
+            ) : (
+              <div role="radiogroup" aria-label="Service address" className="mt-1 space-y-1.5">
+                {onFile.map((x) => (
+                  <label
+                    key={x.id}
+                    className={`flex cursor-pointer items-start gap-2.5 rounded-lg border px-3 py-2 ${place === x.id ? 'border-emerald-400 bg-emerald-50' : 'border-slate-200 bg-white hover:bg-slate-50'}`}
+                  >
+                    <input type="radio" name={`intake-place-${draft.id}`} checked={place === x.id} onChange={() => setPlaceChoice(x.id)} className="mt-1 accent-emerald-600" />
+                    <span className="min-w-0">
+                      <span className="block text-sm font-medium text-slate-900">{x.address.formatted || x.address.street_address || 'Address on file'}</span>
+                      <span className="mt-0.5 flex flex-wrap gap-1.5 text-[11px]">
+                        {x.nickname && <span className="text-slate-500">{x.nickname}</span>}
+                        <span className="rounded-full bg-slate-100 px-1.5 font-semibold text-slate-600">{x.is_primary ? 'On file · primary' : 'On file'}</span>
+                        {heardOnFile?.id === x.id && <span className="rounded-full bg-amber-100 px-1.5 font-semibold text-amber-800">Said on the call</span>}
+                      </span>
+                    </span>
+                  </label>
+                ))}
+                <label className={`flex cursor-pointer items-start gap-2.5 rounded-lg border px-3 py-2 ${place === 'other' ? 'border-amber-400 bg-amber-50' : 'border-slate-200 bg-white hover:bg-slate-50'}`}>
+                  <input type="radio" name={`intake-place-${draft.id}`} checked={place === 'other'} onChange={() => setPlaceChoice('other')} className="mt-1 accent-amber-600" />
+                  <span className="text-sm text-slate-800">
+                    {heardStreet && !heardOnFile ? <>Where they said on the call: <span className="font-medium">{heardStreet}</span></> : 'Somewhere else'}
+                  </span>
+                </label>
+                {onFile.length === 0 && (
+                  <p className="text-[11px] text-amber-700">No address on file for {linkedName || 'this customer'}. Enter where the job is.</p>
+                )}
+              </div>
+            )}
+          </div>
+        )}
+        {/* Where the job is, typed or Google-picked: a new customer's, or a customer's new one. */}
+        {(!linkedId || place === 'other') && (<>
         <div>
           <span className="text-[10px] font-bold uppercase tracking-wide text-slate-400">
-            Service address
+            {linkedId ? 'Where the job is' : 'Service address'}
             {addressVerified && (
               <span className="ml-1.5 rounded-full bg-emerald-100 px-1.5 py-0.5 text-[9px] font-bold text-emerald-700">
                 {autoVerified ? '✓ auto-verified' : '✓ verified'}
@@ -1666,11 +1807,6 @@ function CallIntakeEditor({
             placeholder="Start typing an address…"
             className="mt-0.5 w-full rounded-md border border-slate-300 px-2.5 py-1.5 text-sm focus:border-amber-500 focus:outline-none focus:ring-1 focus:ring-amber-500"
           />
-          {linkedId && !street && (
-            <p className="mt-1 text-[11px] text-slate-400">
-              Using {linkedName || 'this customer'}&rsquo;s address on file — or pick a Google address to override.
-            </p>
-          )}
           {!linkedId && street && !addressVerified && (
             <p className="mt-1 text-[11px] text-amber-600">Pick the address from the dropdown to verify it.</p>
           )}
@@ -1686,6 +1822,7 @@ function CallIntakeEditor({
           <PeekInput label="State" value={region} onChange={setRegion} />
           <PeekInput label="ZIP" value={zip} onChange={setZip} />
         </div>
+        </>)}
         <PeekInput label="Service" value={service} onChange={setService} />
         <div className="grid grid-cols-2 gap-3">
           <label className="block">
@@ -1759,7 +1896,7 @@ function CallIntakeEditor({
           <details>
             <summary className="cursor-pointer text-xs font-semibold text-slate-500 hover:text-slate-700">Full transcript</summary>
             <p className="mt-2 whitespace-pre-wrap text-xs leading-relaxed text-slate-600">
-              <ReferencedText text={draft.transcript_text} />
+              <ReferencedText text={draft.transcript_text} source="transcript" />
             </p>
           </details>
         )}

@@ -21,11 +21,13 @@
   --easy-border: #e2e8f0;
   --easy-text: #0f172a;
   --easy-muted: #475569;
-  --easy-heading-bg: #022c22;
+  /* Page titles follow the tenant's chrome colour (Settings > Appearance),
+     written to --chrome-bg by useTheme. Text uses --easy-heading-text. */
+  --easy-heading-bg: var(--chrome-bg);
   --easy-heading-text: #ffffff;
-  --easy-heading-muted: #d1fae5;
+  --easy-heading-muted: color-mix(in srgb, var(--easy-heading-text) 85%, var(--easy-heading-bg));
   --easy-card-radius: 16px;
-  --easy-folder-heading-bg: #0f1a2e;
+  --easy-folder-heading-bg: var(--chrome-bg);
   --easy-folder-heading-text: #ffffff;
   --easy-card-shadow: 0 2px 8px rgb(15 23 42 / 4%);
   --easy-search-bg: #f8fafc;
@@ -39,4 +41,16 @@
   --easy-view-selected-text: var(--accent-900, #4f2e0a);
   --easy-view-selected-border: var(--accent-500, #e8902c);
   --easy-view-hover-bg: color-mix(in srgb, var(--accent-500, #e8902c) 5%, transparent);
+  /* One canvas for every Easy page, in both Easy top and Easy side. It uses
+     the full width (no cap). The padding is the same on every page and never
+     wider than what each page used before. */
+  --easy-canvas-max: none;
+  --easy-canvas-pad: 1.5rem;
+  --easy-canvas-top: 1.5rem;
+}
+@media (max-width: 1023px) {
+  :where([data-easy-workspace], [data-easy-section-tabs]) {
+    --easy-canvas-pad: 0.75rem;
+    --easy-canvas-top: 1rem;
+  }
 }

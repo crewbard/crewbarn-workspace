@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import {
   usePurchaseOrder,
@@ -6,10 +6,12 @@ import {
   useDeletePurchaseOrder,
   useCreatePurchaseOrderItem,
   useUpdatePurchaseOrderItem,
+  useSupplierCopy,
   useDeletePurchaseOrderItem,
   useReceivePurchaseOrder,
 } from '@/hooks/usePurchaseOrders'
-import { useCatalogItems, useCreateCatalogItem } from '@/hooks/useCatalogItems'
+import { useCatalogItems } from '@/hooks/useCatalogItems'
+import { useVendors } from '@/hooks/useVendors'
 import { useAllInventoryBins } from '@/hooks/useInventoryBins'
 import { BinTreePicker } from '@/components/BinTreePicker'
 import type { InventoryBin } from '@/types/inventoryBin'
@@ -19,7 +21,11 @@ import { isCountableUnit, qtyStepFor } from '@/lib/unitsOfMeasure'
 import { useInventoryLocations } from '@/hooks/useInventoryLocations'
 import { useLowStock } from '@/hooks/useLowStock'
 import { Modal } from '@/components/ui/Modal'
+import { PERM, usePermissions } from '@/hooks/usePermissions'
+import { ReceiveOverlay, type ReceiveOutcome } from '@/components/inventory/receive/ReceiveOverlay'
+import { rememberSpot, rememberedSpot, spotPath } from '@/lib/receiveSpot'
 import { ApiError, isDeleteCancelled } from '@/lib/api'
+import { continueAfterFailedConflictCheck } from '@/lib/conflictCheck'
 import { formatDateValue } from '@/hooks/useTenantTime'
 import type {
   PurchaseOrder,
@@ -30,6 +36,11 @@ import type {
 import type { CatalogItem } from '@/types/catalogItem'
 import type { LowStockItem } from '@/types/lowStock'
 import { useTheme } from '@/hooks/useTheme'
+import { PoPartsPanel } from '@/components/purchasing/PoPartsPanel'
+import { LinkOrCreateCatalogItemModal } from '@/components/purchasing/LinkOrCreateCatalogItemModal'
+import { CatalogItemQuickCreate } from '@/components/CatalogItemQuickCreate'
+// The --bins-* theme roles used below ([data-bins-ui]).
+import '@/components/inventory/bins/bins.css'
 
 const STATUS_PALETTE: Record<string, { bg: string; text: string }> = {
   draft: { bg: 'bg-slate-100', text: 'text-slate-700' },
@@ -49,6 +60,43 @@ const STATUS_LABELS: Record<PurchaseOrderStatus, string> = {
   cancelled: 'Cancelled',
 }
 
+/** Past draft, an order needs a vendor (cancelling one does not). */
+const NEEDS_VENDOR: PurchaseOrderStatus[] = ['ordered', 'partially_received', 'received', 'completed']
+
+/**
+ * Who a draft goes to. A draft can be started without one -- from the
+ * catalog, say -- and the buyer chooses here, after looking it over.
+ */
+function VendorPicker({ po, onError }: { po: PurchaseOrder; onError: (message: string | null) => void }) {
+  const vendorsQuery = useVendors({ active: true, per_page: 200 })
+  const updateMutation = useUpdatePurchaseOrder()
+  const vendors = vendorsQuery.data?.data ?? []
+  // The one on the order, even if it has since been made inactive.
+  const current = po.vendor && !vendors.some((v) => v.id === po.vendor?.id) ? po.vendor : null
+
+  return (
+    <select
+      id="po-vendor"
+      aria-label="Who this order is going to"
+      value={po.vendor_id ?? ''}
+      disabled={updateMutation.isPending}
+      onChange={async (e) => {
+        onError(null)
+        try {
+          await updateMutation.mutateAsync({ id: po.id, input: { vendor_id: e.target.value || null } })
+        } catch (error) {
+          onError(error instanceof Error ? error.message : 'Could not change who this order is going to.')
+        }
+      }}
+      className="ml-1 max-w-[16rem] rounded border border-slate-300 bg-white px-2 py-0.5 text-sm font-medium text-slate-900 focus:outline-none focus:ring-1 focus:ring-amber-500"
+    >
+      <option value="">Not chosen yet</option>
+      {current && <option value={current.id}>{current.label}</option>}
+      {vendors.map((v) => <option key={v.id} value={v.id}>{v.label}</option>)}
+    </select>
+  )
+}
+
 const STATUS_OPTIONS: PurchaseOrderStatus[] = [
   'draft',
   'ordered',
@@ -58,15 +106,19 @@ const STATUS_OPTIONS: PurchaseOrderStatus[] = [
   'cancelled',
 ]
 
-export function PurchaseOrderDetailPage() {
+/** recordId: the order, when shown inside a task rather than at its own address. */
+export function PurchaseOrderDetailPage({ recordId }: { recordId?: string } = {}) {
   const { theme } = useTheme()
   const easy = theme === 'easy-side' || theme === 'easy-top'
   const [statusError, setStatusError] = useState<string | null>(null)
-  const { id } = useParams<{ id: string }>()
+  const { id: routeId } = useParams<{ id: string }>()
+  const id = recordId ?? routeId
   const navigate = useNavigate()
   const poQuery = usePurchaseOrder(id)
   const updateMutation = useUpdatePurchaseOrder()
   const deleteMutation = useDeletePurchaseOrder()
+  // Every write on this page goes through inventory.edit on the server.
+  const canEdit = usePermissions().has(PERM.INVENTORY_EDIT)
 
   if (poQuery.isLoading) {
     return (
@@ -94,6 +146,12 @@ export function PurchaseOrderDetailPage() {
   async function handleStatusChange(next: PurchaseOrderStatus) {
     if (next === po.status) return
     setStatusError(null)
+    // Ordering, receiving or closing out needs somebody to order from.
+    if (!po.vendor_id && NEEDS_VENDOR.includes(next)) {
+      setStatusError('Choose who this order is going to first.')
+      document.getElementById('po-vendor')?.focus()
+      return
+    }
     try {
       await updateMutation.mutateAsync({ id: po.id, input: { status: next } })
     } catch (error) {
@@ -106,8 +164,10 @@ export function PurchaseOrderDetailPage() {
     try {
       await deleteMutation.mutateAsync(po.id)
       navigate('/purchase-orders')
-    } catch {
-      // Cancelled or failed.
+    } catch (err) {
+      if (!isDeleteCancelled(err)) {
+        setStatusError(err instanceof Error ? err.message : 'Could not delete this purchase order.')
+      }
     }
   }
 
@@ -119,7 +179,7 @@ export function PurchaseOrderDetailPage() {
         </Link>
       </div>
 
-      <div className={easy ? 'mb-6 flex flex-wrap items-start justify-between gap-5 rounded-2xl bg-emerald-950 p-5 sm:p-7' : 'flex items-start justify-between mb-6 gap-6'}>
+      <div data-tour="po-detail-header" data-status={po.status} data-vendor={po.vendor_id ? 'set' : 'none'} data-auto={po.auto_reorder ? 'yes' : 'no'} data-for={po.estimate_id ? 'estimate' : po.work_order_id ? 'job' : 'stock'} data-can-edit={canEdit ? 'yes' : 'no'} className={easy ? 'mb-6 flex flex-wrap items-start justify-between gap-5 rounded-2xl bg-emerald-950 p-5 sm:p-7' : 'flex flex-wrap items-start justify-between mb-6 gap-6'}>
         <div>
           <div className="flex items-center gap-3">
             <h1 className={`text-2xl font-semibold font-mono ${easy ? 'text-white' : 'text-slate-900'}`}>
@@ -130,9 +190,38 @@ export function PurchaseOrderDetailPage() {
             >
               {STATUS_LABELS[po.status] ?? po.status}
             </span>
+            {po.auto_reorder && (
+              <span
+                className="px-2 py-0.5 text-xs font-medium rounded bg-sky-100 text-sky-800"
+                title="CrewBarn started this draft when these items reached their reorder threshold. Check the quantities, then mark it ordered."
+              >
+                Low-stock reorder
+              </span>
+            )}
+            {po.source_call && (
+              <Link
+                to={po.source_call.conversation_id ? `/communications?conversation=${encodeURIComponent(po.source_call.conversation_id)}` : '/communications'}
+                className="px-2 py-0.5 text-xs font-medium rounded bg-violet-100 text-violet-800 hover:underline"
+                title="Written from a call with the vendor. Listen to it and check the parts, quantities and prices before sending."
+              >
+                From a call · listen
+              </Link>
+            )}
+            {po.source_takeoff_id && (
+              <Link
+                to={`/purchase-orders/blueprints/${po.source_takeoff_id}`}
+                className="px-2 py-0.5 text-xs font-medium rounded bg-teal-100 text-teal-800 hover:underline"
+                title="Parts read off a blueprint. Check them against the drawing before sending."
+              >
+                From a blueprint · open
+              </Link>
+            )}
           </div>
-          <p className={`text-sm mt-1 ${easy ? 'text-emerald-100' : 'text-slate-600'}`}>
-            Vendor: <span className="font-medium">{po.vendor?.label ?? '—'}</span>
+          <p data-tour="po-detail-vendor" className={`text-sm mt-1 ${easy ? 'text-emerald-100' : 'text-slate-600'}`}>
+            Vendor:{' '}
+            {canEdit && po.status === 'draft'
+              ? <VendorPicker po={po} onError={setStatusError} />
+              : <span className="font-medium">{po.vendor?.label ?? 'Not chosen yet'}</span>}
             {po.vendor_order_number && (
               <>
                 {' · '}
@@ -167,7 +256,17 @@ export function PurchaseOrderDetailPage() {
             </p>
           )}
         </div>
-        <div className={easy ? 'flex flex-wrap items-center gap-2 rounded-xl bg-white p-2' : 'flex items-center gap-2'}>
+        <div className="flex flex-wrap items-center gap-2">
+        <Link
+          to={`/purchase-orders/${po.id}/supplier-copy`}
+          data-bins-ui
+          data-tour="po-supplier-copy"
+          className="rounded-md border border-[var(--bins-border)] bg-[var(--bins-surface)] px-3 py-1.5 text-sm font-medium text-[var(--bins-text-2)] hover:bg-[var(--bins-soft)]"
+          title="The order for the supplier, to print or save as PDF: their part numbers, no bins, no internal SKUs, no notes"
+        >
+          Supplier copy
+        </Link>
+        {canEdit && <div data-tour="po-detail-status" className={easy ? 'flex flex-wrap items-center gap-2 rounded-xl bg-white p-2' : 'flex items-center gap-2'}>
           <select
             aria-label="Purchase order status"
             value={po.status}
@@ -188,6 +287,7 @@ export function PurchaseOrderDetailPage() {
           >
             Delete
           </button>
+        </div>}
         </div>
       </div>
 
@@ -198,12 +298,13 @@ export function PurchaseOrderDetailPage() {
         {['draft', 'ordered', 'partially_received', 'received'].includes(po.status) && <a href="#po-receive" className="rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-semibold">Receive delivery</a>}
       </nav>}
 
-      <div id="po-details" className="scroll-mt-24"><HeaderCard po={po} /></div>
-      <div id="po-items" className="scroll-mt-24"><LineItemsCard po={po} /></div>
-      {(po.status === 'draft' ||
+      <div id="po-details" data-tour="po-detail-headercard" className="scroll-mt-24"><HeaderCard po={po} canEdit={canEdit} /></div>
+      <div id="po-items" data-tour="po-detail-lines" className="scroll-mt-24"><LineItemsCard po={po} canEdit={canEdit} /></div>
+      {canEdit && (po.status === 'draft' ||
         po.status === 'ordered' ||
         po.status === 'partially_received' ||
-        po.status === 'received') && <div id="po-receive" className="scroll-mt-24"><ReceivePanel po={po} /></div>}
+        po.status === 'received') && <div id="po-receive" data-tour="po-detail-receive" className="scroll-mt-24"><ReceivePanel po={po} /></div>}
+      <div id="po-for" className="scroll-mt-24"><PoPartsPanel poId={po.id} status={po.status} /></div>
     </div>
   )
 }
@@ -212,7 +313,7 @@ export function PurchaseOrderDetailPage() {
 // Header card — order date, expected delivery, totals, notes
 // ============================================================
 
-function HeaderCard({ po }: { po: PurchaseOrder }) {
+function HeaderCard({ po, canEdit }: { po: PurchaseOrder; canEdit: boolean }) {
   const updateMutation = useUpdatePurchaseOrder()
   const [editing, setEditing] = useState(false)
   const [orderDate, setOrderDate] = useState(po.order_date ?? '')
@@ -262,13 +363,15 @@ function HeaderCard({ po }: { po: PurchaseOrder }) {
           Header
         </h2>
         {!editing ? (
-          <button
-            type="button"
-            onClick={() => setEditing(true)}
-            className="text-xs text-amber-700 hover:underline font-medium"
-          >
-            Edit
-          </button>
+          canEdit ? (
+            <button
+              type="button"
+              onClick={() => setEditing(true)}
+              className="text-xs text-amber-700 hover:underline font-medium"
+            >
+              Edit
+            </button>
+          ) : null
         ) : (
           <div className="flex gap-2">
             <button
@@ -278,6 +381,10 @@ function HeaderCard({ po }: { po: PurchaseOrder }) {
                 setOrderDate(po.order_date ?? '')
                 setExpected(po.expected_delivery ?? '')
                 setNotes(po.notes ?? '')
+                setTaxDollars(po.money.tax_cents == null ? '' : (po.money.tax_cents / 100).toFixed(2))
+                setShipDollars(po.money.shipping_cents == null ? '' : (po.money.shipping_cents / 100).toFixed(2))
+                setVendorOrderNumber(po.vendor_order_number ?? '')
+                setError(null)
               }}
               className="text-xs text-slate-600 hover:underline"
             >
@@ -426,7 +533,7 @@ function formatCents(c: number): string {
 // Line items
 // ============================================================
 
-function LineItemsCard({ po }: { po: PurchaseOrder }) {
+function LineItemsCard({ po, canEdit }: { po: PurchaseOrder; canEdit: boolean }) {
   const items = po.items ?? []
   const [adding, setAdding] = useState(false)
   const [showLowStock, setShowLowStock] = useState(false)
@@ -437,10 +544,11 @@ function LineItemsCard({ po }: { po: PurchaseOrder }) {
         <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-700">
           Line items{items.length > 0 && ` (${items.length})`}
         </h2>
-        <div className="flex items-center gap-2">
+        {canEdit && <div className="flex items-center gap-2">
           <button
             type="button"
             onClick={() => setShowLowStock(true)}
+            data-tour="po-low-stock-button"
             className="text-xs px-3 py-1.5 bg-white border border-amber-300 text-amber-700 hover:bg-amber-50 rounded font-medium"
           >
             ⚠ Low stock
@@ -449,12 +557,13 @@ function LineItemsCard({ po }: { po: PurchaseOrder }) {
             <button
               type="button"
               onClick={() => setAdding(true)}
+              data-tour="po-add-line"
               className="text-xs px-3 py-1.5 bg-amber-600 hover:bg-amber-700 text-white rounded font-medium"
             >
               + Add line
             </button>
           )}
-        </div>
+        </div>}
       </div>
 
       {adding && (
@@ -466,13 +575,14 @@ function LineItemsCard({ po }: { po: PurchaseOrder }) {
       )}
 
       {items.length === 0 && !adding && (
-        <div className="px-5 py-8 text-center text-sm text-slate-500">
-          No line items yet. Click "+ Add line" or "⚠ Low stock" to start.
+        <div data-tour="po-lines-empty" className="px-5 py-8 text-center text-sm text-slate-500">
+          {canEdit ? 'No line items yet. Click "+ Add line" or "⚠ Low stock" to start.' : 'No line items yet.'}
         </div>
       )}
 
       {items.length > 0 && (
-        <table className="w-full text-sm">
+        <div className="overflow-x-auto">
+        <table className="w-full text-sm min-w-[720px]">
           <thead className="bg-slate-50 border-b border-slate-200">
             <tr>
               <Th>Item</Th>
@@ -486,10 +596,11 @@ function LineItemsCard({ po }: { po: PurchaseOrder }) {
           </thead>
           <tbody>
             {items.map((it) => (
-              <LineItemRow key={it.id} poId={po.id} item={it} poStatus={po.status} />
+              <LineItemRow key={it.id} poId={po.id} item={it} poStatus={po.status} canEdit={canEdit} />
             ))}
           </tbody>
         </table>
+        </div>
       )}
 
       {showLowStock && (
@@ -510,12 +621,17 @@ function LineItemRow({
   poId,
   item,
   poStatus,
+  canEdit,
 }: {
   poId: string
   item: PurchaseOrderItem
   poStatus: PurchaseOrderStatus
+  canEdit: boolean
 }) {
   const [editing, setEditing] = useState(false)
+  // Shared query: one fetch for every line. True when the supplier copy has no number for this line.
+  const supplierCopy = useSupplierCopy(poId)
+  const noSupplierNumber = !!supplierCopy.data?.lines.find((l) => l.id === item.id)?.missing_part_number
   const updateMutation = useUpdatePurchaseOrderItem(poId)
   const deleteMutation = useDeletePurchaseOrderItem(poId)
   const showPrint =
@@ -639,6 +755,12 @@ function LineItemRow({
             {item.source_page_label && `catalog p. ${item.source_page_label}`}
           </div>
         )}
+        {noSupplierNumber && (
+          <div data-bins-ui data-tour="po-line-no-supplier-number" className="mt-1 inline-flex rounded bg-[color-mix(in_srgb,var(--color-warning)_12%,var(--bins-surface))] px-1.5 py-0.5 text-[11px] font-medium text-[var(--bins-text)]"
+            title="The supplier copy shows only the description for this line. Add the supplier's part number on the line or under Who sells this.">
+            No supplier part number: the supplier copy shows the description only
+          </div>
+        )}
       </td>
       <td className="px-3 py-3 text-right tabular-nums">{item.qty_ordered}</td>
       <td className="px-3 py-3 text-right tabular-nums text-slate-500">{item.qty_received}</td>
@@ -659,20 +781,24 @@ function LineItemRow({
             🏷 Labels
           </Link>
         )}
-        <button
-          type="button"
-          onClick={() => setEditing(true)}
-          className="text-xs text-amber-700 hover:underline mr-3"
-        >
-          Edit
-        </button>
-        <button
-          type="button"
-          onClick={handleDelete}
-          className="text-xs text-red-600 hover:underline"
-        >
-          Remove
-        </button>
+        {canEdit && (
+          <>
+            <button
+              type="button"
+              onClick={() => setEditing(true)}
+              className="text-xs text-amber-700 hover:underline mr-3"
+            >
+              Edit
+            </button>
+            <button
+              type="button"
+              onClick={handleDelete}
+              className="text-xs text-red-600 hover:underline"
+            >
+              Remove
+            </button>
+          </>
+        )}
       </td>
     </tr>
   )
@@ -754,7 +880,7 @@ function NewLineItemPanel({
   }
 
   return (
-    <div className="border-b border-slate-200 bg-amber-50/40 px-5 py-4 space-y-3">
+    <div data-tour="po-new-line" className="border-b border-slate-200 bg-amber-50/40 px-5 py-4 space-y-3">
       <div className="text-xs font-semibold uppercase tracking-wide text-slate-600">
         New line
       </div>
@@ -906,6 +1032,7 @@ function NewLineItemPanel({
         <button
           type="button"
           onClick={onClose}
+          data-tour="po-new-line-cancel"
           className="text-sm px-3 py-1.5 text-slate-600 hover:text-slate-900"
         >
           Cancel
@@ -921,12 +1048,11 @@ function NewLineItemPanel({
       </div>
 
       {showNewProduct && (
-        <LinkOrCreateCatalogItemModal
-          poId={poId}
-          line={null}
-          vendorLabel={vendorLabel}
+        <CatalogItemQuickCreate
           defaultName={pickerQuery || description}
           defaultUnitCostCents={Math.round(Number(unitDollars) * 100) || 0}
+          defaultSupplierName={vendorLabel ?? ''}
+          stockComesFromPo
           onClose={() => setShowNewProduct(false)}
           onCreated={(item) => {
             // Auto-select the freshly created product into this line.
@@ -1070,7 +1196,7 @@ function LowStockPickerModal({
   return (
     <Modal isOpen={true} onClose={onClose} title="Add from low stock" size="xl">
       <Modal.Body>
-        <div className="space-y-3">
+        <div data-tour="po-detail-lowstock" className="space-y-3">
           <div className="flex items-center justify-between gap-3">
             <input
               type="search"
@@ -1205,6 +1331,7 @@ function LowStockPickerModal({
         <button
           type="button"
           onClick={onClose}
+          data-tour="po-lowstock-cancel"
           className="px-4 py-2 text-sm font-medium text-slate-700 hover:text-slate-900"
         >
           Cancel
@@ -1303,6 +1430,20 @@ function ReceivePanel({ po }: { po: PurchaseOrder }) {
   // user receive different lines into different bins in one shipment.
   const [lineBin, setLineBin] = useState<Record<string, InventoryBin>>({})
   const [pickingBinFor, setPickingBinFor] = useState<string | null>(null)
+  // Receive delivery overlay (location → spot → receive → print). The panel
+  // below stays as it was ("Classic"), every feature still there.
+  const [overlayOpen, setOverlayOpen] = useState(false)
+  // "Choose spot" in Receive into: the same overlay, spot step only.
+  const [pickingPanelSpot, setPickingPanelSpot] = useState(false)
+  const canAddPlaces = usePermissions().has(PERM.INVENTORY_EDIT)
+  // When the overlay's receive needs the merge/split question, the overlay
+  // waits here until the question is answered, then finishes on Done.
+  const conflictWaiter = useRef<((outcome: ReceiveOutcome) => void) | null>(null)
+  function settleConflict(outcome: ReceiveOutcome) {
+    const done = conflictWaiter.current
+    conflictWaiter.current = null
+    done?.(outcome)
+  }
   const [error, setError] = useState<string | null>(null)
   const [needsCatalog, setNeedsCatalog] = useState<PurchaseOrderItem | null>(null)
   // Safety modal: when a receive line would create a NEW (item, bin)
@@ -1354,13 +1495,14 @@ function ReceivePanel({ po }: { po: PurchaseOrder }) {
    * behind a confirm modal so the user can merge into an existing spot
    * rather than splitting stock by accident.
    */
-  async function handleSubmit() {
+  async function handleSubmit(intoBin?: InventoryBin): Promise<ReceiveOutcome> {
     setError(null)
     const explicitLocation = panelLocationId || undefined
     const explicitBin = panelBinId || undefined
     const lines: ResolvedReceiveLine[] = Object.entries(draftQty)
       .map(([po_item_id, qtyStr]) => {
-        const perLineBin = lineBin[po_item_id]
+        // A per-line pick still wins; the overlay's spot fills the rest.
+        const perLineBin = lineBin[po_item_id] ?? intoBin
         return {
           po_item_id,
           qty: Number(qtyStr) || 0,
@@ -1371,7 +1513,7 @@ function ReceivePanel({ po }: { po: PurchaseOrder }) {
       .filter((l) => l.qty > 0)
     if (lines.length === 0) {
       setError('Enter a qty on at least one line.')
-      return
+      return 'error'
     }
 
     // Pre-flight: pull existing stock_levels per catalog item, find any
@@ -1405,25 +1547,38 @@ function ReceivePanel({ po }: { po: PurchaseOrder }) {
       }
       if (conflicts.length > 0) {
         setPendingReceive({ lines, conflicts })
-        return
+        if (!intoBin) return 'conflict'
+        const catalogIds = lines.map((l) => items.find((it) => it.id === l.po_item_id)?.catalog_item_id)
+        return await new Promise<ReceiveOutcome>((resolve) => {
+          conflictWaiter.current = (outcome) => {
+            if (outcome === 'done') rememberSpot(catalogIds, intoBin.id)
+            resolve(outcome)
+          }
+        })
       }
     } catch (e) {
-      // Non-fatal: if pre-flight fails, fall through and just submit.
-      console.warn('Receive conflict pre-flight failed; submitting anyway.', e)
+      // Can't see stock levels (403): receive as before. Any other failure
+      // means the check didn't run, so ask rather than split stock unseen.
+      if (!continueAfterFailedConflictCheck(e, 'stock already in other bins')) return 'error'
     } finally {
       setCheckingConflicts(false)
     }
 
-    await executeReceive(lines)
+    const ok = await executeReceive(lines)
+    if (ok && intoBin) {
+      rememberSpot(lines.map((l) => items.find((it) => it.id === l.po_item_id)?.catalog_item_id), intoBin.id)
+    }
+    return ok ? 'done' : 'error'
   }
 
-  async function executeReceive(lines: ResolvedReceiveLine[]) {
+  async function executeReceive(lines: ResolvedReceiveLine[]): Promise<boolean> {
     setError(null)
     try {
       await receiveMutation.mutateAsync({ lines })
       setDraftQty({})
       setLineBin({})
       setPendingReceive(null)
+      return true
     } catch (err) {
       if (err instanceof ApiError) {
         const details = err.details as
@@ -1437,8 +1592,42 @@ function ReceivePanel({ po }: { po: PurchaseOrder }) {
       } else {
         setError(err instanceof Error ? err.message : String(err))
       }
+      return false
     }
   }
+
+  function openOverlay() {
+    // Mindless: nothing typed yet means "all of it".
+    if (!Object.values(draftQty).some((q) => Number(q) > 0)) fillRemaining()
+    setError(null)
+    setOverlayOpen(true)
+  }
+
+  // Lines the overlay will receive: what's typed, or everything left.
+  const overlayLines = receivable
+    .filter((it) => !!it.catalog_item_id)
+    .map((it) => {
+      const typed = Number(draftQty[it.id])
+      const left = Math.floor((it.qty_ordered ?? 0) - (it.qty_received ?? 0))
+      return { id: it.id, name: it.description ?? 'item', qty: draftQty[it.id] !== undefined ? (typed || 0) : left, catalogItemId: it.catalog_item_id ?? null }
+    })
+    .filter((l) => l.qty > 0)
+  // Free-text lines can't go on a shelf until they're a product; the overlay
+  // offers Create product for them first (the same window as the table's).
+  const overlayUnlinked = receivable
+    .filter((it) => !it.catalog_item_id)
+    .map((it) => {
+      const left = Math.floor((it.qty_ordered ?? 0) - (it.qty_received ?? 0))
+      return { id: it.id, name: it.description ?? 'item', qty: draftQty[it.id] !== undefined ? (Number(draftQty[it.id]) || 0) : left }
+    })
+    .filter((l) => l.qty > 0)
+  const panelSpotPath = panelBinId ? spotPath(bins, panelBinId) : ''
+  const firstLine = receivable.find((it) => overlayLines.some((l) => l.id === it.id))
+  const overlayStartBin = (firstLine && lineBin[firstLine.id]?.id)
+    || rememberedSpot(firstLine?.catalog_item_id)
+    || panelBinId
+    || firstLine?.catalog_item?.default_bin?.id
+    || null
 
   if (receivable.length === 0) {
     return null
@@ -1458,13 +1647,14 @@ function ReceivePanel({ po }: { po: PurchaseOrder }) {
         <button
           type="button"
           onClick={fillRemaining}
+          data-tour="po-receive-fill"
           className="text-xs px-3 py-1.5 bg-white border border-emerald-300 text-emerald-700 hover:bg-emerald-50 rounded font-medium"
         >
           Fill remaining
         </button>
       </div>
 
-      <div className="px-5 py-3 border-b border-slate-200 bg-white">
+      <div data-tour="po-receive-into" className="px-5 py-3 border-b border-slate-200 bg-white">
         <div className="text-[11px] font-medium text-slate-700 uppercase tracking-wide mb-2">
           Receive into (overrides catalog defaults)
         </div>
@@ -1481,7 +1671,21 @@ function ReceivePanel({ po }: { po: PurchaseOrder }) {
               </option>
             ))}
           </select>
-          <select
+{panelLocationId ? (
+            // The spot opens the Bins tree (and the builder, for a new one).
+            <button
+              type="button"
+              onClick={() => setPickingPanelSpot(true)}
+              data-tour="po-receive-choose-spot"
+              className="text-sm px-3 py-1.5 border border-slate-300 rounded bg-white min-w-[200px] max-w-[420px] text-left truncate hover:border-[var(--accent-500)]"
+              title={panelBinId ? panelSpotPath : 'Choose the exact spot, or leave it as any bin in this location'}
+            >
+              {panelBinId
+                ? <><span className="text-slate-500">Spot:</span> <span className="font-medium text-slate-800">{panelSpotPath}</span></>
+                : <><span className="font-medium text-[var(--accent-600)]">Choose spot</span> <span className="text-slate-400">· any bin for now</span></>}
+            </button>
+          ) : (
+            <select
             value={panelBinId}
             onChange={(e) => setPanelBinId(e.target.value)}
             disabled={!panelLocationId}
@@ -1496,6 +1700,7 @@ function ReceivePanel({ po }: { po: PurchaseOrder }) {
               </option>
             ))}
           </select>
+          )}
           {(panelLocationId || panelBinId) && (
             <button
               type="button"
@@ -1511,12 +1716,13 @@ function ReceivePanel({ po }: { po: PurchaseOrder }) {
         </div>
         {locations.length === 0 && (
           <p className="text-xs text-amber-700 mt-2">
-            No inventory locations yet. Add one in Tool Shed → Inventory → Locations before receiving.
+            No inventory locations yet. Add one on the Locations tab of Inventory before receiving.
           </p>
         )}
       </div>
 
-      <table className="w-full text-sm">
+      <div data-tour="po-receive-lines" className="overflow-x-auto">
+      <table className="w-full text-sm min-w-[720px]">
         <thead className="bg-slate-50 border-b border-slate-200">
           <tr>
             <Th>Line</Th>
@@ -1633,7 +1839,7 @@ function ReceivePanel({ po }: { po: PurchaseOrder }) {
                       onClick={() => setNeedsCatalog(it)}
                       className="text-xs px-2 py-1 bg-amber-600 hover:bg-amber-700 text-white rounded font-medium"
                     >
-                      Link / Create item
+                      Create product
                     </button>
                   )}
                 </td>
@@ -1642,6 +1848,7 @@ function ReceivePanel({ po }: { po: PurchaseOrder }) {
           })}
         </tbody>
       </table>
+      </div>
 
       {error && (
         <div className="mx-5 my-3 text-xs text-red-600 px-3 py-2 bg-red-50 border border-red-100 rounded">
@@ -1649,7 +1856,7 @@ function ReceivePanel({ po }: { po: PurchaseOrder }) {
         </div>
       )}
 
-      <div className="flex items-center justify-end gap-3 px-5 py-3 bg-slate-50 border-t border-slate-200">
+      <div data-tour="po-receive-submit" className="flex items-center justify-end gap-3 px-5 py-3 bg-slate-50 border-t border-slate-200">
         <button
           type="button"
           onClick={() => setDraftQty({})}
@@ -1659,7 +1866,16 @@ function ReceivePanel({ po }: { po: PurchaseOrder }) {
         </button>
         <button
           type="button"
-          onClick={handleSubmit}
+          onClick={openOverlay}
+          disabled={receiveMutation.isPending || checkingConflicts}
+          data-tour="po-receive-overlay"
+          className="text-sm px-4 py-2 sm:py-1.5 bg-[var(--accent-500)] hover:bg-[var(--accent-600)] text-white rounded font-semibold disabled:opacity-50"
+        >
+          Put away &amp; receive
+        </button>
+        <button
+          type="button"
+          onClick={() => void handleSubmit()}
           disabled={receiveMutation.isPending || checkingConflicts}
           className="text-sm px-4 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded font-medium disabled:opacity-50"
         >
@@ -1667,12 +1883,58 @@ function ReceivePanel({ po }: { po: PurchaseOrder }) {
         </button>
       </div>
 
+      {pickingPanelSpot && (
+        <ReceiveOverlay
+          mode="pick"
+          poId={po.id}
+          lines={overlayLines}
+          locations={locations}
+          canEdit={canAddPlaces}
+          initialBinId={panelBinId || null}
+          initialLocationId={panelLocationId || null}
+          error={null}
+          onPicked={(bin) => { setPanelLocationId(bin.location_id); setPanelBinId(bin.id) }}
+          onReceive={async () => 'cancelled'}
+          onClose={() => setPickingPanelSpot(false)}
+        />
+      )}
+      {/* Before the Create product window, so that window opens over the overlay. */}
+      {overlayOpen && (
+        <ReceiveOverlay
+          poId={po.id}
+          lines={overlayLines}
+          locations={locations}
+          canEdit={canAddPlaces}
+          initialBinId={overlayStartBin}
+          initialLocationId={panelLocationId || null}
+          error={error}
+          unlinked={overlayUnlinked}
+          paused={!!needsCatalog || !!pendingReceive}
+          onLink={(id) => { const it = items.find((x) => x.id === id); if (it) setNeedsCatalog(it) }}
+          onSkipUnlinked={() => setDraftQty((p) => {
+            const next = { ...p }
+            for (const u of overlayUnlinked) delete next[u.id]
+            return next
+          })}
+          onReceive={(bin) => handleSubmit(bin)}
+          onClose={() => setOverlayOpen(false)}
+        />
+      )}
       {needsCatalog && (
         <LinkOrCreateCatalogItemModal
           poId={po.id}
           line={needsCatalog}
           vendorLabel={po.vendor?.label ?? null}
+          // Only a place that takes stock (holds_stock, as in the bin tree and
+          // BinRules on the server) becomes the Default Bin.
+          defaultBin={[lineBin[needsCatalog.id], filteredBins.find((b) => b.id === panelBinId)]
+            .find((b) => b && b.holds_stock !== false) ?? null}
           onClose={() => setNeedsCatalog(null)}
+          onLinked={() => {
+            // Straight back to receiving it: everything still to come.
+            const left = (needsCatalog.qty_ordered ?? 0) - (needsCatalog.qty_received ?? 0)
+            if (left > 0) setQty(needsCatalog.id, String(left))
+          }}
         />
       )}
       {pickingBinFor && (
@@ -1698,7 +1960,7 @@ function ReceivePanel({ po }: { po: PurchaseOrder }) {
       {pendingReceive && (
         <ReceiveConflictModal
           conflicts={pendingReceive.conflicts}
-          onCancel={() => setPendingReceive(null)}
+          onCancel={() => { setPendingReceive(null); settleConflict('cancelled') }}
           onMerge={(merges) => {
             // Replace the chosen bin on each conflicting line with the
             // existing bin the user picked to merge into.
@@ -1707,9 +1969,9 @@ function ReceivePanel({ po }: { po: PurchaseOrder }) {
               if (!chosen) return line
               return { ...line, bin_id: chosen.bin_id, location_id: undefined as string | undefined }
             })
-            executeReceive(lines)
+            void executeReceive(lines).then((ok) => settleConflict(ok ? 'merged' : 'error'))
           }}
-          onCreateNew={() => executeReceive(pendingReceive.lines)}
+          onCreateNew={() => { void executeReceive(pendingReceive.lines).then((ok) => settleConflict(ok ? 'done' : 'error')) }}
         />
       )}
     </div>
@@ -1720,377 +1982,6 @@ function ReceivePanel({ po }: { po: PurchaseOrder }) {
 // Link/Create catalog item modal — for free-text PO lines that need a
 // catalog ref before receive can apply stock.
 // ============================================================
-
-function LinkOrCreateCatalogItemModal({
-  poId,
-  line,
-  vendorLabel,
-  onClose,
-  onCreated,
-  defaultName,
-  defaultUnitCostCents,
-}: {
-  /** When set, the modal will PATCH the PO line's catalog_item_id after create/link. */
-  poId: string
-  line?: PurchaseOrderItem | null
-  vendorLabel: string | null
-  onClose: () => void
-  /** Called after a catalog item is created/linked. Receives the resulting CatalogItem. */
-  onCreated?: (item: CatalogItem) => void
-  /** Pre-fill the name field when no line is provided (e.g. typed query in NewLineItemPanel). */
-  defaultName?: string
-  /** Pre-fill the owner-cost (in cents) when no line is provided. */
-  defaultUnitCostCents?: number
-}) {
-  const hasLine = !!line
-  const [tab, setTab] = useState<'link' | 'create'>('create')
-  const updateLine = useUpdatePurchaseOrderItem(poId)
-  const createCatalogItem = useCreateCatalogItem()
-  const { data: binsData } = useAllInventoryBins({})
-  const bins = binsData?.data ?? []
-
-  // Link tab state
-  const [pickerQuery, setPickerQuery] = useState('')
-  const [debouncedQuery, setDebouncedQuery] = useState('')
-  useEffect(() => {
-    const t = setTimeout(() => setDebouncedQuery(pickerQuery.trim()), 200)
-    return () => clearTimeout(t)
-  }, [pickerQuery])
-  const pickerResults = useCatalogItems({
-    q: debouncedQuery || undefined,
-    type: 'product',
-    active: true,
-    per_page: 12,
-  })
-
-  // Create tab state — defaults pulled from the PO line OR from props
-  const initialUnitCostCents = line?.unit_cost_cents ?? defaultUnitCostCents ?? 0
-  const [name, setName] = useState(line?.description ?? defaultName ?? '')
-  const [sku, setSku] = useState('')
-  const [shortDescription, setShortDescription] = useState('')
-  /**
-   * Long description maps to catalog_items.internal_description — an
-   * internal, FTS-indexed text field that holds vehicle fitment,
-   * FCC IDs, crossover part numbers, alternate spellings, etc. NOT
-   * customer-facing. The customer-facing summary lives in
-   * `short_description` (max 100, prints on stickers + invoices).
-   */
-  const [longDescription, setLongDescription] = useState('')
-  const [defaultBinId, setDefaultBinId] = useState('')
-  const [supplierName, setSupplierName] = useState(vendorLabel ?? '')
-  const [reorderThreshold, setReorderThreshold] = useState('')
-  const [reorderQuantity, setReorderQuantity] = useState('')
-  const [snTracking, setSnTracking] = useState(false)
-  const [snPrefix, setSnPrefix] = useState('')
-
-  const [error, setError] = useState<string | null>(null)
-
-  async function handleLink(catalogItem: CatalogItem) {
-    setError(null)
-    try {
-      if (line) {
-        await updateLine.mutateAsync({
-          itemId: line.id,
-          input: { catalog_item_id: catalogItem.id },
-        })
-      }
-      onCreated?.(catalogItem)
-      onClose()
-    } catch (err) {
-      setError(err instanceof Error ? err.message : String(err))
-    }
-  }
-
-  async function handleCreate() {
-    setError(null)
-    if (!name.trim()) {
-      setError('Name is required.')
-      return
-    }
-    try {
-      const created = await createCatalogItem.mutateAsync({
-        type: 'product',
-        name: name.trim(),
-        sku: sku.trim() || null,
-        short_description: shortDescription.trim() || null,
-        internal_description: longDescription.trim() || null,
-        default_bin_id: defaultBinId || null,
-        supplier_name: supplierName.trim() || null,
-        owner_cost_cents: initialUnitCostCents,
-        reorder_threshold: reorderThreshold ? Number(reorderThreshold) : null,
-        reorder_quantity: reorderQuantity ? Number(reorderQuantity) : null,
-        sn_tracking_enabled: snTracking,
-        sn_format_prefix: snTracking && snPrefix.trim() ? snPrefix.trim() : null,
-        active: true,
-      })
-      if (line) {
-        await updateLine.mutateAsync({
-          itemId: line.id,
-          input: { catalog_item_id: created.id },
-        })
-      }
-      onCreated?.(created)
-      onClose()
-    } catch (err) {
-      if (err instanceof ApiError) setError(err.message)
-      else setError(err instanceof Error ? err.message : String(err))
-    }
-  }
-
-  const isPending = updateLine.isPending || createCatalogItem.isPending
-
-  return (
-    <Modal
-      isOpen={true}
-      onClose={onClose}
-      title={
-        hasLine && line
-          ? `Link catalog item — "${line.description}"`
-          : 'New product'
-      }
-      size="lg"
-    >
-      <Modal.Body>
-        <div className="space-y-4">
-          {hasLine && (
-            <div className="flex border-b border-slate-200">
-              <button
-                type="button"
-                onClick={() => setTab('create')}
-                className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px ${
-                  tab === 'create'
-                    ? 'border-amber-600 text-amber-700'
-                    : 'border-transparent text-slate-600 hover:text-slate-900'
-                }`}
-              >
-                Create new
-              </button>
-              <button
-                type="button"
-                onClick={() => setTab('link')}
-                className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px ${
-                  tab === 'link'
-                    ? 'border-amber-600 text-amber-700'
-                    : 'border-transparent text-slate-600 hover:text-slate-900'
-                }`}
-              >
-                Link existing
-              </button>
-            </div>
-          )}
-
-          {tab === 'create' && (
-            <div className="space-y-3">
-              <div className="grid grid-cols-2 gap-3">
-                <ModalField label="Name" required>
-                  <input
-                    value={name}
-                    onChange={(e) => setName(e.target.value)}
-                    className={modalInputClass()}
-                  />
-                </ModalField>
-                <ModalField label="SKU">
-                  <input
-                    value={sku}
-                    onChange={(e) => setSku(e.target.value)}
-                    className={modalInputClass()}
-                    placeholder="(optional)"
-                  />
-                </ModalField>
-              </div>
-              <ModalField label="Short description (customer-facing — invoices, sticker, max 100)">
-                <input
-                  value={shortDescription}
-                  onChange={(e) => setShortDescription(e.target.value)}
-                  maxLength={100}
-                  className={modalInputClass()}
-                  placeholder='e.g. "Schlage L9080 Mortise Lock"'
-                />
-              </ModalField>
-              <ModalField label="Long description (internal — searchable: vehicle fitment, FCC IDs, crossover part #s, alt names)">
-                <textarea
-                  value={longDescription}
-                  onChange={(e) => setLongDescription(e.target.value)}
-                  rows={3}
-                  className={modalInputClass() + ' resize-y'}
-                  placeholder='e.g. "2021 Ford F150 / FCC ID M3N-A2C31243800 / Schlage L9080 / L-9080 / 9080-PD"'
-                />
-              </ModalField>
-              <ModalField label="Default bin (where this lives — drives auto-receive)">
-                <select
-                  value={defaultBinId}
-                  onChange={(e) => setDefaultBinId(e.target.value)}
-                  className={modalInputClass()}
-                >
-                  <option value="">— None (set on receive) —</option>
-                  {bins.map((b) => (
-                    <option key={b.id} value={b.id}>
-                      {b.path_label || b.name || b.bin_code || b.id}
-                    </option>
-                  ))}
-                </select>
-              </ModalField>
-              <div className="grid grid-cols-2 gap-3">
-                <ModalField label="Supplier">
-                  <input
-                    value={supplierName}
-                    onChange={(e) => setSupplierName(e.target.value)}
-                    className={modalInputClass()}
-                  />
-                </ModalField>
-                <ModalField label="Owner cost ($)">
-                  <input
-                    value={(initialUnitCostCents / 100).toFixed(2)}
-                    disabled
-                    className={modalInputClass() + ' bg-slate-50 text-slate-500'}
-                  />
-                </ModalField>
-              </div>
-              <div className="grid grid-cols-2 gap-3">
-                <ModalField label="Reorder threshold">
-                  <input
-                    type="number"
-                    min="0"
-                    value={reorderThreshold}
-                    onChange={(e) => setReorderThreshold(e.target.value)}
-                    className={modalInputClass()}
-                    placeholder="When stock <=, show in low-stock"
-                  />
-                </ModalField>
-                <ModalField label="Reorder quantity">
-                  <input
-                    type="number"
-                    min="0"
-                    value={reorderQuantity}
-                    onChange={(e) => setReorderQuantity(e.target.value)}
-                    className={modalInputClass()}
-                    placeholder="Default qty when re-ordering"
-                  />
-                </ModalField>
-              </div>
-              <label className="flex items-center gap-2 text-sm pt-2 border-t border-slate-100">
-                <input
-                  type="checkbox"
-                  checked={snTracking}
-                  onChange={(e) => setSnTracking(e.target.checked)}
-                  className="rounded border-slate-300 text-amber-600 focus:ring-amber-500"
-                />
-                <span>SN-tracked (mints individual units on receive)</span>
-              </label>
-              {snTracking && (
-                <ModalField label="SN prefix">
-                  <input
-                    value={snPrefix}
-                    onChange={(e) => setSnPrefix(e.target.value.toUpperCase())}
-                    className={modalInputClass()}
-                    maxLength={20}
-                    placeholder="Defaults to SKU if blank"
-                  />
-                </ModalField>
-              )}
-            </div>
-          )}
-
-          {tab === 'link' && (
-            <div className="space-y-3">
-              <input
-                type="search"
-                value={pickerQuery}
-                onChange={(e) => setPickerQuery(e.target.value)}
-                placeholder="Search catalog by name or SKU…"
-                className="w-full text-sm px-3 py-2 border border-slate-300 rounded focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500"
-                autoFocus
-              />
-              <div className="border border-slate-200 rounded max-h-72 overflow-y-auto">
-                {pickerResults.isLoading && (
-                  <div className="px-3 py-2 text-xs text-slate-500">Loading…</div>
-                )}
-                {pickerResults.isError && <div role="alert" className="px-3 py-2 text-xs text-red-700">
-                  Product search could not be loaded.
-                  <button type="button" disabled={pickerResults.isFetching} className="ml-2 underline disabled:opacity-50" onClick={() => void pickerResults.refetch()}>Try again</button>
-                </div>}
-                {!pickerResults.isLoading && !pickerResults.isError && (pickerResults.data?.data ?? []).length === 0 && (
-                  <div className="px-3 py-2 text-xs text-slate-500">
-                    {debouncedQuery ? 'No matches.' : 'Start typing to search.'}
-                  </div>
-                )}
-                {!pickerResults.isError && (pickerResults.data?.data ?? []).map((it) => (
-                  <button
-                    type="button"
-                    key={it.id}
-                    onClick={() => handleLink(it)}
-                    disabled={isPending}
-                    className="block w-full text-left px-3 py-2 hover:bg-amber-50 text-sm border-b border-slate-100 last:border-0"
-                  >
-                    <div className="font-medium text-slate-800">{it.name}</div>
-                    {it.sku && (
-                      <div className="font-mono text-xs text-slate-400">{it.sku}</div>
-                    )}
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {error && (
-            <div className="text-xs text-red-600 px-3 py-2 bg-red-50 border border-red-100 rounded">
-              {error}
-            </div>
-          )}
-        </div>
-      </Modal.Body>
-      <Modal.Footer>
-        <button
-          type="button"
-          onClick={onClose}
-          className="px-4 py-2 text-sm font-medium text-slate-700 hover:text-slate-900"
-        >
-          Cancel
-        </button>
-        {tab === 'create' && (
-          <button
-            type="button"
-            onClick={handleCreate}
-            disabled={isPending}
-            className="px-4 py-2 text-sm font-medium rounded-md bg-amber-600 hover:bg-amber-700 text-white disabled:opacity-50"
-          >
-            {isPending ? 'Saving…' : 'Create + link'}
-          </button>
-        )}
-      </Modal.Footer>
-    </Modal>
-  )
-}
-
-function ModalField({
-  label,
-  required,
-  children,
-}: {
-  label: string
-  required?: boolean
-  children: React.ReactNode
-}) {
-  return (
-    <div>
-      <label className="block text-xs font-medium text-slate-700 mb-1 uppercase tracking-wide">
-        {label}
-        {required && <span className="text-red-500 ml-1">*</span>}
-      </label>
-      {children}
-    </div>
-  )
-}
-
-function modalInputClass(): string {
-  return 'w-full text-sm px-3 py-2 border border-slate-300 rounded focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500'
-}
-
-// ===========================================================================
-// ReceiveConflictModal — safety net so an edited receive bin doesn't silently
-// split stock across multiple placements when the same item already lives
-// somewhere else.
-// ===========================================================================
 
 function ReceiveConflictModal({
   conflicts,

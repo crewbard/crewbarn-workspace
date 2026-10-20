@@ -3,12 +3,14 @@ import { Link } from 'react-router-dom'
 import { ApiError } from '@/lib/api'
 import type { Account } from '@/lib/auth'
 import { useAuth } from '@/hooks/useAuth'
-import { useApplySeedPack, useCompleteOnboardingStep, useOnboardingStatus, useSeedPacks } from '@/hooks/useOnboarding'
-import { buildOnboardingStages, firstOpenStage } from '@/components/onboarding/onboardingStages'
+import { useCompleteOnboardingStep, useOnboardingStatus, useSeedPacks } from '@/hooks/useOnboarding'
+import { buildOnboardingStages, firstOpenStage, type OnboardingStage } from '@/components/onboarding/onboardingStages'
 import { OnboardingNarratedTour } from '@/components/onboarding/OnboardingNarratedTour'
+import { TradeSeedPicker, useTradeSeedChoice } from '@/components/onboarding/TradeSeedPicker'
 import { AiSetupStep } from '@/components/onboarding/steps/AiSetupStep'
 import { BetaAgreementStep } from '@/components/onboarding/steps/BetaAgreementStep'
 import { CommunicationsStep } from '@/components/onboarding/steps/CommunicationsStep'
+import { QuickSettingsStep } from '@/components/onboarding/steps/QuickSettingsStep'
 import { CompanyProfileStep } from '@/components/onboarding/steps/CompanyProfileStep'
 import { CompanyToolsStep } from '@/components/onboarding/steps/CompanyToolsStep'
 import { CrewStep } from '@/components/onboarding/steps/CrewStep'
@@ -16,6 +18,7 @@ import { DataOwnershipStep } from '@/components/onboarding/steps/DataOwnershipSt
 import { StarterStockStep } from '@/components/onboarding/steps/StarterStockStep'
 import type { StepProps } from '@/components/onboarding/steps/shared'
 import type { CompleteOnboardingStepPayload } from '@/types/onboarding'
+import { appExtensions } from '@/lib/appExtensions'
 
 interface OnboardingOverlayProps {
   open: boolean
@@ -32,12 +35,11 @@ export function OnboardingOverlay({ open, onClose, startAtFirst = false }: Onboa
   const statusQuery = useOnboardingStatus(open)
   const packsQuery = useSeedPacks(open)
   const completeStep = useCompleteOnboardingStep()
-  const applySeed = useApplySeedPack()
   const onboarding = statusQuery.data?.data
   const stages = useMemo(() => (onboarding ? buildOnboardingStages(onboarding) : []), [onboarding])
   const [activeKey, setActiveKey] = useState<string | null>(null)
-  const [selectedVertical, setSelectedVertical] = useState('generic')
-  const [tradeLockConfirmed, setTradeLockConfirmed] = useState(false)
+  const tradeChoice = useTradeSeedChoice(onboarding, packsQuery.data?.data ?? onboarding?.seed_packs ?? [])
+  const [seedError, setSeedError] = useState<string | null>(null)
 
   useEffect(() => {
     if (!open || stages.length === 0) return
@@ -48,11 +50,15 @@ export function OnboardingOverlay({ open, onClose, startAtFirst = false }: Onboa
     })
   }, [open, stages, startAtFirst])
 
+  // The setup guide opens the step it is about to talk about.
   useEffect(() => {
-    if (!onboarding) return
-    setSelectedVertical(onboarding.seed_state.vertical || onboarding.tenant.vertical || 'generic')
-    setTradeLockConfirmed(Boolean(onboarding.seed_state.locked_at))
-  }, [onboarding])
+    const openStage = (event: Event) => {
+      const key = (event as CustomEvent<{ key?: string }>).detail?.key
+      if (key) setActiveKey(key)
+    }
+    window.addEventListener('crewbarn:onboarding-open-stage', openStage)
+    return () => window.removeEventListener('crewbarn:onboarding-open-stage', openStage)
+  }, [])
 
   if (!open) return null
 
@@ -62,7 +68,7 @@ export function OnboardingOverlay({ open, onClose, startAtFirst = false }: Onboa
   const tenantId = onboarding?.tenant.id
   const unavailable = onboardingUnavailableCopy(statusQuery.error, account)
   const packs = packsQuery.data?.data ?? onboarding?.seed_packs ?? []
-  const isSaving = completeStep.isPending || applySeed.isPending
+  const isSaving = completeStep.isPending
 
   function advance() {
     const next = stages[activeIndex + 1] ?? stages[activeIndex]
@@ -88,15 +94,8 @@ export function OnboardingOverlay({ open, onClose, startAtFirst = false }: Onboa
     markStep({ choice: 'manual' })
   }
 
-  function handleApplySeed() {
-    const vertical = selectedVertical || onboarding?.tenant.vertical || 'generic'
-    applySeed.mutate({ vertical, confirmTradeLock: tradeLockConfirmed }, {
-      onSuccess: () => advance(),
-    })
-  }
-
   return (
-    <div className="fixed inset-0 z-[80] overflow-y-auto bg-navy-950/45 px-4 py-6 backdrop-blur-sm">
+    <div className="fixed inset-0 z-[80] overflow-y-auto bg-navy-950/45 px-4 py-6 backdrop-blur-sm" data-guide-host="overlay">
       <div className="flex min-h-full items-center justify-center">
         <div className="max-h-[calc(100vh-3rem)] w-full max-w-6xl overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl">
           <div className="grid grid-cols-1 lg:grid-cols-[360px_minmax(0,1fr)]">
@@ -112,9 +111,16 @@ export function OnboardingOverlay({ open, onClose, startAtFirst = false }: Onboa
                 A short list, in order. Stop whenever you like and pick it up later — nothing here
                 goes out to a customer until the last step.
               </p>
-              <OnboardingNarratedTour />
-
+              <div data-tour="onboarding-catalog-intro" className="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-3.5">
+                <div className="text-sm font-bold text-amber-950">Turn your company catalog into a working pricebook</div>
+                <p className="mt-1 text-xs leading-5 text-amber-900">
+                  Upload your company PDF catalog and CrewBarn converts it into a draft order book. Review the products,
+                  services, costs, and selling prices, then create estimates with the catalog open in front of you.
+                </p>
               </div>
+              <OnboardingNarratedTour />
+              </div>
+
               {onboarding && (
                 <div data-tour="onboarding-progress" className="mt-6">
                   {/* "25%" on its own tells you nothing you can act on. How many
@@ -201,7 +207,7 @@ export function OnboardingOverlay({ open, onClose, startAtFirst = false }: Onboa
             </aside>
 
             <main className="max-h-[calc(100vh-3rem)] min-h-[640px] overflow-y-auto bg-slate-50 p-6">
-              <div className="flex flex-wrap items-center justify-between gap-3">
+              <div data-tour="onboarding-overlay-actions" className="flex items-center justify-between gap-3">
                 {onboarding && (
                   <button
                     type="button"
@@ -271,66 +277,18 @@ export function OnboardingOverlay({ open, onClose, startAtFirst = false }: Onboa
                       ))}
                     </ul>
 
-                    <div className="mt-7">
+                    <div className="mt-7" data-guide="stage-body">
                       {activeStage.key === 'trade_seed' ? (
-                        <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
-                          <label className="text-sm font-semibold text-navy-900" htmlFor="overlay-seed-pack">
-                            Trade starter pack
-                          </label>
-                          <div className="mt-3 flex flex-col gap-3 sm:flex-row">
-                            <select
-                              id="overlay-seed-pack"
-                              value={selectedVertical}
-                              onChange={(event) => {
-                                setSelectedVertical(event.target.value)
-                                if (!onboarding.seed_state.locked_at) {
-                                  setTradeLockConfirmed(false)
-                                }
-                              }}
-                              disabled={activeStage.locked || activeStage.complete || isSaving}
-                              className="min-h-11 flex-1 rounded-lg border border-slate-300 bg-white px-3 text-sm text-navy-900"
-                            >
-                              {packs.map((pack) => (
-                                <option key={pack.key} value={pack.key}>
-                                  {pack.label}
-                                </option>
-                              ))}
-                            </select>
-                            <button
-                              type="button"
-                              onClick={handleApplySeed}
-                              disabled={activeStage.locked || activeStage.complete || isSaving || !tradeLockConfirmed}
-                              className="rounded-lg bg-amber-500 px-4 py-2 text-sm font-semibold text-white hover:bg-amber-600 disabled:bg-slate-200 disabled:text-slate-500"
-                            >
-                              {activeStage.complete ? 'Seed applied' : isSaving ? 'Applying...' : 'Apply seed'}
-                            </button>
-                          </div>
-                          {!activeStage.complete && (
-                            <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-4">
-                              <div className="text-sm font-bold text-amber-950">Are you sure?</div>
-                              <p className="mt-1 text-sm leading-6 text-amber-900">
-                                Your primary trade cannot be changed after setup. This choice controls CrewBarn&apos;s trade-specific setup, templates, inventory, automations, and AI matching behavior.
-                              </p>
-                              <label className="mt-3 flex items-start gap-2 text-sm font-semibold text-amber-950">
-                                <input
-                                  type="checkbox"
-                                  checked={tradeLockConfirmed}
-                                  onChange={(event) => setTradeLockConfirmed(event.target.checked)}
-                                  disabled={activeStage.locked || isSaving}
-                                  className="mt-1 h-4 w-4 rounded border-amber-300 text-amber-600 focus:ring-amber-500"
-                                />
-                                <span>I understand this trade will be locked after setup.</span>
-                              </label>
-                            </div>
-                          )}
-                          <p className="mt-3 text-sm text-slate-600">
-                            This writes starter statuses, job types, catalog rows, locations, and fields for this tenant.
-                          </p>
-                          {onboarding.seed_state.locked_at && (
-                            <p className="mt-2 text-sm font-semibold text-emerald-700">
-                              Primary trade locked {new Date(onboarding.seed_state.locked_at).toLocaleString()}.
-                            </p>
-                          )}
+                        <div className="rounded-xl border border-slate-200 bg-slate-50 p-4" data-guide="trade-seed">
+                          <TradeSeedPicker
+                            onboarding={onboarding}
+                            packs={packs}
+                            choice={tradeChoice}
+                            locked={activeStage.locked}
+                            applied={activeStage.complete}
+                            onApplied={() => { setSeedError(null); advance() }}
+                            onError={setSeedError}
+                          />
                         </div>
                       ) : (
                         <StageActionButtons
@@ -344,10 +302,10 @@ export function OnboardingOverlay({ open, onClose, startAtFirst = false }: Onboa
                           onGateSaved={advance}
                         />
                       )}
-                      {(completeStep.error || applySeed.error) && (
+                      {(completeStep.error || (seedError && activeStage.key === 'trade_seed')) && (
                         <p className="mt-3 text-sm font-semibold text-red-700">
-                          {(completeStep.error as Error | null)?.message ||
-                            (applySeed.error as Error | null)?.message ||
+                          {(activeStage.key === 'trade_seed' ? seedError : null) ||
+                            (completeStep.error as Error | null)?.message ||
                             'Onboarding could not save this step.'}
                         </p>
                       )}
@@ -403,12 +361,17 @@ export function OnboardingOverlay({ open, onClose, startAtFirst = false }: Onboa
  * so a step's state exists only while that step is on screen, and the next
  * one to be rebuilt can be rebuilt on its own.
  *
- * Four steps have no body of their own — the trade pack, the pricebook,
- * automations and the final review all send you to a real page and come back.
- * They fall through to the confirm button, which is what they always did.
+ * Three steps have no body of their own — the trade pack, the pricebook and
+ * the final review all send you to a real page and come back. (Automations
+ * is Quick settings now: yes/no cards, QuickSettingsStep.)
+ * The trade pack has its own picker (TradeSeedPicker); the other two show
+ * their real page (primaryLabel/primaryPath from onboardingStages.ts) as a
+ * link that opens in a new tab, then a confirm button.
  */
 export function StageActionButtons(props: StepProps & { stageKey: string }) {
-  const { stageKey, complete, locked, saving, onMarkStep } = props
+  const { stageKey, complete, locked, saving, onMarkStep, onboarding } = props
+  const stage = buildOnboardingStages(onboarding).find((candidate) => candidate.key === stageKey)
+  const links = stage && LINKED_STAGES.has(stageKey) ? <StageLinks stage={stage} /> : null
 
   if (stageKey === 'beta_agreement') return <BetaAgreementStep {...props} />
 
@@ -419,7 +382,7 @@ export function StageActionButtons(props: StepProps & { stageKey: string }) {
   // their own. Moving either one would quietly change which steps it governs.
   if (locked) {
     return (
-      <div className="rounded-xl border border-slate-200 bg-white p-4 text-sm leading-relaxed text-slate-600">
+      <div data-tour="onboarding-step-locked" className="rounded-xl border border-slate-200 bg-white p-4 text-sm leading-relaxed text-slate-600">
         Finish the steps above first — this one opens as soon as they are done.
       </div>
     )
@@ -431,26 +394,78 @@ export function StageActionButtons(props: StepProps & { stageKey: string }) {
   if (stageKey === 'company_assets') return <CompanyToolsStep {...props} />
   if (stageKey === 'inventory_layout') return <StarterStockStep {...props} />
   if (stageKey === 'staff') return <CrewStep {...props} />
+  // Yes/no answers stay editable after the step is done.
+  if (stageKey === 'automations') return <QuickSettingsStep {...props} />
 
   if (complete) {
     return (
-      <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-sm leading-relaxed text-emerald-900">
-        <span className="font-bold">This one is done.</span> You can come back and change it whenever you like.
+      <div className="space-y-3">
+        <div data-tour="onboarding-step-done" className="rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-sm leading-relaxed text-emerald-900">
+          <span className="font-bold">This one is done.</span> You can come back and change it whenever you like.
+        </div>
+        {links}
       </div>
     )
   }
 
-  if (stageKey === 'communications') return <CommunicationsStep {...props} />
+  if (stageKey === 'communications') {
+    return (
+      <div className="space-y-4">
+        <CommunicationsStep {...props} />
+        {links}
+      </div>
+    )
+  }
 
   return (
-    <button
-      type="button"
-      onClick={() => onMarkStep({ choice: 'confirmed_for_now' })}
-      disabled={saving}
-      className="rounded-lg bg-amber-500 px-4 py-2 text-sm font-semibold text-white hover:bg-amber-600 disabled:bg-slate-200 disabled:text-slate-500"
-    >
-      {saving ? 'Saving...' : 'Confirm this setup gate'}
-    </button>
+    <div className="space-y-4">
+      {links}
+      <button
+        type="button"
+        data-tour="onboarding-confirm-step"
+        onClick={() => onMarkStep({ choice: 'confirmed_for_now' })}
+        disabled={saving}
+        className="rounded-lg bg-amber-500 px-4 py-2 text-sm font-semibold text-white hover:bg-amber-600 disabled:bg-slate-200 disabled:text-slate-500"
+      >
+        {saving ? 'Saving...' : CONFIRM_LABELS[stageKey] ?? 'Done — carry on'}
+      </button>
+    </div>
+  )
+}
+
+/** Steps whose real page is worth opening from the setup screen. */
+const LINKED_STAGES = new Set(['communications', 'services_pricebook', 'launch_review'])
+
+const CONFIRM_LABELS: Record<string, string> = {
+  services_pricebook: 'My prices are checked — carry on',
+  launch_review: 'Finish setup',
+}
+
+/**
+ * The step's real page, opened in a new tab so this list stays where it is.
+ * `?onboarding=peek` tells OnboardingGate not to cover that tab with the
+ * setup overlay again.
+ */
+function StageLinks({ stage }: { stage: OnboardingStage }) {
+  const items = [
+    { label: stage.primaryLabel, path: stage.primaryPath },
+    ...(stage.secondaryLabel && stage.secondaryPath ? [{ label: stage.secondaryLabel, path: stage.secondaryPath }] : []),
+  ]
+  return (
+    <div data-tour="onboarding-stage-links" className="flex flex-wrap items-center gap-2">
+      {items.map((item) => (
+        <a
+          key={item.path}
+          href={`${item.path}${item.path.includes('?') ? '&' : '?'}onboarding=peek`}
+          target="_blank"
+          rel="noopener"
+          className="inline-flex items-center gap-1 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-navy-800 hover:border-amber-300 hover:text-amber-700"
+        >
+          {item.label} <span aria-hidden>↗</span>
+        </a>
+      ))}
+      <span className="text-xs text-slate-500">Opens in a new tab. Come back here when you're done.</span>
+    </div>
   )
 }
 
@@ -461,11 +476,12 @@ function onboardingUnavailableCopy(
   if (error instanceof ApiError) {
     if (error.code === 'no_acting_tenant') {
       if (account?.is_platform_admin) {
+        const picker = appExtensions().staffCompanyPicker
         return {
           title: 'Choose a tenant to onboard',
           message: 'Use the CrewBarn admin tenant banner, then reopen onboarding for that shop.',
-          actionPath: '/admin/tenants',
-          actionLabel: 'Open tenants',
+          actionPath: picker?.to,
+          actionLabel: picker?.label,
         }
       }
 

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type ReactNode } from 'react'
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
 import { Link } from 'react-router-dom'
 import {
   THERMAL_SIZES,
@@ -10,8 +10,11 @@ import {
 } from '@/lib/thermalLabels'
 import { LabelFace, faceFits, type LabelFaceData } from '@/components/labels/LabelFace'
 import { isWebBluetoothSupported } from '@/lib/escposBluetooth'
-import { buildLabelBytes } from '@/lib/labelBytes'
-import { bridgeIsRunning, bridgePrint, bridgePrinter, bridgeReady } from '@/lib/printBridge'
+import { printLabelThroughBridge } from '@/lib/bridgeLabels'
+import { LabelPrinterSetup } from '@/components/labels/LabelPrinterSetup'
+import { bridgeHost, bridgeToken, checkBridge, describeBridge, type BridgeCheck, type BridgeLight } from '@/lib/printBridge'
+import { LabelPicker } from '@/components/labels/LabelPicker'
+import { faceKeys, printStageSelectionCss, selectedIndices, setChosen } from '@/lib/labelSelection'
 
 /**
  * One screen for choosing and printing labels.
@@ -29,6 +32,23 @@ import { bridgeIsRunning, bridgePrint, bridgePrinter, bridgeReady } from '@/lib/
  * Nothing about printing changes here. Sizes, the sheet grid, the PDF, the
  * PNG, Bluetooth and every URL parameter stay exactly as they were; this
  * decides what to hand them.
+ *
+ * When the Print Bridge is set up, a label roll goes to it: the big Print
+ * button sends straight to the printer, and a light by the button says
+ * whether that will work and why not. Bluetooth and the image download
+ * stay underneath as the other ways.
+ *
+ * Setting the bridge up happens here too, in the printer setup above the
+ * light: download, pairing code, printer, language and a test label. It is
+ * the same panel as Settings › Label printer, so either place works. It
+ * opens by itself when something needs a look and stays folded away when
+ * the light is green.
+ *
+ * With more than one label, the preview shows every one of them in a grid,
+ * each with a tick box, and only the ticked ones print: through the bridge,
+ * Bluetooth, the image download, the PDF and the browser's print window.
+ * Every label starts ticked, so nothing changes unless somebody unticks one.
+ * The print callbacks get the ticked positions, in print order.
  */
 
 export interface LabelScopeOption {
@@ -52,9 +72,15 @@ export interface LabelStudioProps {
   scope?: { value: string; onChange: (next: string) => void; options: LabelScopeOption[] }
   /** The "also label what is inside" switch, where a page has one. */
   extra?: { label: string; on: boolean; onChange: (on: boolean) => void }
-  onPrint: () => void
-  onBluetooth?: () => void
-  onDownloadImage?: () => void
+  /** `selected` is the ticked labels' positions in `faces`, in print order. */
+  onPrint: (selected: number[]) => void
+  onBluetooth?: (selected: number[]) => void
+  onDownloadImage?: (selected: number[]) => void
+  /**
+   * How many cards the page's `.print-stage` draws per face, for pages that
+   * repeat a card per copy. The unticked ones are left out of that copy too.
+   */
+  printStageCopies?: number
   busy?: string | null
   error?: string | null
 }
@@ -99,23 +125,46 @@ export function LabelStudio(props: LabelStudioProps) {
   const [tab, setTab] = useState<TabKey>(() => tabFor(size))
   const [helpOpen, setHelpOpen] = useState(false)
 
-  // A printer on this computer, chosen by name. Checked once on mount:
-  // the bridge either answers on localhost or it does not, and a settings
-  // page is where that gets changed, not here.
-  const [bridgeOn, setBridgeOn] = useState(false)
+  // A printer on this computer, chosen by name. Checked on mount and on
+  // "Check again": the bridge either answers on localhost or it does not.
+  // The setup panel shares this check, so the light changes the moment a
+  // code is typed or a printer is picked there.
+  const [check, setCheck] = useState<BridgeCheck>(() => ({
+    running: bridgeToken() ? null : false,
+    paired: bridgeToken() !== '',
+    printers: null,
+    capabilities: [],
+    version: '',
+  }))
   const [viaWindow, setViaWindow] = useState(false)
   const [bridgeBusy, setBridgeBusy] = useState(false)
   const [bridgeError, setBridgeError] = useState<string | null>(null)
+  const [bridgeNote, setBridgeNote] = useState<string | null>(null)
+  /* null: open by itself when something needs a look, closed when green or never set up. */
+  const [setupOpen, setSetupOpen] = useState<boolean | null>(null)
+
+  const recheck = useCallback(async () => {
+    setCheck((c) => ({ ...c, running: null }))
+    setCheck(await checkBridge())
+  }, [])
 
   useEffect(() => {
     let alive = true
-    if (!bridgeReady()) return
-    void bridgeIsRunning().then((up) => {
-      if (alive) setBridgeOn(up)
+    void checkBridge().then((c) => {
+      if (alive) setCheck(c)
     })
     return () => {
       alive = false
     }
+  }, [])
+
+  const status = describeBridge(check)
+  const showSetup = setupOpen ?? (status.light === 'amber' || status.light === 'red')
+  // Once somebody works in the panel it stays open until they close it,
+  // so it doesn't fold away under them the moment the light turns green.
+  const onSetupCheck = useCallback((next: BridgeCheck) => {
+    setCheck(next)
+    setSetupOpen((open) => open ?? true)
   }, [])
 
   const spec = THERMAL_SIZES[size] ?? THERMAL_SIZES.sheet
@@ -123,7 +172,20 @@ export function LabelStudio(props: LabelStudioProps) {
   const isRoll = tabFor(size) === 'roll'
   const isSheet = tabFor(size) === 'sheet'
 
-  const total = faces.length * copies
+  // Which labels print. Every one starts ticked; what is remembered is
+  // the ones taken out, so a new label (another scope) arrives ticked.
+  const keys = useMemo(() => faceKeys(faces), [faces])
+  const [excluded, setExcluded] = useState<Set<string>>(() => new Set())
+  const selected = useMemo(() => selectedIndices(keys, excluded), [keys, excluded])
+  const chosenFaces = useMemo(() => selected.map((i) => faces[i]), [selected, faces])
+  const choose = useCallback(
+    (indices: number[], on: boolean) => setExcluded((prev) => setChosen(prev, keys, indices, on)),
+    [keys],
+  )
+  const isChosen = useCallback((i: number) => !excluded.has(keys[i]), [excluded, keys])
+  const picking = faces.length > 1
+
+  const total = chosenFaces.length * copies
   const grid = useMemo(
     () => (isSheet && spec.w > 0 ? computeSheetGrid(spec, gap, 0.25) : null),
     [isSheet, spec, gap],
@@ -140,20 +202,22 @@ export function LabelStudio(props: LabelStudioProps) {
       ? `Print ${total} label${total === 1 ? '' : 's'}`
       : `Print ${total} page${total === 1 ? '' : 's'}`
 
-  // Only for a roll. RAW bytes are a label in the printer's own language;
-  // a sticker sheet is a page the browser lays out, and there is nothing
-  // sensible to send raw.
-  const useBridge = bridgeOn && isRoll && !viaWindow
-  const bridgeName = bridgePrinter()
+  // Only for a roll. The bridge sends one label at a time at the label's
+  // own size; a sticker sheet is a page the browser lays out.
+  const useBridge = status.ready && isRoll && !viaWindow
+  const bridgeName = status.printer?.name ?? bridgeHost()
 
   const printViaBridge = async () => {
     setBridgeBusy(true)
     setBridgeError(null)
+    setBridgeNote(null)
     try {
-      for (const face of faces) {
-        // Whatever this computer's printer speaks. A Zebra sent ESC/POS
-        // does nothing at all, which reads as a broken cable.
-        const bytes = await buildLabelBytes(
+      let squeezed = false
+      for (const face of chosenFaces) {
+        // Whatever this computer's printer takes: its own language, or a
+        // picture through its driver. A Zebra sent ESC/POS does nothing at
+        // all, which reads as a broken cable.
+        const result = await printLabelThroughBridge(
           {
             qrValue: face.qrValue,
             title: face.name,
@@ -165,8 +229,15 @@ export function LabelStudio(props: LabelStudioProps) {
             note: face.note,
           },
           size,
+          { copies, jobName: 'CrewBarn labels', printer: status.printer, capabilities: check.capabilities },
         )
-        await bridgePrint(bytes, { copies, jobName: 'CrewBarn labels' })
+        if (result.pageFits === false) squeezed = true
+      }
+      if (squeezed) {
+        setBridgeNote(
+          `The printer's driver kept its own paper size, so each label printed at ${spec.w}" × ${spec.h}" in the corner of a bigger page. ` +
+            `In Windows, open the printer's Printing preferences and set the label size to ${spec.w}" × ${spec.h}".`,
+        )
       }
     } catch (e) {
       setBridgeError(
@@ -186,7 +257,8 @@ export function LabelStudio(props: LabelStudioProps) {
 
   return (
     <div className="flex min-h-screen flex-col bg-slate-50">
-      <div className="no-print flex items-center gap-3 border-b border-slate-200 bg-white px-4 py-3">
+      <style>{printStageSelectionCss(faces.length, selected, props.printStageCopies ?? 1)}</style>
+      <div data-tour="labels-topbar" className="no-print flex items-center gap-3 border-b border-slate-200 bg-white px-4 py-3">
         <Link to={props.backTo.href} className="text-sm font-semibold text-slate-600 hover:text-navy-900">
           ← Back to {props.backTo.label}
         </Link>
@@ -203,16 +275,26 @@ export function LabelStudio(props: LabelStudioProps) {
 
       <div className="flex min-h-0 grow flex-col lg:flex-row">
         {/* What will come out */}
-        <div className="no-print flex min-w-0 grow flex-col items-center gap-3 p-6">
+        <div data-tour="labels-preview" className="no-print flex min-w-0 grow flex-col items-center gap-3 p-6">
           <span className="inline-flex items-center gap-2 rounded-full bg-navy-900 px-3.5 py-1.5 text-[13px] font-bold text-white">
             <span className="h-2 w-2 rounded-full bg-emerald-400" aria-hidden />
             {isRoll ? 'Label roll' : isSheet ? 'Sticker sheet' : 'Plain paper'} · {spec.label.split('·').pop()?.trim()}
           </span>
 
           {isSheet && grid ? (
-            <SheetPreview faces={faces} size={size} grid={grid} gap={gap} copies={copies} />
+            <SheetPreview faces={chosenFaces} size={size} grid={grid} gap={gap} copies={copies} />
           ) : (
-            <RollPreview faces={faces} size={size} />
+            <RollPreview faces={faces} size={size} picking={picking} />
+          )}
+
+          {picking && (
+            <LabelPicker
+              faces={faces}
+              size={size}
+              isChosen={isChosen}
+              onChange={choose}
+              chosenCount={selected.length}
+            />
           )}
 
           <p className="text-center text-[13px] text-slate-500">
@@ -231,7 +313,7 @@ export function LabelStudio(props: LabelStudioProps) {
               {helpOpen && <HelpPanel size={size} onClose={() => setHelpOpen(false)} />}
 
               {scope && (
-                <Step n={1} title="What gets a label">
+                <Step n={1} title="What gets a label" tour="labels-scope">
                   <div className="space-y-2">
                     {scope.options.map((o) => (
                       <label
@@ -276,7 +358,7 @@ export function LabelStudio(props: LabelStudioProps) {
                 </Step>
               )}
 
-              <Step n={scope ? 2 : 1} title="What are you printing on?">
+              <Step n={scope ? 2 : 1} title="What are you printing on?" tour="labels-stock">
                 <div className="mb-3 inline-flex w-full rounded-lg border border-slate-200 p-1">
                   {(Object.keys(TABS) as TabKey[]).map((k) => (
                     <button
@@ -330,7 +412,7 @@ export function LabelStudio(props: LabelStudioProps) {
                 </div>
               </Step>
 
-              <Step n={scope ? 3 : 2} title="How many of each?">
+              <Step n={scope ? 3 : 2} title="How many of each?" tour="labels-copies">
                 <div className="flex flex-wrap items-center gap-2">
                   <button type="button" onClick={() => props.onCopies(Math.max(1, copies - 1))}
                     className="h-11 w-11 rounded-lg border border-slate-300 text-lg font-bold">−</button>
@@ -347,12 +429,12 @@ export function LabelStudio(props: LabelStudioProps) {
                 <p className="mt-2 text-[13px] text-slate-500">
                   {copies === 1
                     ? `${total} label${total === 1 ? '' : 's'} in all`
-                    : `${faces.length} labels × ${copies} copies = ${total} labels`}
+                    : `${chosenFaces.length} labels × ${copies} copies = ${total} labels`}
                 </p>
               </Step>
 
               {isSheet && (
-                <Step n={scope ? 4 : 3} title="Space between stickers">
+                <Step n={scope ? 4 : 3} title="Space between stickers" tour="labels-gap">
                   <div className="flex flex-wrap gap-2">
                     {GAPS.map((g) => (
                       <button key={g} type="button" onClick={() => props.onGap(g)}
@@ -371,7 +453,7 @@ export function LabelStudio(props: LabelStudioProps) {
                 </Step>
               )}
 
-              <Step n={(scope ? 4 : 3) + (isSheet ? 1 : 0)} title="What fits on this size">
+              <Step n={(scope ? 4 : 3) + (isSheet ? 1 : 0)} title="What fits on this size" tour="labels-fits">
                 <div className="flex flex-wrap gap-1.5">
                   <Chip on={fits.qr}>QR code</Chip>
                   <Chip on={fits.code}>Code</Chip>
@@ -387,7 +469,7 @@ export function LabelStudio(props: LabelStudioProps) {
               </Step>
             </div>
 
-            <div className="shrink-0 border-t border-slate-200 p-4">
+            <div data-tour="labels-print" className="shrink-0 border-t border-slate-200 p-4">
               {props.error && (
                 <p className="mb-2 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-[13px] text-rose-700">
                   {props.error}
@@ -398,10 +480,44 @@ export function LabelStudio(props: LabelStudioProps) {
                   {bridgeError}
                 </p>
               )}
+              {bridgeNote && (
+                <p className="mb-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-[13px] text-amber-900">
+                  {bridgeNote}
+                </p>
+              )}
+              {isRoll && showSetup && (
+                <div
+                  id="label-printer-setup"
+                  className="mb-2 max-h-[45vh] overflow-y-auto rounded-lg border border-slate-200 bg-white px-3 pb-3 pt-2"
+                >
+                  <div className="flex items-center justify-between gap-2">
+                    <h2 className="text-[11px] font-bold uppercase tracking-wider text-amber-700">Printer setup</h2>
+                    <button
+                      type="button"
+                      onClick={() => setSetupOpen(false)}
+                      className="text-[12px] font-semibold text-slate-500 hover:text-navy-900"
+                    >
+                      Hide
+                    </button>
+                  </div>
+                  <LabelPrinterSetup variant="panel" check={check} onCheck={onSetupCheck} />
+                </div>
+              )}
+              {isRoll && (
+                <BridgeStatusLight
+                  light={status.light}
+                  title={status.title}
+                  detail={viaWindow && status.ready ? 'Using the print window this time.' : status.detail}
+                  setupOpen={showSetup}
+                  canSetUp={check.running !== null}
+                  onToggleSetup={() => setSetupOpen(!showSetup)}
+                  onRecheck={() => void recheck()}
+                />
+              )}
 
               <button
                 type="button"
-                onClick={useBridge ? printViaBridge : props.onPrint}
+                onClick={useBridge ? printViaBridge : () => props.onPrint(selected)}
                 disabled={total === 0 || Boolean(props.busy) || bridgeBusy}
                 className="flex w-full items-center justify-center gap-2 rounded-xl bg-amber-500 px-5 py-3.5 text-base font-bold text-white hover:bg-amber-600 disabled:opacity-50"
               >
@@ -420,7 +536,7 @@ export function LabelStudio(props: LabelStudioProps) {
                   </button>
                 </p>
               )}
-              {bridgeOn && isRoll && viaWindow && (
+              {status.ready && isRoll && viaWindow && (
                 <p className="mt-2 text-center text-[12px] text-slate-500">
                   Using the print window.{' '}
                   <button
@@ -436,14 +552,14 @@ export function LabelStudio(props: LabelStudioProps) {
               {isRoll ? (
                 <div className="mt-2 grid grid-cols-2 gap-2">
                   {props.onBluetooth && isWebBluetoothSupported() && (
-                    <button type="button" onClick={props.onBluetooth}
+                    <button type="button" onClick={() => props.onBluetooth?.(selected)} disabled={total === 0}
                       className="rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-left">
                       <span className="block text-[13px] font-bold text-sky-700">Bluetooth printer</span>
                       <span className="block text-[11px] leading-tight text-slate-500">Chrome on a computer or Android</span>
                     </button>
                   )}
                   {props.onDownloadImage && (
-                    <button type="button" onClick={props.onDownloadImage}
+                    <button type="button" onClick={() => props.onDownloadImage?.(selected)} disabled={total === 0}
                       className="rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-left">
                       <span className="block text-[13px] font-bold text-navy-900">Download image</span>
                       <span className="block text-[11px] leading-tight text-slate-500">For iPhone or your printer&apos;s app</span>
@@ -467,9 +583,77 @@ export function LabelStudio(props: LabelStudioProps) {
 
 /* ------------------------------------------------------------------ */
 
-function Step({ n, title, children }: { n: number; title: string; children: ReactNode }) {
+const LIGHT_DOT: Record<BridgeLight, string> = {
+  green: 'bg-emerald-500',
+  amber: 'bg-amber-400',
+  red: 'bg-rose-500',
+  grey: 'bg-slate-300',
+}
+
+const LIGHT_WORD: Record<BridgeLight, string> = {
+  green: 'Ready',
+  amber: 'Needs a look',
+  red: 'Not running',
+  grey: 'Not set up',
+}
+
+/**
+ * The Print Bridge light: whether the big button will go straight to the
+ * printer. Its link opens the printer setup just above it.
+ */
+function BridgeStatusLight({
+  light, title, detail, setupOpen, canSetUp, onToggleSetup, onRecheck,
+}: {
+  light: BridgeLight
+  title: string
+  detail: string
+  setupOpen: boolean
+  /** False while still looking. */
+  canSetUp: boolean
+  onToggleSetup: () => void
+  onRecheck: () => void
+}) {
   return (
-    <section className="mb-6">
+    <div
+      data-tour="labels-bridge"
+      data-light={light}
+      role="status"
+      className="mb-2 flex items-start gap-2.5 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2"
+    >
+      <span className={`mt-1 h-2.5 w-2.5 shrink-0 rounded-full ${LIGHT_DOT[light]}`} aria-hidden />
+      <span className="min-w-0 grow">
+        <span className="sr-only">Print Bridge: {LIGHT_WORD[light]}. </span>
+        <span className="block truncate text-[13px] font-bold text-navy-900" title={title}>
+          {title}
+        </span>
+        {detail && <span className="block text-[12px] leading-snug text-slate-500">{detail}</span>}
+        <span className="mt-0.5 flex flex-wrap gap-x-3 text-[12px]">
+          {canSetUp && (
+            <button
+              type="button"
+              onClick={onToggleSetup}
+              aria-expanded={setupOpen}
+              aria-controls="label-printer-setup"
+              data-tour="labels-bridge-setup"
+              className="font-semibold text-amber-700 underline"
+            >
+              {setupOpen ? 'Hide printer setup' : light === 'green' ? 'Printer setup' : 'Set up here'}
+            </button>
+          )}
+          {light !== 'green' && !setupOpen && (
+            <button type="button" onClick={onRecheck} className="font-semibold text-slate-600 underline">
+              Check again
+            </button>
+          )}
+        </span>
+      </span>
+    </div>
+  )
+}
+
+function Step({ n, title, children, tour }: { n: number; title: string; children: ReactNode; tour?: string }) {
+  return (
+    <section data-tour={tour} className="mb-6">
       <h2 className="mb-2 text-[11px] font-bold uppercase tracking-wider text-amber-700">
         {n} · {title}
       </h2>
@@ -502,8 +686,10 @@ function ShapeSwatch({ w, h }: { w: number; h: number }) {
   )
 }
 
-function RollPreview({ faces, size }: { faces: LabelFaceData[]; size: ThermalSizeKey }) {
-  const shown = faces.slice(0, 3)
+function RollPreview({ faces, size, picking }: { faces: LabelFaceData[]; size: ThermalSizeKey; picking: boolean }) {
+  // With several labels, they are all in the grid below this header,
+  // each with its tick box. One label is simply drawn here.
+  const shown = picking ? [] : faces.slice(0, 1)
   return (
     <div className="w-full max-w-[420px]">
       <div className="rounded-t-2xl bg-navy-900 px-5 pb-6 pt-4 text-white">
@@ -520,8 +706,10 @@ function RollPreview({ faces, size }: { faces: LabelFaceData[]; size: ThermalSiz
             <LabelFace data={f} size={size} />
           </div>
         ))}
-        {faces.length > shown.length && (
-          <span className="text-[12px] text-slate-500">+ {faces.length - shown.length} more</span>
+        {picking && (
+          <span className="pt-1 text-[12px] text-slate-500">
+            {faces.length} labels below. Untick any you don&apos;t want.
+          </span>
         )}
       </div>
     </div>
@@ -542,7 +730,7 @@ function SheetPreview({
   // One page, drawn to scale. The rest follow the same pattern and do not
   // need to be drawn to be understood.
   const scale = Math.min(440 / 8.5, 560 / 11)
-  const used = Math.min(perSheet, faces.length * copies)
+  const used = faces.length === 0 ? 0 : Math.min(perSheet, faces.length * copies)
 
   return (
     <div

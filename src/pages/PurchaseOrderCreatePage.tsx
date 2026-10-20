@@ -36,6 +36,10 @@ export function PurchaseOrderCreatePage() {
     setForm((current) => ({ ...current, order_date: tenantDate(tenantTimezone) }))
   }, [tenantTimezone])
 
+  // What the person typed, so the box isn't reformatted on every keystroke
+  // ("1" used to jump to "1.00"). Cents are derived from it.
+  const [taxText, setTaxText] = useState('')
+  const [shippingText, setShippingText] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [serverErrors, setServerErrors] = useState<Record<string, string[]>>({})
 
@@ -80,17 +84,21 @@ export function PurchaseOrderCreatePage() {
 
   return (
     <div className="max-w-3xl mx-auto px-6 py-6">
+      <div data-tour="po-new-header">
       {easy ? <EasyPageHeading title="Start a purchase order" description="Choose the vendor and delivery details first. Save the draft, then add its items on the next screen." /> : <div className="mb-6">
         <h1 className="text-2xl font-semibold text-slate-900">New Purchase Order</h1>
         <p className="text-sm text-slate-600 mt-1">
           Create a draft PO. You'll add line items on the next screen.
         </p>
       </div>}
+      </div>
 
       <form
+        data-tour="po-new-form"
         onSubmit={handleSubmit}
         className="bg-white border border-slate-200 rounded-lg p-6 space-y-5"
       >
+        <div data-tour="po-new-vendor" data-vendors={vendorsQuery.isLoading ? 'loading' : vendors.length > 0 ? 'yes' : 'none'}>
         <Field label="Vendor" required error={serverErrors.vendor_id?.[0]}>
           {vendorsQuery.isLoading ? (
             <div className="text-sm text-slate-500">Loading vendors…</div>
@@ -112,7 +120,7 @@ export function PurchaseOrderCreatePage() {
             </div>
           ) : (
             <select
-              value={form.vendor_id}
+              value={form.vendor_id ?? ''}
               aria-label="Vendor"
               onChange={(e) => set('vendor_id', e.target.value)}
               className={inputClass()}
@@ -127,7 +135,9 @@ export function PurchaseOrderCreatePage() {
             </select>
           )}
         </Field>
+        </div>
 
+        <div data-tour="po-new-vendor-order">
         <Field
           label="Vendor order # (their confirmation/order number)"
           error={serverErrors.vendor_order_number?.[0]}
@@ -141,8 +151,9 @@ export function PurchaseOrderCreatePage() {
             maxLength={100}
           />
         </Field>
+        </div>
 
-        <div className="grid grid-cols-2 gap-4">
+        <div data-tour="po-new-dates" className="grid grid-cols-2 gap-4">
           <Field label="Order date" error={serverErrors.order_date?.[0]}>
             <input
               type="date"
@@ -161,14 +172,15 @@ export function PurchaseOrderCreatePage() {
           </Field>
         </div>
 
-        <div className="grid grid-cols-3 gap-4">
+        <div data-tour="po-new-money" className="grid grid-cols-3 gap-4">
           <Field label="Tax ($)" error={serverErrors.tax_cents?.[0]}>
             <input
               type="number"
               step="0.01"
               min="0"
-              value={form.tax_cents == null ? '' : (form.tax_cents / 100).toFixed(2)}
-              onChange={(e) => set('tax_cents', dollarsToCents(e.target.value))}
+              value={taxText}
+              onChange={(e) => { setTaxText(e.target.value); set('tax_cents', dollarsToCents(e.target.value)) }}
+              onBlur={() => setTaxText(form.tax_cents == null ? '' : (form.tax_cents / 100).toFixed(2))}
               className={inputClass()}
               placeholder="0.00"
             />
@@ -178,8 +190,9 @@ export function PurchaseOrderCreatePage() {
               type="number"
               step="0.01"
               min="0"
-              value={form.shipping_cents == null ? '' : (form.shipping_cents / 100).toFixed(2)}
-              onChange={(e) => set('shipping_cents', dollarsToCents(e.target.value))}
+              value={shippingText}
+              onChange={(e) => { setShippingText(e.target.value); set('shipping_cents', dollarsToCents(e.target.value)) }}
+              onBlur={() => setShippingText(form.shipping_cents == null ? '' : (form.shipping_cents / 100).toFixed(2))}
               className={inputClass()}
               placeholder="0.00"
             />
@@ -195,6 +208,7 @@ export function PurchaseOrderCreatePage() {
           </Field>
         </div>
 
+        <div data-tour="po-new-notes">
         <Field label="Notes" error={serverErrors.notes?.[0]}>
           <textarea
             value={form.notes ?? ''}
@@ -204,6 +218,7 @@ export function PurchaseOrderCreatePage() {
             placeholder="Internal notes for this PO"
           />
         </Field>
+        </div>
 
         {error && (
           <div className="text-sm text-red-600 px-3 py-2 bg-red-50 border border-red-100 rounded">
@@ -211,10 +226,11 @@ export function PurchaseOrderCreatePage() {
           </div>
         )}
 
-        <div className="flex justify-end gap-3 pt-2 border-t border-slate-100">
+        <div data-tour="po-new-submit" className="flex justify-end gap-3 pt-2 border-t border-slate-100">
           <button
             type="button"
             onClick={() => navigate('/purchase-orders')}
+            data-tour="po-new-cancel"
             className="px-4 py-2 text-sm font-medium text-slate-700 hover:text-slate-900"
           >
             Cancel

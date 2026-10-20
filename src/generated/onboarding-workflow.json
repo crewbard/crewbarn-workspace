@@ -1,0 +1,1494 @@
+{
+  "version": 8,
+  "title": "Your CrewBarn launch path",
+  "intro": "Here is the whole onboarding journey. We will light up one stop at a time so you can see what you are setting up and why it matters.",
+  "voice": {
+    "model": "gpt-4o-mini-tts",
+    "voice": "marin",
+    "instructions": "Voice: a warm, easygoing shop owner showing a new hire around the shop for the first time. Tone: friendly, relaxed and confident, with a little smile in the voice. Delivery: conversational, like talking to one person across a counter. Take natural breaths at commas and dashes, let sentences land, and vary the pitch the way people do. Never sound like an announcer, a commercial, or someone reading a script. Pace: unhurried but not slow."
+  },
+  "voice_overrides": {
+    "landing": {
+      "instructions": "Voice: a small-business owner telling a friend about the worst Tuesday of her year and how it changed. Tone: warm, unhurried and conversational, with light emotion where the story has it: a little rueful about the bad day, quietly glad about the fix. Delivery: one person talking to another across a kitchen table, not a presentation. Let one sentence lead into the next, with natural pauses between thoughts, and vary the pace and pitch the way people do when they tell a story. Never an announcer, a commercial, or someone reading a script."
+    },
+    "cbi-intro": {
+      "instructions": "Voice: a small-business owner telling a friend about the assistant that keeps her shop on track. Tone: warm, unhurried and conversational, quietly pleased, with a little smile where the story has one. Delivery: one person talking to another across a kitchen table, not a presentation. Let one sentence lead into the next, with natural pauses between thoughts; when she quotes someone, say it the way they would. Vary the pace and pitch the way people do when they tell a story. Never an announcer, a commercial, or someone reading a script."
+    },
+    "feature-": {
+      "voice": "coral",
+      "instructions": "Voice: a small-business owner telling a friend how one part of her shop runs now, and what it saves her. Tone: warm, unhurried and conversational, a storyteller with a quiet smile, plainly pleased when the office gets a little easier. Delivery: one person talking to another across a kitchen table, not a presentation. Let one sentence lead into the next, with natural pauses between thoughts; say names, days and prices plainly. Vary the pace and pitch the way people do when they tell a story. Never an announcer, a commercial, or someone reading a script."
+    },
+    "features-intro": {
+      "voice": "coral",
+      "instructions": "Voice: a small-business owner telling a friend how one part of her shop runs now, and what it saves her. Tone: warm, unhurried and conversational, a storyteller with a quiet smile, plainly pleased when the office gets a little easier. Delivery: one person talking to another across a kitchen table, not a presentation. Let one sentence lead into the next, with natural pauses between thoughts; say names, days and prices plainly. Vary the pace and pitch the way people do when they tell a story. Never an announcer, a commercial, or someone reading a script."
+    },
+    "blog-": {
+      "voice": "coral",
+      "instructions": "Voice: a small-business owner telling a friend how one part of her shop runs now, and what it saves her. Tone: warm, unhurried and conversational, a storyteller with a quiet smile, plainly pleased when the office gets a little easier. Delivery: one person talking to another across a kitchen table, not a presentation. Let one sentence lead into the next, with natural pauses between thoughts; say names, days and prices plainly. Vary the pace and pitch the way people do when they tell a story. Never an announcer, a commercial, or someone reading a script."
+    },
+    "portal-intro": {
+      "voice": "coral",
+      "instructions": "Voice: a small-business owner telling a friend how her customers deal with her shop now, and what it saves her. Tone: warm, unhurried and conversational, a storyteller with a quiet smile, plainly pleased when the office gets a little easier. Delivery: one person talking to another across a kitchen table, not a presentation. Let one sentence lead into the next, with natural pauses between thoughts; say names, days and prices plainly, and say the word APPROVED the way someone would text it back. Vary the pace and pitch the way people do when they tell a story. Never an announcer, a commercial, or someone reading a script."
+    },
+    "cbi-demo": {
+      "voice": "coral",
+      "instructions": "Voice: CBI, a friendly, efficient assistant answering a busy tradesperson through their phone or the office app. Tone: warm, clear and capable, with a light smile; never chirpy. Delivery: get to the point, say numbers, names and times plainly, and keep a natural, even pace with short pauses between items in a list. Sound like a helpful coworker who already looked it up, not an announcer or a phone menu."
+    },
+    "cbi-demo-ask": {
+      "voice": "cedar",
+      "instructions": "Voice: a tradesperson talking to the assistant on his phone between jobs. Tone: casual and matter-of-fact, the way you would ask a coworker. Delivery: natural and a little quick, like a real question in the middle of a workday. Never an announcer or someone reading a script."
+    },
+    "cbi-demo-ask-kim": {
+      "voice": "sage",
+      "instructions": "Voice: the dispatcher at a small trade company, asking the assistant something while she works the board. Tone: friendly, focused and businesslike. Delivery: natural and quick, like a real question at a desk in the middle of a busy morning. Never an announcer or someone reading a script."
+    },
+    "cbi-demo-ask-dana": {
+      "voice": "marin",
+      "instructions": "Voice: the owner of a small trade company, asking the assistant about her week at the end of a long day. Tone: relaxed, curious and a little tired. Delivery: natural and conversational, like a real question across a desk. Never an announcer or someone reading a script."
+    }
+  },
+  "welcome": [
+    {
+      "id": "intro.1",
+      "label": "What CrewBarn is",
+      "icon": "barn",
+      "title": "Your whole company, under one roof",
+      "sub": "Calls, jobs, crews, parts and payments, all in one barn.",
+      "where": "You’re on the setup page. Everything else is one click away up top.",
+      "flow": [
+        "Phone rings",
+        "Job",
+        "Schedule",
+        "On site",
+        "Invoice",
+        "Paid"
+      ],
+      "narration": "Welcome to CrewBarn. Think of it as one big barn for your whole company. The phone rings, and it becomes a job. The job lands on the schedule, your tech rolls up, does the work, and you get paid. No sticky notes. No three different apps. Grab a coffee, this takes about five minutes, and you can skip ahead any time."
+    },
+    {
+      "id": "intro.2",
+      "label": "Built for your trade",
+      "icon": "tool",
+      "title": "Built for your trade",
+      "sub": "Your starter pack sets the job types, statuses and catalog. Add your own any time.",
+      "where": "Your trade pack loads in step 4 of setup. Change names any time in Tool Shed › Job Types.",
+      "points": [
+        {
+          "title": "Your job types",
+          "detail": "The kinds of work you take, ready to book"
+        },
+        {
+          "title": "Your statuses",
+          "detail": "Every step a job goes through, in your words"
+        },
+        {
+          "title": "Your catalog",
+          "detail": "Services and parts with prices to start from"
+        },
+        {
+          "title": "Your fields",
+          "detail": "The details your trade needs to track"
+        }
+      ],
+      "trades": {
+        "generic": {
+          "title": "Built around the work you actually do",
+          "sub": "Your starter pack sets the job types, statuses and catalog. Add your own any time.",
+          "points": [
+            {
+              "title": "Your job types",
+              "detail": "The kinds of work you take, ready to book"
+            },
+            {
+              "title": "Your statuses",
+              "detail": "Every step a job goes through, in your words"
+            },
+            {
+              "title": "Your catalog",
+              "detail": "Services and parts with prices to start from"
+            },
+            {
+              "title": "Your fields",
+              "detail": "The details your trade needs to track"
+            }
+          ],
+          "narration": "CrewBarn bends to your trade, not the other way around. Your starter pack loads the job types, statuses and catalog a company like yours usually needs. Don't love a name? Change it. Missing something? Add it. It's your barn."
+        },
+        "locksmith": {
+          "title": "Built for locksmiths",
+          "sub": "From a 2 a.m. lockout to a hundred-door master key system.",
+          "points": [
+            {
+              "title": "Lockouts that move fast",
+              "detail": "Dispatched the moment the call ends"
+            },
+            {
+              "title": "Rekeys and master key systems",
+              "detail": "Every door, every level, kept straight"
+            },
+            {
+              "title": "Car keys",
+              "detail": "BarnCam reads the VIN so nobody squints at a dashboard"
+            },
+            {
+              "title": "Doors, locks, safes, access control",
+              "detail": "Tracked as equipment, with their full history"
+            }
+          ],
+          "narration": "Locksmiths, this one's for you. Lockouts get dispatched the second the call ends. Rekeys and master key systems stay organized door by door. For car keys, snap the VIN and BarnCam reads it for you, no squinting at the dashboard. And every door, lockset, safe and access panel you touch keeps its own history."
+        },
+        "fire_protection": {
+          "title": "Built for fire protection",
+          "sub": "Recurring inspections, deficiencies and reports that hold up.",
+          "points": [
+            {
+              "title": "Recurring inspections",
+              "detail": "Planned for the whole year, every site"
+            },
+            {
+              "title": "Deficiencies become quotes",
+              "detail": "Find it, price it, fix it"
+            },
+            {
+              "title": "Reports with a verify link",
+              "detail": "Anyone can check a report is real"
+            },
+            {
+              "title": "Every device tracked",
+              "detail": "Extinguishers, sprinklers, alarms, by location"
+            }
+          ],
+          "narration": "Fire protection crews, this is your kind of place. Recurring inspections plan themselves across every site. Anything that fails becomes a deficiency, and every deficiency turns into a quote. Reports go out with a link anyone can use to check they're real. And every extinguisher, riser and panel keeps its own history."
+        },
+        "hvac": {
+          "title": "Built for HVAC",
+          "sub": "Seasonal tune-ups, installs, warranty calls and the no-heat emergencies.",
+          "points": [
+            {
+              "title": "Maintenance agreements",
+              "detail": "Spring and fall visits schedule themselves"
+            },
+            {
+              "title": "Units tracked by serial",
+              "detail": "Model, install date, warranty, all of it"
+            },
+            {
+              "title": "Warranty calls",
+              "detail": "Know what’s covered before you quote"
+            },
+            {
+              "title": "Emergency calls",
+              "detail": "No heat at midnight? It’s on the board in seconds"
+            }
+          ],
+          "narration": "HVAC folks, welcome in. Maintenance agreements book your spring and fall tune-ups for you. Every unit is tracked by model and serial, with its install date and warranty, so you know what's covered before you quote. And when it's no heat at midnight, the call is on the board before you've found your boots."
+        },
+        "plumbing": {
+          "title": "Built for plumbing",
+          "sub": "Drains, leaks, water heaters, sewer and gas, and the calls that can’t wait.",
+          "points": [
+            {
+              "title": "Emergency calls",
+              "detail": "Burst pipe? Dispatched right off the call"
+            },
+            {
+              "title": "Water heaters tracked",
+              "detail": "Size, age and warranty at every address"
+            },
+            {
+              "title": "Drain, sewer and gas jobs",
+              "detail": "The right job type with the right questions"
+            },
+            {
+              "title": "Photos and video",
+              "detail": "Show the customer what the camera found"
+            }
+          ],
+          "narration": "Plumbers, pull up a bucket. Burst pipes and backups get dispatched right off the call. Every water heater is tracked by size, age and warranty, so the next visit starts smarter. And when the camera finds roots in the line, BarnCam shows the customer exactly what you saw."
+        },
+        "electrical": {
+          "title": "Built for electricians",
+          "sub": "Panels, lighting, EV chargers, generators and low voltage.",
+          "points": [
+            {
+              "title": "Panels and service upgrades",
+              "detail": "Quoted with good, better, best"
+            },
+            {
+              "title": "EV chargers and generators",
+              "detail": "Installs with every part and permit on the job"
+            },
+            {
+              "title": "Safety inspections",
+              "detail": "Checklists, findings and reports"
+            },
+            {
+              "title": "Low voltage too",
+              "detail": "Cameras, access, data, all in one place"
+            }
+          ],
+          "narration": "Electricians, this barn's wired for you. Quote panel upgrades with good, better, best options. Keep every part, photo and permit on the EV charger or generator install. Run safety inspections from a checklist. And the low voltage side, cameras, access and data, lives right next to everything else."
+        },
+        "garage_door": {
+          "title": "Built for garage door pros",
+          "sub": "Springs, openers, tracks and full door installs.",
+          "points": [
+            {
+              "title": "Springs and openers",
+              "detail": "The usual suspects, ready to book"
+            },
+            {
+              "title": "Every door tracked",
+              "detail": "Size, opener model and last service"
+            },
+            {
+              "title": "Safety inspections",
+              "detail": "Checked, photographed, signed"
+            },
+            {
+              "title": "Full installs",
+              "detail": "Quote it, order it, hang it"
+            }
+          ],
+          "narration": "Garage door pros, come on in. Spring swaps and opener repairs are ready to book from the first call. Every door you service keeps its size, opener model and last visit on file. Safety checks get photographed and signed. And full installs go from quote, to ordered, to hung, without a single spreadsheet."
+        },
+        "landscaping": {
+          "title": "Built for lawn and landscape crews",
+          "sub": "Recurring routes, cleanups, irrigation and the seasons.",
+          "points": [
+            {
+              "title": "Recurring routes",
+              "detail": "Weekly mows that schedule themselves"
+            },
+            {
+              "title": "Seasonal work",
+              "detail": "Cleanups, fertilizing and planting on the calendar"
+            },
+            {
+              "title": "Irrigation",
+              "detail": "Zones and controllers tracked by property"
+            },
+            {
+              "title": "Crews and trucks",
+              "detail": "The right crew with the right trailer"
+            }
+          ],
+          "narration": "Lawn and landscape crews, welcome. Weekly routes schedule themselves, so Monday's mows just show up. Spring cleanups, fertilizing and planting land on the calendar on time. Irrigation zones are tracked by property. And dispatch knows which crew has which trailer."
+        },
+        "facility_maintenance": {
+          "title": "Built for facility maintenance",
+          "sub": "Chain stores, property managers and a network of subs.",
+          "points": [
+            {
+              "title": "Client work order numbers",
+              "detail": "Their number, on every job and invoice"
+            },
+            {
+              "title": "Not-to-exceed limits",
+              "detail": "Go over, and it asks first"
+            },
+            {
+              "title": "Send it to a sub",
+              "detail": "They get a free CrewBarn and a tidy job"
+            },
+            {
+              "title": "Hundreds of sites",
+              "detail": "Stores and buildings, organized by client"
+            }
+          ],
+          "narration": "Facility maintenance teams, this is built for how you work. Every job carries the client's work order number, start to invoice. Not-to-exceed limits are enforced, so going over means asking first. Send work to a sub, and they get their own free CrewBarn to do it in. And hundreds of stores and buildings stay organized by client."
+        }
+      },
+      "narration": "CrewBarn bends to your trade, not the other way around. Your starter pack loads the job types, statuses and catalog a company like yours usually needs. Don't love a name? Change it. Missing something? Add it. It's your barn."
+    },
+    {
+      "id": "intro.3",
+      "label": "Finding your way around",
+      "icon": "compass",
+      "title": "Here’s the lay of the land",
+      "sub": "Same layout on every page, so you only learn it once.",
+      "where": "Top bar on every page. The Tool Shed menu sits at the end of it.",
+      "points": [
+        {
+          "title": "Daily work, across the top",
+          "detail": "Dashboard, Jobs, Estimates, Customers, Schedule, Dispatch, Accounting"
+        },
+        {
+          "title": "New work, on the right",
+          "detail": "Messages, Calls and Intake"
+        },
+        {
+          "title": "The Tool Shed",
+          "detail": "Inventory, catalog, equipment, staff, the back room"
+        },
+        {
+          "title": "Connect",
+          "detail": "Every setting, one simple page each"
+        },
+        {
+          "title": "The plus button",
+          "detail": "Add a customer, job or estimate from anywhere"
+        },
+        {
+          "title": "The question mark",
+          "detail": "Help and a guided tour for that page"
+        }
+      ],
+      "narration": "Quick tour of the barn. Your daily work lives across the top: Dashboard, Jobs, Estimates, Customers, Schedule, Dispatch and Accounting. On the right are Messages, Calls and Intake, where new work comes in. The plus button adds anything, fast. The Tool Shed is the back room, with inventory, the catalog, equipment, staff and the rest of the gear. Settings live in Connect. And the question mark on every page opens help and a guided tour."
+    },
+    {
+      "id": "intro.4",
+      "label": "Calls, texts and CBI",
+      "icon": "phone",
+      "title": "Every call and text becomes work",
+      "sub": "One inbox for the whole office, and an assistant that drafts the job for you.",
+      "where": "Top bar › Messages, Calls and Intake. CBI is the ask box at the top of every page.",
+      "points": [
+        {
+          "title": "One shared inbox",
+          "detail": "Calls, texts and email, matched to the customer"
+        },
+        {
+          "title": "Calls become text",
+          "detail": "Recorded, transcribed, part numbers and all"
+        },
+        {
+          "title": "Jobs drafted for you",
+          "detail": "You check it, then press Confirm"
+        },
+        {
+          "title": "Ask CBI",
+          "detail": "By typing or by voice, on any page"
+        }
+      ],
+      "narration": "It all starts with the phone. Calls, texts and email land in one shared inbox. Calls get recorded and turned into text, and CBI, the assistant built into CrewBarn, drafts the job from the conversation. Who, where, what, when. Nothing gets saved until you say so. You can even just ask it, who's free tomorrow at two, and it'll find out."
+    },
+    {
+      "id": "intro.5",
+      "label": "Customers and sites",
+      "icon": "person",
+      "title": "Every customer, every address, one record",
+      "sub": "Homeowners, businesses, and property managers with fifty buildings.",
+      "where": "Top bar › Customers.",
+      "points": [
+        {
+          "title": "Contacts and addresses",
+          "detail": "The right person, the right place"
+        },
+        {
+          "title": "Gate codes and access notes",
+          "detail": "Right there when the tech arrives"
+        },
+        {
+          "title": "The whole history",
+          "detail": "Jobs, quotes, invoices, calls, files"
+        },
+        {
+          "title": "Your own fields and tags",
+          "detail": "Track what your trade cares about"
+        }
+      ],
+      "narration": "Every customer gets one record. All their contacts, every service address, and the stuff your tech actually needs, like the gate code, the lockbox, and where to park. Plus every job, quote, invoice and call you've ever had with them, in one place."
+    },
+    {
+      "id": "intro.6",
+      "label": "Equipment you service",
+      "icon": "qr",
+      "title": "Every piece of equipment, remembered",
+      "sub": "Doors, units, panels, heaters, whatever you work on, at every address.",
+      "where": "Tool Shed › Customer Assets. Labels print from there too.",
+      "points": [
+        {
+          "title": "By address, floor and room",
+          "detail": "Organized the way the building is"
+        },
+        {
+          "title": "QR labels",
+          "detail": "Stick it on, scan it, see everything"
+        },
+        {
+          "title": "Make, model, serial, warranty",
+          "detail": "No more reading worn-out stickers"
+        },
+        {
+          "title": "Every repair and part",
+          "detail": "The full history of that unit"
+        }
+      ],
+      "narration": "CrewBarn remembers the equipment you service, at every address, right down to the floor and room. Print a QR label, stick it on, and any tech can scan it to see that unit's whole life story. Make, model, serial, warranty, every repair and every part. It's like a medical chart, but for a water heater."
+    },
+    {
+      "id": "intro.7",
+      "label": "Catalog and estimates",
+      "icon": "doc",
+      "title": "Quote it fast, and get it signed",
+      "sub": "Your catalog beside the estimate, and options the customer can pick from.",
+      "where": "Top bar › Estimates. The catalog is in Tool Shed › Service and Product Catalog.",
+      "points": [
+        {
+          "title": "PDF catalog to price book",
+          "detail": "Upload it, check it, done"
+        },
+        {
+          "title": "Good, better, best",
+          "detail": "Let the customer choose"
+        },
+        {
+          "title": "Signed from a phone",
+          "detail": "Approve, sign, or ask for changes"
+        },
+        {
+          "title": "Quote to job",
+          "detail": "Parts held, nothing retyped"
+        }
+      ],
+      "narration": "Got a supplier catalog as a PDF? Upload it, and CrewBarn turns it into a draft price book you can check over. Then build estimates with good, better and best options, right beside the book. Customers approve and sign from their phone. Parts you have get set aside for them, and the approved quote becomes a job without retyping a thing."
+    },
+    {
+      "id": "intro.8",
+      "label": "Service agreements",
+      "icon": "cal",
+      "title": "Turn one-time work into recurring work",
+      "sub": "Agreements that plan their own visits and remember their own renewals.",
+      "where": "Tool Shed › Service Agreements.",
+      "points": [
+        {
+          "title": "Pick sites and equipment",
+          "detail": "Exactly what’s covered"
+        },
+        {
+          "title": "Signed online",
+          "detail": "From a link, on any phone"
+        },
+        {
+          "title": "Visits plan themselves",
+          "detail": "Jobs appear when they’re due"
+        },
+        {
+          "title": "Renewal reminders",
+          "detail": "Before it lapses, not after"
+        }
+      ],
+      "narration": "Service agreements are where steady money lives. Pick the sites and equipment, set how often, and get it signed online. CrewBarn plans every visit, makes the jobs when they're due, and taps you on the shoulder before it's time to renew."
+    },
+    {
+      "id": "intro.9",
+      "label": "Schedule and dispatch",
+      "icon": "cal",
+      "title": "The right tech, at the right door",
+      "sub": "See the whole day, and every truck, at a glance.",
+      "where": "Top bar › Schedule and Dispatch. The TV board is in Tool Shed › Shop TV.",
+      "points": [
+        {
+          "title": "Drag and drop",
+          "detail": "Day, week and crew views"
+        },
+        {
+          "title": "Best tech, suggested",
+          "detail": "Skills, distance and workload"
+        },
+        {
+          "title": "Live map, for you only",
+          "detail": "Customers get an ETA, not a dot"
+        },
+        {
+          "title": "Shop TV",
+          "detail": "The day, up on the wall"
+        }
+      ],
+      "narration": "The schedule board shows the whole day. Drag a job where it goes, and CrewBarn suggests the best tech by skills, distance and how busy they are. You see every truck on the map. Customers get an arrival time, but never your tech's live location. You can even put the board up on a TV in the shop."
+    },
+    {
+      "id": "intro.10",
+      "label": "In the field",
+      "icon": "tool",
+      "title": "Everything your techs need, in their pocket",
+      "sub": "The CrewBarn phone app. Works in basements and dead zones too.",
+      "where": "The CrewBarn app on their phone. Invite them in Tool Shed › Staff and Crews.",
+      "points": [
+        {
+          "title": "Works offline",
+          "detail": "Syncs when the signal’s back"
+        },
+        {
+          "title": "Check in on arrival",
+          "detail": "Scan the QR on site"
+        },
+        {
+          "title": "Parts and labor as they go",
+          "detail": "Straight from truck stock"
+        },
+        {
+          "title": "Signature before they leave",
+          "detail": "No chasing it later"
+        }
+      ],
+      "narration": "Your techs get the CrewBarn phone app, and it keeps working in basements and dead zones, then catches up when the signal's back. They see the gate code before they get there, check in when they arrive, add parts and labor as they go, ask for approval if the job grows, and get a signature before they leave."
+    },
+    {
+      "id": "intro.11",
+      "label": "BarnCam",
+      "icon": "cam",
+      "title": "BarnCam: show it, prove it, read it",
+      "sub": "Photos and short videos, right on the job.",
+      "where": "Any job › BarnCam, on the phone app or in the office.",
+      "points": [
+        {
+          "title": "Before and after",
+          "detail": "Proof, right on the job"
+        },
+        {
+          "title": "Short videos",
+          "detail": "When a photo can’t say it"
+        },
+        {
+          "title": "AI reads the picture",
+          "detail": "Serial plates, VINs, part numbers"
+        },
+        {
+          "title": "It learns your company",
+          "detail": "CBI gets smarter as you go"
+        }
+      ],
+      "narration": "Meet BarnCam. Before and after photos and short videos go right on the job, so nobody has to ask did you actually fix it. Point it at a serial plate, a VIN, or a part number, and the AI reads it for you. And over time, what it sees helps CBI learn how your company works."
+    },
+    {
+      "id": "intro.12",
+      "label": "Inspections",
+      "icon": "clip",
+      "title": "Inspections that turn into work",
+      "sub": "Checklists, findings, repairs, and reports that check out.",
+      "where": "On the job, from the phone app. Reports live on the customer and the equipment.",
+      "points": [
+        {
+          "title": "Checklists for your trade",
+          "detail": "Pass, fail, photos, notes"
+        },
+        {
+          "title": "Findings become quotes",
+          "detail": "Spot it, price it, fix it"
+        },
+        {
+          "title": "History on the equipment",
+          "detail": "Every inspection and repair"
+        },
+        {
+          "title": "Reports with a verify link",
+          "detail": "Anyone can check it’s real"
+        }
+      ],
+      "narration": "For inspection work, techs follow a checklist built for your trade. Anything that fails becomes a finding, every finding can become a quote, and every repair goes back on the equipment's history. Reports go out with a link anyone can use to confirm they're real."
+    },
+    {
+      "id": "intro.13",
+      "label": "Inventory with fingerprints",
+      "icon": "box",
+      "title": "Every part has a fingerprint",
+      "sub": "Know what’s on every shelf, every truck, and where it went.",
+      "where": "Tool Shed › Inventory, Vendors and Purchase Orders.",
+      "points": [
+        {
+          "title": "Every move is recorded",
+          "detail": "Who, when, from where, to where, which job"
+        },
+        {
+          "title": "Shop, warehouse and trucks",
+          "detail": "Down to the bin"
+        },
+        {
+          "title": "Held for the job",
+          "detail": "Parts set aside when a quote is approved"
+        },
+        {
+          "title": "Needs ordered, automatically",
+          "detail": "Then one tap to a purchase order"
+        }
+      ],
+      "narration": "Here's a favorite. In CrewBarn, every part has a fingerprint. Every time stock moves, it records who moved it, when, from where, to where, and for which job. Received, transferred, put on a truck, used, returned, counted. So when something goes missing, you're not guessing. When a part runs low, it lands on a needs ordered list, and purchase orders go straight to your vendors."
+    },
+    {
+      "id": "intro.14",
+      "label": "Getting paid",
+      "icon": "card",
+      "title": "Invoice on the spot. Get paid faster.",
+      "sub": "Your payment processor, your money, your books.",
+      "where": "Top bar › Accounting. Techs collect from the job on the phone app.",
+      "points": [
+        {
+          "title": "Invoice from the job",
+          "detail": "Nothing retyped"
+        },
+        {
+          "title": "Card, link or cash",
+          "detail": "On site or online"
+        },
+        {
+          "title": "Books that keep up",
+          "detail": "Bank matching, expenses, sales tax"
+        },
+        {
+          "title": "Payroll and reports",
+          "detail": "Hours, jobs and profit"
+        }
+      ],
+      "narration": "Then the best part. Getting paid. Invoice right from the job, take a card on the phone, or text a pay link. Payments drop into your books and match up with your bank. Expenses, sales tax, payroll and reports all live in the same place, so tax time is a lot less scary."
+    },
+    {
+      "id": "intro.15",
+      "label": "Your crew and permissions",
+      "icon": "people",
+      "title": "Everyone sees exactly what they should",
+      "sub": "Roles decide who can view, edit, delete or send, area by area.",
+      "where": "Tool Shed › Roles and Permissions, and Staff and Crews.",
+      "points": [
+        {
+          "title": "Roles you control",
+          "detail": "View, edit, delete or send, by area"
+        },
+        {
+          "title": "Techs see their work",
+          "detail": "Not your margins"
+        },
+        {
+          "title": "Crews and lead techs",
+          "detail": "Built for how you dispatch"
+        },
+        {
+          "title": "Hiring, time off, time clock",
+          "detail": "The people side, too"
+        }
+      ],
+      "narration": "Everybody works in CrewBarn, but nobody sees more than they should. You set roles, and each role decides who can view, edit, delete or send, area by area. A tech can close their job without seeing your profit margins. The office can bill without touching payroll. Crews, hiring, time off and the time clock all live here too."
+    },
+    {
+      "id": "intro.16",
+      "label": "Accountability, built in",
+      "icon": "shield",
+      "title": "Accountability is built in",
+      "sub": "Not to watch people. To protect them, and you.",
+      "where": "Tool Shed › Delete Permissions, Company Tools, and the audit log in Connect.",
+      "points": [
+        {
+          "title": "Tools checked in and out",
+          "detail": "Who has it, and since when"
+        },
+        {
+          "title": "Two-person deletes",
+          "detail": "Big removals need a second yes"
+        },
+        {
+          "title": "Audit log",
+          "detail": "Who changed what, and when"
+        },
+        {
+          "title": "History survives",
+          "detail": "People leave, their work record stays"
+        },
+        {
+          "title": "CBI asks first",
+          "detail": "Nothing changes until you Confirm"
+        },
+        {
+          "title": "Locations stay private",
+          "detail": "Customers get an ETA, never a live dot"
+        }
+      ],
+      "narration": "Accountability is built in, and it protects everybody. Tools get checked in and out, so you always know who has the good drill. Big deletes need a second person to approve. Every change is in the audit log, with who and when. If someone leaves, their history stays. And CBI never changes a thing until a person presses Confirm."
+    },
+    {
+      "id": "intro.17",
+      "label": "Customers, subs and partners",
+      "icon": "globe",
+      "title": "Bring your customers and partners inside",
+      "sub": "A portal for customers, and free CrewBarn accounts for the companies you work with.",
+      "where": "Tool Shed › Subcontractors and Partner Connections. The portal and app are in Customer App.",
+      "points": [
+        {
+          "title": "Customer portal and app",
+          "detail": "Request, approve, pay, see equipment"
+        },
+        {
+          "title": "Property managers",
+          "detail": "Every building, every job, one view"
+        },
+        {
+          "title": "Subcontractors",
+          "detail": "They see only the job you share"
+        },
+        {
+          "title": "Partners and franchises",
+          "detail": "Shared work, kept tidy"
+        }
+      ],
+      "narration": "Your customers get their own portal, or even your own branded app. They can request service, approve quotes, pay, and see their equipment. Send a job to a subcontractor, and they get a free CrewBarn of their own, with only the job you shared. You track it, pay them, and rate them."
+    },
+    {
+      "id": "intro.18",
+      "label": "Marketplace, your choice",
+      "icon": "globe",
+      "title": "Two separate choices: your listing, and your customers",
+      "sub": "Every customer can use the CrewBarn marketplace to find help. You decide two things.",
+      "where": "Tool Shed › Marketplace Listing.",
+      "compare": [
+        {
+          "name": "Get listed",
+          "tag": "Brings you new work",
+          "items": [
+            "Show up in the marketplace in your area",
+            "People nearby can request quotes and send you work",
+            "Your own customers still land in your portal first",
+            "Pause or unlist any time"
+          ]
+        },
+        {
+          "name": "Protect your customers",
+          "tag": "Keeps them yours",
+          "items": [
+            "For customers you brought in, hide companies in your trade",
+            "Only inside your county lines",
+            "Other trades still show, like a plumber or an electrician",
+            "Works whether or not you’re listed"
+          ]
+        }
+      ],
+      "foot": "Pick one, both, or neither. There are never marketplace ads inside your jobs, estimates, invoices or contracts, and customers never see your subcontractors.",
+      "narration": "Now, the marketplace. Every customer in CrewBarn can use it to find help, and you get two separate choices. One: get listed, and people in your area can find you and send you work. Two: protect your customers. For the customers you brought in, you can hide other companies in your trade, inside your county lines. They'll still find a plumber or an electrician when they need one, just not your competition. Pick one, both, or neither. And there are never ads inside your jobs, quotes or invoices."
+    },
+    {
+      "id": "intro.19",
+      "label": "It does the chasing",
+      "icon": "bolt",
+      "title": "Quick settings",
+      "sub": "Reminders and follow-ups you switch on, one at a time.",
+      "where": "Tool Shed › Automations. Each setting has its own page in Connect.",
+      "points": [
+        {
+          "title": "On my way and reminders",
+          "detail": "Customers always know"
+        },
+        {
+          "title": "Past-due nudges",
+          "detail": "So you’re not the bad guy"
+        },
+        {
+          "title": "Review requests",
+          "detail": "Right after they pay"
+        },
+        {
+          "title": "Pause per job",
+          "detail": "One tap, no surprises"
+        }
+      ],
+      "narration": "And CrewBarn does the chasing, so you don't have to. On my way texts. Appointment reminders. Past-due nudges. Review requests after a happy customer pays. You read every message before it's switched on, and you can pause it on any single job with one tap."
+    },
+    {
+      "id": "intro.20",
+      "label": "Your data, secured",
+      "icon": "shield",
+      "title": "Your data is yours, and it’s locked down",
+      "sub": "You own it, you can take it with you, and nobody opens what they shouldn’t.",
+      "where": "Tool Shed › Data Export, Data Encryption, Company Files, and Security and 2FA.",
+      "points": [
+        {
+          "title": "You own it",
+          "detail": "Download everything, any time"
+        },
+        {
+          "title": "Locked files",
+          "detail": "Each with its own key"
+        },
+        {
+          "title": "A code to open",
+          "detail": "Sensitive files need a text or email code"
+        },
+        {
+          "title": "Your storage, your key",
+          "detail": "Bring your own, if you like"
+        },
+        {
+          "title": "Two-step sign-in",
+          "detail": "For everyone on the team"
+        },
+        {
+          "title": "Your AI, your payments",
+          "detail": "You pay them directly, never us"
+        }
+      ],
+      "narration": "Last big thing. Your data is yours. Download all of it, any time. Sensitive files are locked with their own key, and opening one takes a code sent by text or email. You can keep files in your own storage, and even lock it with your own key. Two-step sign-in keeps the wrong people out."
+    },
+    {
+      "id": "intro.21",
+      "label": "A guide on every page",
+      "icon": "compass",
+      "title": "Every page has its own map and tour",
+      "sub": "Stuck anywhere? Tap the question mark on that page.",
+      "where": "The question mark in the top bar, on every page.",
+      "flow": [
+        "First customer",
+        "Job",
+        "Estimate",
+        "Invoice",
+        "Payment",
+        "Settings"
+      ],
+      "narration": "One last thing. Every page in CrewBarn has its own roadmap and a guided tour, just like this one. Your first customer, a job, a quote, an invoice, getting paid, and every setting. Whenever you're not sure, tap the question mark. Alright, enough talk. Let me show you the road to getting set up."
+    }
+  ],
+  "pageTour": [
+    {
+      "id": "page.intro",
+      "element": "[data-tour=\"onboarding-intro\"]",
+      "title": "Let’s get your shop ready",
+      "description": "This is your launch checklist. Quick look around — the tour doesn’t send or save a thing.",
+      "narration": "Hey, welcome to CrewBarn. This right here is your launch checklist. Let me walk you around real quick. Don't worry — nothing gets sent, and nothing gets saved. We're just looking."
+    },
+    {
+      "id": "page.catalog",
+      "element": "[data-tour=\"onboarding-catalog-intro\"]",
+      "title": "Bring your catalog with you",
+      "description": "Upload a company PDF catalog, review the draft order book, and build estimates with your products and services in front of you.",
+      "narration": "Already have a company catalog? Bring it with you. Upload the PDF and CrewBarn turns it into a draft order book. You review the products, services, costs, and selling prices before anything is used. Then, when you build an estimate, your catalog is open right in front of you."
+    },
+    {
+      "id": "page.progress",
+      "element": "[data-tour=\"onboarding-progress\"]",
+      "title": "Your launch meter",
+      "description": "Fills up as your shop takes shape. Walk away anytime — it keeps your place.",
+      "narration": "This bar is your launch meter. Every step you finish fills it up a little more. And if a customer calls and you've gotta run, that's fine. It'll be right here when you get back."
+    },
+    {
+      "id": "page.stages",
+      "element": "[data-tour=\"onboarding-stages\"]",
+      "title": "Set the pins, open the lock",
+      "description": "Each step is a pin. Set them one at a time and the shop opens up.",
+      "narration": "Here's the whole list. Think of it like pins in a lock. You set them one at a time, and the shop opens up. A couple of them stay locked until the ones above are done, so you're never guessing what comes next."
+    },
+    {
+      "id": "page.current",
+      "element": "[data-tour=\"onboarding-current-stage\"]",
+      "title": "Where the work happens",
+      "description": "What to pick, why it matters, and the button that moves you forward.",
+      "narration": "And this big card is where the real work happens. It tells you what to pick, why it matters, and which button moves you forward. Nothing changes until you hit save. You're always the one holding the keys."
+    },
+    {
+      "id": "page.navigation",
+      "element": "[data-tour=\"onboarding-stage-navigation\"]",
+      "title": "Poke around, no pressure",
+      "description": "Back and Next let you look ahead. Then I’ll show you the whole map.",
+      "narration": "Back and Next let you poke around without any pressure. Skip ahead, come back, whatever feels right."
+    }
+  ],
+  "finale": {
+    "id": "page.finale",
+    "title": "That’s the tour",
+    "description": "Every pin’s set. Want to see how a job moves through the whole shop?",
+    "narration": "And that's the tour. Every pin's set. Now, if you've got two more minutes, I can show you how a job moves through the whole shop, from the first phone call to getting paid."
+  },
+  "steps": [
+    {
+      "id": "ai_setup",
+      "shortTitle": "AI helper",
+      "title": "Choose how AI helps",
+      "description": "Connect an AI provider or keep everything manual. You stay in control, and nothing runs until you turn it on.",
+      "narration": "First stop, your AI helper. Plug in your own AI account and it can do a lot of the typing for you — or skip it and do it all by hand. Either way, nothing runs until you say so.",
+      "color": "amber"
+    },
+    {
+      "id": "data_ownership",
+      "shortTitle": "Files & maps",
+      "title": "Choose where files and maps come from",
+      "description": "Connect CrewBarn-managed services or your own Cloudflare R2 and map provider so photos, documents, addresses, and routes have a home.",
+      "narration": "Next, where your stuff lives. Job photos, documents, addresses, routes — they all need a home. Use ours, or bring your own storage and maps.",
+      "color": "sky"
+    },
+    {
+      "id": "company_profile",
+      "shortTitle": "Brand",
+      "title": "Make CrewBarn look like your shop",
+      "description": "Add the company details, logo, colors, contact information, and defaults customers will recognize.",
+      "narration": "Then make it look like your shop. Your logo, your colors, your phone number. When a customer gets an invoice, it should look like it came from you.",
+      "color": "violet"
+    },
+    {
+      "id": "trade_seed",
+      "shortTitle": "Trade pack",
+      "title": "Start with a pack for your trade",
+      "description": "Choose the primary trade once. CrewBarn prepares useful statuses, job types, catalog rows, locations, fields, and templates for that kind of work.",
+      "narration": "Pick your trade, and CrewBarn loads up a starter pack — job types, statuses, a starter catalog, templates. So you're not starting from a blank page.",
+      "color": "emerald"
+    },
+    {
+      "id": "company_assets",
+      "shortTitle": "Tools & trucks",
+      "title": "Add the tools, trucks, and software your crew uses",
+      "description": "Build the operational kit your team needs, including company assets and connected tools.",
+      "narration": "Now the trucks, the tools, the software your crew actually uses. Get them in once, and you'll always know what's where.",
+      "color": "orange"
+    },
+    {
+      "id": "inventory_layout",
+      "shortTitle": "Stock",
+      "title": "Set up what you keep on the shelf",
+      "description": "Create inventory locations, bins, and starter stock so material can be found, assigned, and replenished.",
+      "narration": "Then the shelf. Set up your bins and your stock, so when a tech needs a part, they can find it — and you know when it's time to reorder.",
+      "color": "cyan"
+    },
+    {
+      "id": "staff",
+      "shortTitle": "Crew",
+      "title": "Bring your crew in",
+      "description": "Invite staff, assign roles, and give each person only the permissions they need to do their work.",
+      "narration": "Bring your crew in. Everybody gets their own login, and only the access they actually need. Nothing more.",
+      "color": "indigo"
+    },
+    {
+      "id": "communications",
+      "shortTitle": "Comms",
+      "title": "Connect phone, text, and email",
+      "description": "Choose the channels CrewBarn will use for customer updates, reminders, and team communication.",
+      "narration": "Hook up your phone, texts, and email. That's how customers hear from you — on the way, running late, job's done.",
+      "color": "rose"
+    },
+    {
+      "id": "pricebook",
+      "shortTitle": "Pricebook",
+      "title": "Build your order book and estimates",
+      "description": "Upload a company PDF catalog, review the draft products, services, costs, labor, taxes, and selling prices, then create estimates with the catalog open beside you.",
+      "narration": "Bring in your company PDF catalog and CrewBarn turns it into a draft order book. Review the services, parts, labor, tax, costs, and selling prices before you approve it. Then build estimates with that catalog open right beside the job, so every quote starts from numbers you trust.",
+      "color": "lime"
+    },
+    {
+      "id": "automations",
+      "shortTitle": "Automation",
+      "title": "Quick settings",
+      "description": "Turn on the status triggers and reminders you want, while keeping every customer-facing automation visible and intentional.",
+      "narration": "This one's my favorite. Quick settings: yes or no to reminders, follow-ups, past-due nudges and missed-call texts. You pick which ones, and you can always see exactly what goes out.",
+      "color": "fuchsia"
+    },
+    {
+      "id": "review",
+      "shortTitle": "Launch",
+      "title": "Have a look, then go",
+      "description": "Review the setup, test the customer experience, and launch when the shop feels ready. You can return and improve most settings later.",
+      "narration": "And last, have a look around, then go. Try it the way a customer would see it. And when it feels right, open the doors. You can always come back and tweak things later.",
+      "color": "green"
+    }
+  ],
+  "setupLines": {
+    "setup.start": "Okay, let's set up your company together. I'll go down the list one step at a time, and I'll stop whenever there's something for you to do. You can skip anything and come back to it.",
+    "setup.beta.1": "First, the beta agreement. You're testing CrewBarn for free, so we need the terms accepted before anything gets set up. Give them a read, and accept when you're ready.",
+    "setup.ai.1": "First up, AI. You don't need to know anything about AI models. We've already picked the best one for each job, so you just bring an account. We recommend Claude. It reads photos and messy notes well, and it can take actions for you. The one exception is call recordings. Those turn into text with OpenAI, so that key is optional.",
+    "setup.ai.2": "Okay, let's pause and get your key. Tap the link, sign in, and create a key. Copy it, come back to this tab, and paste it in the box. I'll wait right here.",
+    "setup.ai.2.done": "Got it. That key looks right.",
+    "setup.ai.2.back": "Welcome back. Go ahead and paste your key in the box.",
+    "setup.ai.3": "One optional extra. If you record calls and want them turned into text, add an OpenAI key the same way. Or skip it for now.",
+    "setup.ai.3.done": "Perfect. Call transcripts are on.",
+    "setup.ai.4": "That's it for AI. Press Save and carry on.",
+    "setup.storage.1": "Next, where your job photos, documents and maps live. We recommend your own accounts. Cloudflare for the photos, Google for the maps. They're free to start, the bills come to you, and the files are always yours.",
+    "setup.storage.2": "Cloudflare first. CrewBarn can set it all up, it just needs a key from your Cloudflare account. Tap Open Connect Cloudflare. Most of the permissions are already picked for you. There are three things Cloudflare won't fill in, so add them by hand. Cloudflare Pages, set to Edit. Zone resources, set to All zones. And your account. Create the token, paste it there, then come back to this tab.",
+    "setup.storage.2.done": "Cloudflare's connected.",
+    "setup.storage.2.back": "Welcome back. Let me check the connection.",
+    "setup.storage.3": "Now pick your domain, and press Set up my storage. CrewBarn makes your private file bucket and fills in the keys, all inside your own Cloudflare account.",
+    "setup.storage.3.done": "All set up in your Cloudflare.",
+    "setup.storage.4": "Last piece, maps. Google doesn't let us set this one up for you. In Google Cloud, turn on the Maps JavaScript API, Places API and Geocoding API. Create a key, restrict it to the website addresses shown here, then paste it in the box.",
+    "setup.storage.4.done": "Maps key looks right.",
+    "setup.storage.4.back": "Welcome back. Paste your Maps key in the box.",
+    "setup.storage.5": "Good. Press Save and carry on.",
+    "setup.company.1": "Now make it look like your company. Your name and phone number at least. Add your email, address and logo too, and pick your color. This is what customers see on every estimate and invoice.",
+    "setup.company.1.done": "Looking good.",
+    "setup.company.2": "Press Save and carry on when you're happy with it.",
+    "setup.trade.done": "Your trade pack is already in. Your trade was locked when you signed up, but you can always add your own job types, statuses and catalog items on top.",
+    "setup.trade.1": "This is your trade pack. You picked your trade when you signed up, and it's locked now, so this loads the starter set for it. Job types, statuses, a catalog and locations. Press Apply the starter pack.",
+    "setup.tools.1": "Now the tools, trucks and software your company owns. We've suggested what a company in your trade usually has. Tick what you've got, add a note if you like, and press Add these and carry on.",
+    "setup.stock.1": "Now the stock you keep on the shelf. Tick what you carry, put in rough counts, and say when you'd like a reminder to reorder. Then press Add these and carry on.",
+    "setup.crew.1": "Time to bring your crew in. Add a name and email, pick their role, and send the invite. They set their own password. If it's just you for now, press I will do this later.",
+    "setup.comms.1": "Now, how customers reach you. Pick a CrewBarn number for calls and texts, or choose one later. Texting starts once the number's registration is approved.",
+    "setup.price.1": "Check your prices. Open the service catalog, look over what the starter pack loaded, then come back and confirm.",
+    "setup.autos.1": "Quick settings. Answer yes or no to each one: reminders, follow-ups, missed-call texts and the rest. Nothing a customer gets is switched on unless you say yes. Then save your answers.",
+    "setup.launch.1": "Last step. Have a look over everything. Anything you skipped is waiting for you in Connect, and none of it stops you starting. When you're ready, confirm, and you're open for business.",
+    "setup.saved": "Saved. Nice work.",
+    "setup.skipped": "No problem. We'll skip that for now.",
+    "setup.locked": "That one opens once the steps before it are done, so we'll come back to it.",
+    "setup.finish": "That's the whole list. Anything you skipped is still there whenever you want it. Nice work.",
+    "setup.wait.agreement": "Accept the agreement to carry on.",
+    "setup.wait.key": "I’ll wait while you get it.",
+    "setup.wait.openai": "Paste an OpenAI key, or skip.",
+    "setup.wait.save": "Press Save and carry on.",
+    "setup.wait.cloudflare": "Waiting for Cloudflare to connect.",
+    "setup.wait.setupstorage": "Press Set up my storage.",
+    "setup.wait.maps": "Paste your Google Maps key.",
+    "setup.wait.company": "Company name and phone are the must-haves.",
+    "setup.wait.trade": "Press Apply the starter pack.",
+    "setup.wait.tools": "Tick your tools, then press Add these and carry on.",
+    "setup.wait.stock": "Tick your stock, then press Add these and carry on.",
+    "setup.wait.crew": "Send an invite, or press I will do this later.",
+    "setup.wait.comms": "Pick a number, or choose one later.",
+    "setup.wait.confirm": "Have a look, then confirm."
+  },
+  "roadmap": {
+    "nodes": [
+      {
+        "id": "account",
+        "label": "Create company account",
+        "x": 40,
+        "y": 205,
+        "kind": "terminal"
+      },
+      {
+        "id": "owner",
+        "label": "Verify owner access",
+        "x": 285,
+        "y": 205
+      },
+      {
+        "id": "agreement?",
+        "label": "Beta agreement required?",
+        "x": 530,
+        "y": 185,
+        "kind": "decision"
+      },
+      {
+        "id": "agreement",
+        "label": "Review and accept agreement",
+        "x": 840,
+        "y": 165
+      },
+      {
+        "id": "ai?",
+        "label": "Set up AI?",
+        "x": 1085,
+        "y": 185,
+        "kind": "decision"
+      },
+      {
+        "id": "ai",
+        "label": "Choose provider and key",
+        "x": 1395,
+        "y": 90
+      },
+      {
+        "id": "manual",
+        "label": "Continue manually",
+        "x": 1395,
+        "y": 285
+      },
+      {
+        "id": "storage",
+        "label": "Choose storage and maps",
+        "x": 1640,
+        "y": 205
+      },
+      {
+        "id": "profile",
+        "label": "Enter company profile",
+        "x": 1885,
+        "y": 205
+      },
+      {
+        "id": "brand",
+        "label": "Add logo and brand",
+        "x": 2130,
+        "y": 165
+      },
+      {
+        "id": "trade",
+        "label": "Choose trade starter pack",
+        "x": 2375,
+        "y": 165
+      },
+      {
+        "id": "preview",
+        "label": "Preview seeded defaults",
+        "x": 2620,
+        "y": 165
+      },
+      {
+        "id": "defaults",
+        "label": "Apply job types, statuses, catalog, locations",
+        "x": 2865,
+        "y": 165
+      },
+      {
+        "id": "tools",
+        "label": "Add company tools and vehicles",
+        "x": 3110,
+        "y": 165
+      },
+      {
+        "id": "stock",
+        "label": "Set starter inventory and reorder levels",
+        "x": 3355,
+        "y": 85
+      },
+      {
+        "id": "crew",
+        "label": "Invite staff and build crews",
+        "x": 3600,
+        "y": 85
+      },
+      {
+        "id": "roles",
+        "label": "Assign roles, permissions, mobile access",
+        "x": 3845,
+        "y": 65
+      },
+      {
+        "id": "resume",
+        "label": "Save progress, resume later",
+        "x": 3845,
+        "y": 285
+      },
+      {
+        "id": "comms",
+        "label": "Connect phone, SMS and email",
+        "x": 4090,
+        "y": 65
+      },
+      {
+        "id": "price",
+        "label": "Review services, products, pricing",
+        "x": 4335,
+        "y": 65
+      },
+      {
+        "id": "auto?",
+        "label": "Turn on starter automations?",
+        "x": 4580,
+        "y": 45,
+        "kind": "decision"
+      },
+      {
+        "id": "automations",
+        "label": "Review reminders and triggers",
+        "x": 4890,
+        "y": 35
+      },
+      {
+        "id": "review",
+        "label": "Run launch review",
+        "x": 5135,
+        "y": 100
+      },
+      {
+        "id": "ready?",
+        "label": "Required setup complete?",
+        "x": 5380,
+        "y": 55,
+        "kind": "decision"
+      },
+      {
+        "id": "return",
+        "label": "Return to unfinished step",
+        "x": 5690,
+        "y": 270
+      },
+      {
+        "id": "test",
+        "label": "Create test customer, estimate, job",
+        "x": 5690,
+        "y": 50
+      },
+      {
+        "id": "validate",
+        "label": "Check mobile, messages, invoice, payment",
+        "x": 5935,
+        "y": 50
+      },
+      {
+        "id": "live",
+        "label": "Your company goes live",
+        "x": 6180,
+        "y": 50,
+        "kind": "terminal"
+      }
+    ],
+    "edges": [
+      {
+        "from": "account",
+        "to": "owner"
+      },
+      {
+        "from": "owner",
+        "to": "agreement?"
+      },
+      {
+        "from": "agreement?",
+        "to": "agreement",
+        "label": "Yes"
+      },
+      {
+        "from": "agreement?",
+        "to": "ai?",
+        "label": "No"
+      },
+      {
+        "from": "agreement",
+        "to": "ai?"
+      },
+      {
+        "from": "ai?",
+        "to": "ai",
+        "label": "Yes"
+      },
+      {
+        "from": "ai?",
+        "to": "manual",
+        "label": "No"
+      },
+      {
+        "from": "ai",
+        "to": "storage"
+      },
+      {
+        "from": "manual",
+        "to": "storage"
+      },
+      {
+        "from": "storage",
+        "to": "profile"
+      },
+      {
+        "from": "profile",
+        "to": "brand"
+      },
+      {
+        "from": "brand",
+        "to": "trade"
+      },
+      {
+        "from": "trade",
+        "to": "preview"
+      },
+      {
+        "from": "preview",
+        "to": "defaults"
+      },
+      {
+        "from": "defaults",
+        "to": "tools"
+      },
+      {
+        "from": "tools",
+        "to": "stock"
+      },
+      {
+        "from": "stock",
+        "to": "crew"
+      },
+      {
+        "from": "crew",
+        "to": "roles"
+      },
+      {
+        "from": "roles",
+        "to": "comms"
+      },
+      {
+        "from": "comms",
+        "to": "price"
+      },
+      {
+        "from": "price",
+        "to": "auto?"
+      },
+      {
+        "from": "auto?",
+        "to": "automations",
+        "label": "Yes"
+      },
+      {
+        "from": "auto?",
+        "to": "review",
+        "label": "Skip"
+      },
+      {
+        "from": "automations",
+        "to": "review"
+      },
+      {
+        "from": "review",
+        "to": "ready?"
+      },
+      {
+        "from": "ready?",
+        "to": "return",
+        "label": "No"
+      },
+      {
+        "from": "return",
+        "to": "review"
+      },
+      {
+        "from": "ready?",
+        "to": "test",
+        "label": "Yes"
+      },
+      {
+        "from": "test",
+        "to": "validate"
+      },
+      {
+        "from": "validate",
+        "to": "live"
+      },
+      {
+        "from": "profile",
+        "to": "resume"
+      },
+      {
+        "from": "tools",
+        "to": "resume"
+      },
+      {
+        "from": "crew",
+        "to": "resume"
+      },
+      {
+        "from": "resume",
+        "to": "review"
+      }
+    ],
+    "chapters": [
+      {
+        "id": "road.1",
+        "label": "Already done",
+        "range": [
+          0,
+          1060
+        ],
+        "nodes": [
+          "account",
+          "owner",
+          "agreement?",
+          "agreement"
+        ],
+        "narration": "Here's the whole road to getting set up. You've already done the start. You made your account, we checked you're the owner, and you signed the agreement.",
+        "done": true
+      },
+      {
+        "id": "road.2",
+        "label": "Step 1 · AI",
+        "range": [
+          1040,
+          1600
+        ],
+        "nodes": [
+          "ai?",
+          "ai",
+          "manual"
+        ],
+        "narration": "First, AI. Connect your own AI account, and we pick the right model for each job. Or skip it, and do everything by hand."
+      },
+      {
+        "id": "road.3",
+        "label": "Step 2 · Files and maps",
+        "range": [
+          1560,
+          1860
+        ],
+        "nodes": [
+          "storage"
+        ],
+        "narration": "Then where your photos, documents and maps live."
+      },
+      {
+        "id": "road.4",
+        "label": "Step 3 · Your company",
+        "range": [
+          1820,
+          2330
+        ],
+        "nodes": [
+          "profile",
+          "brand"
+        ],
+        "narration": "Then your company profile and brand, so everything customers see looks like you."
+      },
+      {
+        "id": "road.5",
+        "label": "Step 4 · Trade pack",
+        "range": [
+          2330,
+          3090
+        ],
+        "nodes": [
+          "trade",
+          "preview",
+          "defaults"
+        ],
+        "narration": "Your trade pack fills in job types, statuses, a catalog and locations. You've already got this one."
+      },
+      {
+        "id": "road.6",
+        "label": "Steps 5 and 6 · Tools and stock",
+        "range": [
+          3060,
+          3560
+        ],
+        "nodes": [
+          "tools",
+          "stock"
+        ],
+        "narration": "Then the tools and trucks you own, and the stock you keep on the shelf."
+      },
+      {
+        "id": "road.7",
+        "label": "Step 7 · Crew",
+        "range": [
+          3540,
+          4060
+        ],
+        "nodes": [
+          "crew",
+          "roles",
+          "resume"
+        ],
+        "narration": "Your crew, with the right roles and the mobile app. You can stop anywhere and pick it up later."
+      },
+      {
+        "id": "road.8",
+        "label": "Steps 8 and 9 · Phone and prices",
+        "range": [
+          4040,
+          4540
+        ],
+        "nodes": [
+          "comms",
+          "price"
+        ],
+        "narration": "Your phone, texts and email. Then a quick look at your prices."
+      },
+      {
+        "id": "road.9",
+        "label": "Step 10 · Automations",
+        "range": [
+          4520,
+          5110
+        ],
+        "nodes": [
+          "auto?",
+          "automations"
+        ],
+        "narration": "Then you decide what CrewBarn chases for you. Reminders, follow-ups, past-due nudges."
+      },
+      {
+        "id": "road.10",
+        "label": "Step 11 · Go live",
+        "range": [
+          5080,
+          6400
+        ],
+        "nodes": [
+          "review",
+          "ready?",
+          "return",
+          "test",
+          "validate",
+          "live"
+        ],
+        "narration": "And last, a launch review, a test job from start to invoice, and you're live. That's the road. I'll walk you through each step, and you can skip anything and come back. Ready? Let's go.",
+        "zoomOutAt": 78
+      }
+    ]
+  }
+}

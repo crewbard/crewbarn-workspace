@@ -1,3 +1,4 @@
+import { asPicture } from '@/lib/rasterizeIfSvg'
 import { useEffect, useRef, useState } from 'react'
 import { useParams, Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
@@ -18,13 +19,21 @@ import {
   type WorkOrderQuickEditState,
 } from '@/components/workorders/WorkOrderQuickEdit'
 import { WorkOrderStatusHistory } from '@/components/workorders/WorkOrderStatusHistory'
+import { CallSettingsCard } from '@/components/calls/CallSettingsCard'
 import { WorkOrderPhotosPanel } from '@/components/workorders/WorkOrderPhotosPanel'
 import { ReferencedText } from '@/components/ReferencedText'
 import { TasksPanel } from '@/components/tasks/TasksPanel'
+import { JobTasksCard } from '@/components/jobTasks/JobTasksCard'
+import { LeadCallCard } from '@/components/workorders/LeadCallCard'
+import { WhatWorkedPanel } from '@/components/reference/WhatWorkedPanel'
+import { OnSiteDetails } from '@/components/workorders/OnSiteDetails'
+import { PortalUpdatesNotice } from '@/components/customers/PortalUpdatesNotice'
 import { EntityActivityPanel } from '@/components/EntityActivityPanel'
 import { AttachmentsPanel } from '@/components/attachments/AttachmentsPanel'
 import { WorkOrderNotesPanel, WorkOrderNotesTabButton } from '@/components/workorders/WorkOrderNotesPanel'
 import { NeedsAttentionBanner } from '@/components/workorders/NeedsAttentionBanner'
+import { RescheduleRequestsPanel } from '@/components/workorders/RescheduleRequestsPanel'
+import { JobAutomationSwitch } from '@/components/workorders/JobAutomationSwitch'
 import { WorkOrderCustomerAssetsPanel } from '@/components/workorders/WorkOrderCustomerAssetsPanel'
 import { WorkOrderInspectionPanel } from '@/components/workorders/WorkOrderInspectionPanel'
 import { WorkOrderAgreementsPanel } from '@/components/workorders/WorkOrderAgreementsPanel'
@@ -35,13 +44,13 @@ import { WorkOrderSubInvoicePanel } from '@/components/workorders/WorkOrderSubIn
 import { WorkOrderSignaturesPanel } from '@/components/workorders/WorkOrderSignaturesPanel'
 import { WorkOrderMessagesTab } from '@/components/comms/WorkOrderMessagesTab'
 import { MessagesDrawer } from '@/components/comms/MessagesDrawer'
-import { SubJobLinkPanel } from '@/components/workorders/SubJobLinkPanel'
 
 import { ReceivePaymentModal } from '@/components/ReceivePaymentModal'
 import { TerminalChargeButton } from '@/components/invoices/TerminalChargeButton'
 import { InvoiceOverlay } from '@/components/invoices/InvoiceOverlay'
 import type { Invoice } from '@/types/invoice'
 import type { WorkOrder } from '@/types/workOrder'
+import { useRecordShortcuts } from '@/hooks/useShortcuts'
 
 type ReceiptAttachment = {
   id: string
@@ -94,6 +103,7 @@ function money(cents: number) {
 
 type Tab =
   | 'overview'
+  | 'job-tasks'
   | 'line-items'
   | 'tasks'
   | 'notes'
@@ -114,6 +124,7 @@ type Tab =
 
 const TABS: Tab[] = [
   'overview',
+  'job-tasks',
   'line-items',
   'tasks',
   'notes',
@@ -139,6 +150,7 @@ function tabSection(tab: Tab): JobSection {
   switch (tab) {
     case 'overview':
       return 'overview'
+    case 'job-tasks':
     case 'line-items':
     case 'tasks':
     case 'customer-assets':
@@ -180,19 +192,29 @@ function sectionDefaultTab(section: JobSection): Tab {
       return 'drives'
   }
 }
-export function WorkOrderDetailPage() {
+export function WorkOrderDetailPage({ recordId }: { recordId?: string } = {}) {
   const { theme } = useTheme()
   const easy = theme === 'easy-side' || theme === 'easy-top'
-  const { id } = useParams<{ id: string }>()
+  const focus = theme === 'focus'
+  const { id: routeId } = useParams<{ id: string }>()
+  const id = recordId ?? routeId
   const navigate = useNavigate()
   const [searchParams, setSearchParams] = useSearchParams()
+  const [embeddedTab, setEmbeddedTab] = useState<Tab>('overview')
   const qc = useQueryClient()
   const { has } = usePermissions()
+  // View-only users see the job but none of the controls that change it.
+  const canEdit = has('jobs.edit')
+  const canBill = has('invoices.edit')
   const workOrderQuery = useWorkOrder(id)
   const deleteWorkOrder = useDeleteWorkOrder()
-  const tab = TABS.includes(searchParams.get('tab') as Tab) ? (searchParams.get('tab') as Tab) : 'overview'
+  const tab = recordId ? embeddedTab : TABS.includes(searchParams.get('tab') as Tab) ? (searchParams.get('tab') as Tab) : 'overview'
   const activeSection = tabSection(tab)
   const setTab = (next: Tab) => {
+    if (recordId) {
+      setEmbeddedTab(next)
+      return
+    }
     const params = new URLSearchParams(searchParams)
     if (next === 'overview') {
       params.delete('tab')
@@ -216,6 +238,7 @@ export function WorkOrderDetailPage() {
     saving: false,
     saved: false,
   })
+  const [focusEditOpen, setFocusEditOpen] = useState(false)
 
   const unSubMutation = useMutation({
     mutationFn: () => apiRequest(`/v1/work-orders/${id}/sub-out`, { method: 'DELETE' }),
@@ -339,6 +362,26 @@ export function WorkOrderDetailPage() {
   // the internal custody step, shown so the office knows where the money is.
   const awaitingCountIn = (woPaymentsQ.data?.data ?? []).some((p) => p.status === 'pending_turnover')
 
+  // Keyboard shortcuts on this job (not when it's shown inside another page):
+  // E opens the job's details for editing, M its messages, Ctrl/⌘ Enter saves the details.
+  useRecordShortcuts({
+    edit: canEdit && workOrderQuery.data ? () => {
+      setTab('overview')
+      if (focus) setFocusEditOpen(true)
+      window.setTimeout(() => {
+        const field = document.querySelector<HTMLElement>('#focus-job-editor-fields :is(input:not([type="hidden"]), textarea, select)')
+        field?.scrollIntoView({ block: 'center', behavior: 'smooth' })
+        field?.focus({ preventScroll: true })
+      }, 60)
+    } : undefined,
+    messages: workOrderQuery.data ? () => setTab('messages') : undefined,
+    save: () => {
+      if (tab !== 'overview' || !canEdit || !quickEditState.dirty || quickEditState.saving) return false
+      quickEditRef.current?.save()
+      return true
+    },
+  }, !recordId)
+
   if (workOrderQuery.isLoading) {
     return <div className="max-w-screen-2xl mx-auto px-3 sm:px-6 pt-4 sm:pt-8 pb-40 text-slate-500">Loading...</div>
   }
@@ -355,6 +398,23 @@ export function WorkOrderDetailPage() {
   }
 
   const wo = workOrderQuery.data
+  // Where the job is, for the page tour: from booking through billing.
+  const jobState = wo.status?.category === 'cancelled' ? 'cancelled'
+    : liveInvoice?.status === 'paid' ? 'paid'
+    : liveInvoice ? 'invoiced'
+    : wo.status?.category === 'complete' ? 'complete'
+    : wo.status?.category === 'in_progress' ? 'in_progress'
+    : wo.status?.category === 'blocked' ? 'blocked'
+    : wo.schedule?.is_scheduled ? 'scheduled'
+    : 'unscheduled'
+  const focusJobShortcuts: { label: string; detail: string; destination: Tab; active: boolean }[] = [
+    { label: 'Visits', detail: 'Field log & customer WO', destination: 'doc', active: tab === 'doc' },
+    { label: 'Work & parts', detail: 'Scope, tasks & assets', destination: 'line-items', active: ['job-tasks', 'line-items', 'tasks', 'customer-assets', 'inspection', 'agreements'].includes(tab) },
+    { label: 'Proof', detail: wo.completion_override ? 'Proof override recorded' : 'Photos & documents', destination: 'photos', active: ['photos', 'documents', 'signatures'].includes(tab) },
+    { label: 'Messages & notes', detail: 'Customer conversation', destination: 'messages', active: ['messages', 'notes'].includes(tab) },
+    { label: 'Money', detail: 'Costs & reimbursements', destination: 'cost', active: ['cost', 'reimbursements', 'sub-invoice'].includes(tab) },
+    { label: 'History', detail: 'Drives & recorded changes', destination: 'drives', active: ['drives', 'history', 'activity'].includes(tab) },
+  ]
 
   async function handleDelete() {
     if (!id) return
@@ -370,7 +430,7 @@ export function WorkOrderDetailPage() {
   }
 
   return (
-    <div className="max-w-screen-2xl mx-auto px-3 sm:px-6 pt-4 sm:pt-8 pb-40">
+    <div data-focus-record="job" className="max-w-screen-2xl mx-auto px-3 sm:px-6 pt-4 sm:pt-8 pb-40">
       {/*
         Covered by a service agreement.
         Above everything, because it changes what the person is allowed to
@@ -379,7 +439,7 @@ export function WorkOrderDetailPage() {
         amber — this is not a problem, it is a fact about the work.
       */}
       {wo.covered_by && (
-        <div className="mb-4 rounded-lg border border-emerald-300 bg-emerald-50 px-4 py-3">
+        <div data-tour="job-covered" className="mb-4 rounded-lg border border-emerald-300 bg-emerald-50 px-4 py-3">
           <p className="text-sm font-bold text-emerald-900">
             Covered by {wo.covered_by.title ?? 'a service agreement'}
           </p>
@@ -419,7 +479,7 @@ export function WorkOrderDetailPage() {
       <Link to="/jobs" className="inline-flex items-center gap-2 text-sm font-semibold text-amber-700 hover:text-amber-800 mb-4">
         &larr; Back to Jobs
       </Link>
-      <section className="rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden mb-4">
+      <section data-tour="job-header" data-job-state={jobState} className="rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden mb-4">
         {easy && <div className="flex flex-wrap items-center justify-between gap-3 bg-emerald-950 px-5 py-4 text-white sm:px-7">
           <div><p className="text-xs font-semibold uppercase tracking-widest text-emerald-200">Job workspace</p>
             <p className="mt-1 text-sm">Plan the visit, carry out the work, and review billing—all in one place.</p></div>
@@ -443,7 +503,7 @@ export function WorkOrderDetailPage() {
               {(() => {
                 if (!liveInvoice) {
                   return wo.status?.category === 'complete' ? (
-                    <span className="inline-flex items-center rounded-full border border-amber-300 bg-amber-50 px-2.5 py-1 text-xs font-semibold text-amber-800" title="Complete but no invoice yet">
+                    <span data-tour="job-billing" className="inline-flex items-center rounded-full border border-amber-300 bg-amber-50 px-2.5 py-1 text-xs font-semibold text-amber-800" title="Complete but no invoice yet">
                       Not invoiced
                     </span>
                   ) : null
@@ -451,6 +511,7 @@ export function WorkOrderDetailPage() {
                 if (liveInvoice.status === 'paid') {
                   return (
                     <span
+                      data-tour="job-billing"
                       className="inline-flex items-center rounded-full border border-emerald-300 bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-800"
                       title={awaitingCountIn ? 'Customer paid; the money is with the tech until it is counted in at the cash register' : 'Invoice paid in full'}
                     >
@@ -461,6 +522,7 @@ export function WorkOrderDetailPage() {
                 const due = liveInvoice.money?.balance_due_cents ?? 0
                 return (
                   <span
+                    data-tour="job-billing"
                     className="inline-flex items-center rounded-full border border-sky-300 bg-sky-50 px-2.5 py-1 text-xs font-semibold text-sky-800"
                     title={liveInvoice.bank_transfer_promised_at ? 'Customer says a bank transfer is on the way' : `Invoice ${liveInvoice.display_number} — balance due`}
                   >
@@ -475,6 +537,7 @@ export function WorkOrderDetailPage() {
               {wo.job_type && <span>{wo.job_type.name}</span>}
               <span className="text-slate-300">•</span>
               <span className="capitalize">{wo.priority}</span>
+              <JobAutomationSwitch workOrder={wo} />
               {downPaymentCents > 0 && (
                 <span
                   className="inline-flex items-center rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-700"
@@ -485,18 +548,20 @@ export function WorkOrderDetailPage() {
               )}
             </div>
           </div>
-          <div className="flex shrink-0 items-center gap-2 flex-wrap lg:justify-end">
+          <div data-tour="job-actions" className="flex shrink-0 items-center gap-2 flex-wrap lg:justify-end">
             <button
               type="button"
+              data-tour="job-action-messages"
               onClick={() => setMessagesOpen(true)}
               className="rounded-lg border border-slate-300 px-3 py-2 text-sm font-semibold text-slate-800 hover:bg-slate-50 whitespace-nowrap"
               title="View / send texts + emails for this job"
             >
               💬 Messages
             </button>
-            {!wo.is_subbed && (
+            {!wo.is_subbed && canEdit && (
               <button
                 type="button"
+                data-tour="job-action-subout"
                 onClick={() => setSubOutOpen(true)}
                 className="rounded-lg border border-amber-400 px-3 py-2 text-sm font-semibold text-amber-800 hover:bg-amber-50 whitespace-nowrap"
                 title="Outsource this job to a vendor partner"
@@ -504,9 +569,10 @@ export function WorkOrderDetailPage() {
                 Sub this out
               </button>
             )}
-            {hasInvoice ? (
+            {hasInvoice ? (has('invoices.view') &&
               <button
                 type="button"
+                data-tour="job-action-view-invoice"
                 onClick={() => setInvoiceOverlayId(liveInvoice!.id)}
                 className="rounded-lg bg-emerald-600 px-3 py-2 text-sm font-semibold text-white hover:bg-emerald-700 whitespace-nowrap"
                 title="Open this job's invoice"
@@ -514,9 +580,10 @@ export function WorkOrderDetailPage() {
                 View invoice
               </button>
             ) : (
-              wo.status?.category === 'complete' && wo.service_customer?.id && (
+              wo.status?.category === 'complete' && wo.service_customer?.id && canBill && (
                 <button
                   type="button"
+                  data-tour="job-action-invoice"
                   onClick={() => {
                     /*
                      * A covered visit is already paid for by the
@@ -556,9 +623,10 @@ export function WorkOrderDetailPage() {
                 </button>
               )
             )}
-            {wo.service_customer?.id && (
+            {wo.service_customer?.id && canBill && (
               <button
                 type="button"
+                data-tour="job-action-payment"
                 onClick={() => setReceivePaymentOpen(true)}
                 className="rounded-lg bg-emerald-600 px-3 py-2 text-sm font-semibold text-white hover:bg-emerald-700 whitespace-nowrap"
                 title={hasInvoice ? 'Receive a payment against this job’s invoice' : 'Take a down payment on this job'}
@@ -569,7 +637,7 @@ export function WorkOrderDetailPage() {
             {/* Straight to the Smart Terminal for whatever's still owed on
                 the invoice. Renders only when a terminal is ticked and the
                 invoice has a balance. */}
-            {liveInvoice && liveInvoice.status !== 'paid' && liveInvoice.money && (
+            {liveInvoice && liveInvoice.status !== 'paid' && liveInvoice.money && canBill && (
               <TerminalChargeButton
                 invoice={liveInvoice}
                 compact
@@ -579,18 +647,21 @@ export function WorkOrderDetailPage() {
                 }}
               />
             )}
-            <button
-              type="button"
-              onClick={handleDelete}
-              className="rounded-lg px-3 py-2 text-sm font-semibold text-rose-700 hover:bg-rose-50 whitespace-nowrap"
-            >
-              Delete
-            </button>
+            {canEdit && (
+              <button
+                type="button"
+                data-tour="job-action-delete"
+                onClick={handleDelete}
+                className="rounded-lg px-3 py-2 text-sm font-semibold text-rose-700 hover:bg-rose-50 whitespace-nowrap"
+              >
+                Delete
+              </button>
+            )}
           </div>
         </div>
       </section>
 
-      <div className="grid gap-px overflow-hidden rounded-xl border border-slate-200 bg-slate-200 shadow-sm sm:grid-cols-2 lg:grid-cols-5 mb-5">
+      <div data-tour="job-summary" className="grid gap-px overflow-hidden rounded-xl border border-slate-200 bg-slate-200 shadow-sm sm:grid-cols-2 lg:grid-cols-5 mb-5">
         <div className="bg-white p-4">
           <div className="text-[11px] font-bold uppercase tracking-wide text-slate-400">Customer</div>
           {wo.service_customer ? (
@@ -634,6 +705,7 @@ export function WorkOrderDetailPage() {
           URL because it isn't accessible from our tenant scope. */}
       {wo.mirror && (
         <section
+          data-tour="job-sub-banner"
           className={`border rounded-xl p-4 mb-4 ${
             wo.mirror.status === 'pending_accept'
               ? 'bg-sky-50 border-sky-200'
@@ -669,7 +741,7 @@ export function WorkOrderDetailPage() {
 
       {/* Sub assignment banner — only when this WO is subbed. */}
       {wo.is_subbed && wo.sub_assignment && (
-        <section className="bg-amber-50 border border-amber-200 rounded-xl p-4 mb-4">
+        <section data-tour="job-sub-banner" className="bg-amber-50 border border-amber-200 rounded-xl p-4 mb-4">
           <div className="flex items-start justify-between gap-4">
             <div className="min-w-0 flex-1">
               <div className="text-xs font-semibold text-amber-900 uppercase tracking-wider mb-1 flex items-center gap-2">
@@ -719,11 +791,6 @@ export function WorkOrderDetailPage() {
                   {wo.sub_assignment.sub_special_instructions}
                 </div>
               )}
-              {/* Magic-link panel — generate/copy/revoke the per-WO
-                  sub.crewbarn.com/j/{token} link. Only meaningful for
-                  non-CrewBarn subs; for CrewBarn-tenant subs the
-                  cross-tenant mirror handles dispatch instead. */}
-              <SubJobLinkPanel workOrderId={wo.id} />
             </div>
             <div className="flex flex-col items-end gap-2 shrink-0">
               <Link
@@ -732,7 +799,7 @@ export function WorkOrderDetailPage() {
               >
                 Review pending →
               </Link>
-              <div className="flex items-center gap-2">
+              {canEdit && <div className="flex items-center gap-2">
                 <button
                   type="button"
                   onClick={() => setEditSubOutOpen(true)}
@@ -746,7 +813,7 @@ export function WorkOrderDetailPage() {
                   onClick={() => {
                     if (
                       confirm(
-                        "Un-sub this WO? Clears the assignment and returns the job to in-house. The sub loses portal access to it.",
+                        "Un-sub this WO? Clears the assignment and returns the job to in-house. The sub's copy of the job is cancelled.",
                       )
                     ) {
                       unSubMutation.mutate()
@@ -758,7 +825,7 @@ export function WorkOrderDetailPage() {
                 >
                   {unSubMutation.isPending ? 'Un-subbing…' : 'Un-sub'}
                 </button>
-              </div>
+              </div>}
             </div>
           </div>
         </section>
@@ -818,9 +885,14 @@ export function WorkOrderDetailPage() {
         title={`Messages · ${wo.display_number ?? 'Job'}`}
       />
 
+      {/* A job from the portal: its customer's contact changes waiting for the office. */}
+      {wo.requested_by_platform_customer_id && wo.service_customer_id && (
+        <PortalUpdatesNotice customerId={wo.service_customer_id} customerName={wo.service_customer?.display_name ?? null} workOrderId={wo.id} />
+      )}
+
       {/* Customer-initiated request — accept / decline banner */}
       {wo.request_status === 'pending' && (
-        <section className="bg-amber-50 border border-amber-300 rounded-xl p-4 mb-4">
+        <section data-tour="job-portal-request" className="bg-amber-50 border border-amber-300 rounded-xl p-4 mb-4">
           <div className="flex items-start justify-between gap-4">
             <div className="flex-1 min-w-0">
               <div className="text-xs font-semibold text-amber-900 uppercase tracking-wider mb-1">
@@ -838,7 +910,7 @@ export function WorkOrderDetailPage() {
               {((acceptReq.error ?? declineReq.error) as ApiError)?.message ?? 'Action failed.'}
             </div>
           )}
-          {!showDecline ? (
+          {!canEdit ? null : !showDecline ? (
             <div className="flex items-center gap-2 mt-3">
               <button
                 type="button"
@@ -892,6 +964,18 @@ export function WorkOrderDetailPage() {
         </section>
       )}
 
+      {/* Completed without its required proof, by someone allowed to. */}
+      {wo.completion_override && (
+        <section aria-label="Completed without required proof" className="mb-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950">
+          <div className="font-semibold">Completed without its required proof</div>
+          <div className="mt-0.5">Missing: {wo.completion_override.missing.join(' ')}</div>
+          <div className="mt-0.5">
+            Reason: {wo.completion_override.reason}
+            {wo.completion_override.by_name ? ` (${wo.completion_override.by_name})` : ''}
+          </div>
+        </section>
+      )}
+
       {/* Needs attention — highlighted roll-up of dealer-billing routing,
           unbilled, subbed, unread messages, and notes for this job. */}
       <NeedsAttentionBanner
@@ -899,6 +983,16 @@ export function WorkOrderDetailPage() {
         onOpenNotes={() => setTab('notes')}
         onOpenMessages={() => setMessagesOpen(true)}
       />
+
+      {/* A customer asked from the portal to move this visit. */}
+      <RescheduleRequestsPanel workOrderId={wo.id} canEdit={canEdit} />
+
+      {focus && <nav data-focus-job-shortcuts aria-label="Job workflow" className="mb-4 grid grid-cols-2 gap-2 rounded-xl border border-slate-200 bg-white p-2 shadow-sm sm:grid-cols-3 xl:grid-cols-6">
+        {focusJobShortcuts.map((shortcut) => <button key={shortcut.label} type="button" aria-pressed={shortcut.active} onClick={() => setTab(shortcut.destination)} className="min-w-0 rounded-lg px-3 py-2 text-left hover:bg-slate-50">
+          <span className="block truncate text-sm font-semibold">{shortcut.label}</span>
+          <span className="mt-0.5 block truncate text-xs">{shortcut.detail}</span>
+        </button>)}
+      </nav>}
 
       {/* Grouped navigation keeps the full job workspace discoverable without
           flattening every tool into one crowded row. */}
@@ -916,18 +1010,18 @@ export function WorkOrderDetailPage() {
                   ? 'Review internal and customer-facing notes using the existing visibility controls.'
                   : 'Review travel and recorded changes without changing the job.'}</p>
       </section>}
-      <div className="mb-6 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+      <div data-tour="job-tabs" className="mb-6 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
         <nav className={`flex ${easy ? 'min-w-0 flex-wrap bg-slate-50 py-2' : 'min-w-max'} items-center gap-1 overflow-x-auto border-b border-slate-200 px-2`} aria-label="Job sections">
-          <TabButton active={activeSection === 'overview'} onClick={() => setTab('overview')}>
+          <TabButton tour="job-tab-overview" active={activeSection === 'overview'} onClick={() => setTab('overview')}>
             Overview
           </TabButton>
-          <TabButton active={activeSection === 'field'} onClick={() => setTab(sectionDefaultTab('field'))}>
-            {easy ? 'The work' : <>Field <span className="ml-1 text-xs text-slate-400">6</span></>}
+          <TabButton tour="job-tab-field" active={activeSection === 'field'} onClick={() => setTab(sectionDefaultTab('field'))}>
+            {easy ? 'The work' : 'Field'}
           </TabButton>
-          <TabButton active={activeSection === 'money'} onClick={() => setTab(sectionDefaultTab('money'))}>
+          <TabButton tour="job-tab-money" active={activeSection === 'money'} onClick={() => setTab(sectionDefaultTab('money'))}>
             {easy ? 'Costs & reimbursements' : 'Expense'}
           </TabButton>
-          <TabButton active={activeSection === 'messages'} onClick={() => setTab('messages')}>
+          <TabButton tour="job-tab-messages" active={activeSection === 'messages'} onClick={() => setTab('messages')}>
             Messages
           </TabButton>
           <div className="px-3 pt-3">
@@ -939,7 +1033,7 @@ export function WorkOrderDetailPage() {
               legacyPublic={wo.public_notes}
             />
           </div>
-          <TabButton active={activeSection === 'log'} onClick={() => setTab('drives')}>
+          <TabButton tour="job-tab-log" active={activeSection === 'log'} onClick={() => setTab('drives')}>
             {easy ? 'History & travel' : 'Log'}
           </TabButton>
         </nav>
@@ -947,29 +1041,31 @@ export function WorkOrderDetailPage() {
           <nav className={`flex ${easy ? 'min-w-0 flex-wrap' : 'min-w-max'} gap-1 overflow-x-auto bg-slate-50/80 px-4 py-2`} aria-label={`${activeSection} job tools`}>
             {activeSection === 'field' && (
               <>
-                <TabButton active={tab === 'line-items'} onClick={() => setTab('line-items')}>Line items</TabButton>
-                <TabButton active={tab === 'tasks'} onClick={() => setTab('tasks')}>Tasks</TabButton>
-                <TabButton active={tab === 'customer-assets'} onClick={() => setTab('customer-assets')}>Customer assets</TabButton>
-                {wo.inspection_checklist_id && <TabButton active={tab === 'inspection'} onClick={() => setTab('inspection')}>Inspection</TabButton>}
-                <TabButton active={tab === 'agreements'} onClick={() => setTab('agreements')}>Agreements</TabButton>
-                <TabButton active={tab === 'doc'} onClick={() => setTab('doc')}>Work order documents</TabButton>
-                <TabButton active={tab === 'photos'} onClick={() => setTab('photos')}>BarnCam</TabButton>
-                <TabButton active={tab === 'documents'} onClick={() => setTab('documents')}>Documents</TabButton>
+                <TabButton tour="job-tab-job-tasks" active={tab === 'job-tasks'} onClick={() => setTab('job-tasks')}>Job tasks</TabButton>
+                <TabButton tour="job-tab-line-items" active={tab === 'line-items'} onClick={() => setTab('line-items')}>Line items</TabButton>
+                {/* To-dos and follow-ups that can be scheduled even after the job closed. */}
+                <TabButton tour="job-tab-tasks" active={tab === 'tasks'} onClick={() => setTab('tasks')}>Revisits</TabButton>
+                <TabButton tour="job-tab-customer-assets" active={tab === 'customer-assets'} onClick={() => setTab('customer-assets')}>Customer assets</TabButton>
+                {wo.inspection_checklist_id && <TabButton tour="job-tab-inspection" active={tab === 'inspection'} onClick={() => setTab('inspection')}>Inspection</TabButton>}
+                <TabButton tour="job-tab-agreements" active={tab === 'agreements'} onClick={() => setTab('agreements')}>Agreements</TabButton>
+                <TabButton tour="job-tab-doc" active={tab === 'doc'} onClick={() => setTab('doc')}>Work order documents</TabButton>
+                <TabButton tour="job-tab-photos" active={tab === 'photos'} onClick={() => setTab('photos')}>BarnCam</TabButton>
+                <TabButton tour="job-tab-documents" active={tab === 'documents'} onClick={() => setTab('documents')}>Documents</TabButton>
               </>
             )}
             {activeSection === 'money' && (
               <>
-                <TabButton active={tab === 'cost'} onClick={() => setTab('cost')}>Cost & profit</TabButton>
-                <TabButton active={tab === 'reimbursements'} onClick={() => setTab('reimbursements')}>Reimbursements</TabButton>
-                {wo.is_subbed && <TabButton active={tab === 'sub-invoice'} onClick={() => setTab('sub-invoice')}>Invoice</TabButton>}
-                {wo.is_subbed && <TabButton active={tab === 'signatures'} onClick={() => setTab('signatures')}>Signed doc</TabButton>}
+                <TabButton tour="job-tab-cost" active={tab === 'cost'} onClick={() => setTab('cost')}>Cost & profit</TabButton>
+                <TabButton tour="job-tab-reimbursements" active={tab === 'reimbursements'} onClick={() => setTab('reimbursements')}>Reimbursements</TabButton>
+                {wo.is_subbed && <TabButton tour="job-tab-sub-invoice" active={tab === 'sub-invoice'} onClick={() => setTab('sub-invoice')}>Invoice</TabButton>}
+                {wo.is_subbed && <TabButton tour="job-tab-signatures" active={tab === 'signatures'} onClick={() => setTab('signatures')}>Signed doc</TabButton>}
               </>
             )}
             {activeSection === 'log' && (
               <>
-                <TabButton active={tab === 'drives'} onClick={() => setTab('drives')}>Drives</TabButton>
-                <TabButton active={tab === 'history'} onClick={() => setTab('history')}>History</TabButton>
-                {has('settings.view') && <TabButton active={tab === 'activity'} onClick={() => setTab('activity')}>Activity</TabButton>}
+                <TabButton tour="job-tab-drives" active={tab === 'drives'} onClick={() => setTab('drives')}>Drives</TabButton>
+                <TabButton tour="job-tab-history" active={tab === 'history'} onClick={() => setTab('history')}>History</TabButton>
+                {has('settings.view') && <TabButton tour="job-tab-activity" active={tab === 'activity'} onClick={() => setTab('activity')}>Activity</TabButton>}
               </>
             )}
           </nav>
@@ -977,15 +1073,67 @@ export function WorkOrderDetailPage() {
       </div>
       {/* Content */}
       {tab === 'overview' && (
-        <div className="grid items-start gap-6 lg:grid-cols-[minmax(0,1fr)_360px]">
+        <div data-focus-job-overview className="grid items-start gap-6 lg:grid-cols-[minmax(0,1fr)_360px]">
+          {wo.is_lead && <LeadCallCard wo={wo} canEdit={canEdit} />}
+          {focus && (
+            <section data-focus-job-glance data-tour="job-glance" aria-label="Job at a glance" className="lg:col-span-2">
+              <div className="focus-job-glance-item">
+                <span>Customer</span>
+                {wo.service_customer ? <Link to={`/customers/${wo.service_customer.id}`}>{wo.service_customer.display_name}</Link> : <strong>Not selected</strong>}
+                <small>{wo.service_location?.nickname || wo.service_location?.city || 'No service location'}</small>
+              </div>
+              <div className="focus-job-glance-item">
+                <span>Visit</span>
+                <strong>{wo.schedule.date || 'Not scheduled'}</strong>
+                <small>{wo.schedule.start_time ? formatTime12(wo.schedule.start_time.slice(0, 5)) : 'Set a time in job details'}</small>
+              </div>
+              <div className="focus-job-glance-item">
+                <span>Lead technician</span>
+                <strong>{wo.lead_tech?.full_name || 'Unassigned'}</strong>
+                <small>{wo.lead_tech?.active === false ? 'Inactive — reassign open work' : wo.crew?.name || 'Crew and helpers below'}</small>
+              </div>
+              <div className="focus-job-glance-item">
+                <span>Billing</span>
+                <strong>{liveInvoice ? liveInvoice.status === 'paid' ? 'Paid' : 'Invoiced' : wo.covered_by ? 'Agreement-covered' : 'Not invoiced'}</strong>
+                <small>{liveInvoice?.display_number || (wo.status?.category === 'complete' ? 'Review billing action above' : 'Finish the work first')}</small>
+              </div>
+            </section>
+          )}
           <div className="space-y-6">
-            <WorkOrderQuickEdit
-              ref={quickEditRef}
-              wo={wo}
-              onStateChange={setQuickEditState}
-              showInlineSave={false}
-            />
-          <Card title="Customer & Location">
+            {canEdit && (
+              <div data-focus-job-editor>
+                {focus && (
+                  <div className="focus-job-editor-heading">
+                    <div>
+                      <h2>Job details</h2>
+                      <p>Change the scope, customer, status, or assignment when you need to.</p>
+                    </div>
+                    <button
+                      type="button"
+                      data-tour="job-edit-toggle"
+                      aria-expanded={focusEditOpen}
+                      aria-controls="focus-job-editor-fields"
+                      onClick={() => setFocusEditOpen((open) => !open)}
+                      disabled={quickEditState.dirty}
+                      title={quickEditState.dirty ? 'Save or discard changes before closing' : undefined}
+                    >
+                      {focusEditOpen ? 'Close details' : 'Edit job'}
+                    </button>
+                  </div>
+                )}
+                <div id="focus-job-editor-fields" hidden={focus && !focusEditOpen}>
+                  <WorkOrderQuickEdit
+                    ref={quickEditRef}
+                    wo={wo}
+                    onStateChange={setQuickEditState}
+                    showInlineSave={false}
+                    visible={!focus || focusEditOpen}
+                  />
+                </div>
+              </div>
+            )}
+          <div data-tour="job-overview-cards" className="space-y-6">
+          <Card title="Customer & Location" tour="job-customer-card">
             <Row label="Service Customer">
               {wo.service_customer ? (
                 <Link
@@ -1034,6 +1182,11 @@ export function WorkOrderDetailPage() {
                 '—'
               )}
             </Row>
+            {(wo.site_contact || wo.site_unit) && (
+              <Row label="On site">
+                <OnSiteDetails wo={wo} />
+              </Row>
+            )}
             {wo.their_work_order_number && (
               <Row label="Their WO #">{wo.their_work_order_number}</Row>
             )}
@@ -1067,18 +1220,20 @@ export function WorkOrderDetailPage() {
               {wo.inspection_checklist.category && (
                 <Row label="Category">{wo.inspection_checklist.category}</Row>
               )}
-              <p className="text-xs text-slate-500 mt-2 italic">
-                Tech check-off + pass/fail capture ships with the next inspection
-                workflow update.
+              <p className="text-xs text-slate-500 mt-2">
+                Run the checklist on the Field › Inspection tab.
               </p>
             </Card>
           )}
           </div>
-          <aside className="space-y-6">
-            <Card title="Assignment">
-              {!wo.lead_tech && !wo.crew ? (
+          </div>
+          <aside data-tour="job-overview-side" className="space-y-6">
+            {/* What worked on past jobs about the same thing, and this job's answer. */}
+            <WhatWorkedPanel workOrderId={wo.id} />
+            <Card title="Assignment" tour="job-assignment-card">
+              {!wo.lead_tech && !wo.crew && !(wo.crew_members?.length) ? (
                 <div className="py-3 text-sm text-slate-500 italic">
-                  No tech or crew assigned. Use <strong>Quick edit</strong> above to assign.
+                  No tech or crew assigned.{canEdit && <> Use <strong>Quick edit</strong> above to assign.</>}
                 </div>
               ) : (
                 <>
@@ -1097,11 +1252,16 @@ export function WorkOrderDetailPage() {
                           </span>
                         )}
                         <strong>{wo.lead_tech.full_name}</strong>
+                        {wo.lead_tech.active === false && (
+                          <span className="rounded bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-800">
+                            Inactive — reassign open work
+                          </span>
+                        )}
                       </span>
                     </Row>
                   )}
                   {wo.crew && (
-                    <Row label="Crew">
+                    <Row label="Saved crew">
                       <span className="inline-flex items-center gap-2">
                         {wo.crew.color && (
                           <span
@@ -1111,35 +1271,56 @@ export function WorkOrderDetailPage() {
                         )}
                         <strong>{wo.crew.name}</strong>
                         <span className="text-xs text-slate-500">
-                          (multiple techs)
+                          (team from Staff › Crews)
                         </span>
                       </span>
+                    </Row>
+                  )}
+                  {(wo.crew_members?.length ?? 0) > 0 && (
+                    <Row label="Helpers">
+                      {wo.crew_members!.map((m) => m.name || m.email).filter(Boolean).join(', ')}
                     </Row>
                   )}
                 </>
               )}
             </Card>
 
-            <Card title="Schedule">
+            <Card title="Schedule" tour="job-schedule-card">
               <Row label="Status">
                 {wo.schedule.is_scheduled ? 'Scheduled' : 'Unscheduled'}
               </Row>
-              {wo.schedule.date && <Row label="Date">{wo.schedule.date}</Row>}
-              {wo.schedule.start_time && (
+              {(wo.schedule.planned_sessions?.length ?? 0) > 0 && (
+                <Row label="Workdays">{wo.schedule.planned_sessions!.length} separate work sessions</Row>
+              )}
+              {wo.schedule.planned_sessions?.slice(0, 4).map((session, index) => {
+                const zone = wo.schedule.timezone || 'UTC'
+                const start = new Date(session.scheduled_start_at)
+                const end = new Date(session.scheduled_end_at)
+                return <Row key={session.id} label={`Day ${index + 1}`}>
+                  {start.toLocaleDateString('en-US', { timeZone: zone, month: 'short', day: 'numeric', year: 'numeric' })}
+                  {' · '}{start.toLocaleTimeString('en-US', { timeZone: zone, hour: 'numeric', minute: '2-digit' })}
+                  {'–'}{end.toLocaleTimeString('en-US', { timeZone: zone, hour: 'numeric', minute: '2-digit' })}
+                </Row>
+              })}
+              {(wo.schedule.planned_sessions?.length ?? 0) > 4 && (
+                <Row label="More">{wo.schedule.planned_sessions!.length - 4} more workdays in Edit details</Row>
+              )}
+              {!wo.schedule.planned_sessions?.length && wo.schedule.date && <Row label="Date">{wo.schedule.date}</Row>}
+              {!wo.schedule.planned_sessions?.length && wo.schedule.start_time && (
                 <Row label="Start">
                   {formatTime12(wo.schedule.start_time.slice(0, 5))}
                   {wo.schedule.tz_abbrev ? ` ${wo.schedule.tz_abbrev}` : ''}
                 </Row>
               )}
-              {wo.schedule.end_time && (
+              {!wo.schedule.planned_sessions?.length && wo.schedule.end_time && (
                 <Row label="End">{formatTime12(wo.schedule.end_time.slice(0, 5))}</Row>
               )}
-              {wo.schedule.estimated_duration_minutes != null && (
+              {!wo.schedule.planned_sessions?.length && wo.schedule.estimated_duration_minutes != null && (
                 <Row label="Duration">{wo.schedule.estimated_duration_minutes} min</Row>
               )}
             </Card>
 
-            <Card title="Totals">
+            <Card title="Totals" tour="job-totals-card">
               <Row label="Subtotal">{wo.money.subtotal_formatted}</Row>
               <Row label="Tax">{wo.money.tax_formatted}</Row>
               {/* Shown as its own line rather than by quietly zeroing the tax
@@ -1156,6 +1337,7 @@ export function WorkOrderDetailPage() {
                 <strong>{wo.money.total_formatted}</strong>
               </Row>
             </Card>
+            <CallSettingsCard kind="job" id={wo.id} canEdit={has('jobs.edit')} />
             <WorkOrderStatusHistory
               workOrderId={wo.id}
               siteLat={wo.service_location?.latitude ?? null}
@@ -1176,11 +1358,13 @@ export function WorkOrderDetailPage() {
       {tab === 'customer-assets' && <WorkOrderCustomerAssetsPanel wo={wo} />}
 
       {tab === 'line-items' && (
+        <div data-tour="job-lineitems-panel">
         <Card title="Line Items">
           {/* Parts held for this job and the orders for it, when it came from an estimate. */}
           <PartsOrders workOrderId={wo.id} />
           <WorkOrderLineItemEditorLive
             workOrderId={wo.id}
+            disabled={!canEdit}
             availableAssets={(wo.covered_assets ?? []).map((asset) => ({
               id: asset.id,
               name: asset.name ?? asset.asset_code ?? asset.id,
@@ -1188,18 +1372,22 @@ export function WorkOrderDetailPage() {
             }))}
           />
         </Card>
+        </div>
       )}
 
       {tab === 'doc' && (
-        <div className="space-y-6">
-          {/* AI Vision field detection status — only shows when a template
-              PDF is on file. Foundation is wired; in-place writes use the
-              map at completion (Phase 2). */}
+        <div data-tour="job-doc-panel" className="space-y-6">
+          {/* The customer's own form: the blanks found on it, what goes in
+              each, preview, and how the last fill went. Only with a form on file. */}
           <WorkOrderAiFieldMapStatus
             workOrderId={wo.id}
             hasTemplatePdf={!!wo.template_pdf_url}
             map={wo.ai_field_map}
             detectedAt={wo.ai_field_map_at}
+            sources={wo.form_field_sources ?? null}
+            resolved={wo.form_field_resolved ?? null}
+            report={wo.filled_wo_pdf_report ?? null}
+            completed={!!wo.completed_at}
           />
           {/* Live PDF viewer — template (live doc being filled) and the
               signed copy once the WO completes. Each shows inline via
@@ -1226,43 +1414,57 @@ export function WorkOrderDetailPage() {
 
 
       {tab === 'inspection' && (
+        <div data-tour="job-inspection-panel">
         <WorkOrderInspectionPanel
           workOrderId={wo.id}
           hasChecklist={!!wo.inspection_checklist_id}
         />
+        </div>
+      )}
+
+      {tab === 'job-tasks' && (
+        <div data-tour="job-job-tasks-panel">
+          <JobTasksCard parent={{ kind: 'job', id: wo.id }} />
+        </div>
       )}
 
       {tab === 'tasks' && (
+        <div data-tour="job-tasks-panel">
         <TasksPanel
           anchorType="work_order"
           anchorId={wo.id}
           anchorLabel={wo.work_order_number != null ? String(wo.work_order_number) : undefined}
           canEdit={has('jobs.edit')}
         />
+        </div>
       )}
 
       {tab === 'agreements' && <WorkOrderAgreementsPanel workOrderId={wo.id} />}
 
-      {tab === 'photos' && <WorkOrderPhotosPanel workOrderId={wo.id} />}
+      {tab === 'photos' && <div data-tour="job-photos-panel"><WorkOrderPhotosPanel workOrderId={wo.id} canEdit={canEdit} /></div>}
 
       {tab === 'documents' && (
+        <div data-tour="job-documents-panel">
         <AttachmentsPanel
           basePath={`/v1/work-orders/${wo.id}`}
           cacheKey={['wo-attachments', wo.id]}
           mode="documents"
         />
+        </div>
       )}
 
-      {tab === 'cost' && <WorkOrderCostPanel wo={wo} paidRevenueCents={downPaymentCents} />}
+      {tab === 'cost' && <div data-tour="job-cost-panel"><WorkOrderCostPanel wo={wo} paidRevenueCents={downPaymentCents} /></div>}
 
-      {tab === 'reimbursements' && <WorkOrderReimbursementsPanel wo={wo} />}
+      {tab === 'reimbursements' && <div data-tour="job-reimbursements-panel"><WorkOrderReimbursementsPanel wo={wo} /></div>}
 
-      {tab === 'sub-invoice' && wo.is_subbed && <WorkOrderSubInvoicePanel workOrderId={wo.id} />}
+      {tab === 'sub-invoice' && wo.is_subbed && <div data-tour="job-sub-invoice-panel"><WorkOrderSubInvoicePanel workOrderId={wo.id} /></div>}
 
       {tab === 'signatures' && wo.is_subbed && <WorkOrderSignaturesPanel workOrderId={wo.id} />}
 
       {tab === 'messages' && (
+        <div data-tour="job-messages-panel">
         <WorkOrderMessagesTab workOrderId={wo.id} customerId={wo.service_customer_id} />
+        </div>
       )}
       {/* GPS drive history — the drive TO this job per visit (from /
           departed / arrived / duration / ≈miles), from the nightly rollup. */}
@@ -1271,11 +1473,13 @@ export function WorkOrderDetailPage() {
       {tab === 'history' && <WorkOrderHistoryPanel wo={wo} />}
 
       {tab === 'activity' && has('settings.view') && (
+        <div data-tour="job-activity-panel">
         <EntityActivityPanel entityId={wo.id} noun="job" />
+        </div>
       )}
 
-      {tab === 'overview' && (
-        <div className="fixed inset-x-0 bottom-0 z-30 border-t border-slate-200 bg-white/95 shadow-[0_-8px_24px_rgba(15,23,42,0.08)] backdrop-blur">
+      {tab === 'overview' && canEdit && (!focus || focusEditOpen || quickEditState.dirty) && (
+        <div data-tour="job-save-bar" className="fixed inset-x-0 bottom-0 z-30 border-t border-slate-200 bg-white/95 shadow-[0_-8px_24px_rgba(15,23,42,0.08)] backdrop-blur">
           <div className="mx-auto flex max-w-screen-2xl items-center justify-between gap-4 px-3 py-3 sm:px-6">
             <div className="flex items-center gap-2 text-sm font-semibold text-slate-600">
               <span
@@ -1763,7 +1967,7 @@ function WorkOrderReimbursementsPanel({ wo }: { wo: WorkOrder }) {
             <input
               type="file"
               accept="image/*,application/pdf,.doc,.docx"
-              onChange={(e) => setFile(e.target.files?.[0] ?? null)}
+              onChange={(e) => { const f = e.target.files?.[0]; if (f) void asPicture(f).then(setFile); else setFile(null) }}
               className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2"
             />
           </label>
@@ -1993,14 +2197,18 @@ function TabButton({
   active,
   onClick,
   children,
+  tour,
 }: {
   active: boolean
   onClick: () => void
   children: React.ReactNode
+  tour?: string
 }) {
   return (
     <button
       type="button"
+      data-tour={tour}
+      aria-pressed={active}
       onClick={onClick}
       // shrink-0 + whitespace-nowrap keep a two-word label on one line inside
       // the scrolling row; without them flex compresses the tab and the text
@@ -2018,9 +2226,9 @@ function TabButton({
 
 // Canonical card pattern — bg-white + slate-200 border + rounded-xl + shadow-sm + p-6
 // Keep this in sync across pages so the visual language is consistent.
-function Card({ title, children }: { title: string; children: React.ReactNode }) {
+function Card({ title, children, tour }: { title: string; children: React.ReactNode; tour?: string }) {
   return (
-    <section className="bg-white border border-slate-200 rounded-xl shadow-sm hover:shadow transition-shadow p-6">
+    <section data-tour={tour} className="bg-white border border-slate-200 rounded-xl shadow-sm hover:shadow transition-shadow p-6">
       <h2 className="text-base font-semibold text-navy-900 pb-3 mb-2 border-b border-slate-100">
         {title}
       </h2>
@@ -2094,9 +2302,6 @@ function DormantNoteGate({
             {add.isPending ? 'Saving…' : 'Add note & continue'}
           </button>
         </div>
-        <p className="mt-2 text-[11px] text-slate-400">
-          Dispatch can override this from the dashboard (override coming soon).
-        </p>
       </div>
     </div>
   )

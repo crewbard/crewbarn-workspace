@@ -1,8 +1,10 @@
+import { asPicture } from '@/lib/rasterizeIfSvg'
 import { useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { apiRequest, API_URL, getStoredToken, getActingTenant } from '@/lib/api'
 import type { ApiError } from '@/lib/api'
+import { assertFileResponse } from '@/lib/fileResponse'
 import { SignaturePad, type SignaturePadHandle } from '@/components/SignaturePad'
 
 /**
@@ -107,8 +109,8 @@ export function WorkOrderInspectionPanel({
       <section className="bg-amber-50 border border-amber-200 rounded-xl p-5 text-sm">
         <strong className="text-amber-900">No checklist attached.</strong>
         <p className="text-amber-800 mt-1 text-xs">
-          Pick an inspection checklist (NFPA 80, NFPA 25, NFPA 10, or custom)
-          on the WO Quick edit / Edit form before starting an inspection.
+          An inspection checklist is picked when the job is created (Inspection
+          Scope on New Job). It can&apos;t be added to this job afterwards.
         </p>
       </section>
     )
@@ -418,7 +420,7 @@ function InspectionItemRow({
   const uploadPhoto = useMutation({
     mutationFn: async (file: File) => {
       const fd = new FormData()
-      fd.append('photo', file)
+      fd.append('photo', await asPicture(file))
       const token = getStoredToken()
       const tenant = getActingTenant()
       const headers: Record<string, string> = { Accept: 'application/json' }
@@ -866,6 +868,7 @@ function DownloadReportButton({
         try { msg = JSON.parse(text).message ?? msg } catch { /* ignore */ }
         throw new Error(msg)
       }
+      assertFileResponse(res, 'application/pdf')
       const blob = await res.blob()
       const url = URL.createObjectURL(blob)
       window.open(url, '_blank')
@@ -1287,7 +1290,7 @@ function StartInspectionModal({
           )}
           {!assetsQ.isLoading && assets.length === 0 && (
             <p className="text-xs text-slate-500 italic">
-              No assets attached to this WO. Use Quick edit / Edit to add covered assets,
+              No assets attached to this job. Add them on Field › Customer assets,
               then come back.
             </p>
           )}
@@ -1358,6 +1361,7 @@ function DownloadRollupButton({ workOrderId }: { workOrderId: string }) {
         try { msg = JSON.parse(text).message ?? msg } catch { /* ignore */ }
         throw new Error(msg)
       }
+      assertFileResponse(res, 'application/pdf')
       const blob = await res.blob()
       const url = URL.createObjectURL(blob)
       window.open(url, '_blank')

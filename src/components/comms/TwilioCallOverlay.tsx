@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { Device } from '@twilio/voice-sdk'
+import type { Device } from '@twilio/voice-sdk'
 import {
   IconMicrophone,
   IconMicrophoneOff,
@@ -61,7 +61,9 @@ export function TwilioCallOverlay() {
         let device = deviceRef.current
 
         if (!device) {
-          device = new Device(token.token, {
+          // Loaded on the first call, not at sign-in.
+          const { Device: TwilioDevice } = await import('@twilio/voice-sdk')
+          device = new TwilioDevice(token.token, {
             logLevel: 'warn',
             closeProtection: true,
           })

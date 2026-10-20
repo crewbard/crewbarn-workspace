@@ -1,11 +1,8 @@
 import { apiRequest } from '@/lib/api'
-import type {
-  AdvanceInput,
-  TesterActivityResponse,
-  TesterDetailResponse,
-  TesterListResponse,
-  TesterProgressResponse,
-} from '@/types/tester'
+import type { AdvanceInput, TesterProgressResponse } from '@/types/tester'
+
+// The platform admin's views of testers live in src/admin/lib/testers.ts,
+// which the open-source work dashboard does not ship.
 
 // ---------- Tester self-service ----------
 
@@ -44,18 +41,4 @@ export async function acknowledgeTesterIntro(): Promise<TesterProgressResponse> 
   return apiRequest<TesterProgressResponse>('/v1/tester/progress/acknowledge-intro', {
     method: 'POST',
   })
-}
-
-// ---------- Admin views ----------
-
-export async function listAdminTesters(): Promise<TesterListResponse> {
-  return apiRequest<TesterListResponse>('/v1/admin/testers')
-}
-
-export async function getAdminTester(id: string): Promise<TesterDetailResponse> {
-  return apiRequest<TesterDetailResponse>(`/v1/admin/testers/${id}`)
-}
-
-export async function getAdminTesterActivity(id: string): Promise<TesterActivityResponse> {
-  return apiRequest<TesterActivityResponse>(`/v1/admin/testers/${id}/activity`)
 }

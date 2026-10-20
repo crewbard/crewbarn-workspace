@@ -5,10 +5,11 @@ import { ApiError } from '@/lib/api'
 import { betaApply, getBetaStatus, getSignupStatus, listPublicTrades, tenantSignup } from '@/lib/signup'
 import { Turnstile } from '@/components/Turnstile'
 import { AuthIntroBlueprint } from '@/pages/AuthIntro'
+import { BetaIntroFilm } from '@/pages/BetaIntroFilm'
 
 /**
  * app.crewbarn.com/beta — invite only. The full-screen CrewBarn hero with
- * one small box: enter the invite code Patrick handed out (or arrive with
+ * one small box: enter the invite code we handed out (or arrive with
  * ?invite=CODE). A live code opens the sign-up form right here — company,
  * trade, crew emails, password — and creates the workspace. No code?
  * "Ask for one" opens the short application instead.
@@ -30,6 +31,16 @@ export function BetaApplyPage() {
   const [code, setCode] = useState(params.get('invite') ?? '')
   const [checking, setChecking] = useState<string | null>(params.get('invite'))
   const [mode, setMode] = useState<'code' | 'signup' | 'apply' | 'sent' | 'applied'>('code')
+  // First the page's own canvas plays: the CrewBarn mark draws itself and the
+  // name wipes on (about 2.7 seconds). Then the intro film fades in over the
+  // middle of the page, plays, and fades away to the invite box. Someone
+  // arriving with an invite link goes straight to sign-up instead.
+  const [film, setFilm] = useState<'wait' | 'play' | 'done'>(params.get('invite') ? 'done' : 'wait')
+  useEffect(() => {
+    if (film !== 'wait') return
+    const t = window.setTimeout(() => setFilm('play'), 3200)
+    return () => window.clearTimeout(t)
+  }, [film])
   const [codeErr, setCodeErr] = useState<string | null>(null)
   const tradesQ = useQuery({ queryKey: ['public', 'trades'], queryFn: () => listPublicTrades() })
   const trades = tradesQ.data?.data ?? []
@@ -118,11 +129,13 @@ export function BetaApplyPage() {
   return (
     <div className="relative min-h-screen overflow-hidden bg-[#0B1120]">
       <AuthIntroBlueprint />
+      {film === 'play' && <BetaIntroFilm seats={{ spots: beta?.spots ?? null, left: beta?.left ?? null }} onDone={() => setFilm('done')} />}
       {/* The box sits low so the mark and the typed word stay clear. */}
-      <div className="absolute inset-0 flex items-end justify-center overflow-y-auto px-4 pb-8 pt-8 sm:pb-12">
-        <div className="w-full max-w-md rounded-2xl border border-white/10 bg-slate-950/80 p-5 text-white shadow-2xl backdrop-blur-md">
+      <div className={`absolute inset-0 flex items-end justify-center overflow-y-auto px-4 pb-8 pt-8 transition-opacity duration-700 sm:pb-12 ${film !== 'done' ? 'pointer-events-none opacity-0' : 'opacity-100'}`} aria-hidden={film !== 'done' || undefined}>
+        <div className="w-full max-w-md">
+        <div className="w-full rounded-2xl border border-white/10 bg-slate-950/80 p-5 text-white shadow-2xl backdrop-blur-md">
           {mode === 'code' && (
-            <form onSubmit={(e) => { e.preventDefault(); const m = code.match(/inv_[A-Za-z0-9]+/); if (m) { setCode(m[0]); setCodeErr(null); setChecking(m[0]) } else if (code.trim()) { setCodeErr('Codes start with inv_ — paste the whole thing.') } }}>
+            <form data-tour="beta-code" onSubmit={(e) => { e.preventDefault(); const m = code.match(/inv_[A-Za-z0-9]+/); if (m) { setCode(m[0]); setCodeErr(null); setChecking(m[0]) } else if (code.trim()) { setCodeErr('Codes start with inv_ — paste the whole thing.') } }}>
               <div className="text-[11px] font-bold uppercase tracking-[0.16em] text-amber-400">Beta · invite only</div>
               <h1 className="mt-1 text-lg font-bold">Have an invite code?</h1>
               <div className="mt-3 flex gap-2">
@@ -136,12 +149,13 @@ export function BetaApplyPage() {
                 <button type="button" onClick={() => { setMode('apply'); setErr(null) }} className="font-semibold text-slate-200 hover:underline">No code? Ask for one →</button>
                 <Link to="/login" className="hover:underline">Sign in</Link>
               </div>
+              <button type="button" onClick={() => setFilm('play')} className="mt-3 text-xs font-semibold text-amber-300 hover:underline">▶ Watch the beta intro</button>
               {beta && <p className="mt-3 text-[11px] text-slate-500">Free CrewBarn for life for the first {beta.spots} people who test the app · {beta.left} spot{beta.left === 1 ? '' : 's'} left</p>}
             </form>
           )}
 
           {mode === 'signup' && (
-            <form onSubmit={(e) => { e.preventDefault(); if (canSignup) signup.mutate() }} className="space-y-3">
+            <form data-tour="beta-signup" onSubmit={(e) => { e.preventDefault(); if (canSignup) signup.mutate() }} className="space-y-3">
               <div>
                 <div className="text-[11px] font-bold uppercase tracking-[0.16em] text-emerald-400">You're in</div>
                 <h1 className="mt-1 text-lg font-bold">Set up {company.trim() || 'your company'} on CrewBarn</h1>
@@ -154,11 +168,12 @@ export function BetaApplyPage() {
                 <label className={label}>First name<input value={firstName} onChange={(e) => setFirstName(e.target.value)} className={field} autoComplete="given-name" required /></label>
                 <label className={label}>Last name<input value={lastName} onChange={(e) => setLastName(e.target.value)} className={field} autoComplete="family-name" required /></label>
               </div>
-              <label className={label}>Trade
+              <label data-tour="beta-trade" className={label}>Trade
                 <select value={trade} onChange={(e) => setTrade(e.target.value)} className={field} required>
                   <option value="" className="text-slate-900">{tradesQ.isLoading ? 'Loading…' : 'Pick your trade'}</option>
                   {trades.map((t) => <option key={t.slug} value={t.slug} className="text-slate-900">{t.name}</option>)}
                 </select>
+                <span className="mt-1 block text-[11px] font-normal normal-case tracking-normal text-amber-200/90">Your trade sets up starter job stages and message templates. The trade choice is locked after signup; you can customize your stages and messages.</span>
               </label>
               <div className="grid gap-3 sm:grid-cols-2">
                 <label className={label}>Email<input type="email" value={email} onChange={(e) => setEmail(e.target.value)} className={field} required /></label>
@@ -178,10 +193,10 @@ export function BetaApplyPage() {
                 <label className={label}>Password<input type="password" value={password} onChange={(e) => setPassword(e.target.value)} className={field} autoComplete="new-password" required /></label>
                 <label className={label}>Confirm password<input type="password" value={password2} onChange={(e) => setPassword2(e.target.value)} className={`${field} ${pwMismatch ? 'border-red-400' : ''}`} autoComplete="new-password" required /></label>
               </div>
-              <p className={`-mt-1 text-[11px] ${pwMismatch ? 'text-red-300' : 'text-slate-500'}`}>{pwMismatch ? "Passwords don't match." : '10+ characters, upper and lower case, a number.'}</p>
+              <p className={`-mt-1 text-[11px] ${pwMismatch ? 'text-red-300' : 'text-slate-500'}`}>{pwMismatch ? "Passwords don't match." : 'At least 10 characters.'}</p>
               <label className="flex items-start gap-2 text-xs text-slate-300">
                 <input type="checkbox" checked={terms} onChange={(e) => setTerms(e.target.checked)} className="mt-0.5 h-4 w-4 accent-amber-500" />
-                <span>I agree to the <a href="https://crewbarn.com/terms" target="_blank" rel="noreferrer" className="underline">terms of service</a>.</span>
+                <span>I agree to the <a href="https://crewbarn.com/terms" target="_blank" rel="noreferrer" className="underline">terms of service</a> and the beta rule: I’ll use CrewBarn on real work and report bugs and ideas, or my account can be removed.</span>
               </label>
               {siteKey && <Turnstile siteKey={siteKey} onToken={setBotToken} theme="dark" />}
               <button type="submit" disabled={!canSignup} className="w-full rounded-lg bg-amber-500 px-4 py-2.5 text-sm font-bold text-slate-950 hover:bg-amber-400 disabled:opacity-50">{signup.isPending ? 'Creating your workspace…' : 'Create my CrewBarn'}</button>
@@ -189,11 +204,12 @@ export function BetaApplyPage() {
           )}
 
           {mode === 'apply' && (
-            <form onSubmit={(e) => { e.preventDefault(); if (canApply) apply.mutate() }} className="space-y-3">
+            <form data-tour="beta-apply" onSubmit={(e) => { e.preventDefault(); if (canApply) apply.mutate() }} className="space-y-3">
               <div>
                 <div className="text-[11px] font-bold uppercase tracking-[0.16em] text-amber-400">Ask for an invite</div>
                 <h1 className="mt-1 text-lg font-bold">Tell us about your company</h1>
                 <p className="mt-1 text-xs text-slate-400">We need {beta?.spots ?? 10} people to run the Android app for two weeks. In return: CrewBarn free for life, bring your own provider keys.{beta && !beta.open ? ' The beta is full right now — leave your details and you’re first in line.' : ''}</p>
+                <p className="mt-1 text-xs text-amber-200/90">Testers have to test: use it on real work and report bugs and ideas, or the account is removed.</p>
               </div>
               {err && <div className="rounded-lg border border-red-400/40 bg-red-500/10 px-3 py-2 text-xs text-red-200">{err}</div>}
               <label className={label}>Company name<input value={company} onChange={(e) => setCompany(e.target.value)} className={field} required /></label>
@@ -206,6 +222,7 @@ export function BetaApplyPage() {
                   <option value="" className="text-slate-900">{tradesQ.isLoading ? 'Loading…' : 'Pick your trade'}</option>
                   {trades.map((t) => <option key={t.slug} value={t.slug} className="text-slate-900">{t.name}</option>)}
                 </select>
+                <span className="mt-1 block text-[11px] font-normal normal-case tracking-normal text-slate-400">Pick the trade you do most. When you create your workspace, the trade is locked and can't be changed.</span>
               </label>
               <div className="grid gap-3 sm:grid-cols-2">
                 <label className={label}>Email<input type="email" value={email} onChange={(e) => setEmail(e.target.value)} className={field} required /></label>
@@ -226,23 +243,25 @@ export function BetaApplyPage() {
           )}
 
           {mode === 'sent' && (
-            <div className="text-center">
+            <div data-tour="beta-result" className="text-center">
               <div className="text-3xl">✉️</div>
               <h1 className="mt-2 text-lg font-bold">Check your email</h1>
               <p className="mt-1 text-sm text-slate-300">We sent a confirmation link to <strong>{email.trim()}</strong>. Click it to activate your workspace, then sign in at <strong>app.crewbarn.com</strong> — the full office app works in your browser right away.</p>
-              <p className="mt-3 text-xs text-slate-500">The Android app is in Google's closed test: Patrick adds you and your crew to the tester list, and you'll each get a Google Play invite email with the install link. Use the web app until then.</p>
+              <p className="mt-3 text-xs text-slate-500">The Android app is in Google's closed test: we add you and your crew to the tester list, and you'll each get a Google Play invite email with the install link. Use the web app until then.</p>
             </div>
           )}
 
           {mode === 'applied' && (
-            <div className="text-center">
+            <div data-tour="beta-result" className="text-center">
               <div className="text-3xl">👍</div>
               <h1 className="mt-2 text-lg font-bold">Got it — thanks</h1>
-              <p className="mt-1 text-sm text-slate-300">Patrick will look it over and send an invite code to <strong>{email.trim()}</strong>.</p>
+              <p className="mt-1 text-sm text-slate-300">We'll look it over and send an invite code to <strong>{email.trim()}</strong>.</p>
             </div>
           )}
+        </div>
         </div>
       </div>
     </div>
   )
 }
+

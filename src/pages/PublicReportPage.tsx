@@ -211,11 +211,21 @@ export function PublicReportPage() {
           relationship is with them, and a report is the thing they are
           being judged on.
         */}
-        <header className="mb-5 flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
+        <header data-tour="report-header" className="mb-5 flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
           <div>
             <p className="text-lg font-semibold text-slate-900">{servicer.name ?? 'Service report'}</p>
             {servicer.license_number && (
-              <p className="text-sm text-slate-500">Licence {servicer.license_number}</p>
+              <p className="text-sm text-slate-500">License {servicer.license_number}</p>
+            )}
+            {servicer.website && (
+              <a
+                href={/^https?:\/\//i.test(servicer.website) ? servicer.website : `https://${servicer.website}`}
+                target="_blank"
+                rel="noreferrer"
+                className="text-sm text-slate-500 underline print:no-underline"
+              >
+                {servicer.website.replace(/^https?:\/\//i, '')}
+              </a>
             )}
           </div>
           {servicer.phone && (
@@ -230,7 +240,7 @@ export function PublicReportPage() {
 
         <main className="overflow-hidden rounded-xl bg-white shadow-sm print:rounded-none print:shadow-none">
           {/* The verdict, in words, with a sentence saying what it means. */}
-          <section className={`border-b border-l-4 px-5 py-5 sm:px-6 ${TONE[report.verdict.tone] ?? TONE.neutral}`}>
+          <section data-tour="report-verdict" className={`border-b border-l-4 px-5 py-5 sm:px-6 ${TONE[report.verdict.tone] ?? TONE.neutral}`}>
             <h1 className="text-2xl font-semibold leading-tight text-slate-900">
               {report.verdict.heading}
             </h1>
@@ -238,7 +248,7 @@ export function PublicReportPage() {
           </section>
 
           {/* Tabular figures so the four numbers line up as a row. */}
-          <section className="grid grid-cols-2 gap-px border-b bg-slate-200 sm:grid-cols-4">
+          <section data-tour="report-tallies" className="grid grid-cols-2 gap-px border-b bg-slate-200 sm:grid-cols-4">
             <Tile label="Checks passed" value={counts.passed} />
             <Tile label="To fix" value={counts.to_fix} />
             <Tile label="Safety issues" value={counts.safety} />
@@ -247,7 +257,7 @@ export function PublicReportPage() {
 
           {report.findings.length > 0 && (
             <section className="border-b px-5 py-5 sm:px-6">
-              <h2 className="text-base font-semibold text-slate-900">What needs fixing</h2>
+              <h2 data-tour="report-fixes" className="text-base font-semibold text-slate-900">What needs fixing</h2>
               <p className="mt-0.5 text-sm text-slate-500">Most urgent first.</p>
 
               <ol className="mt-4 space-y-4">
@@ -317,7 +327,7 @@ export function PublicReportPage() {
               one the reader has to take on trust. */}
           {report.checks.length > 0 && (
             <section className="border-b px-5 py-5 sm:px-6 print:break-before-page">
-              <h2 className="text-base font-semibold text-slate-900">Everything we checked</h2>
+              <h2 data-tour="report-detail" className="text-base font-semibold text-slate-900">Everything we checked</h2>
               <ul className="mt-3 divide-y divide-slate-100">
                 {report.checks.map((check, i) => (
                   <li key={i} className="flex items-start gap-3 py-2.5">
@@ -372,7 +382,7 @@ export function PublicReportPage() {
             anyone can print a QR pointing anywhere — so the number is here
             in type they can read off paper and enter themselves.
           */}
-          <section className="px-5 py-5 sm:px-6">
+          <section data-tour="report-verify" className="px-5 py-5 sm:px-6">
             <h2 className="text-base font-semibold text-slate-900">Check this report is genuine</h2>
             <p className="mt-1.5 text-sm leading-relaxed text-slate-600">
               This record comes from {servicer.name ?? 'the servicing company'}&rsquo;s CrewBarn
@@ -416,17 +426,27 @@ export function PublicReportPage() {
  * — which is why the verdict is the worst item, not an average.
  */
 function BuildingReport({ payload }: { payload: BuildingPayload }) {
-  const { report, servicer, withheld } = payload
+  const { report, servicer, withheld, verify } = payload
   const tenantId = window.location.pathname.split('/')[2] ?? ''
 
   return (
     <div className="min-h-screen bg-slate-100 px-4 py-8 print:bg-white print:p-0">
       <div className="mx-auto max-w-2xl">
-        <header className="mb-5 flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
+        <header data-tour="report-header" className="mb-5 flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
           <div>
             <p className="text-lg font-semibold text-slate-900">{servicer.name ?? 'Service report'}</p>
             {servicer.license_number && (
-              <p className="text-sm text-slate-500">Licence {servicer.license_number}</p>
+              <p className="text-sm text-slate-500">License {servicer.license_number}</p>
+            )}
+            {servicer.website && (
+              <a
+                href={/^https?:\/\//i.test(servicer.website) ? servicer.website : `https://${servicer.website}`}
+                target="_blank"
+                rel="noreferrer"
+                className="text-sm text-slate-500 underline print:no-underline"
+              >
+                {servicer.website.replace(/^https?:\/\//i, '')}
+              </a>
             )}
           </div>
           {servicer.phone && (
@@ -440,7 +460,7 @@ function BuildingReport({ payload }: { payload: BuildingPayload }) {
         </header>
 
         <main className="overflow-hidden rounded-xl bg-white shadow-sm print:rounded-none print:shadow-none">
-          <section className={`border-b border-l-4 px-5 py-5 sm:px-6 ${TONE[report.verdict.tone] ?? TONE.neutral}`}>
+          <section data-tour="report-verdict" className={`border-b border-l-4 px-5 py-5 sm:px-6 ${TONE[report.verdict.tone] ?? TONE.neutral}`}>
             {report.title && (
               <p className="mb-1 text-sm font-medium text-slate-600">{report.title}</p>
             )}
@@ -450,7 +470,7 @@ function BuildingReport({ payload }: { payload: BuildingPayload }) {
             <p className="mt-1.5 leading-relaxed text-slate-700">{report.verdict.sentence}</p>
           </section>
 
-          <section className="grid grid-cols-2 gap-px border-b bg-slate-200 sm:grid-cols-4">
+          <section data-tour="report-tallies" className="grid grid-cols-2 gap-px border-b bg-slate-200 sm:grid-cols-4">
             <Tile label="Items checked" value={report.tallies.checked} />
             <Tile label="In good order" value={report.tallies.in_good_order} />
             <Tile label="Need work" value={report.tallies.need_work} />
@@ -459,7 +479,7 @@ function BuildingReport({ payload }: { payload: BuildingPayload }) {
 
           {report.fix_list.length > 0 && (
             <section className="border-b px-5 py-5 sm:px-6">
-              <h2 className="text-base font-semibold text-slate-900">
+              <h2 data-tour="report-fixes" className="text-base font-semibold text-slate-900">
                 What needs fixing across the property
               </h2>
               <p className="mt-0.5 text-sm text-slate-500">Most urgent first.</p>
@@ -503,7 +523,7 @@ function BuildingReport({ payload }: { payload: BuildingPayload }) {
               the detail lives — this page is the summary. */}
           {report.assets.length > 0 && (
             <section className="border-b px-5 py-5 sm:px-6">
-              <h2 className="text-base font-semibold text-slate-900">Items in this report</h2>
+              <h2 data-tour="report-detail" className="text-base font-semibold text-slate-900">Items in this report</h2>
               <ul className="mt-3 divide-y divide-slate-100">
                 {report.assets.map((entry, i) => (
                   <li key={i} className="flex items-center justify-between gap-3 py-2.5">
@@ -530,7 +550,7 @@ function BuildingReport({ payload }: { payload: BuildingPayload }) {
             </section>
           )}
 
-          <section className="px-5 py-5 sm:px-6">
+          <section data-tour="report-verify" className="px-5 py-5 sm:px-6">
             <h2 className="text-base font-semibold text-slate-900">Check this report is genuine</h2>
             <p className="mt-1.5 text-sm leading-relaxed text-slate-600">
               This record comes from {servicer.name ?? 'the servicing company'}&rsquo;s CrewBarn
@@ -542,6 +562,14 @@ function BuildingReport({ payload }: { payload: BuildingPayload }) {
                 <span className="rounded-md border border-slate-300 bg-slate-50 px-3 py-1.5 font-mono text-sm tabular-nums text-slate-800">
                   {report.report_number}
                 </span>
+              )}
+              {verify?.record_id && (
+                <a
+                  href={`/verify/${encodeURIComponent(verify.record_id)}`}
+                  className="inline-flex min-h-[44px] items-center rounded-md bg-slate-900 px-4 text-sm font-medium text-white print:hidden"
+                >
+                  Verify this report
+                </a>
               )}
               <button
                 type="button"

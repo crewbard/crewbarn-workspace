@@ -405,6 +405,7 @@ function RouteReplay({ accountId, techName }: { accountId: string; techName: str
   if (!open) {
     return (
       <button
+        data-tour="route-history-replay"
         onClick={() => setOpen(true)}
         className="mb-4 inline-flex items-center gap-1.5 rounded-md border border-slate-300 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-50"
       >
@@ -418,8 +419,8 @@ function RouteReplay({ accountId, techName }: { accountId: string; techName: str
   const atEnd = clock >= t1 && windowed.length > 0
 
   return (
-    <div className="mb-4 rounded-lg border border-slate-200 bg-white p-3 sm:p-4">
-      <div className="mb-3 flex flex-wrap items-center gap-2">
+    <div data-tour="route-history-replay" className="mb-4 rounded-lg border border-slate-200 bg-white p-3 sm:p-4">
+      <div data-tour="route-history-replay-when" className="mb-3 flex flex-wrap items-center gap-2">
         <span className="text-sm font-semibold text-slate-900">Replay</span>
         <input
           type="date"
@@ -433,7 +434,12 @@ function RouteReplay({ accountId, techName }: { accountId: string; techName: str
         <div className="flex items-center gap-1 text-sm text-slate-600">
           <select
             value={fromHour}
-            onChange={(e) => setFromHour(Number(e.target.value))}
+            onChange={(e) => {
+              const next = Number(e.target.value)
+              setFromHour(next)
+              // Keep the window non-empty: the end must be after the start.
+              setToHour((prev) => (prev <= next ? next + 1 : prev))
+            }}
             className="rounded-md border border-slate-300 px-1.5 py-1"
             aria-label="From hour"
           >
@@ -449,12 +455,13 @@ function RouteReplay({ accountId, techName }: { accountId: string; techName: str
             aria-label="To hour"
           >
             {Array.from({ length: 24 }, (_, h) => h + 1).map((h) => (
-              <option key={h} value={h}>{h === 24 ? 'end of day' : fmtHour(h)}</option>
+              <option key={h} value={h} disabled={h <= fromHour}>{h === 24 ? 'end of day' : fmtHour(h)}</option>
             ))}
           </select>
         </div>
 
         <button
+          data-tour="route-history-replay-close"
           onClick={() => setOpen(false)}
           className="ml-auto text-sm font-medium text-slate-500 hover:text-slate-700"
         >
@@ -467,7 +474,7 @@ function RouteReplay({ accountId, techName }: { accountId: string; techName: str
           Ask your administrator to configure Google Maps in CrewBarn Connect to replay routes.
         </div>
       ) : (
-        <div className="relative h-[360px] overflow-hidden rounded-lg border border-slate-200">
+        <div data-tour="route-history-replay-map" className="relative h-[360px] overflow-hidden rounded-lg border border-slate-200">
           <div ref={mapEl} className="absolute inset-0" />
           {(mapStatus === 'loading' || q.isLoading) && (
             <div className="absolute inset-0 animate-pulse bg-slate-100" />
@@ -487,7 +494,7 @@ function RouteReplay({ accountId, techName }: { accountId: string; techName: str
       </div>}
       {/* Transport controls */}
       {windowed.length > 1 && (
-        <div className="mt-3 space-y-2">
+        <div data-tour="route-history-replay-controls" className="mt-3 space-y-2">
           <div className="flex items-center gap-3">
             <button
               onClick={() => {
@@ -731,7 +738,7 @@ export function RouteHistoryPage() {
 
   return (
     <div className={easy ? 'w-full min-w-0 px-3 sm:px-6 py-4 sm:py-6' : 'max-w-6xl mx-auto px-3 sm:px-6 py-4 sm:py-6'}>
-      <div className="mb-4">
+      <div data-tour="route-history-header" className="mb-4">
         <Link to="/dispatch" className="inline-flex items-center gap-1 text-sm text-amber-700 hover:underline mb-1">
           ← Back to Dispatch
         </Link>
@@ -745,7 +752,7 @@ export function RouteHistoryPage() {
       </div>
 
       {/* Tech + week pickers */}
-      <div className="flex flex-wrap items-center gap-2 mb-4">
+      <div data-tour="route-history-pickers" className="flex flex-wrap items-center gap-2 mb-4">
         <select
           value={accountId}
           aria-label="App user for route history"
@@ -818,7 +825,7 @@ export function RouteHistoryPage() {
           Ask your administrator to configure Google Maps in CrewBarn Connect to see routes on a map.
         </div>
       ) : (
-        <div className="relative rounded-lg overflow-hidden border border-slate-200 h-[420px]">
+        <div data-tour="route-history-map" className="relative rounded-lg overflow-hidden border border-slate-200 h-[420px]">
           <div ref={mapEl} className="absolute inset-0" />
           {mapStatus === 'loading' && <div className="absolute inset-0 bg-slate-100 animate-pulse" />}
           {mapStatus === 'ready' && accountId && !q.isLoading && !q.isError && logs.length === 0 && (
@@ -832,7 +839,7 @@ export function RouteHistoryPage() {
       )}
 
       {/* Stats table — one row per device-day; checkbox toggles the day on the map */}
-      <div className="mt-4 overflow-x-auto rounded-lg border border-slate-200">
+      <div data-tour="route-history-table" className="mt-4 overflow-x-auto rounded-lg border border-slate-200">
         <table className="w-full text-sm">
           <thead>
             <tr className="bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500">

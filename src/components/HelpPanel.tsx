@@ -1,6 +1,11 @@
 import { useEffect, useMemo, useState } from 'react'
+import { TutorialHelpSection, startWorkPageTour } from '@/components/guides/TutorialControls'
+import { startActiveTutorial } from '@/lib/activeTutorial'
+import { hasPageTour } from '@/lib/pageTours/available'
 import ReactMarkdown from 'react-markdown'
-import { Link } from 'react-router-dom'
+import { Link, useLocation } from 'react-router-dom'
+import { guidedTourForPath, startGuidedTour } from '@/lib/guidedTours'
+import { warmTourClips } from '@/lib/tourClips'
 import { useAuth } from '@/hooks/useAuth'
 import {
   HELP_CATEGORIES,
@@ -14,6 +19,12 @@ import {
   setAiHelpEnabled,
   onAiHelpEnabledChange,
 } from '@/lib/aiHelp'
+import { shortcutHostActive } from '@/lib/shortcutBus'
+import { ShortcutList } from '@/components/shortcuts/ShortcutList'
+import { appExtensions } from '@/lib/appExtensions'
+
+/** The shared topics plus any the full app registered (platform staff help). */
+const allTopics = (): HelpTopic[] => [...HELP_TOPICS, ...(appExtensions().helpTopics ?? [])]
 
 /**
  * Slide-over help panel. Opens from the right with a category sidebar and
@@ -31,6 +42,13 @@ export function HelpPanel({
   open: boolean
   onClose: () => void
 }) {
+  const location = useLocation()
+  const pageTour = guidedTourForPath(location.pathname, location.search, location.hash)
+  // "Show me this page" plays the page tour (a quick intro, then this
+  // page's steps) where the page has one; otherwise its guided tour.
+  const canTourPage = hasPageTour(location.pathname, location.search, location.hash)
+  // Load the recorded tour voice list as soon as Help opens.
+  useEffect(() => { if (open) warmTourClips() }, [open])
   const { account } = useAuth()
   const isTester = account?.role === 'tester'
   const isPlatformAdmin = !!account?.is_platform_admin
@@ -43,7 +61,7 @@ export function HelpPanel({
   useEffect(() => {
     const handleOpenTopic = (event: Event) => {
       const topicId = (event as CustomEvent<string>).detail
-      if (!HELP_TOPICS.some((topic) => topic.id === topicId)) return
+      if (!allTopics().some((topic) => topic.id === topicId)) return
       setSearch('')
       setActiveId(topicId)
     }
@@ -53,7 +71,7 @@ export function HelpPanel({
 
   // Filter topics by audience + search
   const visibleTopics = useMemo(() => {
-    return HELP_TOPICS.filter((t) => {
+    return allTopics().filter((t) => {
       if (t.audience === 'tester' && !isTester) return false
       if (t.audience === 'platform_admin' && !isPlatformAdmin) return false
       if (!search.trim()) return true
@@ -97,7 +115,7 @@ export function HelpPanel({
     const url = new URL(window.location.href)
     const wanted = url.searchParams.get('openHelp')
     if (wanted) {
-      const found = HELP_TOPICS.find((t) => t.id === wanted)
+      const found = allTopics().find((t) => t.id === wanted)
       if (found) setActiveId(found.id)
       url.searchParams.delete('openHelp')
       window.history.replaceState({}, '', url.toString())
@@ -121,6 +139,9 @@ export function HelpPanel({
   return (
     <div
       className="fixed inset-0 z-50 flex no-print"
+      role="dialog"
+      aria-modal="true"
+      aria-label="CrewBarn Help"
       onClick={onClose}
     >
       {/* Backdrop */}
@@ -172,19 +193,29 @@ export function HelpPanel({
           </span>
         </label>
 
-        <div className="border-b border-slate-200 bg-white px-5 py-2.5">
-          <Link
-            to="/onboarding"
-            onClick={onClose}
-            className="text-sm font-semibold text-amber-700 underline decoration-amber-300 underline-offset-4 hover:text-amber-800"
-          >
-            Open the automated onboarding walkthrough with audio
-          </Link>
-          <span className="ml-2 hidden text-xs text-slate-500 sm:inline">
-            It only starts after you select the walkthrough link on the onboarding screen.
-          </span>
+        <div className="border-b border-slate-200 bg-white px-5 py-3">
+          <div className="mb-3"><TutorialHelpSection onStart={onClose} /></div>
+          <div className="flex flex-wrap items-center gap-2">
+            {(canTourPage || pageTour) && <button type="button" onClick={() => { onClose(); window.setTimeout(() => (canTourPage ? void startWorkPageTour() : pageTour && startGuidedTour(pageTour.id)), 0) }} className="rounded-lg bg-amber-500 px-3.5 py-2 text-sm font-bold text-white transition hover:bg-amber-600">
+              ▶ Show me this page
+            </button>}
+            {pageTour && <button type="button" onClick={() => { onClose(); window.setTimeout(() => startGuidedTour(pageTour.id, true), 0) }} className="rounded-lg border border-slate-300 bg-white px-3.5 py-2 text-sm font-bold text-navy-900 transition hover:border-amber-300">
+              Page roadmap
+            </button>}
+            <button type="button" onClick={() => { onClose(); window.setTimeout(() => startActiveTutorial('getting-around'), 0) }} className="rounded-lg border border-slate-300 bg-white px-3.5 py-2 text-sm font-bold text-navy-900 transition hover:border-amber-300">
+              Finding your way around
+            </button>
+            <button type="button" data-tour="help-shortcuts" onClick={() => { setSearch(''); setActiveId('keyboard-shortcuts') }} className="rounded-lg border border-slate-300 bg-white px-3.5 py-2 text-sm font-bold text-navy-900 transition hover:border-amber-300">
+              Keyboard shortcuts
+            </button>
+            <Link to="/onboarding" state={{ onboardingTour: 'intro' }} onClick={onClose} className="px-1.5 py-2 text-sm font-semibold text-slate-600 underline decoration-slate-300 underline-offset-4 hover:text-navy-900">
+              What is CrewBarn?
+            </Link>
+            <Link to="/onboarding" state={{ onboardingTour: 'workflow' }} onClick={onClose} className="px-1.5 py-2 text-sm font-semibold text-slate-600 underline decoration-slate-300 underline-offset-4 hover:text-navy-900">
+              Watch the roadmap
+            </Link>
+          </div>
         </div>
-
         <div className="border-b border-slate-200 p-3 sm:hidden">
           <label className="block text-xs font-medium text-slate-600">
             Help topic
@@ -299,6 +330,12 @@ export function HelpPanel({
                 >
                   {activeTopic.body}
                 </ReactMarkdown>
+                {activeTopic.id === 'keyboard-shortcuts' && (
+                  <div className="mt-6 border-t border-slate-200 pt-5">
+                    <h2 className="mb-3 text-base font-semibold text-slate-900">Your shortcuts</h2>
+                    <ShortcutList />
+                  </div>
+                )}
               </article>
             ) : (
               <div className="text-sm text-slate-500 mt-12 text-center">
@@ -325,6 +362,8 @@ export function useHelpKeyboardShortcut(setOpen: (v: boolean) => void, contextTo
         const tag = target.tagName.toLowerCase()
         if (tag === 'input' || tag === 'textarea' || target.isContentEditable) return
       }
+      // In the work app the keyboard shortcuts decide what "?" does (it may have been moved or turned off).
+      if (shortcutHostActive()) return
       if (e.key === '?' && !e.ctrlKey && !e.metaKey) {
         e.preventDefault()
         window.dispatchEvent(new CustomEvent<string>(OPEN_HELP_EVENT, {

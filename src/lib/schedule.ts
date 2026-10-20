@@ -5,6 +5,11 @@ import type {
   ScheduleWorkOrder,
 } from '@/types/schedule'
 
+/** Calendar identity differs from job identity when a job has several sessions. */
+export function scheduleEventId(event: ScheduleWorkOrder): string {
+  return event.calendar_event_id ?? (event.planned_session_id ? `${event.id}:${event.planned_session_id}` : event.id)
+}
+
 export async function fetchCalendarEvents(
   filters: ScheduleCalendarFilters,
 ): Promise<ScheduleCalendarResponse> {
@@ -36,7 +41,7 @@ export async function fetchUnscheduledJobs(q?: string): Promise<{ data: Schedule
  * the job's intended local time — we send that and let the backend re-anchor
  * it to the job's location timezone, not the dispatcher's browser zone.
  */
-function toNaiveLocal(iso: string): string {
+export function toNaiveLocal(iso: string): string {
   const d = new Date(iso)
   if (Number.isNaN(d.getTime())) return iso
   const p = (n: number) => String(n).padStart(2, '0')
@@ -58,6 +63,7 @@ export async function rescheduleWorkOrder(
   leadTechAccountId?: string | null,
   kind: 'job' | 'estimate' = 'job',
   statusId?: string | null,
+  plannedSessionId?: string | null,
 ): Promise<{ data: unknown }> {
   // Jobs vs estimates use different `is_scheduled` semantics — work orders
   // toggle an explicit flag, estimates infer "scheduled" from a non-null
@@ -74,6 +80,8 @@ export async function rescheduleWorkOrder(
   if (statusId) body.status_id = statusId
   const url = kind === 'estimate'
     ? `/v1/estimates/${id}`
-    : `/v1/work-orders/${id}`
+    : plannedSessionId
+      ? `/v1/work-orders/${id}/planned-sessions/${plannedSessionId}`
+      : `/v1/work-orders/${id}`
   return apiRequest<{ data: unknown }>(url, { method: 'PATCH', body })
 }

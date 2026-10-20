@@ -32,6 +32,8 @@ interface Props {
   taxTotalCents: number
   onClose: () => void
   onDownload: (format: 'pdf' | 'csv') => void
+  /** Shown inside the overlay, since the page behind it is covered. */
+  downloadError?: string | null
 }
 
 function dollars(cents: number): string {
@@ -48,6 +50,7 @@ export function SalesTaxDetailOverlay({
   taxTotalCents,
   onClose,
   onDownload,
+  downloadError,
 }: Props) {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -84,6 +87,11 @@ export function SalesTaxDetailOverlay({
               {rows.length.toLocaleString('en-US')} invoice{rows.length === 1 ? '' : 's'} &middot;{' '}
               <span className="font-mono tabular-nums">${dollars(taxTotalCents)}</span> tax
             </p>
+            {downloadError ? (
+              <p role="alert" className="mt-2 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm font-medium text-red-700">
+                {downloadError}
+              </p>
+            ) : null}
           </div>
           <div className="flex flex-wrap items-center gap-2">
             <button

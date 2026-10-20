@@ -3,13 +3,25 @@ import {
   fetchCalendarEvents,
   fetchUnscheduledJobs,
   rescheduleWorkOrder,
+  toNaiveLocal,
 } from '@/lib/schedule'
 import { apiRequest } from '@/lib/api'
+import { pushMutationError } from '@/lib/mutationErrorBus'
 import type { ScheduleCalendarFilters } from '@/types/schedule'
 
 export const scheduleKeys = {
   calendar: (f: ScheduleCalendarFilters) => ['schedule', 'calendar', f] as const,
   unscheduled: (q?: string) => ['schedule', 'unscheduled', q ?? ''] as const,
+}
+
+/**
+ * Declaring onError (for the rollback) opts a mutation out of the app's
+ * global failure banner in main.tsx, and no caller here passes its own. So
+ * these say it themselves, or the card just snaps back without a word.
+ */
+function reportScheduleFailure(what: string, error: unknown) {
+  const reason = error instanceof Error && error.message ? error.message : 'Please try again.'
+  pushMutationError(`${what} ${reason}`)
 }
 
 /**
@@ -52,6 +64,7 @@ export function useRescheduleWorkOrder() {
       leadTechAccountId,
       kind,
       statusId,
+      plannedSessionId,
     }: {
       id: string
       start: string
@@ -59,8 +72,9 @@ export function useRescheduleWorkOrder() {
       leadTechAccountId?: string | null
       kind?: 'job' | 'estimate'
       statusId?: string | null
-    }) => rescheduleWorkOrder(id, start, end, leadTechAccountId, kind ?? 'job', statusId),
-    onMutate: async ({ id, start, end, leadTechAccountId }) => {
+      plannedSessionId?: string | null
+    }) => rescheduleWorkOrder(id, start, end, leadTechAccountId, kind ?? 'job', statusId, plannedSessionId),
+    onMutate: async ({ id, start, end, leadTechAccountId, plannedSessionId, kind }) => {
       await qc.cancelQueries({ queryKey: ['schedule'] })
       const snapshots = qc.getQueriesData({ queryKey: ['schedule', 'calendar'] })
 
@@ -72,11 +86,11 @@ export function useRescheduleWorkOrder() {
         return {
           ...typed,
           data: typed.data.map((w) => {
-            if (w.id !== id) return w
+            if (w.id !== id || (w.kind ?? 'job') !== (kind ?? 'job')) return w
+            const movesSession = !plannedSessionId || w.planned_session_id === plannedSessionId
             const next: Record<string, unknown> = {
               ...w,
-              scheduled_start_time: start,
-              scheduled_end_time: end,
+              ...(movesSession ? { scheduled_start_time: toNaiveLocal(start), scheduled_end_time: toNaiveLocal(end) } : {}),
             }
             if (leadTechAccountId !== undefined) {
               next.lead_tech =
@@ -91,12 +105,13 @@ export function useRescheduleWorkOrder() {
 
       return { snapshots }
     },
-    onError: (_err, _vars, ctx) => {
+    onError: (err, _vars, ctx) => {
       if (ctx?.snapshots) {
         for (const [key, data] of ctx.snapshots) {
           qc.setQueryData(key, data)
         }
       }
+      reportScheduleFailure("Couldn't reschedule. It's back where it was.", err)
     },
     onSettled: () => {
       // Reconcile both the calendar AND the unscheduled sidebar list. A job
@@ -150,12 +165,13 @@ export function useUpdateWorkOrderFromCalendar() {
 
       return { snapshots }
     },
-    onError: (_err, _vars, ctx) => {
+    onError: (err, _vars, ctx) => {
       if (ctx?.snapshots) {
         for (const [key, data] of ctx.snapshots) {
           qc.setQueryData(key, data)
         }
       }
+      reportScheduleFailure("Couldn't save that change.", err)
     },
     onSuccess: () => {
       // Trigger a refetch so the full status (color, name) lands quickly

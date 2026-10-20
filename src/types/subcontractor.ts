@@ -30,17 +30,12 @@ export interface Subcontractor {
 
   default_payment_terms: SubPaymentTerms
   linked_tenant_id: string | null
-  /** When set, the linked portal user sees this sub's WOs in their
-   *  customer-portal Subbed Jobs section. */
-  portal_account_id: string | null
-  /** Email of the linked portal user (when eager-loaded server-side). */
-  portal_account_email: string | null
-  /** Outstanding portal invite, if any. Surfaces "pending to xyz, expires N" UI. */
-  pending_invite: {
-    id: string
-    email: string
-    expires_at: string | null
-  } | null
+  /**
+   * Sub network (null while it's off): connected; requested (on CrewBarn,
+   * its first job not accepted yet); invited (code out); none (not on
+   * CrewBarn: invite it before sending a job).
+   */
+  network_status?: 'connected' | 'requested' | 'invited' | 'none' | null
   active: boolean
   notes: string | null
 
@@ -66,7 +61,6 @@ export interface SubcontractorInput {
   license_on_file?: boolean
   default_payment_terms?: SubPaymentTerms
   linked_tenant_id?: string | null
-  portal_account_id?: string | null
   active?: boolean
   notes?: string | null
 }
@@ -80,4 +74,6 @@ export interface SubOutInput {
   subcontractor_id: string
   sub_nte_cents: number
   sub_special_instructions?: string | null
+  /** Urgent: send to a sub whose documents aren't all in (noted on the job). */
+  send_anyway?: boolean
 }

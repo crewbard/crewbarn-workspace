@@ -1,3 +1,4 @@
+import { scheduleEventId } from '@/lib/schedule'
 import { addDays, startOfWeek as dfStartOfWeek } from 'date-fns'
 import type { ScheduleWorkOrder } from '@/types/schedule'
 
@@ -114,13 +115,13 @@ export function packTimedEvents(events: ScheduleWorkOrder[]): Map<string, Packed
         laneEnds.push(0)
       }
       laneEnds[lane] = event.end.getTime()
-      assigned.set(event.wo.id, lane)
+      assigned.set(scheduleEventId(event.wo), lane)
     }
 
     const laneCount = Math.max(1, laneEnds.length)
     for (const event of cluster) {
-      out.set(event.wo.id, {
-        lane: assigned.get(event.wo.id) ?? 0,
+      out.set(scheduleEventId(event.wo), {
+        lane: assigned.get(scheduleEventId(event.wo)) ?? 0,
         laneCount,
       })
     }

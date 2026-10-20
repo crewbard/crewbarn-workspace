@@ -34,6 +34,8 @@ interface PaymentRow {
   customer_credit_cents: number
   payment_method: string
   payment_reference: string | null
+  /** CrewBarn's own number for the payment (R-000123). */
+  receipt_number?: string | null
   transaction_number: string | null
   stripe_checkout_session_id: string | null
   stripe_payment_intent_id: string | null
@@ -315,18 +317,23 @@ export function CashDrawerPage() {
 
   return (
     <div className="mx-auto w-full max-w-none px-4 py-4 sm:px-6 sm:py-6 2xl:px-8">
+      <div data-tour="classic-drawer-header">
+      <Link to="/accounting/cash-drawer" className="mb-2 inline-block text-xs font-semibold text-amber-700 hover:underline">
+        ← Back to Cash register
+      </Link>
       {easy ? <EasyPageHeading title="Cash drawer" description="Count physical cash, then review the payment turnover below. Confirm only money you have actually received." /> : <div className="mb-4 sm:mb-6">
         <h1 className="text-xl sm:text-2xl font-semibold text-slate-900">Cash drawer</h1>
         <p className="text-sm text-slate-500 mt-1">
-          Track cash/checks held by tech, confirm field collections, and audit voided payments.
+          Track cash/checks held by tech, confirm field collections, and audit voided payments. This is also where you void, refund or correct a single payment.
         </p>
       </div>}
+      </div>
 
-      {easy && <EasyCashCount />}
+      {easy && <div data-tour="cash-count"><EasyCashCount /></div>}
 
       {/* Summary cards */}
       <p className="mb-3 text-xs text-slate-500">Payment and invoice summaries below cover loaded records, not an audited full-ledger balance. Open the reports for complete period review.</p>
-      <div className="grid grid-cols-2 lg:grid-cols-5 gap-3 mb-6">
+      <div className="grid grid-cols-2 lg:grid-cols-5 gap-3 mb-6" data-tour="classic-drawer-summary">
         <SummaryCard label="Owed to us">
           <QueryRead query={invoicesQ}>
           <div className={`text-2xl font-mono font-bold ${summary.owedCents === 0 ? 'text-emerald-600' : 'text-amber-700'}`}>
@@ -396,7 +403,7 @@ export function CashDrawerPage() {
       </div>
 
       {/* Charts — AR aging + received-by-payment-type */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 mb-6">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 mb-6" data-tour="classic-drawer-charts">
         <div className="bg-white border border-slate-200 rounded-xl p-4">
           <div className="text-[10px] uppercase tracking-wide text-slate-500 font-semibold mb-2">
             Receivables aging (days past due)
@@ -426,9 +433,9 @@ export function CashDrawerPage() {
         </p>
       </div>
 
-      <div className="border-b border-slate-200 mb-4 overflow-x-auto">
+      <div className="border-b border-slate-200 mb-4 overflow-x-auto" data-tour="classic-drawer-tabs">
         <nav className="flex gap-4 sm:gap-6 min-w-max">
-          <TabBtn active={tab === 'pending'} onClick={() => setTab('pending')}>
+          <TabBtn tour="classic-tab-pending" active={tab === 'pending'} onClick={() => setTab('pending')}>
             Pending turnover
             {tab === 'pending' && rows.length > 0 && (
               <span className="ml-2 text-xs bg-amber-500 text-white px-1.5 py-0.5 rounded-full">
@@ -436,16 +443,16 @@ export function CashDrawerPage() {
               </span>
             )}
           </TabBtn>
-          <TabBtn active={tab === 'received'} onClick={() => setTab('received')}>
+          <TabBtn tour="classic-tab-received" active={tab === 'received'} onClick={() => setTab('received')}>
             Received
           </TabBtn>
-          <TabBtn active={tab === 'voided'} onClick={() => setTab('voided')}>
+          <TabBtn tour="classic-tab-voided" active={tab === 'voided'} onClick={() => setTab('voided')}>
             Voided
           </TabBtn>
-          <TabBtn active={tab === 'disputed'} onClick={() => setTab('disputed')}>
+          <TabBtn tour="classic-tab-disputed" active={tab === 'disputed'} onClick={() => setTab('disputed')}>
             Disputed
           </TabBtn>
-          <TabBtn active={tab === 'all'} onClick={() => setTab('all')}>
+          <TabBtn tour="classic-tab-all" active={tab === 'all'} onClick={() => setTab('all')}>
             All transactions
           </TabBtn>
         </nav>
@@ -458,13 +465,13 @@ export function CashDrawerPage() {
         </div>
       )}
 
-      <QueryRead query={allPaymentsQ}><QueryRead query={netBalancesQ}><TechRegisterSummary rows={techRegisterRows} /></QueryRead></QueryRead>
+      <div data-tour="classic-drawer-register"><QueryRead query={allPaymentsQ}><QueryRead query={netBalancesQ}><TechRegisterSummary rows={techRegisterRows} /></QueryRead></QueryRead></div>
 
       {q.isLoading && <div className="text-sm text-slate-500">Loading…</div>}
       {q.isError && <div role="alert" className="rounded-lg border border-red-200 bg-red-50 p-4">Payments could not be loaded. <button type="button" className="underline" onClick={() => q.refetch()}>Try again</button></div>}
 
       {q.isSuccess && rows.length === 0 && (
-        <div className="bg-white border border-slate-200 rounded-xl p-8 text-center text-sm text-slate-500">
+        <div data-tour="classic-drawer-empty" data-tab={tab} className="bg-white border border-slate-200 rounded-xl p-8 text-center text-sm text-slate-500">
           {tab === 'pending'
             ? 'Nothing waiting. Tech-collected payments will show up here.'
             : tab === 'received'
@@ -477,7 +484,7 @@ export function CashDrawerPage() {
         </div>
       )}
 
-      <div className="space-y-3">
+      <div className="space-y-3" data-tour="classic-drawer-cards">
         {!q.isError && rows.map((r) => (
           <PaymentCard key={r.id} payment={r} />
         ))}
@@ -545,10 +552,12 @@ function TechRegisterSummary({ rows }: { rows: TechRegisterRow[] }) {
   )
 }
 function TabBtn({
+  tour,
   active,
   onClick,
   children,
 }: {
+  tour?: string
   active: boolean
   onClick: () => void
   children: React.ReactNode
@@ -557,6 +566,8 @@ function TabBtn({
     <button
       type="button"
       onClick={onClick}
+      data-tour={tour}
+      aria-pressed={active}
       className={`pb-3 -mb-px text-sm font-medium border-b-2 ${
         active
           ? 'border-amber-600 text-amber-700'
@@ -708,7 +719,7 @@ function PaymentCard({ payment }: { payment: PaymentRow }) {
           : 'bg-slate-200 text-slate-700'
 
   return (
-    <div className="bg-white border border-slate-200 rounded-xl p-4 space-y-3">
+    <div className="bg-white border border-slate-200 rounded-xl p-4 space-y-3" data-tour="payment-card" data-status={payment.status}>
       <div className="flex items-start justify-between gap-3 flex-wrap">
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2 mb-1 flex-wrap">
@@ -760,6 +771,7 @@ function PaymentCard({ payment }: { payment: PaymentRow }) {
                   {canEditMethod && (
                     <button
                       type="button"
+                      data-tour="payment-method-change"
                       title="Correct how this payment was taken — fixes the register bucket"
                       onClick={() => {
                         setMethodDraft(payment.payment_method)
@@ -792,6 +804,11 @@ function PaymentCard({ payment }: { payment: PaymentRow }) {
             {payment.created_at && ` · ${new Date(payment.created_at).toLocaleString()}`}
           </div>
           <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-slate-600">
+            {payment.receipt_number && (
+              <span>
+                Receipt <span className="font-mono font-semibold text-slate-900">{payment.receipt_number}</span>
+              </span>
+            )}
             {payment.payment_method === 'check' ? (
               <span>
                 Check #:{' '}
@@ -941,6 +958,7 @@ function PaymentCard({ payment }: { payment: PaymentRow }) {
             </button>
             <button
               type="button"
+              data-tour="payment-reverse"
               onClick={() => setShowVoidPanel(true)}
               className="text-xs font-semibold border border-red-300 text-red-700 hover:bg-red-50 rounded px-3 py-1.5"
             >
@@ -954,6 +972,7 @@ function PaymentCard({ payment }: { payment: PaymentRow }) {
         isCardProcessor ? (
           <button
             type="button"
+            data-tour="payment-reverse"
             onClick={() => setShowRefundPanel(true)}
             className="text-xs font-semibold border border-red-300 text-red-700 hover:bg-red-50 rounded px-3 py-1.5"
           >
@@ -962,6 +981,7 @@ function PaymentCard({ payment }: { payment: PaymentRow }) {
         ) : (
           <button
             type="button"
+            data-tour="payment-reverse"
             onClick={() => setShowVoidPanel(true)}
             className="text-xs font-semibold border border-red-300 text-red-700 hover:bg-red-50 rounded px-3 py-1.5"
           >
@@ -971,9 +991,9 @@ function PaymentCard({ payment }: { payment: PaymentRow }) {
       )}
 
       {showRefundPanel && (
-        <div className="bg-red-50 border border-red-200 rounded p-3 space-y-2">
+        <div className="bg-red-50 border border-red-200 rounded p-3 space-y-2" data-tour="payment-reverse-panel">
           <div className="text-xs text-red-800">
-            Refunds <strong>${dollars(payment.amount_cents + payment.tip_cents)}</strong> to the
+            Refunds <strong>${dollars(payment.amount_cents)}</strong> to the
             customer's card via {isCardGoDaddy ? 'GoDaddy Payments' : 'Stripe'} and reverses the invoice. This can't be undone.
           </div>
           <textarea
@@ -986,6 +1006,7 @@ function PaymentCard({ payment }: { payment: PaymentRow }) {
           <div className="flex justify-end gap-2">
             <button
               type="button"
+              data-tour="payment-reverse-cancel"
               onClick={() => { setShowRefundPanel(false); setRefundReason('') }}
               disabled={refundPayment.isPending}
               className="text-xs text-slate-600 px-3 py-1.5"
@@ -1005,7 +1026,7 @@ function PaymentCard({ payment }: { payment: PaymentRow }) {
       )}
 
       {showVoidPanel && (
-        <div className="bg-red-50 border border-red-200 rounded p-3 space-y-2">
+        <div className="bg-red-50 border border-red-200 rounded p-3 space-y-2" data-tour="payment-reverse-panel">
           <textarea
             value={voidReason}
             onChange={(e) => setVoidReason(e.target.value)}
@@ -1016,6 +1037,7 @@ function PaymentCard({ payment }: { payment: PaymentRow }) {
           <div className="flex justify-end gap-2">
             <button
               type="button"
+              data-tour="payment-reverse-cancel"
               onClick={() => { setShowVoidPanel(false); setVoidReason('') }}
               disabled={voidPayment.isPending}
               className="text-xs text-slate-600 px-3 py-1.5"

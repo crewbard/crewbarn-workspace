@@ -1,5 +1,7 @@
 ﻿import { useState } from "react"
+import { QRCodeCanvas } from "qrcode.react"
 import { API_URL, getStoredToken, getActingTenant } from "@/lib/api"
+import { assetScanUrl } from "@/components/assets/scanUrl"
 
 /**
  * AssetQrCard — displays the QR code for an asset and provides a print
@@ -17,13 +19,15 @@ import { API_URL, getStoredToken, getActingTenant } from "@/lib/api"
  * Print: opens a new window with just the QR + asset name + code, sized
  * for label printing. User triggers OS print dialog from there.
  *
- * SLICE-2: QR codes - see docs/CREWBARN-ASSETS-SLICES.md#slice-2
  */
 export function AssetQrCard({
   assetId,
   assetCode,
+  tenantId,
 }: {
   assetId: string
+  /** When given, the QR is drawn here with the same public scan URL the printed label uses. */
+  tenantId?: string | null
   /**
    * Kept in the call-site signature for backwards compatibility with
    * existing callers that pass it; intentionally ignored now that
@@ -67,8 +71,10 @@ export function AssetQrCard({
       setIsLoading(false)
     }
   }
-  // Auto-load on first render
-  if (!qrUrl && !isLoading && !error) {
+  const scanUrl = tenantId && assetCode ? assetScanUrl(tenantId, assetCode) : null
+
+  // Auto-load on first render (only when we can't draw the scan-URL QR locally)
+  if (!scanUrl && !qrUrl && !isLoading && !error) {
     loadQr()
   }
 
@@ -83,17 +89,22 @@ export function AssetQrCard({
   return (
     <div className="bg-slate-50 border border-slate-200 rounded p-4 flex items-start gap-4">
       <div className="flex-shrink-0">
-        {isLoading && (
+        {scanUrl && (
+          <div className="w-32 h-32 border border-slate-200 rounded bg-white flex items-center justify-center">
+            <QRCodeCanvas value={scanUrl} size={116} level="M" />
+          </div>
+        )}
+        {!scanUrl && isLoading && (
           <div className="w-32 h-32 bg-slate-200 rounded animate-pulse flex items-center justify-center text-slate-400 text-xs">
             Loading...
           </div>
         )}
-        {error && (
+        {!scanUrl && error && (
           <div className="w-32 h-32 bg-red-50 border border-red-200 rounded flex items-center justify-center text-red-600 text-xs text-center px-2">
             {error}
           </div>
         )}
-        {qrUrl && !error && (
+        {!scanUrl && qrUrl && !error && (
           <img
             src={qrUrl}
             alt="Asset QR code"
@@ -103,13 +114,13 @@ export function AssetQrCard({
       </div>
       <div className="flex-1 min-w-0">
         <div className="text-xs font-medium text-slate-700 uppercase tracking-wide mb-1">
-          Crewbarn QR sticker
+          CrewBarn QR sticker
         </div>
         <div className="font-mono text-sm text-slate-900 mb-2 truncate" title={assetCode}>
           {assetCode}
         </div>
         <p className="text-xs text-slate-600 mb-3">
-          This QR points to the public scan page for this asset. Print and stick on the door, OR keep an existing sticker — Crewbarn looks up by code either way.
+          This QR opens the public scan page for this asset in any phone camera. Print it and stick it on the equipment, or keep an existing sticker and type its code above. CrewBarn looks up by code either way.
         </p>
         <a
           href={`/assets/${assetId}/labels`}

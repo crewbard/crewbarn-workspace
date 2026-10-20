@@ -3,6 +3,7 @@ import type { ReactNode } from 'react'
 import { Calendar, dateFnsLocalizer, Views, type View } from 'react-big-calendar'
 import { CustomWeekView } from '@/components/schedule/CustomWeekView'
 import { CustomDayView } from '@/components/schedule/CustomDayView'
+import { subLine } from '@/lib/subLane'
 import { CustomMonthView } from '@/components/schedule/CustomMonthView'
 import { ZOOM_MIN, ZOOM_MAX, ZOOM_STEP } from '@/components/schedule/calendarUtils'
 import { EventBadges, BadgeLegend } from '@/components/schedule/EventBadges'
@@ -19,7 +20,9 @@ import { format, parse, startOfWeek, getDay, addDays, startOfMonth, endOfMonth, 
 import { enUS } from 'date-fns/locale/en-US'
 import { Link } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { apiRequest } from '@/lib/api'
+import { ApiError, apiRequest } from '@/lib/api'
+import { continueAfterFailedConflictCheck } from '@/lib/conflictCheck'
+import { scheduleEventId } from '@/lib/schedule'
 import { listTasks, updateTask } from '@/lib/tasks'
 import { captureStatusGeo } from '@/lib/statusGeo'
 import {
@@ -29,6 +32,8 @@ import {
   useUpdateWorkOrderFromCalendar,
 } from '@/hooks/useSchedule'
 import { useJobStatuses, useUpdateJobStatus } from '@/hooks/useJobStatuses'
+import { usePermissions } from '@/hooks/usePermissions'
+import { useTheme } from '@/hooks/useTheme'
 import { tenantCalendarDate, useTenantTimezone } from '@/hooks/useTenantTime'
 import { useEstimates, useEstimate } from '@/hooks/useEstimates'
 import { ConvertEstimateToJobModal } from '@/components/ConvertEstimateToJobModal'
@@ -37,6 +42,7 @@ import type { ScheduleCardDensity, ScheduleTimeOffBlock, ScheduleWorkOrder } fro
 import 'react-big-calendar/lib/css/react-big-calendar.css'
 import 'react-big-calendar/lib/addons/dragAndDrop/styles.css'
 import { matteStatusBorder, matteStatusFill, matteStatusTextColor, statusAccentColor, toHexColor, textColorOn, visibleStatusColor } from '@/lib/statusColor'
+import { LateRiskPanel } from '@/components/schedule/LateRiskPanel'
 
 const locales = { 'en-US': enUS }
 const localizer = dateFnsLocalizer({
@@ -133,6 +139,10 @@ function loadSavedCardDensity(): ScheduleCardDensity {
 }
 
 export function SchedulePage() {
+  const { theme } = useTheme()
+  const focus = theme === 'focus'
+  const [focusFiltersOpen, setFocusFiltersOpen] = useState(false)
+  const [focusQueueExpanded, setFocusQueueExpanded] = useState(true)
   const tenantTimezone = useTenantTimezone()
   const [view, setViewState] = useState<View>(loadSavedView)
   const [date, setDate] = useState(() => tenantCalendarDate(tenantTimezone))
@@ -177,6 +187,15 @@ export function SchedulePage() {
   const [crewFilter, setCrewFilter] = useState('')
   const [customerQuery, setCustomerQuery] = useState('')
   const [hiddenStatusIds, setHiddenStatusIds] = useState<Set<string>>(new Set())
+  // Jobs sent to subs, the company's own, or both.
+  const [subFilter, setSubFilter] = useState<'all' | 'in_house' | 'subbed'>('all')
+  const activeScheduleFilters = [Boolean(customerQuery.trim()), Boolean(techFilter), Boolean(crewFilter), subFilter !== 'all', hiddenStatusIds.size > 0].filter(Boolean).length
+  const isShown = useCallback(
+    (w: ScheduleWorkOrder) =>
+      (!w.status?.id || !hiddenStatusIds.has(w.status.id)) &&
+      (subFilter === 'all' || (subFilter === 'subbed') === Boolean(w.sub ?? w.flags?.subbed)),
+    [hiddenStatusIds, subFilter],
+  )
   const [selected, setSelected] = useState<ScheduleWorkOrder | null>(null)
   const [sidebarSearch, setSidebarSearch] = useState('')
   const [unschedGroupBy, setUnschedGroupBy] = useState<UnschedGroupBy>('none')
@@ -230,7 +249,12 @@ export function SchedulePage() {
     queryFn: () =>
       apiRequest<{ data: ApprovedTimeOffBlock[] }>(
         `/v1/time-off-requests?status=approved&from=${format(rangeStart, 'yyyy-MM-dd')}&to=${format(rangeEnd, 'yyyy-MM-dd')}`,
-      ).catch(() => ({ data: [] })),
+      ).catch((error: unknown) => {
+        // Without staff.view this is a 403: nothing to show or warn about, as before.
+        // Any other failure must surface, or "no time off" can't be told from "didn't load".
+        if (error instanceof ApiError && error.status === 403) return { data: [] }
+        throw error
+      }),
     staleTime: 60_000,
   })
   const statusesQuery = useJobStatuses()
@@ -248,6 +272,10 @@ export function SchedulePage() {
         view: 'all',
         due_from: format(rangeStart, 'yyyy-MM-dd'),
         due_to: format(rangeEnd, 'yyyy-MM-dd'),
+        // Daily duties (Responsibilities) are due at the end of every day:
+        // on the calendar they'd bury it. They live on the to-do lists and
+        // the Today board instead.
+        duties: 'none',
       }),
     // Poll so a task added elsewhere (CBI, another device, the tasks page)
     // lands on the calendar without a manual refresh — tasks have no realtime
@@ -261,6 +289,11 @@ export function SchedulePage() {
   // Drag a task card to another day (Month/Week) → move its due date there,
   // keeping its time-of-day. Drag to a tech lane (Day) → reassign.
   const taskQc = useQueryClient()
+  const removePlannedSession = useMutation({
+    mutationFn: ({ id, sessionId }: { id: string; sessionId: string }) =>
+      apiRequest(`/v1/work-orders/${id}/planned-sessions/${sessionId}`, { method: 'DELETE' }),
+    onSuccess: () => { void taskQc.invalidateQueries({ queryKey: ['schedule'] }) },
+  })
   const taskUpdate = useMutation({
     mutationFn: (vars: { id: string; patch: { due_at?: string; assignee_account_id?: string | null } }) =>
       updateTask(vars.id, vars.patch),
@@ -282,12 +315,12 @@ export function SchedulePage() {
   // We only ever read it via the setter's functional form, so the
   // current value isn't bound to a local name.
   const [, setUndoStack] = useState<
-    Array<{ id: string; prevStart: string; prevEnd: string; kind: 'job' | 'estimate' }>
+    Array<{ id: string; prevStart: string; prevEnd: string; kind: 'job' | 'estimate'; plannedSessionId?: string | null }>
   >([])
 
-  function pushUndo(id: string, prevStart: string | null, prevEnd: string | null, kind: 'job' | 'estimate' = 'job') {
+  function pushUndo(id: string, prevStart: string | null, prevEnd: string | null, kind: 'job' | 'estimate' = 'job', plannedSessionId?: string | null) {
     if (!prevStart || !prevEnd) return
-    setUndoStack((s) => [...s.slice(-19), { id, prevStart, prevEnd, kind }])
+    setUndoStack((s) => [...s.slice(-19), { id, prevStart, prevEnd, kind, plannedSessionId }])
   }
 
   /** Look up the event's kind so PATCH routes to the right endpoint. */
@@ -299,7 +332,7 @@ export function SchedulePage() {
     setUndoStack((s) => {
       const last = s[s.length - 1]
       if (!last) return s
-      reschedule.mutate({ id: last.id, start: last.prevStart, end: last.prevEnd, kind: last.kind })
+      reschedule.mutate({ id: last.id, start: last.prevStart, end: last.prevEnd, kind: last.kind, plannedSessionId: last.plannedSessionId })
       return s.slice(0, -1)
     })
   }
@@ -321,6 +354,9 @@ export function SchedulePage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
   const updateStatus = useUpdateJobStatus()
+  // Status colors are company-wide settings, so only settings editors get the pickers.
+  const { has: hasPermission } = usePermissions()
+  const canEditStatusColors = hasPermission('settings.edit')
   const unscheduledQuery = useUnscheduledJobs(sidebarSearch)
   const rawUnscheduled = unscheduledQuery.data?.data ?? []
   const visibleUnscheduled = useMemo(
@@ -339,7 +375,7 @@ export function SchedulePage() {
   const events: CalendarEvent[] = useMemo(() => {
     const rows = eventsQuery.data?.data ?? []
     return rows
-      .filter((w) => !w.status?.id || !hiddenStatusIds.has(w.status.id))
+      .filter(isShown)
       .filter((w) => !!w.scheduled_start_time)
       .map((w) => {
         const start = new Date(w.scheduled_start_time!)
@@ -350,7 +386,7 @@ export function SchedulePage() {
         const techShort = w.lead_tech?.name?.split(' ')[0] ?? ''
         const title = `${customer}${techShort ? ` · ${techShort}` : ''}`
         return {
-          id: w.id,
+          id: scheduleEventId(w),
           title,
           start,
           end,
@@ -358,7 +394,7 @@ export function SchedulePage() {
           resourceId: w.lead_tech?.id ?? UNASSIGNED_RESOURCE_ID,
         }
       })
-  }, [eventsQuery.data, hiddenStatusIds])
+  }, [eventsQuery.data, isShown])
 
   /**
    * Day-view tech swim lanes: one column per tech who has a scheduled
@@ -463,6 +499,15 @@ export function SchedulePage() {
       end: Date,
       moving?: ScheduleWorkOrder | null,
     ): boolean => {
+      // Time off didn't load, so finding none below proves nothing. Ask first.
+      if (
+        approvedTimeOffQuery.isError &&
+        targetTechId &&
+        targetTechId !== UNASSIGNED_RESOURCE_ID &&
+        !continueAfterFailedConflictCheck(approvedTimeOffQuery.error, 'approved time off')
+      ) {
+        return false
+      }
       const conflicts = findConflicts(eventId, targetTechId, start, end)
       const timeOffConflicts = findTimeOffConflicts(targetTechId, start, end)
       const warnings: string[] = []
@@ -502,7 +547,7 @@ export function SchedulePage() {
 
       return window.confirm(`${lines.join('\n')}\n\nSchedule anyway?`)
     },
-    [events, findConflicts, findTimeOffConflicts],
+    [events, findConflicts, findTimeOffConflicts, approvedTimeOffQuery.isError, approvedTimeOffQuery.error],
   )
 
   // The tenant's "Scheduled" status — applied when a job is dragged off the
@@ -521,14 +566,13 @@ export function SchedulePage() {
     endIso: string
   } | null>(null)
 
-  // Tech roster for that modal. Same 'dispatch-board' key as the context menu,
-  // so the cache is shared. Only fetched once the modal is needed.
+  // Tech roster for that modal and for the "All techs" filter. Same
+  // 'dispatch-board' key as the context menu, so the cache is shared.
   const techRosterQuery = useQuery({
     queryKey: ['dispatch-board'],
     queryFn: () =>
       apiRequest<{ data: { techs: Array<{ id: string; name: string }> } }>('/v1/dispatch/board'),
     staleTime: 60_000,
-    enabled: !!pendingSchedule,
   })
 
   /**
@@ -552,7 +596,7 @@ export function SchedulePage() {
       leadTechAccountId?: string | null,
       opts?: { skipTechPrompt?: boolean },
     ) => {
-      const scheduled = eventsQuery.data?.data.find((w) => w.id === id)
+      const scheduled = eventsQuery.data?.data.find((w) => scheduleEventId(w) === id)
       const moving = scheduled ?? unscheduledQuery.data?.data.find((w) => w.id === id)
       const kind = moving?.kind ?? 'job'
       // Not on the calendar yet = being scheduled off the To-Schedule queue.
@@ -580,10 +624,11 @@ export function SchedulePage() {
 
       if (!confirmScheduleRisks(id, targetTech, start, end, moving)) return
 
-      if (scheduled) pushUndo(id, scheduled.scheduled_start_time, scheduled.scheduled_end_time, kind)
+      if (scheduled) pushUndo(scheduled.id, scheduled.scheduled_start_time, scheduled.scheduled_end_time, kind, scheduled.planned_session_id)
 
       reschedule.mutate({
-        id,
+        id: moving?.id ?? id,
+        plannedSessionId: scheduled?.planned_session_id,
         start: start.toISOString(),
         end: end.toISOString(),
         leadTechAccountId,
@@ -595,6 +640,28 @@ export function SchedulePage() {
     // pushUndo is a stable closure over setUndoStack; reschedule is stable.
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [eventsQuery.data, unscheduledQuery.data, confirmScheduleRisks, reschedule, scheduledStatusId],
+  )
+
+  // Reassigning from a card's menu: the same time-off and overlap check as
+  // dropping it on another tech, at the time it's already booked for.
+  const reassignEvent = useCallback(
+    (id: string, techId: string | null) => {
+      const scheduled = eventsQuery.data?.data.find((w) => scheduleEventId(w) === id || w.id === id)
+      if (scheduled?.scheduled_start_time && scheduled.scheduled_end_time) {
+        const ok = confirmScheduleRisks(
+          scheduleEventId(scheduled),
+          techId,
+          new Date(scheduled.scheduled_start_time),
+          new Date(scheduled.scheduled_end_time),
+          scheduled,
+        )
+        if (!ok) return
+      }
+      updateWO.mutate({ id, patch: { lead_tech_account_id: techId }, kind: kindOf(id) })
+    },
+    // kindOf reads the same events list; updateWO is stable.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [eventsQuery.data, confirmScheduleRisks],
   )
 
   // Drag-and-drop within the calendar reschedules the WO. Optimistic — the
@@ -660,6 +727,11 @@ export function SchedulePage() {
   // we also flip the status to "Needs Scheduling" so the queue is flagged;
   // estimates track approval_status instead, so their status is left alone.
   const unscheduleJob = (id: string) => {
+    const session = eventsQuery.data?.data.find((w) => scheduleEventId(w) === id)
+    if (session?.planned_session_id) {
+      removePlannedSession.mutate({ id: session.id, sessionId: session.planned_session_id })
+      return
+    }
     const kind = kindOf(id)
     const patch: Record<string, unknown> = {
       is_scheduled: false,
@@ -685,7 +757,7 @@ export function SchedulePage() {
   }
 
   return (
-    <div data-tour="schedule-root" className="flex h-[calc(100vh-120px)] bg-white border-t border-slate-200">
+    <div data-tour="schedule-root" data-easy-board="" className="flex h-[calc(100vh-120px)] bg-white border-t border-slate-200">
       {/* Drag-and-drop polish. The cursor-flicker bug (mouse "leaves" the
           dragged event) is fixed by forcing `cursor: grabbing` on EVERY
           element while any drag/resize is happening — keeps the cursor
@@ -732,6 +804,8 @@ export function SchedulePage() {
       {/* md:relative (not static) so the absolute unschedule-drop overlay
           below is contained to the sidebar, not the whole viewport. */}
       <aside
+        data-tour="schedule-queue"
+        data-focus-queue-collapsed={focus && !focusQueueExpanded ? 'true' : undefined}
         className={`relative ${
           mobileSidebarOpen
             ? 'fixed inset-y-0 left-0 z-40 w-[85vw] max-w-xs shadow-xl flex'
@@ -742,11 +816,37 @@ export function SchedulePage() {
             their @dnd-kit droppable in here while a card is being dragged.
             pointer-events-none so the sidebar stays interactive otherwise. */}
         <div ref={setSidebarDropEl} className="absolute inset-0 z-40 pointer-events-none" />
+        {focus && !focusQueueExpanded && (
+          <button
+            type="button"
+            data-focus-queue-reopen
+            onClick={() => setFocusQueueExpanded(true)}
+            aria-label={`Show to-schedule queue, ${rawUnscheduled.length} jobs`}
+            aria-expanded={false}
+            className="hidden md:flex flex-col items-center gap-2 px-1 py-4 text-xs font-semibold text-slate-700"
+          >
+            <span aria-hidden="true">☰</span>
+            <span className="[writing-mode:vertical-rl]">To Schedule</span>
+            <span className="rounded-full bg-amber-100 px-1.5 py-0.5 text-amber-800">{rawUnscheduled.length}</span>
+          </button>
+        )}
         <div className="p-4 border-b border-slate-100">
           <div className="flex items-center justify-between">
             <h2 className="text-sm font-semibold text-slate-700 uppercase tracking-wide">
               To Schedule
             </h2>
+            {focus && (
+              <button
+                type="button"
+                data-focus-queue-collapse
+                onClick={() => setFocusQueueExpanded(false)}
+                aria-label="Collapse to-schedule queue"
+                aria-expanded={true}
+                className="hidden md:inline-flex rounded px-2 py-1 text-xs font-medium text-slate-600 hover:bg-slate-100"
+              >
+                Hide
+              </button>
+            )}
             {/* Close — only meaningful in the mobile overlay */}
             <button
               type="button"
@@ -758,13 +858,14 @@ export function SchedulePage() {
             </button>
           </div>
           <input
+            data-tour="schedule-queue-search"
             type="search"
             value={sidebarSearch}
             onChange={(e) => setSidebarSearch(e.target.value)}
             placeholder="Search customer / address…"
             className="mt-2 w-full text-xs px-2 py-1.5 border border-slate-200 rounded focus:outline-none focus:border-amber-500"
           />
-          <div className="mt-2 flex flex-wrap gap-1">
+          <div data-tour="schedule-queue-chips" className="mt-2 flex flex-wrap gap-1">
             {UNSCHED_FILTERS.map((filter) => (
               <button
                 key={filter.value}
@@ -785,7 +886,7 @@ export function SchedulePage() {
         <div className="flex-1 overflow-y-auto">
           <div className="px-4 py-2 text-xs font-semibold text-slate-500 uppercase tracking-wide flex items-center justify-between gap-2">
             <span>📋 Jobs</span>
-            <div className="flex items-center gap-1.5">
+            <div data-tour="schedule-queue-sort" className="flex items-center gap-1.5">
               <select
                 value={unschedSort}
                 onChange={(e) => setUnschedSort(e.target.value as UnschedSort)}
@@ -844,7 +945,12 @@ export function SchedulePage() {
               </div>
             ))
           )}
-          <StaffTimeOffPanel blocks={visibleTimeOffBlocks} loading={approvedTimeOffQuery.isFetching} />
+          <StaffTimeOffPanel
+            blocks={visibleTimeOffBlocks}
+            loading={approvedTimeOffQuery.isFetching}
+            failed={approvedTimeOffQuery.isError}
+            onRetry={() => { void approvedTimeOffQuery.refetch() }}
+          />
         </div>
 
         {/* Pending estimates — sent + not yet approved/rejected/expired */}
@@ -866,7 +972,21 @@ export function SchedulePage() {
             <button type="button" onClick={() => { void query.refetch() }} disabled={query.isFetching} className="ml-2 underline disabled:opacity-50">Retry</button>
           </div>
         ))}
-        <div className="border-b border-slate-200 px-3 sm:px-4 py-2 flex items-center gap-2 sm:gap-3 flex-wrap">
+        {/* What the flashing Schedule button is about. */}
+        <LateRiskPanel />
+        <div data-focus-schedule-toolbar className="border-b border-slate-200 px-3 sm:px-4 py-2 flex items-center gap-2 sm:gap-3 flex-wrap">
+          {focus && (
+            <div data-focus-schedule-period className="hidden md:flex min-w-0 flex-col justify-center">
+              <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Schedule</span>
+              <span className="truncate text-sm font-semibold text-slate-900">
+                {view === Views.MONTH
+                  ? format(date, 'MMMM yyyy')
+                  : view === Views.WEEK
+                    ? `${format(rangeStart, 'MMM d')} – ${format(addDays(rangeEnd, -1), 'MMM d, yyyy')}`
+                    : format(date, 'EEEE, MMM d')}
+              </span>
+            </div>
+          )}
           {/* Mobile-only: open the unscheduled-jobs drawer */}
           <button
             type="button"
@@ -881,7 +1001,7 @@ export function SchedulePage() {
             )}
           </button>
 
-          <div className="hidden md:inline-flex rounded-md border border-slate-300 overflow-hidden text-xs">
+          <div data-tour="schedule-views" className="hidden md:inline-flex rounded-md border border-slate-300 overflow-hidden text-xs">
             {[
               { v: Views.MONTH, label: 'Month' },
               { v: Views.WEEK, label: 'Week' },
@@ -890,6 +1010,7 @@ export function SchedulePage() {
               <button
                 key={v}
                 type="button"
+                data-tour={`schedule-view-${label.toLowerCase()}`}
                 onClick={() => setView(v as View)}
                 aria-pressed={view === v}
                 data-easy-view-option
@@ -902,7 +1023,7 @@ export function SchedulePage() {
             ))}
           </div>
 
-          <div className="hidden md:inline-flex rounded-md border border-slate-300 overflow-hidden text-xs">
+          <div data-tour="schedule-nav" className="hidden md:inline-flex rounded-md border border-slate-300 overflow-hidden text-xs">
             <button
               type="button"
               onClick={() => setDate(navDate(date, view, -1))}
@@ -931,7 +1052,7 @@ export function SchedulePage() {
 
           {/* Zoom — Day/Week scale the time grid; Month scales row height. */}
           {(view === Views.WEEK || view === Views.DAY || view === Views.MONTH) && (
-            <div className="hidden md:inline-flex items-center rounded-md border border-slate-300 overflow-hidden text-xs">
+            <div data-tour="schedule-zoom" className="hidden md:inline-flex items-center rounded-md border border-slate-300 overflow-hidden text-xs">
               <button
                 type="button"
                 onClick={() => zoomBy(-ZOOM_STEP)}
@@ -961,7 +1082,7 @@ export function SchedulePage() {
             </div>
           )}
 
-          <div className="hidden xl:inline-flex rounded-md border border-slate-300 overflow-hidden text-xs">
+          <div data-tour="schedule-density" className="hidden xl:inline-flex rounded-md border border-slate-300 overflow-hidden text-xs">
             {CARD_DENSITY_OPTIONS.map((option, idx) => (
               <button
                 key={option.value}
@@ -981,7 +1102,27 @@ export function SchedulePage() {
             ))}
           </div>
 
+          {focus && (
+            <button
+              type="button"
+              data-focus-schedule-filter-toggle
+              data-tour="schedule-filters-toggle"
+              aria-expanded={focusFiltersOpen}
+              aria-controls="focus-schedule-filters"
+              onClick={() => setFocusFiltersOpen((open) => !open)}
+              className="rounded-md border border-slate-300 px-3 py-1.5 text-xs font-semibold text-slate-700"
+            >
+              Filters
+              {activeScheduleFilters > 0 && (
+                <span className="ml-1 rounded-full bg-amber-100 px-1.5 py-0.5 text-amber-800">
+                  {activeScheduleFilters}
+                </span>
+              )}
+            </button>
+          )}
+          <div id="focus-schedule-filters" data-focus-schedule-filters data-open={focusFiltersOpen ? 'true' : 'false'} className="contents">
           <input
+            data-tour="schedule-filters"
             type="search"
             value={customerQuery}
             onChange={(e) => setCustomerQuery(e.target.value)}
@@ -989,6 +1130,7 @@ export function SchedulePage() {
             className="text-xs px-2 py-1.5 border border-slate-200 rounded focus:outline-none focus:border-amber-500"
           />
           <select
+            data-tour="schedule-tech-filter"
             value={techFilter}
             onChange={(e) => setTechFilter(e.target.value)}
             className="rounded border border-slate-300 bg-white px-2 py-1.5 text-xs font-medium text-slate-700 focus:border-amber-500 focus:outline-none"
@@ -1001,7 +1143,20 @@ export function SchedulePage() {
           </select>
 
           <CrewFilter value={crewFilter} onChange={setCrewFilter} />
-          <div className="flex items-center gap-2">
+          {(subFilter !== 'all' || events.some((e) => e.resource.sub || e.resource.flags?.subbed)) && (
+            <select
+              data-tour="schedule-sub-filter"
+              value={subFilter}
+              onChange={(e) => setSubFilter(e.target.value as typeof subFilter)}
+              className="rounded border border-slate-300 bg-white px-2 py-1.5 text-xs font-medium text-slate-700 focus:border-amber-500 focus:outline-none"
+              title="Show the jobs sent to subs, your own, or both"
+            >
+              <option value="all">All jobs</option>
+              <option value="in_house">In-house</option>
+              <option value="subbed">Sent to subs</option>
+            </select>
+          )}
+          <div data-tour="schedule-legends" className="flex items-center gap-2">
             <ScheduleLegendHoverButton label="Statuses" icon="◉">
               <StatusLegendList
                 statuses={statuses}
@@ -1014,7 +1169,7 @@ export function SchedulePage() {
                     return next
                   })
                 }}
-                onColorChange={(id, input) => updateStatus.mutate({ id, input })}
+                onColorChange={canEditStatusColors ? (id, input) => updateStatus.mutate({ id, input }) : undefined}
               />
             </ScheduleLegendHoverButton>
             <ScheduleLegendHoverButton label="Card Badges" icon="🏷">
@@ -1023,18 +1178,38 @@ export function SchedulePage() {
               </div>
             </ScheduleLegendHoverButton>
           </div>
+          {focus && activeScheduleFilters > 0 && (
+            <button
+              type="button"
+              data-focus-schedule-clear-filters
+              onClick={() => {
+                setCustomerQuery('')
+                setTechFilter('')
+                setCrewFilter('')
+                setSubFilter('all')
+                setHiddenStatusIds(new Set())
+              }}
+              className="rounded-md px-2 py-1.5 text-xs font-semibold text-amber-800 hover:bg-amber-50"
+            >
+              Clear filters
+            </button>
+          )}
+          </div>
 
-          <div className="ml-auto text-[11px] text-slate-400">
+          <div data-tour="schedule-refresh" className="ml-auto text-[11px] text-slate-400">
             {eventsQuery.isFetching ? '⟳ refreshing…' : `${events.length} on screen · auto-refresh 10s`}
+            {focus && unscheduledQuery.isSuccess && (
+              <span data-focus-schedule-queue-count className="ml-2 hidden md:inline">· {rawUnscheduled.length} to schedule</span>
+            )}
           </div>
         </div>
 
         {/* Mobile: day agenda (the grid views don't work below md). */}
-        <div className="md:hidden flex-1 overflow-hidden">
+        <div data-tour="schedule-mobile-agenda" className="md:hidden flex-1 overflow-hidden">
           <MobileScheduleAgenda
             date={date}
             events={(eventsQuery.data?.data ?? []).filter(
-              (w) => !w.status?.id || !hiddenStatusIds.has(w.status.id),
+              isShown,
             )}
             onSelectEvent={(wo) => setSelected(wo)}
             onStepDay={(delta) => setDate(addDays(date, delta))}
@@ -1046,6 +1221,7 @@ export function SchedulePage() {
 
         {/* Desktop: full drag-and-drop calendar grid */}
         <div
+          data-tour="schedule-calendar"
           className="hidden md:block flex-1 overflow-hidden"
           onDragOver={(e) => {
             // Allow dropping unscheduled jobs from sidebar.
@@ -1070,7 +1246,7 @@ export function SchedulePage() {
             <CustomWeekView
               date={date}
               events={(eventsQuery.data?.data ?? []).filter(
-                (w) => !w.status?.id || !hiddenStatusIds.has(w.status.id),
+                isShown,
               )}
               tasks={calendarTasks}
               timeOffBlocks={visibleTimeOffBlocks}
@@ -1078,9 +1254,7 @@ export function SchedulePage() {
               onSelectEvent={(wo) => setSelected(wo)}
               onReschedule={(id, start, end) => scheduleEvent(id, start, end)}
               onChangeStatus={changeStatus}
-              onReassign={(id, techId) =>
-                updateWO.mutate({ id, patch: { lead_tech_account_id: techId }, kind: kindOf(id) })
-              }
+              onReassign={reassignEvent}
               onChangeTime={(id, start, end) => scheduleEvent(id, start, end)}
               onConvertEstimate={(id) => setConvertingEstimateId(id)}
               colorFor={(wo) => visibleStatusColor(wo.status?.color)}
@@ -1095,7 +1269,7 @@ export function SchedulePage() {
             <CustomDayView
               date={date}
               events={(eventsQuery.data?.data ?? []).filter(
-                (w) => !w.status?.id || !hiddenStatusIds.has(w.status.id),
+                isShown,
               )}
               tasks={calendarTasks}
               timeOffBlocks={visibleTimeOffBlocks}
@@ -1103,10 +1277,9 @@ export function SchedulePage() {
               onSelectEvent={(wo) => setSelected(wo)}
               onReschedule={(id, start, end, techId) => scheduleEvent(id, start, end, techId)}
               onChangeStatus={changeStatus}
-              onReassign={(id, techId) =>
-                updateWO.mutate({ id, patch: { lead_tech_account_id: techId }, kind: kindOf(id) })
-              }
+              onReassign={reassignEvent}
               onChangeTime={(id, start, end) => scheduleEvent(id, start, end)}
+              onConvertEstimate={(id) => setConvertingEstimateId(id)}
               colorFor={(wo) => visibleStatusColor(wo.status?.color)}
               textColorFor={(hex) => textColorOn(hex)}
               isLate={isLate}
@@ -1119,7 +1292,7 @@ export function SchedulePage() {
             <CustomMonthView
               date={date}
               events={(eventsQuery.data?.data ?? []).filter(
-                (w) => !w.status?.id || !hiddenStatusIds.has(w.status.id),
+                isShown,
               )}
               tasks={calendarTasks}
               timeOffBlocks={visibleTimeOffBlocks}
@@ -1127,10 +1300,9 @@ export function SchedulePage() {
               onSelectEvent={(wo) => setSelected(wo)}
               onReschedule={(id, start, end) => scheduleEvent(id, start, end)}
               onChangeStatus={changeStatus}
-              onReassign={(id, techId) =>
-                updateWO.mutate({ id, patch: { lead_tech_account_id: techId }, kind: kindOf(id) })
-              }
+              onReassign={reassignEvent}
               onChangeTime={(id, start, end) => scheduleEvent(id, start, end)}
+              onConvertEstimate={(id) => setConvertingEstimateId(id)}
               colorFor={(wo) => visibleStatusColor(wo.status?.color)}
               textColorFor={(hex) => textColorOn(hex)}
               isLate={isLate}
@@ -1271,12 +1443,15 @@ function StatusLegendList({
   statuses: Array<{ id: string; name: string; color: string | null; color_secondary?: string | null }>
   hiddenStatusIds: Set<string>
   onToggleStatus: (id: string) => void
-  onColorChange: (id: string, input: { color?: string; color_secondary?: string }) => void
+  /** Omitted for users without settings.edit: the color pickers are hidden. */
+  onColorChange?: (id: string, input: { color?: string; color_secondary?: string }) => void
 }) {
   return (
     <div className="max-h-96 overflow-y-auto py-2">
       <p className="px-3 pb-2 text-xs leading-5 text-slate-500">
-        Click a row to hide or show that status. Outline controls the outside lining; fill controls the card middle.
+        {onColorChange
+          ? 'Click a row to hide or show that status. Outline controls the outside lining; fill controls the card middle. Color changes save for everyone in the company.'
+          : 'Click a row to hide or show that status.'}
       </p>
       {statuses.length === 0 ? (
         <div className="px-3 py-2 text-xs text-slate-400">No statuses loaded.</div>
@@ -1299,7 +1474,7 @@ function StatusLegendList({
                   </div>
                   {hidden ? <div className="mt-1 text-[10px] font-semibold uppercase tracking-wide text-slate-400">Hidden</div> : null}
                 </button>
-                <div className="flex items-center gap-2" onClick={(event) => event.stopPropagation()}>
+                {onColorChange ? <div className="flex items-center gap-2" onClick={(event) => event.stopPropagation()}>
                   <label className="flex flex-col items-center gap-1 text-[10px] font-semibold uppercase tracking-wide text-slate-400">
                     Outline
                     <input
@@ -1320,7 +1495,7 @@ function StatusLegendList({
                       title="Middle fill color"
                     />
                   </label>
-                </div>
+                </div> : <span />}
               </li>
             )
           })}
@@ -1394,17 +1569,33 @@ function TechSelectModal({
   )
 }
 
-function StaffTimeOffPanel({ blocks, loading }: { blocks: ApprovedTimeOffBlock[]; loading: boolean }) {
-  if (!loading && blocks.length === 0) return null
+function StaffTimeOffPanel({
+  blocks,
+  loading,
+  failed,
+  onRetry,
+}: {
+  blocks: ApprovedTimeOffBlock[]
+  loading: boolean
+  failed: boolean
+  onRetry: () => void
+}) {
+  if (!loading && !failed && blocks.length === 0) return null
 
   return (
-    <div className="mt-3 border-t border-slate-100 px-4 py-3">
+    <div data-tour="schedule-staff-off" className="mt-3 border-t border-slate-100 px-4 py-3">
       <div className="flex items-center justify-between gap-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
         <span>Staff off</span>
-        <span className="rounded bg-slate-100 px-1.5 text-slate-500">{blocks.length}</span>
+        <span className="rounded bg-slate-100 px-1.5 text-slate-500">{failed && blocks.length === 0 ? '—' : blocks.length}</span>
       </div>
       <div className="mt-2 space-y-2">
-        {loading && blocks.length === 0 ? (
+        {failed && (
+          <div role="alert" className="text-xs text-red-700">
+            Could not load approved time off.
+            <button type="button" onClick={onRetry} disabled={loading} className="ml-2 underline disabled:opacity-50">Retry</button>
+          </div>
+        )}
+        {!failed && loading && blocks.length === 0 ? (
           <div className="rounded border border-slate-100 bg-slate-50 px-3 py-2 text-xs text-slate-400">
             Loading approved time off...
           </div>
@@ -1435,11 +1626,12 @@ function StaffTimeOffPanel({ blocks, loading }: { blocks: ApprovedTimeOffBlock[]
 function EventDetailPanel({ wo, onClose }: { wo: ScheduleWorkOrder; onClose: () => void }) {
   return (
     <aside
+      data-tour="schedule-detail"
       className="fixed inset-0 z-40 bg-white flex flex-col md:static md:inset-auto md:z-auto md:w-80 md:border-l md:border-slate-200"
     >
       <div className="px-4 py-3 border-b border-slate-200 flex items-center justify-between">
         <h3 className="text-sm font-semibold text-slate-900">Job detail</h3>
-        <button onClick={onClose} className="text-slate-400 hover:text-slate-700 text-2xl leading-none w-10 h-10 flex items-center justify-center">×</button>
+        <button data-tour="schedule-detail-close" onClick={onClose} aria-label="Close job detail" className="text-slate-400 hover:text-slate-700 text-2xl leading-none w-10 h-10 flex items-center justify-center">×</button>
       </div>
       <div className="flex-1 overflow-y-auto p-4 text-sm space-y-3">
         <div>
@@ -1488,8 +1680,8 @@ function EventDetailPanel({ wo, onClose }: { wo: ScheduleWorkOrder; onClose: () 
           labeled
         />
         <div>
-          <div className="text-[10px] uppercase tracking-wide text-slate-500">Tech</div>
-          <div>{wo.lead_tech?.name ?? <span className="text-slate-400">Unassigned</span>}</div>
+          <div className="text-[10px] uppercase tracking-wide text-slate-500">{wo.sub ? 'Sub' : 'Tech'}</div>
+          <div>{wo.sub ? `${subLine(wo.sub)} · ${wo.sub.label}` : wo.lead_tech?.name ?? <span className="text-slate-400">Unassigned</span>}</div>
         </div>
         {wo.scheduled_start_time && (
           <div>
@@ -1505,10 +1697,11 @@ function EventDetailPanel({ wo, onClose }: { wo: ScheduleWorkOrder; onClose: () 
         )}
         <div className="pt-2 border-t border-slate-100">
           <Link
-            to={`/jobs/${wo.id}`}
+            data-tour="schedule-detail-open"
+            to={wo.kind === 'estimate' ? `/estimates/${wo.id}` : `/jobs/${wo.id}`}
             className="text-sm text-amber-700 hover:underline"
           >
-            Open job →
+            {wo.kind === 'estimate' ? 'Open estimate →' : 'Open job →'}
           </Link>
         </div>
       </div>
@@ -1524,7 +1717,7 @@ function EventDetailPanel({ wo, onClose }: { wo: ScheduleWorkOrder; onClose: () 
 function BigEventTile({ event }: { event: CalendarEvent }) {
   const wo = event.resource
   const customer = wo.customer?.name ?? '—'
-  const tech = wo.lead_tech?.name?.split(' ')[0] ?? ''
+  const tech = wo.sub ? subLine(wo.sub) : wo.lead_tech?.name?.split(' ')[0] ?? ''
   const loc = wo.service_location?.nickname ?? ''
   const time = event.start.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
 
@@ -1811,6 +2004,7 @@ function UnscheduledRow({
 }) {
   return (
     <li
+      data-tour="schedule-queue-row"
       className="px-4 py-2.5 hover:bg-slate-50 cursor-pointer"
       draggable
       onDragStart={(e) => {
@@ -1859,7 +2053,7 @@ function PendingEstimatesPanel() {
   }
 
   return (
-    <div className="border-t border-slate-200 max-h-[40%] flex flex-col">
+    <div data-tour="schedule-pending-estimates" className="border-t border-slate-200 max-h-[40%] flex flex-col">
       <div className="px-4 py-2 flex items-center justify-between">
         <span className="text-xs font-semibold text-slate-500 uppercase tracking-wide">
           Pending approval
@@ -1926,6 +2120,7 @@ function CrewFilter({ value, onChange }: { value: string; onChange: (v: string) 
   if (crews.length === 0) return null
   return (
     <select
+      data-tour="schedule-crew-filter"
       value={value}
       onChange={(e) => onChange(e.target.value)}
       className="text-xs px-2 py-1.5 border border-slate-200 rounded focus:outline-none focus:border-amber-500"

@@ -21,7 +21,7 @@ import { toastPaused, subscribeToastPause } from './NotificationStack'
  * React reuses an element for a different toast.
  */
 
-export type ToastType = 'call' | 'text' | 'vm' | 'email' | 'intake' | 'paid' | 'review' | 'error'
+export type ToastType = 'call' | 'text' | 'vm' | 'email' | 'intake' | 'paid' | 'review' | 'error' | 'late'
 
 interface TypeToken {
   label: string
@@ -43,6 +43,8 @@ export const TOAST_TYPES: Record<ToastType, TypeToken> = {
   paid: { label: 'Payment received', band: 'linear-gradient(135deg,#047857,#34D399)', accent: '#047857', seconds: 8 },
   review: { label: 'New 5-star review', band: 'linear-gradient(135deg,#D97706,#FBBF24)', accent: '#D97706', seconds: 8 },
   error: { label: 'Something went wrong', band: 'linear-gradient(135deg,#BE123C,#FB7185)', accent: '#BE123C', seconds: 12, urgent: true },
+  // The flashing Schedule button nobody answered. Red into blue, like the light bar.
+  late: { label: 'Tech may be late', band: 'linear-gradient(135deg,#DC2626,#2563EB)', accent: '#DC2626', seconds: 45, urgent: true },
 }
 
 /** What the old callers passed. Kept so nothing has to change at once. */
@@ -136,7 +138,9 @@ export function NotificationCard({
   const who = (
     <>
       <span className="cb-toast-av">
-        <Avatar name={customer} colorKey={avatar?.id} imageUrl={avatar?.imageUrl} preset={avatar?.preset} size={60} />
+        {/* 52: the space inside .cb-toast-av's 4px white border. At 60 it
+            started 4px in and spilled out, 4px off its ring. */}
+        <Avatar name={customer} colorKey={avatar?.id} imageUrl={avatar?.imageUrl} preset={avatar?.preset} size={52} />
         {kindType === 'call' && (
           <>
             <span className="cb-toast-ring" aria-hidden />

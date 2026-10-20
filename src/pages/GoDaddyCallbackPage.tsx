@@ -22,7 +22,7 @@ export function GoDaddyCallbackPage() {
     const context = params.get('context')
     const status = params.get('status')
     if (!code || !context) {
-      setError('GoDaddy didn\'t send back an authorization code. Start the connection again from Tool Shed → Payments.')
+      setError('GoDaddy didn\'t send back an authorization code. Start the connection again from the Payments settings (Where card payments go).')
       return
     }
 
@@ -32,7 +32,7 @@ export function GoDaddyCallbackPage() {
   }, [params, navigate])
 
   return (
-    <main className="mx-auto max-w-lg px-6 py-16 text-center">
+    <main data-tour="godaddy-callback" className="mx-auto max-w-lg px-6 py-16 text-center">
       {error ? (
         <>
           <h1 className="text-lg font-semibold text-slate-900">Couldn't connect GoDaddy Payments</h1>

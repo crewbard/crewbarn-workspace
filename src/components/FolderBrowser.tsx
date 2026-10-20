@@ -360,7 +360,7 @@ function CabinetLayout({
             </button>
           </div>
           <div data-easy-folder-body className="bg-white p-3.5">
-            <FolderBody folder={active} display="grid" empty={emptyFolderText} countNoun={countNoun} />
+            <FolderBody key={active.key} folder={active} display="grid" empty={emptyFolderText} countNoun={countNoun} />
           </div>
         </section>
       ) : (
@@ -422,7 +422,7 @@ function TreeLayout({
                 <span className="text-xs font-medium text-slate-500">{countLabel(active.count, countNoun)}</span>
               </div>
               <div className="mt-3">
-                <FolderBody folder={active} display="list" empty={emptyFolderText} countNoun={countNoun} />
+                <FolderBody key={active.key} folder={active} display="list" empty={emptyFolderText} countNoun={countNoun} />
               </div>
             </>
           ) : null}

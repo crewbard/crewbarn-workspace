@@ -169,7 +169,7 @@ export function ContractSummary({
           </ul>
         )}
 
-        <div className="mt-3 grid grid-cols-2 gap-2 border-t border-navy-100 pt-3">
+        <div data-tour="contract-summary-counts" className="mt-3 grid grid-cols-2 gap-2 border-t border-navy-100 pt-3">
           <div className="rounded-md bg-navy-50/60 px-3 py-2">
             <p className="text-lg font-bold text-navy-900">{preview?.jobs_first_year ?? '—'}</p>
             <p className="text-xs leading-tight text-navy-500">jobs in the first year</p>

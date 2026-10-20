@@ -1,13 +1,15 @@
 import { useQuery } from '@tanstack/react-query'
 import { PERM, usePermissions } from '@/hooks/usePermissions'
+import { emptyIfNotForYou } from '@/hooks/useNavBadges'
 import { getIntakePendingCount } from '@/lib/comms'
 
 /**
  * Live count of pending intake drafts for the "Intake" nav badge.
  *
- * Polls every 15s (matching the Calls badge cadence) so the count updates
- * without a page refresh. Silently degrades to 0 for roles without
- * customers.view — the endpoint is route-gated on that permission.
+ * Only asks for roles with customers.view (the endpoint is route-gated on
+ * that permission). A 403 or 402 still comes back as 0: there is nothing
+ * here for this person. Any other failure keeps the last count on the badge
+ * while React Query tries again, rather than dropping it to 0 on a blip.
  */
 export function useIntakePendingCount(): number {
   const { has, isLoading } = usePermissions()
@@ -15,7 +17,7 @@ export function useIntakePendingCount(): number {
 
   const query = useQuery({
     queryKey: ['intake-pending-count'],
-    queryFn: () => getIntakePendingCount().catch(() => 0),
+    queryFn: () => getIntakePendingCount().catch(emptyIfNotForYou(0)),
     enabled: canView,
     // Backstop only — Reverb (IntakeToasts) invalidates this key on new drafts.
     refetchInterval: 60000,

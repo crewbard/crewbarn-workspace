@@ -33,6 +33,8 @@ export interface CreateInventoryUnitInput {
   status?: string
   notes?: string | null
   received_at?: string | null
+  /** PO-only override reason (lib/poOverride.ts). */
+  override_reason?: string
 }
 
 export async function createInventoryUnit(

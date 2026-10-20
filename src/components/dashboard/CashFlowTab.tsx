@@ -23,17 +23,18 @@ export function CashFlowTab() {
   const [range, setRange] = useState<DashRange>('month')
 
   return (
-    <div className="px-4 sm:px-6 py-5">
+    <div data-tour="dash-cashflow" className="px-4 sm:px-6 py-5">
       <div className="flex items-center justify-between flex-wrap gap-3 mb-4">
         <p className="text-sm text-slate-500">
           Money in vs out, receivables, and average job revenue — live from your books.
         </p>
-        <div data-easy-period-controls className="inline-flex rounded-lg border border-slate-300 overflow-hidden">
+        <div data-easy-period-controls data-tour="dash-cashflow-range" className="inline-flex rounded-lg border border-slate-300 overflow-hidden">
           {(Object.keys(DASH_RANGE_LABELS) as DashRange[]).map((r) => (
             <button
               key={r}
               type="button"
               onClick={() => setRange(r)}
+              aria-pressed={range === r}
               className={[
                 'px-3 py-1.5 text-sm font-medium transition-colors',
                 range === r ? 'bg-amber-500 text-white' : 'bg-white text-slate-600 hover:bg-slate-50',
@@ -52,6 +53,7 @@ export function CashFlowTab() {
           return (
             <div
               key={id}
+              data-tour={`dash-cash-${id}`}
               className={`h-[300px] ${span === 2 ? 'sm:col-span-2 xl:col-span-2' : ''}`}
             >
               <WidgetBoundary title={def.title}>

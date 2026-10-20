@@ -8,6 +8,7 @@ import {
   getFranchiseActAs,
   getStoredToken,
 } from '@/lib/api'
+import { assertFileResponse } from '@/lib/fileResponse'
 import { money, specFor, type Bar, type Column, type ReportSpec } from '@/lib/reportSpecs'
 import { ReportIcon } from './ReportIcon'
 
@@ -54,8 +55,10 @@ const PERIODS: Period[] = [
     key: 'week',
     label: 'This week',
     range: () => {
+      // Weeks start on Monday, the same as the Money desk and Overview.
       const now = new Date()
-      const start = new Date(now.getFullYear(), now.getMonth(), now.getDate() - now.getDay())
+      const sinceMonday = (now.getDay() + 6) % 7
+      const start = new Date(now.getFullYear(), now.getMonth(), now.getDate() - sinceMonday)
       return { from: isoDay(start), to: isoDay(now) }
     },
   },
@@ -150,6 +153,7 @@ async function download(url: string, filename: string): Promise<void> {
 
   const res = await fetch(`${API_URL}${url}`, { headers })
   if (!res.ok) throw new Error(`Export failed (${res.status})`)
+  assertFileResponse(res)
   const href = URL.createObjectURL(await res.blob())
   const a = document.createElement('a')
   a.href = href
@@ -269,6 +273,7 @@ export function ReportOverlay({ reportId, onClose }: Props) {
     <div
       className="fixed inset-0 z-[120] flex justify-center overflow-y-auto bg-slate-900/50 p-3 backdrop-blur-[2px] sm:p-6"
       role="dialog"
+      data-tour="report-overlay"
       aria-modal="true"
       aria-label={spec.title}
       onMouseDown={(e) => {

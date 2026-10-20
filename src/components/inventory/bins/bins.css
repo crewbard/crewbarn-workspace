@@ -1,0 +1,29 @@
+/*
+ * Bins screen and the Add product flow: colour roles, taken from whatever
+ * theme is on. Classic and Pro fall through to the app's own tokens; Easy and
+ * Focus have their own surface/text/line variables, used first when present.
+ * The accent follows the tenant's accent (--accent-*), the dark surfaces
+ * follow the chrome colour (--chrome-bg). Only the fill colours (empty,
+ * light ... over capacity) are fixed, so they mean the same on every theme.
+ */
+:where([data-bins-ui]) {
+  --bins-surface: var(--easy-surface, var(--focus-paper, var(--color-surface, #fff)));
+  --bins-soft: color-mix(in srgb, var(--bins-text) 5%, var(--bins-surface));
+  --bins-softer: color-mix(in srgb, var(--bins-text) 3%, var(--bins-surface));
+  --bins-border: var(--easy-border, var(--focus-line, #e2e8f0));
+  --bins-border-soft: color-mix(in srgb, var(--bins-border) 60%, var(--bins-surface));
+  --bins-text: var(--easy-text, #0f172a);
+  --bins-text-2: color-mix(in srgb, var(--bins-text) 78%, var(--bins-surface));
+  --bins-muted: var(--easy-muted, var(--focus-muted, #475569));
+  --bins-accent: var(--accent-500, #e8902c);
+  --bins-accent-strong: var(--accent-600, #c57519);
+  --bins-accent-ink: var(--accent-800, #75450f);
+  --bins-accent-soft: var(--accent-50, #fdf7ee);
+  --bins-accent-line: var(--accent-300, #eebd6f);
+  --bins-dark: var(--chrome-bg, #0f1a2e);
+  --bins-type-rack: #7c5ce0;
+  --bins-type-shelf: #2f7fd8;
+  --bins-type-bin: #d06a0c;
+  --bins-type-row: #5b677c;
+  --bins-type-other: #5b677c;
+}

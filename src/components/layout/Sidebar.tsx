@@ -6,12 +6,14 @@ import { Link, NavLink } from 'react-router-dom'
 import { useAuth } from '@/hooks/useAuth'
 import { PERM, usePermissions } from '@/hooks/usePermissions'
 import { useNavBadges } from '@/hooks/useNavBadges'
+import { useLateRisks } from '@/hooks/useLateRisks'
 import { useUnhandledIncomingCalls } from '@/hooks/useUnhandledIncomingCalls'
 import { useIntakePendingCount } from '@/hooks/useIntakePendingCount'
 import { useModuleVisibility } from '@/hooks/useModuleVisibility'
 import { useFranchiseFeature } from '@/hooks/useFranchiseFeature'
-import { primaryNavForTheme } from './TopBar'
-import { useVisibleToolShedSections } from './ToolShedMenu'
+import { appExtensions } from '@/lib/appExtensions'
+import { canOpenNavItem, primaryNavForTheme } from './TopBar'
+import { toolShedSectionSlug, useVisibleToolShedSections } from './ToolShedMenu'
 
 /**
  * Sidebar — the dark navy left rail of the CrewBarn "pro" theme. A vertical
@@ -61,19 +63,27 @@ export function Sidebar({
   onOpenHelp?: () => void
 }) {
   const { account, logout } = useAuth()
-  const { has, isLoading } = usePermissions()
+  const { has, hasAny, isLoading } = usePermissions()
   const callAlerts = useUnhandledIncomingCalls()
   const intakeCount = useIntakePendingCount()
   const badges = useNavBadges()
-  const { isRouteVisible } = useModuleVisibility()
+  const lateRisks = useLateRisks()
+  const { isRouteVisibleInWork: isRouteVisible } = useModuleVisibility()
   const franchise = useFranchiseFeature()
   const [toolShedOpen, setToolShedOpen] = useState(false)
   const { theme } = useTheme()
   const linkSize = 'normal' as const
-  const orderedPrimary = primaryNavForTheme(theme, has('inventory.view')).filter((item) => isRouteVisible(item.to))
+  const staffLinks = appExtensions().staffSidebarLinks ?? []
+  const orderedPrimary = primaryNavForTheme(theme, has('inventory.view'))
+    .filter((item) => isRouteVisible(item.to) && canOpenNavItem(item, hasAny))
+  // Communication links: each needs its route permission and its own module.
+  const canMessages = has('customers.view') && isRouteVisible('/communications')
+  const canCalls = !isLoading && has(PERM.CALLS_VIEW) && isRouteVisible('/calls')
+  const canIntake = has('customers.view') && isRouteVisible('/intake')
 
   // Badges keyed by route — same semantics as TopBar / MobileNavDrawer.
   const badgesFor: Record<string, BadgePill[]> = {
+    '/tasks': badges.taskCount > 0 ? [{ count: badges.taskCount, color: 'amber' }] : [],
     '/dispatch':
       badges.dispatchPendingCount > 0
         ? [{ count: badges.dispatchPendingCount, color: 'amber' }]
@@ -110,12 +120,13 @@ export function Sidebar({
 
   return (
     <aside
+      data-tour="sidebar"
       data-traditional-chrome={theme === 'pro' ? '' : undefined}
       className="hidden md:flex flex-col shrink-0 h-screen w-60 bg-[var(--chrome-bg)] text-white/80"
     >
       {/* Brand */}
       <div data-sidebar-brand className="flex items-center px-4 border-b border-white/10 shrink-0 h-14">
-        <Link to="/" className="flex items-center gap-2 group">
+        <Link to="/" data-tour="shell-brand" className="flex items-center gap-2 group">
           <span className="text-lg font-bold text-white">
             Crew<span className="text-amber-400">Barn</span>
           </span>
@@ -131,7 +142,7 @@ export function Sidebar({
       </div>
 
       {/* Nav — scrolls independently of the brand + account footer */}
-      <nav className="flex-1 overflow-y-auto px-2 py-3 space-y-0.5">
+      <nav data-tour="sidebar-nav" className="flex-1 overflow-y-auto px-2 py-3 space-y-0.5">
         {orderedPrimary.map((item) => (
           <SidebarLink
             key={item.to}
@@ -141,13 +152,16 @@ export function Sidebar({
             icon={ICON_FOR_ROUTE[item.to] ?? 'dashboard'}
             badges={badgesFor[item.to] ?? []}
             size={linkSize}
+            strobe={item.to === '/schedule' && lateRisks.flashing
+              ? `${lateRisks.unseen.length} tech${lateRisks.unseen.length === 1 ? '' : 's'} may be late. Open Schedule to see.`
+              : undefined}
           />
         ))}
 
-        {isRouteVisible('/communications') && <>
+        {(canMessages || canCalls || canIntake) && <>
         <SidebarSectionLabel>Communication</SidebarSectionLabel>
-        <SidebarLink to="/communications" label="Messages" icon="messages" badges={[]} size={linkSize} />
-        {!isLoading && has(PERM.CALLS_VIEW) && (
+        {canMessages && <SidebarLink to="/communications" label="Messages" icon="messages" badges={[]} size={linkSize} />}
+        {canCalls && (
           <SidebarLink
             to="/calls"
             label="Calls"
@@ -156,7 +170,7 @@ export function Sidebar({
             size={linkSize}
           />
         )}
-        <SidebarLink to="/intake" label="Intake Queue" icon="messages" badges={intakeCount > 0 ? [{ count: intakeCount, color: 'amber' }] : []} size={linkSize} />
+        {canIntake && <SidebarLink to="/intake" label="Intake Queue" icon="messages" badges={intakeCount > 0 ? [{ count: intakeCount, color: 'amber' }] : []} size={linkSize} />}
         </>}
 
         {/* Franchise Dashboard — only when the tenant is a franchisor + the
@@ -170,6 +184,7 @@ export function Sidebar({
           <button
             type="button"
             onClick={() => setToolShedOpen((v) => !v)}
+            data-tour="sidebar-tool-shed"
             className="group w-full flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium text-white/75 hover:bg-white/10 hover:text-white transition-colors"
             aria-expanded={toolShedOpen}
           >
@@ -194,11 +209,11 @@ export function Sidebar({
           </button>
 
           {toolShedOpen && (
-            <div className="mt-1 mb-1 space-y-2">
+            <div data-tour="sidebar-tool-shed-panel" className="mt-1 mb-1 space-y-2">
               {theme === 'easy-side' && <div className="rounded-lg bg-white text-slate-900"><Suspense fallback={<p role="status" className="p-3">Loading settings…</p>}><EasySettingsDirectory compact onClose={() => setToolShedOpen(false)} /></Suspense></div>}
-              {theme === 'easy-side' && <NavLink to="/tool-shed" onClick={() => setToolShedOpen(false)} className="block rounded-md px-3 py-3 text-sm font-semibold text-white hover:bg-white/10">Open work tools →</NavLink>}
+              {theme === 'easy-side' && <NavLink to="/tool-shed" onClick={() => setToolShedOpen(false)} data-tour="toolshed-open-full" className="block rounded-md px-3 py-3 text-sm font-semibold text-white hover:bg-white/10">Open work tools →</NavLink>}
               {theme !== 'easy-side' && toolShedSections.map((section) => (
-                <div key={section.title}>
+                <div key={section.title} data-tour={`toolshed-section-${toolShedSectionSlug(section.title)}`}>
                   <div className="px-3 pt-1.5 pb-0.5 text-[10px] uppercase tracking-wide font-semibold text-white/45">
                     {section.title}
                   </div>
@@ -232,21 +247,20 @@ export function Sidebar({
         </div>
 
         {/* Platform-admin shortcuts — only for staff accounts */}
-        {account?.is_platform_admin && (
+        {account?.is_platform_admin && staffLinks.length > 0 && (
           <div className="pt-2 mt-1 border-t border-white/10">
             <div className="px-3 pt-1.5 pb-0.5 text-[10px] uppercase tracking-wide font-semibold text-white/45">
               Staff
             </div>
-            <SidebarLink to="/admin/tenants" label="Tenants" icon="toolshed" badges={[]} size={linkSize} />
-            <SidebarLink to="/admin/franchise-billing" label="Franchise billing" icon="money" badges={[]} size={linkSize} />
-            <SidebarLink to="/admin/testers" label="Testers" icon="toolshed" badges={[]} size={linkSize} />
-            <SidebarLink to="/admin/inbox" label="Inbox" icon="messages" badges={[]} size={linkSize} />
+            {staffLinks.map((link) => (
+              <SidebarLink key={link.to} to={link.to} label={link.label} icon={link.icon ?? 'toolshed'} badges={[]} size={linkSize} />
+            ))}
           </div>
         )}
       </nav>
 
       {/* Account footer */}
-      <div className="border-t border-white/10 p-3 shrink-0">
+      <div data-tour="sidebar-account" className="border-t border-white/10 p-3 shrink-0">
         <div className="flex items-center gap-2.5">
           <div className="w-8 h-8 rounded-full bg-white/15 text-white text-xs font-semibold flex items-center justify-center shrink-0">
             {userInitials}
@@ -288,6 +302,7 @@ function SidebarLink({
   icon,
   badges,
   size = 'normal',
+  strobe,
 }: {
   to: string
   end?: boolean
@@ -295,6 +310,8 @@ function SidebarLink({
   icon: NavIcon
   badges: BadgePill[]
   size?: 'dense' | 'normal' | 'large'
+  /** Flash like a police light, with this as the tooltip (a tech may be late). */
+  strobe?: string
 }) {
   const sizeClass =
     size === 'large'
@@ -307,12 +324,15 @@ function SidebarLink({
     <NavLink
       to={to}
       end={end}
+      data-tour={`sidebar-${to === '/' ? 'dashboard' : to.slice(1).replace(/\//g, '-')}`}
+      title={strobe}
       className={({ isActive }) =>
         [
           `group relative flex items-center gap-3 rounded-md font-medium transition-colors ${sizeClass}`,
           isActive
             ? 'bg-white/15 text-white'
             : 'text-white/75 hover:bg-white/10 hover:text-white',
+          strobe ? 'cb-strobe' : '',
         ].join(' ')
       }
     >

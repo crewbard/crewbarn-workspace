@@ -1,3 +1,4 @@
+import { rasterizeIfSvg } from '@/lib/rasterizeIfSvg'
 import { useEffect, useRef, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { API_URL, apiRequest, getStoredToken } from '@/lib/api'
@@ -83,7 +84,8 @@ export function CompanyProfileStep({ complete, onMarkStep, onboarding, saving }:
     setLogoUploading(true)
     try {
       const form = new FormData()
-      form.append('file', file)
+      // No SVG uploads: a picked SVG goes up as a PNG.
+      form.append('file', await rasterizeIfSvg(file))
       const token = getStoredToken()
       const response = await fetch(`${API_URL}/v1/tenant-settings/brand/logo`, {
         method: 'POST',
@@ -135,7 +137,7 @@ export function CompanyProfileStep({ complete, onMarkStep, onboarding, saving }:
       return
     }
     if (brandColor && !/^#[0-9a-fA-F]{6}$/.test(brandColor)) {
-      setCompanyError('That colour code does not look right. It should be a # and six characters, like #f59e0b.')
+      setCompanyError('That color code does not look right. It should be a # and six characters, like #f59e0b.')
       return
     }
     setCompanyError(null)
@@ -159,24 +161,27 @@ export function CompanyProfileStep({ complete, onMarkStep, onboarding, saving }:
           </p>
         )}
 
-        <div className="space-y-4">
+        <div className="space-y-4" data-guide="company-fields" data-tour="onboarding-brand-fields">
           <Field
+            tour="onboarding-brand-name"
             label="Your company name"
             hint="Exactly as you want it printed."
             value={companyName}
             onChange={setCompanyName}
-            placeholder="KEL Locksmith"
+            placeholder="Acme Services"
           />
           <div className="grid gap-4 sm:grid-cols-2">
             <Field
-              label="Phone"
+              tour="onboarding-brand-phone"
+            label="Phone"
               hint="The number customers should ring."
               value={companyPhone}
               onChange={setCompanyPhone}
-              placeholder="(321) 555-0142"
+              placeholder="(555) 555-0123"
             />
             <Field
-              label="Email"
+              tour="onboarding-brand-email"
+            label="Email"
               hint="Where quotes and invoices come from."
               value={companyEmail}
               onChange={setCompanyEmail}
@@ -184,13 +189,15 @@ export function CompanyProfileStep({ complete, onMarkStep, onboarding, saving }:
             />
           </div>
           <Field
+            tour="onboarding-brand-address"
             label="Address"
             hint="Your shop or the address you work out of. Add it even if customers never visit — Google uses it."
             value={companyAddress}
             onChange={setCompanyAddress}
-            placeholder="1200 Main St, Melbourne, FL 32901"
+            placeholder="123 Main St, Springfield"
           />
           <Field
+            tour="onboarding-brand-website"
             label="Website"
             hint="Optional. If you already have one, put it here."
             value={companyWebsite}
@@ -199,7 +206,7 @@ export function CompanyProfileStep({ complete, onMarkStep, onboarding, saving }:
           />
         </div>
 
-        <section>
+        <section data-tour="onboarding-brand-logo">
           <h3 className="text-sm font-bold text-navy-900">Your logo</h3>
           <p className="mt-1 text-sm leading-relaxed text-slate-600">
             Not required to carry on. It goes on your invoices, quotes and website.
@@ -248,8 +255,8 @@ export function CompanyProfileStep({ complete, onMarkStep, onboarding, saving }:
           {logoUploadError && <p className="mt-2 text-sm text-rose-700">{logoUploadError}</p>}
         </section>
 
-        <section>
-          <h3 className="text-sm font-bold text-navy-900">Your colour</h3>
+        <section data-tour="onboarding-brand-color">
+          <h3 className="text-sm font-bold text-navy-900">Your color</h3>
           <p className="mt-1 text-sm leading-relaxed text-slate-600">
             Used on your invoices, your quotes and your website, so everything a customer sees matches.
           </p>
@@ -283,6 +290,8 @@ export function CompanyProfileStep({ complete, onMarkStep, onboarding, saving }:
           <button
             type="button"
             onClick={saveCompanyProfile}
+            data-guide="step-save"
+            data-tour="onboarding-brand-save"
             disabled={saving || saveBrandColor.isPending}
             className="rounded-lg bg-amber-500 px-5 py-3 text-base font-bold text-white hover:bg-amber-600 disabled:bg-slate-200 disabled:text-slate-500"
           >
@@ -304,12 +313,14 @@ export function CompanyProfileStep({ complete, onMarkStep, onboarding, saving }:
 }
 
 function Field({
+  tour,
   label,
   hint,
   value,
   onChange,
   placeholder,
 }: {
+  tour?: string
   label: string
   hint: string
   value: string
@@ -317,7 +328,7 @@ function Field({
   placeholder: string
 }) {
   return (
-    <label className="block">
+    <label className="block" data-tour={tour}>
       <span className="text-sm font-bold text-navy-900">{label}</span>
       <span className="mt-0.5 block text-[13px] leading-snug text-slate-500">{hint}</span>
       <input
@@ -358,7 +369,7 @@ function InvoicePreview({
   )
 
   return (
-    <aside className="lg:sticky lg:top-4 lg:self-start">
+    <aside className="lg:sticky lg:top-4 lg:self-start" data-tour="onboarding-brand-preview">
       <p className="text-xs font-bold uppercase tracking-wide text-slate-400">What a customer gets</p>
       <div className="mt-2 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
         <div className="h-1.5" style={{ background: colour }} />
@@ -383,7 +394,7 @@ function InvoicePreview({
           </div>
 
           <div className="mt-4 space-y-1.5">
-            {['Service call', 'Rekey 3 cylinders', 'Parts'].map((line) => (
+            {['Service call', 'Annual service', 'Parts'].map((line) => (
               <div key={line} className="flex justify-between text-[11px] text-slate-600">
                 <span>{line}</span>
                 <span className="tabular-nums">—</span>
@@ -405,7 +416,7 @@ function InvoicePreview({
         </div>
       </div>
       <p className="mt-2 text-[11px] leading-relaxed text-slate-500">
-        Your quotes, your emails and your website use the same name and colour.
+        Your quotes, your emails and your website use the same name and color.
       </p>
     </aside>
   )

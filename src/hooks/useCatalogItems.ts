@@ -1,9 +1,11 @@
 ﻿import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   listCatalogItems,
+  getCatalogAttention,
   getCatalogItem,
   createCatalogItem,
   updateCatalogItem,
+  bulkSetPrice,
   deleteCatalogItem,
   uploadCatalogItemImage,
   deleteCatalogItemImage,
@@ -22,6 +24,8 @@ export const catalogItemKeys = {
   list: (params: CatalogItemListParams) => [...catalogItemKeys.lists(), params] as const,
   details: () => [...catalogItemKeys.all, 'detail'] as const,
   detail: (id: string) => [...catalogItemKeys.details(), id] as const,
+  // Under lists(), so every save that refreshes the list refreshes the counts.
+  attention: (categoryId?: string) => [...catalogItemKeys.lists(), 'attention', categoryId ?? null] as const,
 }
 
 // ---------- Queries ----------
@@ -39,6 +43,15 @@ export function useCatalogItems(params: CatalogItemListParams = {}) {
     queryFn: () => listCatalogItems(params),
     staleTime: 60_000,
     placeholderData: (previousData) => previousData,
+  })
+}
+
+/** Counts behind the Product catalog's "Needs attention" strip and chips. */
+export function useCatalogAttention(categoryId?: string) {
+  return useQuery({
+    queryKey: catalogItemKeys.attention(categoryId),
+    queryFn: () => getCatalogAttention({ product_category_id: categoryId }),
+    staleTime: 60_000,
   })
 }
 
@@ -73,6 +86,15 @@ export function useUpdateCatalogItem() {
       queryClient.invalidateQueries({ queryKey: catalogItemKeys.lists() })
       queryClient.setQueryData(catalogItemKeys.detail(updatedItem.id), updatedItem)
     },
+  })
+}
+
+/** Set the price of several products at once (a markup over cost), then refresh the list. */
+export function useBulkSetPrice() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: bulkSetPrice,
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: catalogItemKeys.lists() }),
   })
 }
 

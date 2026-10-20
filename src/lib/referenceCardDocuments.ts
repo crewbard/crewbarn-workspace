@@ -1,3 +1,4 @@
+import { sendApiUpload } from '@/lib/api'
 import { API_URL, apiRequest, getActingTenant, getFranchiseActAs, getStoredToken, handleUnauthorized } from '@/lib/api'
 import type { DocumentTab, ReferenceCardDocument } from '@/lib/referenceCards'
 import { cachedBook, keepBook } from '@/components/magazine/bookCache'
@@ -25,18 +26,78 @@ export function uploadReferenceCardDocument(
   file: File,
   options: { title?: string; shareable?: boolean; onProgress?: (fraction: number) => void } = {},
 ): Promise<ReferenceCardDocument> {
+  return uploadPdf<ReferenceCardDocument>(base(cardId), 'document', file, options)
+}
+
+/**
+ * A PDF straight into the catalog library, no card needed. Same upload,
+ * same progress bar; the answer is the catalog.
+ */
+export function uploadCatalogPdf<T>(
+  file: File,
+  options: { title?: string; vendor?: string; vendor_id?: string; shareable?: boolean; onProgress?: (fraction: number) => void } = {},
+): Promise<T> {
+  return uploadPdf<T>('/v1/catalogs', 'catalog', file, options)
+}
+
+type UploadOptions = { title?: string; vendor?: string; vendor_id?: string; shareable?: boolean; onProgress?: (fraction: number) => void }
+
+/**
+ * A PDF up to 150 MB goes straight to storage when it can: the API hands a
+ * signed link to one path in the company's bucket, the browser sends the
+ * file there (past the 100 MB Cloudflare lets through to the API), and the
+ * API checks and takes it. Not set up for it, or the send to storage
+ * failing, the file goes through the API as it always has.
+ */
+async function uploadPdf<T>(path: string, answerKey: string, file: File, options: UploadOptions): Promise<T> {
+  const link = await apiRequest<{ data: { direct: boolean; token?: string; url?: string; headers?: Record<string, string> } }>(
+    `${path}/upload-link`,
+    { method: 'POST', body: { filename: file.name, size: file.size } },
+  )
+  if (link.data.direct && link.data.url && link.data.token) {
+    const sent = await sendToStorage(link.data.url, link.data.headers ?? {}, file, options.onProgress).then(() => true, () => false)
+    if (sent) {
+      const res = await apiRequest<Record<string, unknown>>(path, {
+        method: 'POST',
+        body: { upload_token: link.data.token, title: options.title, vendor: options.vendor, vendor_id: options.vendor_id, shareable: !!options.shareable },
+      })
+      return res[answerKey] as T
+    }
+  }
+
+  return uploadThroughApi<T>(path, answerKey, file, options)
+}
+
+/** The file to the signed link, reporting progress. */
+function sendToStorage(url: string, headers: Record<string, string>, file: File, onProgress?: (fraction: number) => void): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest()
+    xhr.open('PUT', url)
+    for (const [name, value] of Object.entries(headers)) xhr.setRequestHeader(name, value)
+    xhr.upload.onprogress = (e) => {
+      if (e.lengthComputable) onProgress?.(e.loaded / e.total)
+    }
+    xhr.onload = () => (xhr.status >= 200 && xhr.status < 300 ? resolve() : reject(new Error(`Storage refused the file (HTTP ${xhr.status}).`)))
+    xhr.onerror = () => reject(new Error('The upload lost its connection.'))
+    xhr.send(file)
+  })
+}
+
+function uploadThroughApi<T>(path: string, answerKey: string, file: File, options: UploadOptions): Promise<T> {
   const form = new FormData()
   form.append('document', file)
   if (options.title) form.append('title', options.title)
+  if (options.vendor) form.append('vendor', options.vendor)
+  if (options.vendor_id) form.append('vendor_id', options.vendor_id)
   form.append('shareable', options.shareable ? '1' : '0')
 
   return new Promise((resolve, reject) => {
     const xhr = new XMLHttpRequest()
-    xhr.open('POST', `${API_URL}${base(cardId)}`)
+    xhr.open('POST', `${API_URL}${path}`)
     xhr.setRequestHeader('Accept', 'application/json')
 
     const token = getStoredToken()
-    if (token) xhr.setRequestHeader('Authorization', `Bearer ${token}`)
+
     const acting = getActingTenant()
     if (acting) xhr.setRequestHeader('X-Act-As-Tenant', acting)
 
@@ -44,30 +105,31 @@ export function uploadReferenceCardDocument(
       if (e.lengthComputable) options.onProgress?.(e.loaded / e.total)
     }
 
-    xhr.onload = () => {
-      let body: { document?: ReferenceCardDocument; message?: string } = {}
+    const complete = (status: number, responseText: string) => {
+      let body: Record<string, unknown> & { message?: string } = {}
       try {
-        body = JSON.parse(xhr.responseText)
+        body = JSON.parse(responseText)
       } catch {
         // Not JSON: a proxy refused the upload before Laravel saw it.
       }
 
-      if (xhr.status === 201 && body.document) {
-        resolve(body.document)
+      if (status === 201 && body[answerKey]) {
+        resolve(body[answerKey] as T)
         return
       }
 
       // 413 comes from the web server, not the API, so it has no message.
       reject(new Error(
         body.message
-          ?? (xhr.status === 413
+          ?? (status === 413
             ? 'That file is bigger than the server accepts.'
-            : `The upload did not go through (HTTP ${xhr.status}).`),
+            : `The upload did not go through (HTTP ${status}).`),
       ))
     }
 
+    xhr.onload = () => complete(xhr.status, xhr.responseText)
     xhr.onerror = () => reject(new Error('The upload lost its connection. Nothing was saved.'))
-    xhr.send(form)
+    void sendApiUpload(xhr, `${API_URL}${path}`, token, form, complete).catch(reject)
   })
 }
 
@@ -119,24 +181,71 @@ export async function readReferenceCardDocument(
   const kept = await cachedBook(key)
   if (kept) return kept
 
-  const bytes = await downloadDocument(cardId, documentId, options)
+  const bytes = await downloadDocument(`${base(cardId)}/${documentId}/file`, options)
   keepBook(key, bytes)
   return bytes
 }
 
-async function downloadDocument(
-  cardId: string,
+/**
+ * A catalog's bytes from the library, by its own id. The same device
+ * cache as before: a catalog opened from a card is the same file.
+ */
+export async function readCatalogFile(
   documentId: string,
-  options: { onProgress?: (progress: DownloadProgress) => void; signal?: AbortSignal; expectedBytes?: number },
+  options: { onProgress?: (progress: DownloadProgress) => void; signal?: AbortSignal; expectedBytes?: number } = {},
 ): Promise<ArrayBuffer> {
-  const path = `${base(cardId)}/${documentId}/file`
-  const headers: Record<string, string> = { Accept: 'application/pdf, application/json' }
+  const key = `staff:${documentId}:${options.expectedBytes ?? ''}`
+  const kept = await cachedBook(key)
+  if (kept) return kept
+
+  const bytes = await downloadDocument(`/v1/catalogs/${documentId}/file`, options)
+  keepBook(key, bytes)
+  return bytes
+}
+
+/** The session's headers for a request made with fetch rather than apiRequest. */
+export function authHeaders(accept: string): Record<string, string> {
+  const headers: Record<string, string> = { Accept: accept }
   const token = getStoredToken()
   if (token) headers.Authorization = `Bearer ${token}`
   const acting = getActingTenant()
   if (acting) headers['X-Act-As-Tenant'] = acting
   const franchise = getFranchiseActAs()
   if (franchise) headers['X-Franchise-Act-As'] = franchise.id
+  return headers
+}
+
+/** An image the API streams (a cover, a card picture), as a blob. Null when there is none. */
+export async function readImage(path: string, signal?: AbortSignal): Promise<Blob | null> {
+  const response = await fetch(`${API_URL}${path}`, { headers: authHeaders('image/*, application/json'), signal })
+  if (response.status === 401) handleUnauthorized(path)
+  return response.ok ? response.blob() : null
+}
+
+/** A picture sent to the API as a multipart upload. */
+export async function sendImage(path: string, field: string, image: Blob, extra: Record<string, string> = {}): Promise<void> {
+  const form = new FormData()
+  form.append(field, image, `${field}.jpg`)
+  for (const [key, value] of Object.entries(extra)) form.append(key, value)
+  const response = await fetch(`${API_URL}${path}`, { method: 'POST', headers: authHeaders('application/json'), body: form })
+  if (response.status === 401) handleUnauthorized(path)
+  if (!response.ok) {
+    let message: string | undefined
+    try {
+      const body = (await response.json()) as { message?: unknown }
+      if (typeof body.message === 'string') message = body.message
+    } catch {
+      // Not JSON.
+    }
+    throw new Error(message ?? 'The picture did not save.')
+  }
+}
+
+async function downloadDocument(
+  path: string,
+  options: { onProgress?: (progress: DownloadProgress) => void; signal?: AbortSignal; expectedBytes?: number },
+): Promise<ArrayBuffer> {
+  const headers = authHeaders('application/pdf, application/json')
 
   const response = await fetch(`${API_URL}${path}`, { headers, signal: options.signal })
 

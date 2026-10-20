@@ -62,6 +62,15 @@ export function money(cents: number): string {
   })
 }
 
+/**
+ * When the list stops at the report's row limit: the totals still count
+ * every row (the server adds them up in full), and the spreadsheet has them all.
+ */
+function cutShort(d: Any, what: string): string {
+  if (!d?.truncated) return ''
+  return ` The list shows the first ${Number(d.row_limit ?? 0).toLocaleString('en-US')}; the totals count every ${what}, and the spreadsheet has them all.`
+}
+
 function count(n: number, one: string, many = `${one}s`): string {
   return `${n.toLocaleString('en-US')} ${n === 1 ? one : many}`
 }
@@ -152,7 +161,7 @@ export const REPORT_SPECS: Record<string, ReportSpec> = {
       }
       return {
         headline: `${money(t.balance_cents ?? 0)} is owed to you across ${count(t.invoice_count ?? 0, 'invoice')}.`,
-        detail,
+        detail: detail + cutShort(d, 'invoice'),
       }
     },
     chart: (d) => {
@@ -176,7 +185,7 @@ export const REPORT_SPECS: Record<string, ReportSpec> = {
       const t = d?.totals ?? {}
       return {
         headline: `${count(t.invoice_count ?? 0, 'invoice')} worth ${money(t.total_cents ?? 0)}.`,
-        detail: `${money(t.paid_cents ?? 0)} collected, ${money(t.balance_cents ?? 0)} still outstanding. Tax on the whole set was ${money(t.tax_cents ?? 0)}.`,
+        detail: `${money(t.paid_cents ?? 0)} collected, ${money(t.balance_cents ?? 0)} still outstanding. Tax on the whole set was ${money(t.tax_cents ?? 0)}.` + cutShort(d, 'invoice'),
       }
     },
     columns: [
@@ -199,7 +208,7 @@ export const REPORT_SPECS: Record<string, ReportSpec> = {
       const t = d?.totals ?? {}
       return {
         headline: `${money(t.balance_cents ?? 0)} unpaid across ${count(t.invoice_count ?? 0, 'invoice')}.`,
-        detail: 'No date limit — this is every invoice with a balance, however old.',
+        detail: 'No date limit — this is every invoice with a balance, however old.' + cutShort(d, 'invoice'),
       }
     },
     columns: [
@@ -241,7 +250,7 @@ export const REPORT_SPECS: Record<string, ReportSpec> = {
       }
       return {
         headline: `${money(total)} came in across ${count(t.payment_count ?? 0, 'payment')}.`,
-        detail: bits.length ? `${bits.join('. ')}.` : undefined,
+        detail: ((bits.length ? `${bits.join('. ')}.` : '') + cutShort(d, 'payment')).trim() || undefined,
       }
     },
     chart: (d) => {
@@ -312,7 +321,7 @@ export const REPORT_SPECS: Record<string, ReportSpec> = {
       const t = d?.totals ?? {}
       return {
         headline: `${money(t.balance_cents ?? 0)} of customer money is unspent.`,
-        detail: `${money(t.amount_cents ?? 0)} taken in over ${count(t.credit_count ?? 0, 'credit')}, of which ${money(t.applied_cents ?? 0)} has been applied to invoices and ${money(t.refunded_cents ?? 0)} refunded.`,
+        detail: `${money(t.amount_cents ?? 0)} taken in over ${count(t.credit_count ?? 0, 'credit')}, of which ${money(t.applied_cents ?? 0)} has been applied to invoices and ${money(t.refunded_cents ?? 0)} refunded.` + cutShort(d, 'credit'),
       }
     },
     columns: [
@@ -336,9 +345,9 @@ export const REPORT_SPECS: Record<string, ReportSpec> = {
       return {
         headline: `${money(t.total_cents ?? 0)} spent across ${count(t.expense_count ?? 0, 'expense')}.`,
         detail:
-          owed > 0
+          ((owed > 0
             ? `${money(owed)} of that is owed back to staff and hasn't been reimbursed yet.`
-            : undefined,
+            : '') + cutShort(d, 'expense')).trim() || undefined,
       }
     },
     chart: (d) => {
@@ -375,9 +384,9 @@ export const REPORT_SPECS: Record<string, ReportSpec> = {
       return {
         headline: `${money(t.balance_cents ?? 0)} owed to vendors across ${count(t.bill_count ?? 0, 'bill')}.`,
         detail:
-          overdue > 0
+          (overdue > 0
             ? `${money(overdue)} of that is already past its due date.`
-            : 'Nothing is past due yet.',
+            : 'Nothing is past due yet.') + cutShort(d, 'bill'),
       }
     },
     chart: (d) => {
@@ -407,7 +416,7 @@ export const REPORT_SPECS: Record<string, ReportSpec> = {
       const t = d?.totals ?? {}
       return {
         headline: `${count(t.bill_count ?? 0, 'bill')} totalling ${money(t.total_cents ?? 0)}.`,
-        detail: `${money(t.paid_cents ?? 0)} paid, ${money(t.balance_cents ?? 0)} outstanding${Number(t.overdue_cents) > 0 ? `, ${money(t.overdue_cents)} of it overdue` : ''}.`,
+        detail: `${money(t.paid_cents ?? 0)} paid, ${money(t.balance_cents ?? 0)} outstanding${Number(t.overdue_cents) > 0 ? `, ${money(t.overdue_cents)} of it overdue` : ''}.` + cutShort(d, 'bill'),
       }
     },
     columns: [
@@ -432,11 +441,11 @@ export const REPORT_SPECS: Record<string, ReportSpec> = {
       const notReceived = rows.filter((r) => !r.received_at)
       return {
         headline: `${count(t.purchase_order_count ?? 0, 'purchase order')} worth ${money(t.total_cents ?? 0)}.`,
-        detail: !complete
-          ? undefined
+        detail: ((!complete
+          ? ''
           : notReceived.length
             ? `${count(notReceived.length, 'order has', 'orders have')} nothing marked received yet — ${money(sumBy(notReceived, 'total_cents'))} of stock you have paid for or committed to.`
-            : 'Everything ordered in this window has been received.',
+            : 'Everything ordered in this window has been received.') + cutShort(d, 'purchase order')).trim() || undefined,
       }
     },
     chart: (d) => {
@@ -467,7 +476,7 @@ export const REPORT_SPECS: Record<string, ReportSpec> = {
       const due = Number(t.submitted_cents ?? 0) + Number(t.approved_cents ?? 0)
       return {
         headline: `${money(due)} is due to subcontractors.`,
-        detail: `${money(t.approved_cents ?? 0)} approved and ready to pay, ${money(t.submitted_cents ?? 0)} still waiting on approval. ${money(t.paid_cents ?? 0)} has already gone out.`,
+        detail: `${money(t.approved_cents ?? 0)} approved and ready to pay, ${money(t.submitted_cents ?? 0)} still waiting on approval. ${money(t.paid_cents ?? 0)} has already gone out.` + cutShort(d, 'sub invoice'),
       }
     },
     columns: [
@@ -517,11 +526,11 @@ export const REPORT_SPECS: Record<string, ReportSpec> = {
       const pct = Number(t.margin_pct)
       return {
         headline: `${money(t.margin_cents ?? 0)} margin on ${money(t.revenue_cents ?? 0)} of work${Number.isFinite(pct) ? ` — ${pct.toFixed(1)}%` : ''}.`,
-        detail: !complete
-          ? undefined
+        detail: ((!complete
+          ? ''
           : losers.length
             ? `${count(losers.length, 'job')} lost money, ${money(Math.abs(sumBy(losers, 'margin_cents')))} between them.`
-            : 'Every job in this window came out ahead.',
+            : 'Every job in this window came out ahead.') + cutShort(d, 'job')).trim() || undefined,
       }
     },
     columns: [
@@ -578,7 +587,7 @@ export const REPORT_SPECS: Record<string, ReportSpec> = {
       const t = d?.totals ?? {}
       return {
         headline: `${money(t.inventory_value_cents ?? 0)} of stock on hand.`,
-        detail: `${Number(t.qty_on_hand ?? 0).toLocaleString('en-US')} units across ${count(t.stock_row_count ?? 0, 'stock line')}, of which ${money(t.available_value_cents ?? 0)} is unreserved and actually available to sell.`,
+        detail: `${Number(t.qty_on_hand ?? 0).toLocaleString('en-US')} units across ${count(t.stock_row_count ?? 0, 'stock line')}, of which ${money(t.available_value_cents ?? 0)} is unreserved and actually available to sell.` + cutShort(d, 'stock line'),
       }
     },
     chart: (d) => {
@@ -612,7 +621,7 @@ export const REPORT_SPECS: Record<string, ReportSpec> = {
       const t = d?.totals ?? {}
       return {
         headline: `${count(t.movement_count ?? 0, 'stock movement')} worth ${money(t.extended_cost_cents ?? 0)}.`,
-        detail: `${Number(t.quantity ?? 0).toLocaleString('en-US')} units net across the window.`,
+        detail: `${Number(t.quantity ?? 0).toLocaleString('en-US')} units net across the window.` + cutShort(d, 'stock movement'),
       }
     },
     chart: (d) => {
@@ -670,7 +679,7 @@ export const REPORT_SPECS: Record<string, ReportSpec> = {
         headline: unmatched
           ? `${count(unmatched, 'bank row')} doesn't match your books.`
           : `All ${count(t.transaction_count ?? 0, 'bank row')} match your books.`,
-        detail: `${money(t.deposit_cents ?? 0)} in and ${money(t.withdrawal_cents ?? 0)} out over the window${unmatched ? `, with ${money(t.unmatched_cents ?? 0)} of it unaccounted for` : ''}.`,
+        detail: `${money(t.deposit_cents ?? 0)} in and ${money(t.withdrawal_cents ?? 0)} out over the window${unmatched ? `, with ${money(t.unmatched_cents ?? 0)} of it unaccounted for` : ''}.` + cutShort(d, 'bank row'),
       }
     },
     chart: (d) => {
@@ -731,7 +740,7 @@ export const REPORT_SPECS: Record<string, ReportSpec> = {
       return {
         headline: `${count(t.event_count ?? 0, 'financial change')} worth ${money(t.impacted_cents ?? 0)}.`,
         detail:
-          'Voids, write-offs, refunds, cancelled invoices and reversals — the edits that should never quietly disappear from the books.',
+          'Voids, write-offs, refunds, cancelled invoices and reversals — the edits that should never quietly disappear from the books.' + cutShort(d, 'financial change'),
       }
     },
     chart: (d) => {

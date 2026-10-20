@@ -1,6 +1,50 @@
 import { useEffect, useRef, useState } from 'react'
 import { IconSearch, IconX } from '@tabler/icons-react'
-import type { Book, SearchHit } from './pdfBook'
+import type { Book, Box, SearchHit } from './pdfBook'
+import { useBookFind } from './useBookFind'
+
+/**
+ * A place lit up on the page: what Find and the parts cart found. The one
+ * open now is amber and pulses a few times, then stays lit; when the page
+ * is zoomed in, it is scrolled to.
+ */
+export function FoundMark({ box, active, scroll = false }: { box: Box; active: boolean; scroll?: boolean }) {
+  const ref = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    const el = ref.current
+    if (!active || !el) return
+    const still = typeof window.matchMedia === 'function' && window.matchMedia('(prefers-reduced-motion: reduce)').matches
+    if (scroll) el.scrollIntoView({ block: 'center', inline: 'center', behavior: still ? 'auto' : 'smooth' })
+    if (still || typeof el.animate !== 'function') return
+    const pulse = el.animate(
+      [
+        { boxShadow: '0 0 0 0 rgba(245, 158, 11, 0.85)', backgroundColor: 'rgba(252, 211, 77, 0.95)' },
+        { boxShadow: '0 0 0 14px rgba(245, 158, 11, 0)', backgroundColor: 'rgba(252, 211, 77, 0.55)' },
+      ],
+      { duration: 650, iterations: 3, easing: 'ease-out' },
+    )
+    return () => pulse.cancel()
+  }, [active, scroll, box.left, box.top])
+
+  return (
+    <div
+      ref={ref}
+      aria-hidden
+      data-found={active ? 'active' : 'other'}
+      className={
+        'pointer-events-none absolute rounded-[3px] mix-blend-multiply '
+        + (active ? 'z-[1] bg-amber-300/70 outline outline-2 outline-offset-1 outline-amber-500' : 'bg-yellow-200/70')
+      }
+      style={{
+        left: `${box.left * 100}%`,
+        top: `${box.top * 100}%`,
+        width: `${box.width * 100}%`,
+        height: `${box.height * 100}%`,
+      }}
+    />
+  )
+}
 
 /**
  * Find in this book.
@@ -21,6 +65,7 @@ export function BookSearch({
   onHits,
   onPick,
   onOrder,
+  actionLabel = 'Order',
   onClose,
 }: {
   book: Book
@@ -31,55 +76,21 @@ export function BookSearch({
   onPick: (index: number) => void
   /** Put what was searched for on the order, from this hit's page. */
   onOrder?: (partNumber: string, hit: SearchHit) => void
+  actionLabel?: 'Order' | 'Line'
   onClose: () => void
 }) {
   const [query, setQuery] = useState('')
-  const [hits, setHits] = useState<SearchHit[]>([])
-  const [readTo, setReadTo] = useState(0)
-  const [running, setRunning] = useState(false)
-  const run = useRef(0)
-
-  // Each search supersedes the last; a stale one stops at its next page.
-  useEffect(() => {
-    const id = ++run.current
-    const q = query.trim()
-
-    const timer = window.setTimeout(() => {
-      if (q.length < 2) {
-        setHits([])
-        setReadTo(0)
-        setRunning(false)
-        onHits([])
-        return
-      }
-
-      setRunning(true)
-      void book
-        .search(
-          q,
-          (found, page) => {
-            if (run.current !== id) return
-            setHits(found)
-            setReadTo(page)
-            onHits(found)
-          },
-          () => run.current !== id,
-        )
-        .finally(() => {
-          if (run.current === id) setRunning(false)
-        })
-    }, 300)
-
-    return () => window.clearTimeout(timer)
-  }, [query, book, onHits])
+  const { hits, readTo, running } = useBookFind(book, query, { onFound: onHits })
 
   const pages = new Set(hits.map((hit) => hit.page)).size
-  // A part number was searched for: each place it turns up can go on the order.
-  const orderable = onOrder && /\d/.test(query) ? query.trim() : null
+  // A part number was searched for, or one sits at the hit: it can go on the order.
+  const typedCode = /\d/.test(query) ? query.trim() : null
+  const codeOf = (hit: SearchHit) => (onOrder ? hit.part?.text ?? typedCode : null)
 
   return (
     <aside
       aria-label="Find in this book"
+      data-tour="book-search"
       className="flex h-full w-[min(22rem,100vw)] shrink-0 flex-col border-l border-white/10 bg-white text-slate-900"
     >
       <div className="flex items-center gap-2 border-b border-slate-200 px-3 py-2.5">
@@ -94,7 +105,7 @@ export function BookSearch({
               onPick(activeHit === null ? 0 : (activeHit + (e.shiftKey ? hits.length - 1 : 1)) % hits.length)
             }
           }}
-          placeholder="Part number, model, keyway…"
+          placeholder="Part number, model, name…"
           aria-label="Find in this book"
           className="min-w-0 flex-1 bg-transparent py-1 text-sm outline-none placeholder:text-slate-400"
         />
@@ -119,33 +130,36 @@ export function BookSearch({
       </p>
 
       <ol className="m-0 flex-1 list-none overflow-y-auto p-0">
-        {hits.map((hit, i) => (
-          <li key={`${hit.page}-${i}`} className="relative">
-            {orderable && (
+        {hits.map((hit, i) => {
+          const orderable = codeOf(hit)
+          return (
+            <li key={`${hit.page}-${i}`} className="relative">
+              {orderable && (
+                <button
+                  type="button"
+                  onClick={() => onOrder?.(orderable, hit)}
+                  title={`Add ${orderable} to ${actionLabel.toLowerCase()}`}
+                  className="absolute right-2 top-1.5 z-10 rounded border border-amber-300 bg-white px-1.5 py-0.5 text-[11px] font-medium text-amber-800 hover:bg-amber-50"
+                >
+                  + {actionLabel}
+                </button>
+              )}
               <button
                 type="button"
-                onClick={() => onOrder?.(orderable, hit)}
-                title={`Put ${orderable} on the order`}
-                className="absolute right-2 top-1.5 z-10 rounded border border-amber-300 bg-white px-1.5 py-0.5 text-[11px] font-medium text-amber-800 hover:bg-amber-50"
+                onClick={() => onPick(i)}
+                aria-current={i === activeHit ? 'true' : undefined}
+                className={
+                  'flex w-full items-baseline gap-2.5 border-b border-slate-100 px-3 py-2 text-left text-sm hover:bg-sky-50 '
+                  + (i === activeHit ? 'bg-amber-50 ' : '')
+                  + (orderable ? 'pr-16' : '')
+                }
               >
-                + Order
+                <span className="w-12 shrink-0 text-xs tabular-nums text-slate-400">p. {pageLabel(hit.page)}</span>
+                <span className="min-w-0 break-words font-mono text-[12.5px] text-slate-800">{hit.text}</span>
               </button>
-            )}
-            <button
-              type="button"
-              onClick={() => onPick(i)}
-              aria-current={i === activeHit ? 'true' : undefined}
-              className={
-                'flex w-full items-baseline gap-2.5 border-b border-slate-100 px-3 py-2 text-left text-sm hover:bg-sky-50 '
-                + (i === activeHit ? 'bg-amber-50 ' : '')
-                + (orderable ? 'pr-16' : '')
-              }
-            >
-              <span className="w-12 shrink-0 text-xs tabular-nums text-slate-400">p. {pageLabel(hit.page)}</span>
-              <span className="min-w-0 break-words font-mono text-[12.5px] text-slate-800">{hit.text}</span>
-            </button>
-          </li>
-        ))}
+            </li>
+          )
+        })}
       </ol>
     </aside>
   )

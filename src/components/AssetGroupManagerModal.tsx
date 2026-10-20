@@ -83,7 +83,7 @@ export function AssetGroupManagerModal({
 
         {!isLoading && !isError && (
           <>
-            <div className="mb-4 rounded-lg border border-amber-200 bg-amber-50 p-3">
+            <div data-tour="assets-group-manager" className="mb-4 rounded-lg border border-amber-200 bg-amber-50 p-3">
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div>
                   <div className="text-sm font-semibold text-slate-900">Build an asset tree</div>
@@ -200,7 +200,7 @@ function ManagerBranch({
     const assetCount = node.assets_count ?? 0
     let confirmMsg = `Delete "${node.name}"?`
     if (childCount > 0) {
-      confirmMsg += `\n\nWARNING: This group has ${childCount} child group(s). They will be orphaned (cascade not yet implemented).`
+      confirmMsg += `\n\nWARNING: This group has ${childCount} child group(s). They are not deleted with it and will be left without a parent group.`
     }
     if (assetCount > 0) {
       confirmMsg += `\n\n${assetCount} asset(s) currently in this group. They will become unassigned.`

@@ -1,4 +1,5 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
+import { PRODUCT_SHORT_DESC_PLACEHOLDER, PRODUCT_LONG_DESC_LABEL, PRODUCT_LONG_DESC_PLACEHOLDER } from '@/components/catalog/catalogPlaceholders'
 import { priceFromCost, usePricingRules } from '@/hooks/usePricingRules'
 import { useQueryClient } from '@tanstack/react-query'
 import { Modal } from '@/components/ui/Modal'
@@ -20,6 +21,8 @@ import { UnitOfMeasurePicker } from '@/components/UnitOfMeasurePicker'
 import { isCountableUnit, qtyStepFor } from '@/lib/unitsOfMeasure'
 import type { InventoryBin } from '@/types/inventoryBin'
 import type { CatalogItem, PartSource } from '@/types/catalogItem'
+import { PoOverrideBox } from '@/components/inventory/PoOverrideBox'
+import { usePoOverrideGate } from '@/hooks/usePoOverride'
 
 /**
  * Inline "+ New product" overlay used by every picker that needs to
@@ -47,6 +50,11 @@ export function CatalogItemQuickCreate({
   initialDefaultBinId = '',
   initialDefaultPickedBin = null,
   defaultInitialQty = '',
+  defaultSku = '',
+  defaultLongDescription = '',
+  stockComesFromPo = false,
+  title = 'New product',
+  extraFooter,
   onCreated,
   onStockCreated,
   onClose,
@@ -61,6 +69,15 @@ export function CatalogItemQuickCreate({
   initialDefaultBinId?: string
   initialDefaultPickedBin?: InventoryBin | null
   defaultInitialQty?: string
+  /** The vendor's part number or the line's SKU, when made from a PO line. */
+  defaultSku?: string
+  defaultLongDescription?: string
+  /** Made from a purchase-order line: the stock arrives by receiving that
+   *  line, so there is no starting quantity and nothing is placed here. */
+  stockComesFromPo?: boolean
+  title?: string
+  /** Extra footer action (the PO line window's "Link an existing product instead"). */
+  extraFooter?: ReactNode
   onCreated: (item: CatalogItem) => void
   /** Fires after the stock_levels row is written so the parent (Add Stock)
    *  can auto-close without writing a duplicate row from its own Save. */
@@ -79,13 +96,13 @@ export function CatalogItemQuickCreate({
   const showSnUi = !!invSettings?.inventory_show_sn_tracking
 
   const [name, setName] = useState(defaultName)
-  const [sku, setSku] = useState('')
+  const [sku, setSku] = useState(defaultSku)
   const [partSource, setPartSource] = useState<PartSource | ''>('')
   const [unitLabel, setUnitLabel] = useState('each')
   const [productCategoryId, setProductCategoryId] = useState('')
   const [showInlineCategory, setShowInlineCategory] = useState(false)
   const [shortDescription, setShortDescription] = useState('')
-  const [longDescription, setLongDescription] = useState('')
+  const [longDescription, setLongDescription] = useState(defaultLongDescription)
   const [defaultBinId, setDefaultBinId] = useState(initialDefaultBinId)
   const [pickedBin, setPickedBin] = useState<InventoryBin | null>(initialDefaultPickedBin)
   const [showBinPicker, setShowBinPicker] = useState(false)
@@ -227,7 +244,7 @@ export function CatalogItemQuickCreate({
       // Trigger is the Default Bin being set — that's our single source of
       // truth for "where this lives". Qty=0 still registers the placement
       // (the row shows up in Stock Levels and can be adjusted later).
-      if (pickedBin) {
+      if (pickedBin && !stockComesFromPo) {
         const placementLocationId = pickedBin.location_id
         const placementBinId = pickedBin.id
         setCreatingStock(true)
@@ -242,6 +259,7 @@ export function CatalogItemQuickCreate({
                 catalog_item_id: created.id,
                 location_id: placementLocationId,
                 bin_id: placementBinId,
+                ...override.body,
               })
             }
           } else {
@@ -254,6 +272,7 @@ export function CatalogItemQuickCreate({
               bin_id: placementBinId,
               qty_on_hand: snTracking ? 0 : qtyN,
               qty_reserved: 0,
+              ...override.body,
             })
           }
           stockWasCreated = true
@@ -282,10 +301,12 @@ export function CatalogItemQuickCreate({
   }
 
   const isPending = createMutation.isPending || uploadingImage || creatingStock
-  const canSave = !isPending && name.trim().length > 0
+  // A starting quantity is stock coming in: with PO-only on it needs the override.
+  const override = usePoOverrideGate(!stockComesFromPo && Number(initialQty) > 0 && !!pickedBin)
+  const canSave = !isPending && name.trim().length > 0 && override.ready
 
   return (
-    <Modal isOpen={true} onClose={onClose} title="New product" size="lg">
+    <Modal isOpen={true} onClose={onClose} title={title} size="lg">
       <Modal.Body>
         <div className="space-y-4">
           <div className="grid grid-cols-2 gap-3">
@@ -369,17 +390,17 @@ export function CatalogItemQuickCreate({
               onChange={(e) => setShortDescription(e.target.value)}
               maxLength={100}
               className={inputClass()}
-              placeholder='e.g. "Schlage L9080 Mortise Lock"'
+              placeholder={PRODUCT_SHORT_DESC_PLACEHOLDER}
             />
           </Field>
 
-          <Field label="Long description (internal — searchable: vehicle fitment, FCC IDs, crossover part #s, alt names)">
+          <Field label={PRODUCT_LONG_DESC_LABEL}>
             <textarea
               value={longDescription}
               onChange={(e) => setLongDescription(e.target.value)}
               rows={3}
               className={inputClass() + ' resize-y'}
-              placeholder='e.g. "2021 Ford F150 / FCC ID M3N-A2C31243800 / Schlage L9080 / L-9080 / 9080-PD"'
+              placeholder={PRODUCT_LONG_DESC_PLACEHOLDER}
             />
           </Field>
 
@@ -581,6 +602,11 @@ export function CatalogItemQuickCreate({
             )}
           </div>
 
+          {stockComesFromPo ? (
+            <p data-stock-from-po className="pt-3 border-t border-slate-100 text-sm text-slate-700">
+              The stock comes in when you receive the order line, into the Default Bin above (you can still change it then).
+            </p>
+          ) : (
           <div className="pt-3 border-t border-slate-100">
             <label className="block text-xs font-medium text-slate-700 mb-1 uppercase tracking-wide">
               Starting qty (optional)
@@ -616,7 +642,9 @@ export function CatalogItemQuickCreate({
                 Pick a Default Bin above so we know where this stock lives.
               </p>
             )}
+            <div className="mt-3"><PoOverrideBox gate={override} what="the starting quantity" /></div>
           </div>
+          )}
 
           <label className="flex items-start gap-2 text-sm pt-2 border-t border-slate-100">
             <input
@@ -697,6 +725,7 @@ export function CatalogItemQuickCreate({
         )}
       </Modal.Body>
       <Modal.Footer>
+        {extraFooter}
         <button
           type="button"
           onClick={onClose}

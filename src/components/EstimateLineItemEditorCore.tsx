@@ -26,7 +26,9 @@ import { CatalogItemPickerModal } from '@/components/CatalogItemPickerModal'
 import { CatalogDescriptionInput } from '@/components/CatalogDescriptionInput'
 import { useTaxClasses } from '@/hooks/useTaxClasses'
 import { ScanToAddLineItem } from '@/components/ScanToAddLineItem'
-import { usePricingRules } from '@/hooks/usePricingRules'
+import { priceFromCost, usePricingRules } from '@/hooks/usePricingRules'
+import { SuggestPriceButton } from '@/components/pricing/SuggestPriceButton'
+import { PERM, usePermissions } from '@/hooks/usePermissions'
 
 /**
  * Unified row shape for the editor - either a server line item OR a draft.
@@ -101,6 +103,47 @@ export function formatCents(cents: number): string {
   return '$' + (cents / 100).toFixed(2)
 }
 
+/**
+ * What a set of lines comes to, the way the server works it out: items and
+ * fees build the base, discount rows come off it in order, and tax scales
+ * by the post-discount fraction. Drafts carry no tax until saved.
+ */
+export function computeEstimateTotals(lines: EditableEstimateLine[]) {
+  const lineTotalOf = (l: EditableEstimateLine) =>
+    isEstimateDraft(l) ? l.line_total_cents : l.money.line_total_cents
+  const taxOf = (l: EditableEstimateLine) =>
+    isEstimateDraft(l) ? l.tax_amount_cents : l.money.tax_amount_cents
+  const discountFieldsOf = (l: EditableEstimateLine) =>
+    isEstimateDraft(l)
+      ? { kind: l.discount_kind, value: l.discount_value }
+      : { kind: l.money.discount_kind, value: l.money.discount_value }
+
+  const itemLines = lines.filter((l) => estimateLineTypeOf(l) !== 'discount')
+  const discountLines = lines.filter((l) => estimateLineTypeOf(l) === 'discount')
+
+  const base = itemLines.reduce((s, l) => s + lineTotalOf(l), 0)
+  const fullTax = itemLines.reduce((s, l) => s + taxOf(l), 0)
+
+  const discountAmounts = new Map<string, number>()
+  let discountRunning = 0
+  for (const d of discountLines) {
+    const { kind, value } = discountFieldsOf(d)
+    const amt = computeDiscountCents(base - discountRunning, kind ?? null, Number(value) || 0)
+    discountAmounts.set(getEstimateLineKey(d), amt)
+    discountRunning += amt
+  }
+  const discountTotal = discountRunning
+  const taxAfter = base > 0 ? Math.round((fullTax * (base - discountTotal)) / base) : 0
+
+  return {
+    subtotal: base,
+    discount: discountTotal,
+    tax: taxAfter,
+    total: base - discountTotal + taxAfter,
+    discountAmounts,
+  }
+}
+
 // ---------- Component props ----------
 
 /**
@@ -141,8 +184,18 @@ export interface EstimateLineItemEditorCoreProps {
    * Omit to hide the button entirely (back-compat with older callers).
    */
   onPickFromCatalog?: (item: import('@/types/catalogItem').CatalogItem) => void
+  onOpenPdf?: () => void
   disabled?: boolean
   saving?: boolean
+  /**
+   * Good / better / best. tierBar renders above the lines (the option
+   * tabs); onAddTier shows "+ New tier" with the add buttons; lineNote
+   * renders a short note under a row (e.g. "In every tier"). All optional.
+   */
+  tierBar?: ReactNode
+  onAddTier?: () => void
+  addTierLabel?: string
+  lineNote?: (line: EditableEstimateLine) => ReactNode
 }
 
 // ---------- Component ----------
@@ -158,8 +211,13 @@ export function EstimateLineItemEditorCore({
   onReorder,
   availableAssets = [],
   onPickFromCatalog,
+  onOpenPdf,
   disabled = false,
   saving = false,
+  tierBar,
+  onAddTier,
+  addTierLabel = '+ New tier',
+  lineNote,
 }: EstimateLineItemEditorCoreProps) {
   const [catalogPickerOpen, setCatalogPickerOpen] = useState(false)
   const sensors = useSensors(
@@ -180,37 +238,8 @@ export function EstimateLineItemEditorCore({
   // Items + fees build the base; discount rows are separate. Tax is computed
   // server-side from tax classes, so client preview keeps tax at 0 (the
   // server scales it by the post-discount fraction on save).
-  const lineTotalOf = (l: EditableEstimateLine) =>
-    isEstimateDraft(l) ? l.line_total_cents : l.money.line_total_cents
-  const taxOf = (l: EditableEstimateLine) =>
-    isEstimateDraft(l) ? l.tax_amount_cents : l.money.tax_amount_cents
-  const discountFieldsOf = (l: EditableEstimateLine) =>
-    isEstimateDraft(l)
-      ? { kind: l.discount_kind, value: l.discount_value }
-      : { kind: l.money.discount_kind, value: l.money.discount_value }
-
-  const itemLines = lines.filter((l) => estimateLineTypeOf(l) !== 'discount')
-  const discountLines = lines.filter((l) => estimateLineTypeOf(l) === 'discount')
-
-  const base = itemLines.reduce((s, l) => s + lineTotalOf(l), 0)
-  const fullTax = itemLines.reduce((s, l) => s + taxOf(l), 0)
-
-  const discountAmounts = new Map<string, number>()
-  let discountRunning = 0
-  for (const d of discountLines) {
-    const { kind, value } = discountFieldsOf(d)
-    const amt = computeDiscountCents(base - discountRunning, kind ?? null, Number(value) || 0)
-    discountAmounts.set(getEstimateLineKey(d), amt)
-    discountRunning += amt
-  }
-  const discountTotal = discountRunning
-  const taxAfter = base > 0 ? Math.round((fullTax * (base - discountTotal)) / base) : 0
-  const totals = {
-    subtotal: base,
-    discount: discountTotal,
-    tax: taxAfter,
-    total: base - discountTotal + taxAfter,
-  }
+  const totals = computeEstimateTotals(lines)
+  const discountAmounts = totals.discountAmounts
 
   /*
    * Is this estimate under the minimum the shop said it would turn out for?
@@ -229,7 +258,18 @@ export function EstimateLineItemEditorCore({
   //   With drag handle:  drag(1) desc(4) type(2) qty(1) unit-price(2) tax(2) total(1) del(1)
   //   Without:           desc(5) type(2) qty(1) unit-price(2) tax(2) total(1) del(1)
 
-  const renderRow = (line: EditableEstimateLine, dragHandle?: ReactNode) =>
+  const renderRow = (line: EditableEstimateLine, dragHandle?: ReactNode) => {
+    const note = lineNote?.(line)
+    const row = renderLine(line, dragHandle)
+    return note ? (
+      <div>
+        {row}
+        <div className="px-2 pt-1 text-right text-[11px] font-medium text-slate-500">{note}</div>
+      </div>
+    ) : row
+  }
+
+  const renderLine = (line: EditableEstimateLine, dragHandle?: ReactNode) =>
     estimateLineTypeOf(line) === 'discount' ? (
       <EstimateDiscountRow
         line={line}
@@ -252,6 +292,8 @@ export function EstimateLineItemEditorCore({
 
   return (
     <div className="space-y-4">
+      {tierBar}
+
       {/* Global "Show images" toggle — mirrors the WO line items
           editor. Mass-sets show_image_on_doc on every line so the
           tenant doesn't have to toggle per-line. */}
@@ -283,7 +325,7 @@ export function EstimateLineItemEditorCore({
       {/* Lines */}
       {lines.length === 0 ? (
         <div className="text-sm text-slate-500 italic px-2 py-4">
-          No line items yet. Click "Add line item" to start.
+          No line items yet. Click "+ Add blank line" or "+ Search catalog" to start.
         </div>
       ) : dragMode ? (
         <DndContext
@@ -316,7 +358,7 @@ export function EstimateLineItemEditorCore({
       )}
 
       {/* Add buttons + saving indicator */}
-      <div className="flex items-center gap-4">
+      <div className="flex flex-wrap items-center gap-4">
         <button
           type="button"
           onClick={onAdd}
@@ -333,6 +375,11 @@ export function EstimateLineItemEditorCore({
             className="text-sm font-medium px-3 py-1.5 rounded border border-amber-500 text-amber-700 hover:bg-amber-50 disabled:opacity-50"
           >
             + Search catalog
+          </button>
+        )}
+        {onOpenPdf && (
+          <button type="button" onClick={onOpenPdf} disabled={disabled} className="rounded border border-slate-300 px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50">
+            + Pick from PDF book
           </button>
         )}
         {onPickFromCatalog && (
@@ -356,6 +403,18 @@ export function EstimateLineItemEditorCore({
             className="text-sm font-medium text-rose-600 hover:text-rose-700 disabled:opacity-50"
           >
             + Add discount
+          </button>
+        )}
+        {onAddTier && (
+          <button
+            type="button"
+            onClick={onAddTier}
+            disabled={disabled}
+            data-tour="estimate-new-tier"
+            title="Offer another version of this job: it starts as a copy of the tier you're on"
+            className="text-sm font-medium px-3 py-1.5 rounded border border-slate-300 text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+          >
+            {addTierLabel}
           </button>
         )}
         {saving && <span className="text-xs text-slate-500">Saving...</span>}
@@ -490,7 +549,18 @@ const EstimateLineRow = memo(function EstimateLineRow({
   // from every row.
   const { data: taxClassesData } = useTaxClasses({ active: true })
   const taxClasses = taxClassesData?.data ?? []
+  // Same price rule as "+ Search catalog": the listed price, or the shop's
+  // material markup on cost when the item has no listed price.
+  const pricingRules = usePricingRules()
+  const catalogPrice = (item: import('@/types/catalogItem').CatalogItem) => {
+    const listed = item.pricing.customer_cost_cents
+    if (listed > 0) return listed
+    return priceFromCost(item.pricing.owner_cost_cents ?? 0, pricingRules?.material_markup_percent ?? null) ?? listed
+  }
   const currentTaxClassId = line.tax_class_id ?? ''
+  // "Suggest" beside the price: a suggested price from the company's costs.
+  const { has } = usePermissions()
+  const canSuggest = has(PERM.CATALOG_VIEW)
 
   const [descLocal, setDescLocal] = useState(line.description)
   const [qtyLocal, setQtyLocal] = useState(String(line.quantity))
@@ -524,7 +594,7 @@ const EstimateLineRow = memo(function EstimateLineRow({
 
       <div className={`${dragHandle ? 'col-span-4' : 'col-span-5'} flex min-w-0 items-center gap-2`}>
         <CatalogDescriptionInput
-          onPick={item => { focusedRef.current = null; const description = item.description || item.name; setDescLocal(description); onChange({ description, service_catalog_item_id: item.id, unit_price_cents: item.pricing.customer_cost_cents, tax_class_id: item.pricing.tax_class_id }) }}
+          onPick={item => { focusedRef.current = null; const description = item.description || item.name; setDescLocal(description); onChange({ description, service_catalog_item_id: item.id, unit_price_cents: catalogPrice(item), tax_class_id: item.pricing.tax_class_id }) }}
           type="text"
           value={descLocal}
           onChange={(e) => setDescLocal(e.target.value)}
@@ -602,6 +672,15 @@ const EstimateLineRow = memo(function EstimateLineRow({
             disabled={disabled}
             className="w-full px-2 py-1 text-sm text-right border border-slate-300 rounded tabular-nums focus:ring-1 focus:ring-amber-500 focus:border-amber-500"
           />
+          {canSuggest && (
+            <SuggestPriceButton
+              catalogItemId={line.service_catalog_item_id}
+              description={line.description}
+              quantity={Number(line.quantity) || 1}
+              disabled={disabled}
+              onUse={(cents) => { setPriceLocal((cents / 100).toFixed(2)); if (cents !== unitPriceCents) onChange({ unit_price_cents: cents }) }}
+            />
+          )}
         </div>
       </div>
 

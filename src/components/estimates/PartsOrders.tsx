@@ -1,11 +1,13 @@
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { IconBook2 } from '@tabler/icons-react'
+import { IconBook2, IconFileDescription } from '@tabler/icons-react'
 import { apiRequest } from '@/lib/api'
 import { usePermissions, PERM } from '@/hooks/usePermissions'
 import { CATALOG_SHORTCUT_LABEL, openCatalogs } from '@/lib/catalogs'
 import { STAGE_LABEL, count, money, poLabel, type OrderStage } from '@/lib/catalogOrders'
+import { askFor, listAsks } from '@/lib/purchaseRequests'
+import { AddToCartButton } from '@/components/parts/AddToCartButton'
 
 type Po = {
   id: string
@@ -69,6 +71,14 @@ export function PartsOrders({
     queryFn: () => apiRequest<{ data: Po[] }>(`/v1/purchase-orders?${scope}`).then((r) => r.data),
     enabled: has(PERM.INVENTORY_VIEW),
   })
+  // Parts asked for it that are still in the cart, waiting for the buyer.
+  const asked = useQuery({
+    queryKey: ['parts-asks', key],
+    queryFn: () => listAsks(estimate ? { estimate_id: estimate.id } : { work_order_id: workOrderId }),
+    enabled: hasAny([PERM.INVENTORY_VIEW, PERM.JOBS_EDIT]),
+  })
+  const waiting = (asked.data?.asks ?? []).filter((a) => a.open > 0)
+  const canAsk = hasAny([PERM.INVENTORY_EDIT, PERM.JOBS_EDIT]) && (!estimate || ['draft', 'sent', 'approved'].includes(estimate.status))
   const readiness = useQuery({
     queryKey: ['parts-readiness', key],
     queryFn: () => apiRequest<Readiness>(`/v1/inventory-holds/readiness?${scope}`),
@@ -79,7 +89,7 @@ export function PartsOrders({
   const lines = readiness.data?.lines ?? []
   const status = readiness.data?.estimate?.status ?? estimate?.status
   const approved = status === 'approved'
-  if (!canOrder && list.length === 0 && lines.length === 0) return null
+  if (!canOrder && !canAsk && list.length === 0 && lines.length === 0 && waiting.length === 0) return null
 
   const refresh = () => {
     void qc.invalidateQueries({ queryKey: ['parts-readiness', key] })
@@ -107,7 +117,7 @@ export function PartsOrders({
   const shortWithStock = lines.some((l) => l.short > 0 && l.available > 0)
 
   return (
-    <div className="mb-4 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5">
+    <div data-tour="estimate-parts" className="mb-4 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5">
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
         <h3 className="text-sm font-semibold text-navy-900">Parts</h3>
         <span className="text-xs text-slate-500">
@@ -127,6 +137,27 @@ export function PartsOrders({
             Hold from stock
           </button>
         )}
+        {canAsk && (
+          <AddToCartButton
+            tour="parts-needed"
+            label="Parts needed"
+            source={estimate ? 'estimate' : 'job'}
+            forEstimate={estimate ? { id: estimate.id, label: `Estimate ${estimate.number}` } : undefined}
+            forJob={!estimate && workOrderId ? { id: workOrderId, label: 'This job' } : undefined}
+          />
+        )}
+        {canAsk && (!estimate || canOrder) && (
+          <Link
+            to={estimate
+              ? `/purchase-orders/blueprints?estimate_id=${encodeURIComponent(estimate.id)}&for=${encodeURIComponent(`estimate ${estimate.number}`)}`
+              : `/purchase-orders/blueprints?work_order_id=${encodeURIComponent(workOrderId ?? '')}`}
+            title="Upload a blueprint or hardware schedule: CBI reads the parts off it for a draft PO on this one"
+            className="inline-flex items-center gap-1.5 rounded-md border border-slate-300 bg-white px-2.5 py-1 text-sm font-medium text-slate-700 hover:border-amber-400 hover:bg-amber-50"
+          >
+            <IconFileDescription size={16} stroke={1.75} />
+            Parts from a blueprint
+          </Link>
+        )}
         {canOrder && (
           <button
             type="button"
@@ -141,6 +172,24 @@ export function PartsOrders({
       </div>
 
       {error && <p className="mt-1.5 text-xs text-red-700">{error}</p>}
+
+      {waiting.length > 0 && (
+        <div data-tour="parts-waiting" className="mt-2 rounded-md border border-amber-200 bg-amber-50 px-2.5 py-1.5 text-sm">
+          <p className="text-xs font-medium text-amber-900">In the parts cart, waiting to be ordered</p>
+          <ul className="mt-0.5 list-none space-y-0.5 p-0">
+            {waiting.map((a) => (
+              <li key={a.id} className="flex flex-wrap items-baseline gap-x-2">
+                <span className="text-slate-800">{a.description}</span>
+                <span className="text-xs tabular-nums text-slate-500">× {count(a.open)}</span>
+                <span className="text-xs text-slate-500">
+                  {a.requested_by?.name ? `asked by ${a.requested_by.name}` : askFor(a)}
+                  {a.needed_by ? ` · by ${a.needed_by}` : ''}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
 
       {lines.length > 0 && (
         <ul className="mt-2 list-none space-y-1.5 p-0 text-sm">
@@ -195,7 +244,7 @@ export function PartsOrders({
           {list.map((po) => (
             <li key={po.id} className="flex flex-wrap items-baseline gap-x-2">
               <Link to={`/purchase-orders/${po.id}`} className="font-medium text-sky-700 hover:underline">{poLabel(po.po_number)}</Link>
-              <span className="text-slate-600">{po.vendor?.label ?? po.vendor?.name ?? ''}</span>
+              <span className="text-slate-600">{po.vendor?.label ?? po.vendor?.name ?? 'No vendor yet'}</span>
               <span className="tabular-nums text-slate-600">{money(po.money.subtotal_cents)}</span>
               <Chip tone="slate">{STAGE_LABEL[stage(po)] ?? po.status}</Chip>
               {po.status_note && <span className="basis-full text-xs text-amber-800">{po.status_note}</span>}

@@ -2,13 +2,14 @@ import { Link } from 'react-router-dom'
 import { usePermissions } from '@/hooks/usePermissions'
 
 const groups = [
-  { title: 'Collect money', links: [
+  { title: 'Collect money', tour: 'collect', links: [
     { label: 'Invoices', to: '/accounting/invoices', permission: 'invoices.view' },
-    { label: 'Cash drawer', to: '/accounting/cash-drawer', permission: 'invoices.view' },
+    { label: 'Cash register', to: '/accounting/cash-drawer', permission: 'invoices.view' },
+    { label: 'Payments, voids and refunds', to: '/accounting/cash-drawer/classic', permission: 'invoices.view' },
     { label: 'Customer credits', to: '/accounting/customer-credits', permission: 'invoices.view' },
     { label: 'Card transactions', to: '/accounting/card-processor', permission: 'invoices.view' },
   ] },
-  { title: 'Spending & payroll', links: [
+  { title: 'Spending & payroll', tour: 'spend', links: [
     { label: 'Expenses overview', to: '/accounting/expenses', permission: 'revenue.view' },
     { label: 'Expense register', to: '/accounting/expenses/register', permission: 'revenue.view' },
     { label: 'Vendor bills', to: '/accounting/expenses/bills', permission: 'revenue.view' },
@@ -19,7 +20,7 @@ const groups = [
     { label: 'Vendors', to: '/vendors', permission: 'inventory.view' },
     { label: 'Subcontractor payouts', to: '/sub-payouts', permission: 'jobs.view' },
   ] },
-  { title: 'Reconcile & report', links: [
+  { title: 'Reconcile & report', tour: 'reconcile', links: [
     { label: 'Financial overview', to: '/accounting/overview', permission: 'invoices.view' },
     { label: 'Bank match overview', to: '/accounting/bank-match', permission: 'revenue.view' },
     { label: 'Review bank matches', to: '/accounting/bank-match/review', permission: 'revenue.view' },
@@ -35,7 +36,7 @@ const groups = [
 export function AccountingTools() {
   const { has } = usePermissions()
   return (
-    <nav aria-label="Accounting tools" className="mb-8 rounded-2xl border border-slate-200 bg-white p-4 sm:p-5">
+    <nav aria-label="Accounting tools" data-tour="accounting-tools" className="mb-8 rounded-2xl border border-slate-200 bg-white p-4 sm:p-5">
       <h2 className="text-lg font-semibold text-slate-900">Accounting tools</h2>
       <p className="mt-1 text-sm text-slate-500">Open your books, manage payments, or review reports. Your money desk is below.</p>
       <div className="mt-4 grid gap-5 md:grid-cols-3">
@@ -43,7 +44,7 @@ export function AccountingTools() {
           const links = group.links.filter(link => has(link.permission))
           if (!links.length) return null
           return (
-            <section key={group.title}>
+            <section key={group.title} data-tour={`accounting-tools-${group.tour}`}>
               <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">{group.title}</h3>
               <div className="flex flex-wrap gap-2">
                 {links.map(link => (

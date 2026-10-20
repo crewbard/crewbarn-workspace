@@ -1,4 +1,6 @@
 ﻿import { useEffect, useState } from 'react'
+import { usePermissions } from '@/hooks/usePermissions'
+import { useRememberRecordList } from '@/hooks/useShortcuts'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { useCustomers } from '@/hooks/useCustomers'
 import { Button } from '@/components/ui/Button'
@@ -11,11 +13,10 @@ import { EasyPageHeading } from '@/components/easy/EasyPageHeading'
 import { FolderBrowser, type FolderNode } from '@/components/FolderBrowser'
 import { FolderLayoutSwitch } from '@/components/FolderLayoutSwitch'
 import type { Customer, CustomerType } from '@/types/customer'
+import { CustomerTagDot } from '@/components/customers/CustomerTagDot'
 import { Modal } from '@/components/ui/Modal'
 
-// Type-based workflow tabs (accurate via the existing server filter). VIP /
-// Recurring / Balance-Due / Open-Work tabs with live counts land in the next
-// slice once the list endpoint returns per-customer activity aggregates.
+// Type-based workflow tabs and a separate server-backed Outstanding toggle.
 const CUSTOMER_TABS: Array<{ key: '' | CustomerType; label: string }> = [
   { key: '', label: 'All' },
   { key: 'residential', label: 'Residential' },
@@ -24,6 +25,18 @@ const CUSTOMER_TABS: Array<{ key: '' | CustomerType; label: string }> = [
 ]
 
 const CUSTOMER_FILE_LETTERS = ['#', ...'ABCDEFGHIJKLMNOPQRSTUVWXYZ'.split('')]
+
+type CustomerDateFilter = 'all' | '30-days' | 'never'
+type CustomerSort = 'name-asc' | 'name-desc' | 'last-contact'
+
+function customerPageView(customers: Customer[], dateFilter: CustomerDateFilter, sort: CustomerSort) {
+  const cutoff = Date.now() - 30 * 86_400_000
+  return customers.filter((customer) => dateFilter === 'all'
+    || (dateFilter === 'never' ? !customer.last_contact_at : Boolean(customer.last_contact_at && new Date(customer.last_contact_at).getTime() >= cutoff)))
+    .sort((a, b) => sort === 'last-contact'
+      ? (b.last_contact_at ? new Date(b.last_contact_at).getTime() : 0) - (a.last_contact_at ? new Date(a.last_contact_at).getTime() : 0)
+      : a.display_name.localeCompare(b.display_name) * (sort === 'name-desc' ? -1 : 1))
+}
 
 /** Compact "8 days ago" / "Never contacted" relative time for the row. */
 function relativeTime(iso: string | null): string {
@@ -93,21 +106,28 @@ function CustomerActivityChips({ c }: { c: Customer }) {
 function CustomerCard({
   customer,
   onOpen,
+  onPreview,
+  tour,
 }: {
   customer: Customer
   onOpen: (id: string) => void
+  onPreview: (customer: Customer) => void
+  /** Tutorial marker for a card that opens the customer's page. */
+  tour?: string
 }) {
-  const lifetimeCents = customer.responsible_paid_cents ?? customer.lifetime_value_cents
+  const lifetimeCents = lifetimePaidCents(customer)
   const hasValue = lifetimeCents > 0
 
   return (
+    <article className="flex h-full min-h-[210px] min-w-0 flex-col overflow-hidden rounded-lg border border-navy-100 bg-white shadow-sm transition-colors hover:border-amber-300">
     <button
       type="button"
+      data-tour={tour}
       onClick={() => onOpen(customer.id)}
-      className="group flex w-full flex-col overflow-hidden rounded-lg border border-navy-100 bg-white text-left shadow-sm transition-colors hover:border-amber-300 hover:bg-amber-50/30 focus:outline-none focus:ring-2 focus:ring-amber-500"
+      className="group flex w-full flex-1 flex-col text-left transition-colors hover:bg-amber-50/30 focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-amber-500"
     >
       <span className="block h-1" style={{ background: customerStripe(customer) }} aria-hidden />
-      <div className="p-4">
+      <div className="flex w-full flex-1 flex-col p-4">
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
             <div className="flex items-center gap-2 flex-wrap">
@@ -137,10 +157,10 @@ function CustomerCard({
           <RowChevron />
         </div>
 
-        <div className="mt-4 grid grid-cols-2 gap-3">
+        <div className="mt-auto grid grid-cols-2 gap-3 pt-4">
           <div className="rounded-md bg-slate-50 px-3 py-2">
             <div className="text-[10px] font-semibold uppercase tracking-wide text-slate-500">
-              Lifetime
+              Lifetime paid
             </div>
             <div className="mt-1 font-mono text-sm font-semibold text-navy-900">
               {hasValue ? formatCustomerCurrency(lifetimeCents) : 'No paid work'}
@@ -159,6 +179,11 @@ function CustomerCard({
         <CustomerActivityChips c={customer} />
       </div>
     </button>
+    <div className="flex min-h-11 items-center justify-between gap-3 border-t border-navy-100 px-4 py-2 text-sm">
+      <button type="button" onClick={() => onPreview(customer)} className="font-medium text-slate-600 underline underline-offset-2 hover:text-amber-800" aria-label={`Quick Peek at ${customer.display_name}`}>Quick Peek</button>
+      <Link to={`/customers/${customer.id}`} className="font-semibold text-amber-800 hover:underline">Open account →</Link>
+    </div>
+    </article>
   )
 }
 
@@ -170,36 +195,45 @@ function CustomerCard({
 function CustomerFolderContents({
   letter,
   customerType,
+  outstanding,
   search,
   display,
   onOpen,
+  onPreview,
+  dateFilter,
+  sort,
 }: {
   letter: string
   customerType: CustomerType | ''
+  outstanding: boolean
   search: string
   display: 'grid' | 'list'
   onOpen: (id: string) => void
+  onPreview: (customer: Customer) => void
+  dateFilter: CustomerDateFilter
+  sort: CustomerSort
 }) {
   // Page within the open folder — 50 at a time with a Next button, so opening
   // a big letter (A, S…) doesn't pull the whole letter at once.
   const [page, setPage] = useState(1)
   // Search / type can change while a folder stays open; snap back to page 1 so
   // we never sit past the last page.
-  useEffect(() => { setPage(1) }, [letter, customerType, search])
+  useEffect(() => { setPage(1) }, [letter, customerType, outstanding, search])
 
   const { data, isFetching, isError, refetch } = useCustomers({
     filing_letter: letter,
     customer_type: customerType || undefined,
+    outstanding: outstanding || undefined,
     q: search || undefined,
     sort: 'display_name',
     direction: 'asc',
     page,
     per_page: 50,
   })
-  const customers = data?.data ?? []
+  const customers = customerPageView(data?.data ?? [], dateFilter, sort)
   const meta = data?.meta
   // Cap at 4 cards per row; step down on narrower widths.
-  const gridClass = 'grid gap-3 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4'
+  const gridClass = 'grid auto-rows-fr gap-3 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4'
 
   if (isError) {
     return <div role="alert" className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm">This customer folder could not be loaded. <button type="button" className="underline" onClick={() => refetch()}>Try again</button></div>
@@ -211,13 +245,14 @@ function CustomerFolderContents({
       </div>
     )
   }
-  if (customers.length === 0) {
+  if ((data?.data.length ?? 0) === 0) {
     return <div className="rounded-lg border border-dashed border-slate-200 bg-white px-6 py-8 text-center text-sm text-slate-500">No customers filed under {letter}.</div>
   }
 
-  const cards = customers.map((c) => <CustomerCard key={c.id} customer={c} onOpen={onOpen} />)
+  const cards = customers.map((c) => <CustomerCard key={c.id} customer={c} onOpen={onOpen} onPreview={onPreview} tour="customers-row" />)
   return (
     <div>
+      {customers.length === 0 && <p className="mb-4 text-sm text-slate-500">No customers on this folder page match the last-contact filter. Try another page or choose Any date.</p>}
       {display === 'list'
         ? <div className="space-y-2.5">{cards}</div>
         : <div className={gridClass}>{cards}</div>}
@@ -256,25 +291,33 @@ function CustomerFolderContents({
 function DesktopCustomerCards({
   customers,
   onOpen,
+  onPreview,
   filingView,
   filingCounts,
   folderLayout,
   customerType,
+  outstanding,
   search,
+  dateFilter,
+  sort,
 }: {
   customers: Customer[]
   onOpen: (id: string) => void
+  onPreview: (customer: Customer) => void
   filingView: boolean
   filingCounts: Record<string, number>
   folderLayout: FolderLayout
   customerType: CustomerType | ''
+  outstanding: boolean
   search: string
+  dateFilter: CustomerDateFilter
+  sort: CustomerSort
 }) {
   if (!filingView) {
     return (
-      <div className="hidden md:grid gap-4 lg:grid-cols-2 xl:grid-cols-3">
+      <div className="grid auto-rows-fr gap-4 sm:grid-cols-2 xl:grid-cols-3">
         {customers.map((customer) => (
-          <CustomerCard key={customer.id} customer={customer} onOpen={onOpen} />
+          <CustomerCard key={customer.id} customer={customer} onOpen={onOpen} onPreview={onPreview} tour="customers-row" />
         ))}
       </div>
     )
@@ -290,34 +333,43 @@ function DesktopCustomerCards({
       count: filingCounts[letter] ?? 0,
       tab: '#0F766E',
       render: (display) => (
-        <CustomerFolderContents letter={letter} customerType={customerType} search={search} display={display} onOpen={onOpen} />
+        <CustomerFolderContents letter={letter} customerType={customerType} outstanding={outstanding} search={search} display={display} onOpen={onOpen} onPreview={onPreview} dateFilter={dateFilter} sort={sort} />
       ),
     }))
 
   return (
-    <div className="hidden min-w-0 md:block">
+    <div className="min-w-0">
       <FolderBrowser folders={folders} layout={folderLayout} countNoun="customer" emptyFolderText="No customers filed here." />
     </div>
   )
 }
+/** Lifetime paid: what this account has paid (incl. sub-accounts it pays
+ *  for). Same meaning as "Lifetime paid" on the customer account page. */
+function lifetimePaidCents(customer: Customer): number {
+  return customer.responsible_paid_cents ?? customer.lifetime_value_cents ?? 0
+}
+
 export function CustomersPage() {
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
   const { theme, customerView, setCustomerView, density, folderLayout, setFolderLayout } = useTheme()
+  const { has } = usePermissions()
+  const canCreate = has('customers.edit')
   const easy = theme === 'easy-side' || theme === 'easy-top'
   const [preview, setPreview] = useState<Customer | null>(null)
   // Filter / search / sort state
   const [search, setSearch] = useState(() => searchParams.get('q')?.trim() ?? '')
   const [typeFilter, setTypeFilter] = useState<CustomerType | ''>('')
+  const [outstanding, setOutstanding] = useState(false)
+  const [dateFilter, setDateFilter] = useState<CustomerDateFilter>('all')
+  const [sort, setSort] = useState<CustomerSort>('name-asc')
   const [page, setPage] = useState(1)
   const perPage = 25
-  const [filingView, setFilingView] = useState(() =>
-    customerView === 'files'
-      || (typeof window !== 'undefined' && window.localStorage.getItem('crewbarn:customer-filing-view') === 'true'),
-  )
+  const filingView = customerView === 'files'
   const { data, isLoading, isFetching, isError, error, refetch } = useCustomers({
     q: search || undefined,
     customer_type: typeFilter || undefined,
+    outstanding: outstanding || undefined,
     // The main query supplies the A–Z counts; each open folder fetches its own
     // letter (CustomerFolderContents), so no letter is pinned here.
     filing_letter: undefined,
@@ -328,6 +380,9 @@ export function CustomersPage() {
   })
 
   const desktopRowPad = density === 'dense' ? 'px-4 py-2' : density === 'compact' ? 'px-4 py-2.5' : 'px-4 py-3'
+  const visibleCustomers = customerPageView(data?.data ?? [], dateFilter, sort)
+  // [ and ] on a customer step through this list, in this order.
+  useRememberRecordList('customers', visibleCustomers)
   const directoryTotal = filingView && data?.filing_counts
     ? Object.values(data.filing_counts).reduce((total, count) => total + count, 0)
     : data?.meta?.total
@@ -338,10 +393,10 @@ export function CustomersPage() {
           AppLayout already wraps every authenticated page. */}
 
       {/* Page content */}
-      <main className={`mx-auto px-3 sm:px-6 py-4 sm:py-8 ${easy ? 'w-full' : filingView ? 'max-w-[1760px]' : 'max-w-7xl'}`}>
+      <main data-focus-page="customers" className={`mx-auto px-3 sm:px-6 py-4 sm:py-8 ${easy ? 'w-full' : filingView ? 'max-w-[1760px]' : 'max-w-7xl'}`}>
         {/* Page header */}
-        {easy ? <EasyPageHeading title="Customers" description="Find the people and businesses you work with. Open a customer to see their jobs, locations, conversations, and billing." actions={<Link to="/customers/new"><Button data-tour="customers-new">+ New customer</Button></Link>} /> : <div className="flex items-center justify-between mb-4 sm:mb-6 gap-3">
-          <div className="min-w-0">
+        {easy ? <div data-tour="customers-header"><EasyPageHeading title="Customers" description="Find the people and businesses you work with. Open a customer to see their jobs, locations, conversations, and billing." actions={canCreate ? <Link to="/customers/new"><Button data-tour="customers-new">+ New customer</Button></Link> : undefined} /></div> : <div className="flex items-center justify-between mb-4 sm:mb-6 gap-3">
+          <div className="min-w-0" data-tour="customers-header">
             <h1 className="text-xl sm:text-2xl font-bold text-navy-800">Customers</h1>
             <p className="text-sm text-navy-500 mt-1">
               {directoryTotal !== undefined
@@ -349,14 +404,17 @@ export function CustomersPage() {
                 : 'Loading...'}
             </p>
           </div>
-          <Link to="/customers/new" className="shrink-0">
-            <Button data-tour="customers-new">+ New</Button>
-          </Link>
+          {canCreate && (
+            <Link to="/customers/new" className="shrink-0">
+              <Button data-tour="customers-new">+ New</Button>
+            </Link>
+          )}
         </div>}
         {easy && !isError && directoryTotal !== undefined && <p className="mb-4 text-sm text-slate-500">{directoryTotal.toLocaleString()} {directoryTotal === 1 ? 'customer' : 'customers'}</p>}
 
         {/* Workflow tabs — faster than a dropdown, makes the page feel alive.
             Live counts (by type) come from the index endpoint's tab_counts. */}
+        <div data-tour="customers-type-tabs">
         <WorkflowTabs
           tabs={CUSTOMER_TABS.map((t) => ({
             ...t,
@@ -370,9 +428,10 @@ export function CustomersPage() {
             setPage(1)
           }}
         />
+        </div>
 
         {/* Search bar */}
-        <div data-easy-list-toolbar className="bg-white rounded-lg border border-navy-100 p-4 mb-6 flex gap-3 flex-wrap">
+        <div data-easy-list-toolbar data-tour="customers-search" className="bg-white rounded-lg border border-navy-100 p-4 mb-6 flex gap-3 flex-wrap">
           <div className="flex-1 min-w-[200px]">
             <Input
               type="search"
@@ -384,24 +443,53 @@ export function CustomersPage() {
               }}
             />
           </div>
-          {(customerView === 'cards' || customerView === 'files') && (
+          <button
+            type="button"
+            aria-pressed={outstanding}
+            title="Show customers with an unpaid invoice balance, including work billed to their account"
+            onClick={() => { setOutstanding((current) => !current); setPage(1) }}
+            className={'h-10 shrink-0 rounded-md border px-4 text-sm font-semibold transition-colors ' + (outstanding
+              ? 'border-amber-500 bg-amber-50 text-amber-900'
+              : 'border-navy-200 bg-white text-navy-700 hover:border-amber-400 hover:bg-amber-50')}
+          >Outstanding only</button>
+          <label className="flex flex-col gap-1 text-xs text-navy-600">Last contact · current page
+            <select value={dateFilter} onChange={(e) => setDateFilter(e.target.value as CustomerDateFilter)} className="h-10 rounded-md border border-navy-200 bg-white px-3 text-sm">
+              <option value="all">Any date</option><option value="30-days">Past 30 days</option><option value="never">Never contacted</option>
+            </select>
+          </label>
+          <label className="flex flex-col gap-1 text-xs text-navy-600">Sort · current page
+            <select value={sort} onChange={(e) => setSort(e.target.value as CustomerSort)} className="h-10 rounded-md border border-navy-200 bg-white px-3 text-sm">
+              <option value="name-asc">Name A–Z</option><option value="name-desc">Name Z–A</option><option value="last-contact">Last contact · newest</option>
+            </select>
+          </label>
             <div
-              className="hidden h-10 shrink-0 overflow-hidden rounded-md border border-navy-200 bg-slate-50 md:inline-flex"
+              className="inline-flex h-10 shrink-0 overflow-hidden rounded-md border border-navy-200 bg-slate-50"
               role="group"
-              aria-label="Customer card display"
+              aria-label="Customer view"
+              data-tour="customers-view-switch"
             >
               <button
                 type="button"
-                onClick={() => {
-                  setFilingView(false)
-                  setCustomerView('cards')
-                }}
+                onClick={() => setCustomerView('compact')}
                 className={'px-4 text-sm font-semibold transition-colors ' + (
-                  !filingView
+                  customerView === 'compact' || customerView === 'relationship'
                     ? 'bg-navy-800 text-white'
                     : 'text-navy-600 hover:bg-white hover:text-navy-900'
                 )}
-                aria-pressed={!filingView}
+                aria-pressed={customerView === 'compact' || customerView === 'relationship'}
+                data-easy-view-option
+              >Rows</button>
+              <button
+                type="button"
+                onClick={() => {
+                  setCustomerView('cards')
+                }}
+                className={'px-4 text-sm font-semibold transition-colors ' + (
+                  customerView === 'cards' && !filingView
+                    ? 'bg-navy-800 text-white'
+                    : 'text-navy-600 hover:bg-white hover:text-navy-900'
+                )}
+                aria-pressed={customerView === 'cards' && !filingView}
                 data-easy-view-option
               >
                 Cards
@@ -409,7 +497,6 @@ export function CustomersPage() {
               <button
                 type="button"
                 onClick={() => {
-                  setFilingView(true)
                   setCustomerView('files')
                 }}
                 className={'border-l border-navy-200 px-4 text-sm font-semibold transition-colors ' + (
@@ -423,13 +510,13 @@ export function CustomersPage() {
                 Files
               </button>
             </div>
-          )}
-
-          {filingView && (
-            <div className="hidden items-center md:flex">
-              <FolderLayoutSwitch value={folderLayout} onChange={setFolderLayout} />
+            <div data-tour="customers-folder-layout" className="flex items-center">
+              <FolderLayoutSwitch value={folderLayout} onChange={(layout) => {
+                setFolderLayout(layout)
+                setCustomerView('files')
+                setPage(1)
+              }} />
             </div>
-          )}
         </div>
 
         {/* Loading state */}
@@ -449,13 +536,13 @@ export function CustomersPage() {
 
         {/* Empty state */}
         {!isError && data && data.data.length === 0 && (
-          <div className="bg-white rounded-lg border border-navy-100 p-12 text-center">
+          <div data-tour="customers-empty" data-empty-reason={search || typeFilter || outstanding ? 'filtered' : 'none'} className="bg-white rounded-lg border border-navy-100 p-12 text-center">
             <p className="text-navy-500 mb-4">
-              {search || typeFilter
+              {search || typeFilter || outstanding
                 ? 'No customers match your filters.'
-                : 'No customers yet. Create your first one.'}
+                : canCreate ? 'No customers yet. Create your first one.' : 'No customers yet.'}
             </p>
-            {!search && !typeFilter && (
+            {!search && !typeFilter && !outstanding && canCreate && (
               <Link to="/customers/new">
                 <Button>+ New customer</Button>
               </Link>
@@ -463,25 +550,18 @@ export function CustomersPage() {
           </div>
         )}
 
-        {easy && !filingView && !isError && data && data.data.length > 0 && <section aria-label="Customer directory" className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
-          {data.data.map(customer => <article key={customer.id} className="min-w-0 space-y-2">
-            <CustomerCard customer={customer} onOpen={() => setPreview(customer)} />
-            <div className="flex justify-between gap-3 px-2 text-sm">
-              <button type="button" onClick={() => setPreview(customer)} className="text-slate-600 underline" aria-label={`Quick look at ${customer.display_name}`}>Quick look</button>
-              <Link to={`/customers/${customer.id}`} className="font-semibold text-amber-800">Open account →</Link>
-            </div>
-          </article>)}
-        </section>}
-        <div hidden={(easy && !filingView) || isError}>
+        <div data-tour="customers-list" hidden={isError}>
+        {!filingView && !isError && data && data.data.length > 0 && visibleCustomers.length === 0 && <p className="rounded-lg border border-navy-100 bg-white p-6 text-sm text-slate-500">No customers on this page match the last-contact filter. Try another page or choose Any date.</p>}
         {/* Mobile cards — single tappable block per customer. Lifetime
             value gets a prominent right-side number; type/industry +
             last-contact stack as a meta line. */}
-        {data && data.data.length > 0 && (
+        {data && data.data.length > 0 && customerView !== 'cards' && !filingView && (
           <div className="md:hidden space-y-2">
-            {data.data.map((customer) => (
+            {visibleCustomers.map((customer) => (
+              <article key={customer.id} className="space-y-2">
               <Link
-                key={customer.id}
                 to={`/customers/${customer.id}`}
+                data-tour="customers-row"
                 className="block rounded-lg border border-navy-100 bg-white p-3 hover:border-amber-300 hover:bg-amber-50/30 active:bg-amber-50/60"
               >
                 <div className="flex items-start justify-between gap-3">
@@ -512,8 +592,9 @@ export function CustomersPage() {
                         {customer.tags.slice(0, 3).map((tag) => (
                           <span
                             key={tag}
-                            className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] bg-amber-50 text-amber-700 border border-amber-200"
+                            className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] bg-amber-50 text-amber-700 border border-amber-200"
                           >
+                            <CustomerTagDot name={tag} />
                             {tag}
                           </span>
                         ))}
@@ -522,13 +603,13 @@ export function CustomersPage() {
                     <CustomerActivityChips c={customer} />
                   </div>
                   <div className="text-right shrink-0">
-                    {customer.lifetime_value_cents > 0 ? (
+                    {lifetimePaidCents(customer) > 0 ? (
                       <>
                         <div className="font-mono text-sm font-semibold text-navy-800">
-                          {formatCustomerCurrency(customer.lifetime_value_cents)}
+                          {formatCustomerCurrency(lifetimePaidCents(customer))}
                         </div>
                         <div className="text-[10px] uppercase text-navy-400 tracking-wide">
-                          lifetime
+                          lifetime paid
                         </div>
                       </>
                     ) : (
@@ -542,32 +623,39 @@ export function CustomersPage() {
                   </div>
                 </div>
               </Link>
+              <button type="button" onClick={() => setPreview(customer)} className="px-3 text-sm text-slate-600 underline" aria-label={`Quick Peek at ${customer.display_name}`}>Quick Peek</button>
+              </article>
             ))}
           </div>
         )}
 
         {data && data.data.length > 0 && (customerView === 'cards' || customerView === 'files') && (
           <DesktopCustomerCards
-            customers={data.data}
+            customers={visibleCustomers}
             onOpen={(id) => navigate(`/customers/${id}`)}
+            onPreview={setPreview}
             filingView={filingView}
             filingCounts={data.filing_counts ?? {}}
             folderLayout={folderLayout}
             customerType={typeFilter}
+            outstanding={outstanding}
             search={search}
+            dateFilter={dateFilter}
+            sort={sort}
           />
         )}
 
         {/* Desktop — clickable relationship rows (table/card hybrid). */}
         {data && data.data.length > 0 && customerView !== 'cards' && customerView !== 'files' && (
           <div className="hidden md:block bg-white rounded-lg border border-navy-100 overflow-hidden divide-y divide-navy-100">
-            {data.data.map((customer) => {
-              const hasValue = customer.lifetime_value_cents > 0
+            {visibleCustomers.map((customer) => {
+              const hasValue = lifetimePaidCents(customer) > 0
               return (
                 <div
                   key={customer.id}
                   onClick={() => navigate(`/customers/${customer.id}`)}
                   onKeyDown={(e) => {
+                    if (e.target !== e.currentTarget) return
                     if (e.key === 'Enter' || e.key === ' ') {
                       e.preventDefault()
                       navigate(`/customers/${customer.id}`)
@@ -575,6 +663,7 @@ export function CustomersPage() {
                   }}
                   role="link"
                   tabIndex={0}
+                  data-tour="customers-row"
                   className="group flex items-stretch cursor-pointer hover:bg-amber-50/40 focus:outline-none focus:bg-amber-50/60 transition-colors"
                 >
                   {/* Left priority/health stripe */}
@@ -601,7 +690,7 @@ export function CustomersPage() {
                           <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] border border-amber-300 text-amber-700">Referred</span>
                         )}
                       </div>
-                      {customerView !== 'compact' && (
+                      {(customerView !== 'compact' || theme === 'focus') && (
                         <>
                           <div className="text-xs text-navy-500 mt-0.5 truncate">
                             <span className="capitalize">{customer.customer_type}</span>
@@ -618,8 +707,8 @@ export function CustomersPage() {
                     {/* Value + last touch */}
                     <div className="text-right shrink-0 w-48">
                       {hasValue ? (
-                        <div className="font-mono text-sm font-semibold text-navy-800">
-                          {formatCustomerCurrency(customer.lifetime_value_cents)}
+                        <div className="font-mono text-sm font-semibold text-navy-800" title="Lifetime paid">
+                          {formatCustomerCurrency(lifetimePaidCents(customer))}
                         </div>
                       ) : (
                         <div className="text-xs text-navy-400">No paid work yet</div>
@@ -631,6 +720,7 @@ export function CustomersPage() {
                       </div>
                     </div>
 
+                    <button type="button" onClick={(e) => { e.stopPropagation(); setPreview(customer) }} className="shrink-0 text-sm text-slate-600 underline" aria-label={`Quick Peek at ${customer.display_name}`}>Quick Peek</button>
                     {/* Chevron */}
                     <RowChevron />
                   </div>
@@ -643,7 +733,7 @@ export function CustomersPage() {
         {/* Pagination */}
         </div>
         {!isError && data && !filingView && data.meta.last_page > 1 && (
-          <div data-easy-pager className="flex flex-wrap items-center justify-between gap-3 mt-6 px-1">
+          <div data-easy-pager data-tour="customers-pager" className="flex flex-wrap items-center justify-between gap-3 mt-6 px-1">
             <div className="text-sm text-navy-500">
               Showing {data.meta.from}–{data.meta.to} of {data.meta.total}
             </div>
@@ -671,7 +761,7 @@ export function CustomersPage() {
           </div>
         )}
       </main>
-      {easy && preview && <Modal isOpen onClose={() => setPreview(null)} title={preview.display_name} subtitle="Customer quick look">
+      {preview && <Modal isOpen onClose={() => setPreview(null)} title={preview.display_name} subtitle="Customer Quick Peek">
         <Modal.Body>
           <div className="flex items-center gap-4">
             <Avatar name={preview.display_name} colorKey={preview.id} preset={preview.avatar_preset} imageUrl={preview.avatar_url} size={48} />

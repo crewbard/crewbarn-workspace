@@ -1,7 +1,7 @@
 import { CONNECT_URL } from '@/lib/workspaceScope'
 
 export function CloudflareOnboardingGuide() {
-  return <section className="rounded-2xl border border-slate-200 bg-white p-5">
+  return <section data-tour="onboarding-cloudflare-guide" className="rounded-2xl border border-slate-200 bg-white p-5">
     <h2 className="text-lg font-bold text-navy-900">Connect Cloudflare — your account, your domain, your files</h2>
     <p className="mt-2 text-sm leading-relaxed text-slate-600">One connection unlocks three setup paths. Choose what you need; connecting an account does not buy a domain, publish a website, or move existing files automatically.</p>
     <div className="mt-4 grid gap-3 md:grid-cols-3">

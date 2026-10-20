@@ -6,14 +6,14 @@ import { Modal } from '@/components/ui/Modal'
 import { TeachingPhotoViewer } from './TeachingPhotoViewer'
 import { ManufacturerContact } from './ManufacturerContact'
 import { PhotoPartResearch } from './PhotoPartResearch'
-import { PERM, usePermissions } from '@/hooks/usePermissions'
+import { usePermissions } from '@/hooks/usePermissions'
 import { submitPartMatchFeedback, type CommsMessage, type CommsImageAnalysis } from '@/lib/comms'
 
 /** A photo's AI badge is its single entry point: no extra cards beneath the conversation. */
 export function PhotoTeachingNotes({ message, url: initialUrl, analysis: savedAnalysis, photoNumber: initialNumber, photoCount, images }: {
   message: CommsMessage; url: string; analysis: CommsImageAnalysis | null; photoNumber: number; photoCount: number; images: string[]
 }) {
-  const canTeach = usePermissions().has(PERM.AI_TRAIN)
+  const canTeach = usePermissions().has('ai.learn.suggest')
   const [open, setOpen] = useState(false)
   const [selectedIndex, setSelectedIndex] = useState(initialNumber - 1)
   const url = images[selectedIndex] ?? initialUrl

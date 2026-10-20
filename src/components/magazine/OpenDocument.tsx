@@ -9,7 +9,7 @@ const MagazineViewer = lazy(() => import('./MagazineViewer'))
 
 export function OpenDocument(props: MagazineViewerProps) {
   return (
-    <Suspense fallback={<div className="fixed inset-0 z-[60] bg-[#22262d]" aria-busy="true" />}>
+    <Suspense fallback={<div className={props.docked ? 'fixed inset-y-0 right-0 z-[60] w-[min(48vw,760px)] bg-[#22262d]' : 'fixed inset-0 z-[60] bg-[#22262d]'} aria-busy="true" />}>
       <MagazineViewer {...props} />
     </Suspense>
   )

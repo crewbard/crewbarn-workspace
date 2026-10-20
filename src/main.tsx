@@ -3,10 +3,13 @@ import { createRoot } from 'react-dom/client'
 import { ErrorBoundary } from '@/components/ErrorBoundary'
 import { BuildUpdateBanner } from '@/components/BuildUpdateBanner'
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
+import { ReportsRedirect } from '@/components/routing/ReportsRedirect'
+
 import { MutationCache, QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { isDeleteCancelled } from '@/lib/api'
 import { pushMutationError } from '@/lib/mutationErrorBus'
 import { MutationErrorToasts } from '@/components/MutationErrorToasts'
+import { warmLazyChunks } from '@/lib/warmChunks'
 import './index.css'
 
 // Suppress the dev-only "outdated JSX transform" warning from
@@ -25,6 +28,8 @@ if (import.meta.env.DEV) {
 import { AuthProvider } from '@/hooks/useAuth'
 import { ThemeProvider } from '@/hooks/useTheme'
 import { DeleteConfirmProvider } from '@/components/DeleteConfirmProvider'
+import { CompletionRequirementsProvider } from '@/components/CompletionRequirementsProvider'
+import { SmsConsentProvider } from '@/components/SmsConsentProvider'
 import { StepUpProvider } from '@/components/StepUpProvider'
 import { ProtectedRoute } from '@/components/ProtectedRoute'
 
@@ -33,97 +38,103 @@ import { HomeRoute } from '@/components/HomeRoute'
 import { AppLayout } from '@/components/layout/AppLayout'
 
 import { LoginPage } from '@/pages/LoginPage'
-import { AssetAccessLandingPage } from '@/pages/AssetAccessLandingPage'
-import { DownloadPage } from '@/pages/DownloadPage'
-import { ForgotPasswordPage } from '@/pages/ForgotPasswordPage'
-import { ResetPasswordPage } from '@/pages/ResetPasswordPage'
-
-import { PublicScanPage } from '@/pages/PublicScanPage'
-import { PublicVerifyPage } from '@/pages/PublicVerifyPage'
-import { PublicReportPage } from '@/pages/PublicReportPage'
+const AssetAccessLandingPage = lazy(() => import('@/pages/AssetAccessLandingPage').then((m) => ({ default: m.AssetAccessLandingPage })))
+const DownloadPage = lazy(() => import('@/pages/DownloadPage').then((m) => ({ default: m.DownloadPage })))
+const ForgotPasswordPage = lazy(() => import('@/pages/ForgotPasswordPage').then((m) => ({ default: m.ForgotPasswordPage })))
+const ResetPasswordPage = lazy(() => import('@/pages/ResetPasswordPage').then((m) => ({ default: m.ResetPasswordPage })))
+const PublicScanPage = lazy(() => import('@/pages/PublicScanPage').then((m) => ({ default: m.PublicScanPage })))
+const PublicVerifyPage = lazy(() => import('@/pages/PublicVerifyPage').then((m) => ({ default: m.PublicVerifyPage })))
+const PublicReportPage = lazy(() => import('@/pages/PublicReportPage').then((m) => ({ default: m.PublicReportPage })))
 import { DashboardPage } from '@/pages/DashboardPage'
-import { CustomersPage } from '@/pages/CustomersPage'
-import { CustomerCreatePage } from '@/pages/CustomerCreatePage'
-import { CustomerDetailPage } from '@/pages/CustomerDetailPage'
-import { WorkOrdersPage } from '@/pages/WorkOrdersPage'
-import { WorkOrderCreatePage } from '@/pages/WorkOrderCreatePage'
-import { TasksPage } from '@/pages/TasksPage'
-import { WorkOrderDetailPage } from '@/pages/WorkOrderDetailPage'
-import { SubReviewsPage } from '@/pages/SubReviewsPage'
-import { SubPayoutsPage } from '@/pages/SubPayoutsPage'
-
-import { InboundSubJobsPage } from '@/pages/InboundSubJobsPage'
+const CustomersPage = lazy(() => import('@/pages/CustomersPage').then((m) => ({ default: m.CustomersPage })))
+const CustomerCreatePage = lazy(() => import('@/pages/CustomerCreatePage').then((m) => ({ default: m.CustomerCreatePage })))
+const CustomerDetailPage = lazy(() => import('@/pages/CustomerDetailPage').then((m) => ({ default: m.CustomerDetailPage })))
+const WorkOrdersPage = lazy(() => import('@/pages/WorkOrdersPage').then((m) => ({ default: m.WorkOrdersPage })))
+const WorkOrderCreatePage = lazy(() => import('@/pages/WorkOrderCreatePage').then((m) => ({ default: m.WorkOrderCreatePage })))
+const TasksPage = lazy(() => import('@/pages/TasksPage').then((m) => ({ default: m.TasksPage })))
+const WorkOrderDetailPage = lazy(() => import('@/pages/WorkOrderDetailPage').then((m) => ({ default: m.WorkOrderDetailPage })))
+const SubReviewsPage = lazy(() => import('@/pages/SubReviewsPage').then((m) => ({ default: m.SubReviewsPage })))
+const SubPayoutsPage = lazy(() => import('@/pages/SubPayoutsPage').then((m) => ({ default: m.SubPayoutsPage })))
+const InboundSubJobsPage = lazy(() => import('@/pages/InboundSubJobsPage').then((m) => ({ default: m.InboundSubJobsPage })))
 const AccountingPage = lazy(() => import('@/pages/AccountingPage').then((m) => ({ default: m.AccountingPage })))
-import { MoneyDeskPage } from '@/pages/MoneyDeskPage'
-import { CashRegisterPage } from '@/pages/CashRegisterPage'
-import { BankMatchWorkspacePage, CustomerCreditsWorkspacePage, ExpensesWorkspacePage, InventoryCostWorkspacePage, PayrollWorkspacePage } from '@/pages/AccountingWorkspacePages'
-import { CashDrawerPage } from '@/pages/CashDrawerPage'
-import { ExpenseRegisterPage } from '@/pages/ExpenseRegisterPage'
-import { VendorBillsPage } from '@/pages/VendorBillsPage'
-import { BankMatchPage } from '@/pages/BankMatchPage'
-import { ProcessorTransactionsPage } from '@/pages/ProcessorTransactionsPage'
-import { PayrollProfilesPage } from '@/pages/PayrollProfilesPage'
+const MoneyDeskPage = lazy(() => import('@/pages/MoneyDeskPage').then((m) => ({ default: m.MoneyDeskPage })))
+const CashRegisterPage = lazy(() => import('@/pages/CashRegisterPage').then((m) => ({ default: m.CashRegisterPage })))
+const BankMatchWorkspacePage = lazy(() => import('@/pages/AccountingWorkspacePages').then((m) => ({ default: m.BankMatchWorkspacePage })))
+const CustomerCreditsWorkspacePage = lazy(() => import('@/pages/AccountingWorkspacePages').then((m) => ({ default: m.CustomerCreditsWorkspacePage })))
+const ExpensesWorkspacePage = lazy(() => import('@/pages/AccountingWorkspacePages').then((m) => ({ default: m.ExpensesWorkspacePage })))
+const InventoryCostWorkspacePage = lazy(() => import('@/pages/AccountingWorkspacePages').then((m) => ({ default: m.InventoryCostWorkspacePage })))
+const PayrollWorkspacePage = lazy(() => import('@/pages/AccountingWorkspacePages').then((m) => ({ default: m.PayrollWorkspacePage })))
+const CashDrawerPage = lazy(() => import('@/pages/CashDrawerPage').then((m) => ({ default: m.CashDrawerPage })))
+const ExpenseRegisterPage = lazy(() => import('@/pages/ExpenseRegisterPage').then((m) => ({ default: m.ExpenseRegisterPage })))
+const VendorBillsPage = lazy(() => import('@/pages/VendorBillsPage').then((m) => ({ default: m.VendorBillsPage })))
+const BankMatchPage = lazy(() => import('@/pages/BankMatchPage').then((m) => ({ default: m.BankMatchPage })))
+const ProcessorTransactionsPage = lazy(() => import('@/pages/ProcessorTransactionsPage').then((m) => ({ default: m.ProcessorTransactionsPage })))
+const PayrollProfilesPage = lazy(() => import('@/pages/PayrollProfilesPage').then((m) => ({ default: m.PayrollProfilesPage })))
 const GeneralLedgerPage = lazy(() => import('@/pages/GeneralLedgerPage').then((m) => ({ default: m.GeneralLedgerPage })))
 const AccountingSyncMappingsPage = lazy(() => import('@/pages/AccountingSyncMappingsPage').then((m) => ({ default: m.AccountingSyncMappingsPage })))
-import { EstimatesPage } from '@/pages/EstimatesPage'
-import { EstimateCreatePage } from '@/pages/EstimateCreatePage'
-import { EstimateDetailPage } from '@/pages/EstimateDetailPage'
-import InvoiceDetailPage from '@/pages/InvoiceDetailPage'
-import { InvoicesPage } from '@/pages/InvoicesPage'
-import { CommsPage } from '@/pages/CommsPage'
-import { CallsPage } from '@/pages/CallsPage'
-import { AiIntakeQueuePage } from '@/pages/AiIntakeQueuePage'
+const EstimatesPage = lazy(() => import('@/pages/EstimatesPage').then((m) => ({ default: m.EstimatesPage })))
+const EstimateCreatePage = lazy(() => import('@/pages/EstimateCreatePage').then((m) => ({ default: m.EstimateCreatePage })))
+const EstimateDetailPage = lazy(() => import('@/pages/EstimateDetailPage').then((m) => ({ default: m.EstimateDetailPage })))
+const InvoiceDetailPage = lazy(() => import('@/pages/InvoiceDetailPage'))
+const InvoicesPage = lazy(() => import('@/pages/InvoicesPage').then((m) => ({ default: m.InvoicesPage })))
+const CommsPage = lazy(() => import('@/pages/CommsPage').then((m) => ({ default: m.CommsPage })))
+const CallsPage = lazy(() => import('@/pages/CallsPage').then((m) => ({ default: m.CallsPage })))
+const AiIntakeQueuePage = lazy(() => import('@/pages/AiIntakeQueuePage').then((m) => ({ default: m.AiIntakeQueuePage })))
 const ReportsPage = lazy(() => import('@/pages/ReportsPage').then((m) => ({ default: m.ReportsPage })))
-import { ReportQuestionsPage } from '@/pages/ReportQuestionsPage'
-import { FeedbackPortalPage } from '@/pages/FeedbackPortalPage'
+const ReportQuestionsPage = lazy(() => import('@/pages/ReportQuestionsPage').then((m) => ({ default: m.ReportQuestionsPage })))
+const FeedbackPortalPage = lazy(() => import('@/pages/FeedbackPortalPage').then((m) => ({ default: m.FeedbackPortalPage })))
 const SalesTaxReportPage = lazy(() => import('@/pages/SalesTaxReportPage').then((m) => ({ default: m.SalesTaxReportPage })))
-import { SchedulePage } from '@/pages/SchedulePage'
-import { DispatchPage } from '@/pages/DispatchPage'
-import { RouteHistoryPage } from '@/pages/RouteHistoryPage'
-import { FieldReviewPage } from '@/pages/FieldReviewPage'
+const SchedulePage = lazy(() => import('@/pages/SchedulePage').then((m) => ({ default: m.SchedulePage })))
+const DispatchPage = lazy(() => import('@/pages/DispatchPage').then((m) => ({ default: m.DispatchPage })))
+const RouteHistoryPage = lazy(() => import('@/pages/RouteHistoryPage').then((m) => ({ default: m.RouteHistoryPage })))
+const FieldReviewPage = lazy(() => import('@/pages/FieldReviewPage').then((m) => ({ default: m.FieldReviewPage })))
 const SettingsAppearancePage = lazy(() => import('@/pages/SettingsAppearancePage').then((m) => ({ default: m.SettingsAppearancePage })))
-import { FranchiseDashboardPage } from '@/pages/FranchiseDashboardPage'
-
-import MaintenanceContractsPage from '@/pages/MaintenanceContractsPage'
-import { NewServiceAgreementPage } from '@/pages/NewServiceAgreementPage'
-import MaintenanceContractDetailPage from '@/pages/MaintenanceContractDetailPage'
-
-import { MyAccountPage } from '@/pages/MyAccountPage'
-import { AiConnectorsPage } from '@/pages/AiConnectorsPage'
-import { OauthAuthorizePage } from '@/pages/OauthAuthorizePage'
-
-import { CompanySecureFilesPage } from '@/pages/CompanySecureFilesPage'
-
-import { BetaApplyPage } from '@/pages/BetaApplyPage'
-
-import { TimeOffPage } from '@/pages/TimeOffPage'
-
-import { AcceptInvitePage } from '@/pages/AcceptInvitePage'
-import { SignDocumentPage } from '@/pages/SignDocumentPage'
-import SignAgreementPage from '@/pages/SignAgreementPage'
+const FranchiseDashboardPage = lazy(() => import('@/pages/FranchiseDashboardPage').then((m) => ({ default: m.FranchiseDashboardPage })))
+const MaintenanceContractsPage = lazy(() => import('@/pages/MaintenanceContractsPage'))
+const NewServiceAgreementPage = lazy(() => import('@/pages/NewServiceAgreementPage').then((m) => ({ default: m.NewServiceAgreementPage })))
+const MaintenanceContractDetailPage = lazy(() => import('@/pages/MaintenanceContractDetailPage'))
+const MyAccountPage = lazy(() => import('@/pages/MyAccountPage').then((m) => ({ default: m.MyAccountPage })))
+const KeyboardShortcutsPage = lazy(() => import('@/pages/KeyboardShortcutsPage').then((m) => ({ default: m.KeyboardShortcutsPage })))
+const AiConnectorsPage = lazy(() => import('@/pages/AiConnectorsPage').then((m) => ({ default: m.AiConnectorsPage })))
+const OauthAuthorizePage = lazy(() => import('@/pages/OauthAuthorizePage').then((m) => ({ default: m.OauthAuthorizePage })))
+const CompanySecureFilesPage = lazy(() => import('@/pages/CompanySecureFilesPage').then((m) => ({ default: m.CompanySecureFilesPage })))
+const SettingsLabelPrinterPage = lazy(() => import('@/pages/SettingsLabelPrinterPage').then((m) => ({ default: m.SettingsLabelPrinterPage })))
+const BetaApplyPage = lazy(() => import('@/pages/BetaApplyPage').then((m) => ({ default: m.BetaApplyPage })))
+const TimeOffPage = lazy(() => import('@/pages/TimeOffPage').then((m) => ({ default: m.TimeOffPage })))
+const AcceptInvitePage = lazy(() => import('@/pages/AcceptInvitePage').then((m) => ({ default: m.AcceptInvitePage })))
+const StaffOnboardingPage = lazy(() => import('@/pages/StaffOnboardingPage').then((m) => ({ default: m.StaffOnboardingPage })))
+const SubOnboardingPage = lazy(() => import('@/pages/SubOnboardingPage').then((m) => ({ default: m.SubOnboardingPage })))
+const TradeClaimPage = lazy(() => import('@/pages/TradeClaimPage').then((m) => ({ default: m.TradeClaimPage })))
+const CompaniesIWorkForPage = lazy(() => import('@/pages/CompaniesIWorkForPage').then((m) => ({ default: m.CompaniesIWorkForPage })))
+const SubDocumentsPage = lazy(() => import('@/pages/SubDocumentsPage').then((m) => ({ default: m.SubDocumentsPage })))
+const SignDocumentPage = lazy(() => import('@/pages/SignDocumentPage').then((m) => ({ default: m.SignDocumentPage })))
+const SignAgreementPage = lazy(() => import('@/pages/SignAgreementPage'))
 import { RequirePermission } from '@/components/RequirePermission'
-import { WarrantiesPage } from '@/pages/WarrantiesPage'
+const WarrantiesPage = lazy(() => import('@/pages/WarrantiesPage').then((m) => ({ default: m.WarrantiesPage })))
 const BoardApp = lazy(() => import('@/board/BoardApp').then((m) => ({ default: m.BoardApp })))
-import { InventoryPage } from '@/pages/InventoryPage'
-import { AssetsPage } from '@/pages/AssetsPage'
-
-import { PurchaseOrdersPage } from '@/pages/PurchaseOrdersPage'
-import { NeedsOrderedPage } from '@/pages/NeedsOrderedPage'
-import { InventoryMovementsPage } from '@/pages/InventoryMovementsPage'
-import { InventoryReconciliationsPage } from '@/pages/InventoryReconciliationsPage'
-import { InventoryUnitsPage } from '@/pages/InventoryUnitsPage'
-import { PurchaseOrderCreatePage } from '@/pages/PurchaseOrderCreatePage'
-import { PurchaseOrderDetailPage } from '@/pages/PurchaseOrderDetailPage'
-import { PurchaseOrderLabelsPage } from '@/pages/PurchaseOrderLabelsPage'
-import { BinLabelsPage } from '@/pages/BinLabelsPage'
-import { AssetLabelsPage } from '@/pages/AssetLabelsPage'
-import { AssetBatchLabelsPage } from '@/pages/AssetBatchLabelsPage'
-import { AssetGroupLabelsPage } from '@/pages/AssetGroupLabelsPage'
-import { CatalogItemLabelsPage } from '@/pages/CatalogItemLabelsPage'
-import { InventoryReturnLabelsPage } from '@/pages/InventoryReturnLabelsPage'
-
-import { QuickBooksCallbackPage } from '@/pages/QuickBooksCallbackPage'
-import { GoDaddyCallbackPage } from '@/pages/GoDaddyCallbackPage'
+const InventoryPage = lazy(() => import('@/pages/InventoryPage').then((m) => ({ default: m.InventoryPage })))
+const AssetsPage = lazy(() => import('@/pages/AssetsPage').then((m) => ({ default: m.AssetsPage })))
+const PurchaseOrdersPage = lazy(() => import('@/pages/PurchaseOrdersPage').then((m) => ({ default: m.PurchaseOrdersPage })))
+const NeedsOrderedPage = lazy(() => import('@/pages/NeedsOrderedPage').then((m) => ({ default: m.NeedsOrderedPage })))
+const OrderPartsPage = lazy(() => import('@/pages/OrderPartsPage').then((m) => ({ default: m.OrderPartsPage })))
+const InventoryMovementsPage = lazy(() => import('@/pages/InventoryMovementsPage').then((m) => ({ default: m.InventoryMovementsPage })))
+const InventoryReconciliationsPage = lazy(() => import('@/pages/InventoryReconciliationsPage').then((m) => ({ default: m.InventoryReconciliationsPage })))
+const InventoryUnitsPage = lazy(() => import('@/pages/InventoryUnitsPage').then((m) => ({ default: m.InventoryUnitsPage })))
+const PurchaseOrderCreatePage = lazy(() => import('@/pages/PurchaseOrderCreatePage').then((m) => ({ default: m.PurchaseOrderCreatePage })))
+const PurchaseOrderDetailPage = lazy(() => import('@/pages/PurchaseOrderDetailPage').then((m) => ({ default: m.PurchaseOrderDetailPage })))
+const BlueprintTakeoffPage = lazy(() => import('@/pages/BlueprintTakeoffsPage').then((m) => ({ default: m.BlueprintTakeoffPage })))
+const BlueprintTakeoffsPage = lazy(() => import('@/pages/BlueprintTakeoffsPage').then((m) => ({ default: m.BlueprintTakeoffsPage })))
+const PurchaseOrderLabelsPage = lazy(() => import('@/pages/PurchaseOrderLabelsPage').then((m) => ({ default: m.PurchaseOrderLabelsPage })))
+const PurchaseOrderSupplierCopyPage = lazy(() => import('@/pages/PurchaseOrderSupplierCopyPage').then((m) => ({ default: m.PurchaseOrderSupplierCopyPage })))
+const BinLabelsPage = lazy(() => import('@/pages/BinLabelsPage').then((m) => ({ default: m.BinLabelsPage })))
+const AssetLabelsPage = lazy(() => import('@/pages/AssetLabelsPage').then((m) => ({ default: m.AssetLabelsPage })))
+const AssetBatchLabelsPage = lazy(() => import('@/pages/AssetBatchLabelsPage').then((m) => ({ default: m.AssetBatchLabelsPage })))
+const AssetGroupLabelsPage = lazy(() => import('@/pages/AssetGroupLabelsPage').then((m) => ({ default: m.AssetGroupLabelsPage })))
+const CatalogItemLabelsPage = lazy(() => import('@/pages/CatalogItemLabelsPage').then((m) => ({ default: m.CatalogItemLabelsPage })))
+const InventoryReturnLabelsPage = lazy(() => import('@/pages/InventoryReturnLabelsPage').then((m) => ({ default: m.InventoryReturnLabelsPage })))
+const QuickBooksCallbackPage = lazy(() => import('@/pages/QuickBooksCallbackPage').then((m) => ({ default: m.QuickBooksCallbackPage })))
+const GoDaddyCallbackPage = lazy(() => import('@/pages/GoDaddyCallbackPage').then((m) => ({ default: m.GoDaddyCallbackPage })))
+const CatalogsPage = lazy(() => import('@/pages/CatalogsPage').then((m) => ({ default: m.CatalogsPage })))
 
 const isAssetAccessHost =
   typeof window !== 'undefined' && window.location.hostname === 'assets.crewbarn.com'
@@ -218,6 +229,8 @@ createRoot(document.getElementById('root')!).render(
         <AuthProvider>
           <ThemeProvider>
           <DeleteConfirmProvider>
+          <CompletionRequirementsProvider>
+          <SmsConsentProvider>
           <StepUpProvider>
           <Suspense fallback={<div className="flex min-h-[40vh] items-center justify-center text-sm text-slate-500" role="status">Loading…</div>}>
           <Routes>
@@ -239,6 +252,11 @@ createRoot(document.getElementById('root')!).render(
                 paper and typed by hand. */}
             <Route path="/r/:tenantId/:reportNumber" element={<PublicReportPage />} />
             <Route path="/accept-invite/:token" element={<AcceptInvitePage />} />
+            <Route path="/onboard/:token" element={<StaffOnboardingPage />} />
+            {/* Public: a sub company sets up its free CrewBarn from an invite code. */}
+            <Route path="/sub-onboarding" element={<SubOnboardingPage />} />
+            {/* Public: a trade a customer brought in claims the free account set up for it. */}
+            <Route path="/claim/:token" element={<TradeClaimPage />} />
             <Route path="/sign/:token" element={<SignDocumentPage />} />
             <Route path="/sign-agreement/:token" element={<SignAgreementPage />} />
 
@@ -250,7 +268,7 @@ createRoot(document.getElementById('root')!).render(
               path="/assets/:id/labels"
               element={
                 <ProtectedRoute>
-                  <AssetLabelsPage />
+                  <RequirePermission permission="assets.view"><AssetLabelsPage /></RequirePermission>
                 </ProtectedRoute>
               }
             />
@@ -258,7 +276,7 @@ createRoot(document.getElementById('root')!).render(
               path="/assets/labels"
               element={
                 <ProtectedRoute>
-                  <AssetBatchLabelsPage />
+                  <RequirePermission permission="assets.view"><AssetBatchLabelsPage /></RequirePermission>
                 </ProtectedRoute>
               }
             />
@@ -268,7 +286,7 @@ createRoot(document.getElementById('root')!).render(
               path="/asset-groups/:id/labels"
               element={
                 <ProtectedRoute>
-                  <AssetGroupLabelsPage />
+                  <RequirePermission permission="assets.view"><AssetGroupLabelsPage /></RequirePermission>
                 </ProtectedRoute>
               }
             />
@@ -276,7 +294,15 @@ createRoot(document.getElementById('root')!).render(
               path="/inventory-bins/:id/labels"
               element={
                 <ProtectedRoute>
-                  <BinLabelsPage />
+                  <RequirePermission permission="inventory.view"><BinLabelsPage /></RequirePermission>
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/purchase-orders/:id/supplier-copy"
+              element={
+                <ProtectedRoute>
+                  <RequirePermission permission="inventory.view"><PurchaseOrderSupplierCopyPage /></RequirePermission>
                 </ProtectedRoute>
               }
             />
@@ -284,7 +310,7 @@ createRoot(document.getElementById('root')!).render(
               path="/purchase-orders/:id/labels"
               element={
                 <ProtectedRoute>
-                  <PurchaseOrderLabelsPage />
+                  <RequirePermission permission="inventory.view"><PurchaseOrderLabelsPage /></RequirePermission>
                 </ProtectedRoute>
               }
             />
@@ -292,7 +318,7 @@ createRoot(document.getElementById('root')!).render(
               path="/catalog-items/:id/labels"
               element={
                 <ProtectedRoute>
-                  <CatalogItemLabelsPage />
+                  <RequirePermission permission="catalog.view"><CatalogItemLabelsPage /></RequirePermission>
                 </ProtectedRoute>
               }
             />
@@ -300,10 +326,15 @@ createRoot(document.getElementById('root')!).render(
               path="/inventory-returns/:id/labels"
               element={
                 <ProtectedRoute>
-                  <InventoryReturnLabelsPage />
+                  <RequirePermission permission="inventory.view"><InventoryReturnLabelsPage /></RequirePermission>
                 </ProtectedRoute>
               }
             />
+
+            {/* A sub company's onboarding screen 2 -- full screen, like the
+                code page before it. Its owner lands here until every
+                document it was asked for is in (SubDocumentsGate). */}
+            <Route path="/sub-documents" element={<ProtectedRoute><SubDocumentsPage /></ProtectedRoute>} />
 
             {/* connect.crewbarn.com — the account console. Its own shell
                 (a light rail, not the work nav), so these sit OUTSIDE
@@ -389,11 +420,11 @@ createRoot(document.getElementById('root')!).render(
               <Route path="/accounting/reports/browse" element={<RequirePermission permission="revenue.view"><ReportsPage /></RequirePermission>} />
               {/* Kept, not dropped: bookmarks, emailed links, and anything
                   that already points at /reports must keep working. */}
-              <Route path="/reports" element={<Navigate to="/accounting/reports" replace />} />
+              <Route path="/reports" element={<ReportsRedirect />} />
               {/* Bugs & Ideas — open to every signed-in member, no permission gate. */}
               <Route path="/feedback" element={<FeedbackPortalPage />} />
               {/* Sales tax report lives under Accounting; old path redirects. */}
-              <Route path="/accounting/sales-tax" element={<SalesTaxReportPage />} />
+              <Route path="/accounting/sales-tax" element={<RequirePermission permission="revenue.view"><SalesTaxReportPage /></RequirePermission>} />
               <Route path="/reports/sales-tax" element={<Navigate to="/accounting/sales-tax" replace />} />
 
               {/* Tool Shed — single wildcard handles all placeholder items */}
@@ -405,6 +436,7 @@ createRoot(document.getElementById('root')!).render(
               {/* Personal account security (2FA) — per-USER login setting.
                   Account-scoped path (/me/*), reached from the account menu. */}
               <Route path="/me/account" element={<MyAccountPage />} />
+              <Route path="/me/keyboard-shortcuts" element={<KeyboardShortcutsPage />} />
               <Route path="/me/ai-connectors" element={<RequirePermission permission="settings.edit"><AiConnectorsPage /></RequirePermission>} />
               <Route path="/oauth/authorize" element={<OauthAuthorizePage />} />
               {/* Tenant Security & 2FA — personal enrollment (real tenant users)
@@ -414,7 +446,8 @@ createRoot(document.getElementById('root')!).render(
 
               <Route path="/my-time-off" element={<TimeOffPage />} />
               {/* Where the Print Bridge's own window tells people to go. */}
-              <Route path="/tool-shed/appearance" element={<RequirePermission permission="settings.view"><SettingsAppearancePage /></RequirePermission>} />
+              <Route path="/tool-shed/label-printer" element={<RequirePermission permission="settings.view"><SettingsLabelPrinterPage /></RequirePermission>} />
+              <Route path="/tool-shed/appearance" element={<SettingsAppearancePage />} />
 
               {/* One setting per page (docs/design/connect/README.md). These
                   sit ALONGSIDE the pages above, not instead of them: the long
@@ -432,7 +465,10 @@ createRoot(document.getElementById('root')!).render(
               <Route path="/assets" element={<RequirePermission permission="assets.view"><AssetsPage /></RequirePermission>} />
               <Route path="/purchase-orders" element={<RequirePermission permission="inventory.view"><PurchaseOrdersPage /></RequirePermission>} />
               <Route path="/purchase-orders/needs-ordered" element={<RequirePermission permission="inventory.view"><NeedsOrderedPage /></RequirePermission>} />
+              <Route path="/order-parts" element={<RequirePermission permissions={['inventory.order', 'inventory.edit', 'jobs.edit']}><OrderPartsPage /></RequirePermission>} />
               <Route path="/purchase-orders/new" element={<RequirePermission permission="inventory.edit"><PurchaseOrderCreatePage /></RequirePermission>} />
+              <Route path="/purchase-orders/blueprints" element={<RequirePermission permissions={['inventory.view', 'jobs.edit']}><BlueprintTakeoffsPage /></RequirePermission>} />
+              <Route path="/purchase-orders/blueprints/:id" element={<RequirePermission permissions={['inventory.view', 'jobs.edit']}><BlueprintTakeoffPage /></RequirePermission>} />
               <Route path="/purchase-orders/:id" element={<RequirePermission permission="inventory.view"><PurchaseOrderDetailPage /></RequirePermission>} />
               {/* /assets/:id/labels, /inventory-bins/:id/labels, and
                   /purchase-orders/:id/labels are mounted ABOVE this
@@ -443,11 +479,13 @@ createRoot(document.getElementById('root')!).render(
               {/* Before /:id, or "new" is read as a contract id. */}
               <Route path="/maintenance-contracts/new" element={<RequirePermission permission="contracts.edit"><NewServiceAgreementPage /></RequirePermission>} />
               <Route path="/maintenance-contracts/:id" element={<RequirePermission permission="contracts.view"><MaintenanceContractDetailPage /></RequirePermission>} />
+              <Route path="/companies-i-work-for" element={<RequirePermission permission="staff.view"><CompaniesIWorkForPage /></RequirePermission>} />
               {/* Legacy /email-templates redirects into the Email tab of Custom Documents. */}
               <Route path="/email-templates" element={<Navigate to="/custom-documents" replace />} />
               <Route path="/warranties" element={<RequirePermission permission="warranties.view"><WarrantiesPage /></RequirePermission>} />
               <Route path="/oauth/quickbooks" element={<RequirePermission permission="settings.view"><QuickBooksCallbackPage /></RequirePermission>} />
               <Route path="/oauth/godaddy" element={<RequirePermission permission="settings.edit"><GoDaddyCallbackPage /></RequirePermission>} />
+              <Route path="/catalogs" element={<RequirePermission permission="catalog.view"><CatalogsPage /></RequirePermission>} />
             </Route>
 
               <Route path="/sign-up" element={<ExternalAppRedirect origin="https://connect.crewbarn.com" />} />
@@ -462,6 +500,7 @@ createRoot(document.getElementById('root')!).render(
               <Route path="/tool-shed/custom-fields" element={<ExternalAppRedirect origin="https://connect.crewbarn.com" />} />
               <Route path="/tool-shed/job-statuses" element={<ExternalAppRedirect origin="https://connect.crewbarn.com" />} />
               <Route path="/tool-shed/job-types" element={<ExternalAppRedirect origin="https://connect.crewbarn.com" />} />
+              <Route path="/tool-shed/task-groups" element={<ExternalAppRedirect origin="https://connect.crewbarn.com" />} />
               <Route path="/tool-shed/brand" element={<ExternalAppRedirect origin="https://connect.crewbarn.com" />} />
               <Route path="/tool-shed/website" element={<ExternalAppRedirect origin="https://connect.crewbarn.com" />} />
               <Route path="/tool-shed/google-reviews" element={<ExternalAppRedirect origin="https://connect.crewbarn.com" />} />
@@ -491,11 +530,13 @@ createRoot(document.getElementById('root')!).render(
               <Route path="/tool-shed/api-endpoints" element={<ExternalAppRedirect origin="https://connect.crewbarn.com" />} />
               <Route path="/tool-shed/usage" element={<ExternalAppRedirect origin="https://connect.crewbarn.com" />} />
               <Route path="/tool-shed/time-off" element={<ExternalAppRedirect origin="https://connect.crewbarn.com" />} />
+              <Route path="/tool-shed/responsibilities" element={<ExternalAppRedirect origin="https://connect.crewbarn.com" />} />
+              <Route path="/tool-shed/employee-settings" element={<ExternalAppRedirect origin="https://connect.crewbarn.com" />} />
+              <Route path="/tool-shed/call-scripts" element={<ExternalAppRedirect origin="https://connect.crewbarn.com" />} />
               <Route path="/tool-shed/data-export" element={<ExternalAppRedirect origin="https://connect.crewbarn.com" />} />
               <Route path="/tool-shed/gps" element={<ExternalAppRedirect origin="https://connect.crewbarn.com" />} />
               <Route path="/tool-shed/marketplace" element={<ExternalAppRedirect origin="https://connect.crewbarn.com" />} />
               <Route path="/tool-shed/partner-connections" element={<ExternalAppRedirect origin="https://connect.crewbarn.com" />} />
-              <Route path="/tool-shed/label-printer" element={<ExternalAppRedirect origin="https://connect.crewbarn.com" />} />
               <Route path="/tool-shed/shop-tv" element={<ExternalAppRedirect origin="https://connect.crewbarn.com" />} />
               <Route path="/tool-shed/webhooks" element={<ExternalAppRedirect origin="https://connect.crewbarn.com" />} />
               <Route path="/tool-shed/pricing" element={<ExternalAppRedirect origin="https://connect.crewbarn.com" />} />
@@ -528,6 +569,7 @@ createRoot(document.getElementById('root')!).render(
               <Route path="/tool-shed/preferences/stalled-jobs" element={<ExternalAppRedirect origin="https://connect.crewbarn.com" />} />
               <Route path="/tool-shed/preferences/video-length" element={<ExternalAppRedirect origin="https://connect.crewbarn.com" />} />
               <Route path="/tool-shed/preferences/auto-check-in" element={<ExternalAppRedirect origin="https://connect.crewbarn.com" />} />
+              <Route path="/tool-shed/preferences/late-techs" element={<ExternalAppRedirect origin="https://connect.crewbarn.com" />} />
               <Route path="/tool-shed/service-agreements" element={<ExternalAppRedirect origin="https://connect.crewbarn.com" />} />
               <Route path="/tool-shed/ai" element={<ExternalAppRedirect origin="https://connect.crewbarn.com" />} />
               <Route path="/onboarding" element={<ExternalAppRedirect origin="https://connect.crewbarn.com" />} />
@@ -552,6 +594,7 @@ createRoot(document.getElementById('root')!).render(
               <Route path="/tool-shed/import" element={<ExternalAppRedirect origin="https://connect.crewbarn.com" />} />
               <Route path="/catalog/services" element={<ExternalAppRedirect origin="https://connect.crewbarn.com" />} />
               <Route path="/catalog/products" element={<ExternalAppRedirect origin="https://connect.crewbarn.com" />} />
+              <Route path="/catalog/products/:id" element={<ExternalAppRedirect origin="https://connect.crewbarn.com" />} />
               <Route path="/catalog/categories" element={<ExternalAppRedirect origin="https://connect.crewbarn.com" />} />
               <Route path="/reference-cards" element={<ExternalAppRedirect origin="https://connect.crewbarn.com" />} />
               <Route path="/catalog/product-categories" element={<ExternalAppRedirect origin="https://connect.crewbarn.com" />} />
@@ -561,6 +604,8 @@ createRoot(document.getElementById('root')!).render(
           </Routes>
           </Suspense>
           </StepUpProvider>
+          </SmsConsentProvider>
+          </CompletionRequirementsProvider>
           </DeleteConfirmProvider>
           </ThemeProvider>
         </AuthProvider>
@@ -569,4 +614,6 @@ createRoot(document.getElementById('root')!).render(
     </ErrorBoundary>
   </StrictMode>
 )
+// Once the first screen is up, fetch the rest in the background.
+warmLazyChunks()
 }

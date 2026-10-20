@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Link, useParams, useSearchParams } from 'react-router-dom'
+import { Link, useLocation, useParams } from 'react-router-dom'
 import { useQueryClient } from '@tanstack/react-query'
 import { usePublicScan } from '@/hooks/usePublicScan'
 import { OwnerBar, OwnerSignInCard } from '@/components/scan/OwnerSignIn'
@@ -49,8 +49,9 @@ import type {
  */
 export function PublicScanPage() {
   const { code, tenantId } = useParams<{ code: string; tenantId?: string }>()
-  const [searchParams] = useSearchParams()
-  const initialAccessCode = searchParams.get('access_code') ?? ''
+  const location = useLocation()
+  const initialAccessCode = typeof location.state?.assetAccessCode === 'string'
+    ? location.state.assetAccessCode : ''
   const { data, isLoading, error } = usePublicScan(code, tenantId)
 
   return (
@@ -107,7 +108,7 @@ function SignedInOwnerBar({ tenantId }: { tenantId?: string }) {
   if (!identity) return null
 
   return (
-    <div className="mb-4">
+    <div data-tour="scan-owner-bar" className="mb-4">
       <OwnerBar
         identity={identity}
         scope="everything on your own equipment"
@@ -181,7 +182,7 @@ function NodeDispatch({
 
 function Header() {
   return (
-    <header className="bg-white border-b border-slate-200 print:hidden">
+    <header data-tour="scan-header" className="bg-white border-b border-slate-200 print:hidden">
       <div className="max-w-7xl mx-auto px-4 py-4">
         <h1 className="text-lg font-semibold text-slate-900">CrewBarn</h1>
       </div>
@@ -284,7 +285,7 @@ function SecuredAssetView({
         }}
       />
 
-      <div className="bg-white border border-slate-200 rounded-xl p-6 text-center">
+      <div data-tour="scan-secured" className="bg-white border border-slate-200 rounded-xl p-6 text-center">
         <div className="text-5xl mb-3" aria-hidden="true">{"🔒"}</div>
         <h2 className="text-2xl font-semibold text-slate-900 mb-1">{name}</h2>
         <p className="text-sm text-slate-500 mb-6">This item is private</p>
@@ -653,7 +654,7 @@ function PublicTreeAssetSummary({
       {!asset.is_secured && <PublicAssetPhotosCard photos={publicPhotos} />}
 
       {!asset.is_secured && (
-        <div className="bg-white border border-slate-200 rounded-xl overflow-hidden print:rounded-none print:border-0 print:shadow-none">
+        <div data-tour="scan-report" className="bg-white border border-slate-200 rounded-xl overflow-hidden print:rounded-none print:border-0 print:shadow-none">
           <div className="border-b border-slate-100 p-5 sm:p-6">
             <div className="flex flex-wrap items-start justify-between gap-4">
               <div>
@@ -1016,7 +1017,7 @@ function ComplianceBanner({
           : { bg: 'bg-slate-600', sub: 'text-slate-200' }
 
   return (
-    <div className={`${tone.bg} rounded-xl p-5 text-white sm:p-6`}>
+    <div data-tour="scan-compliance" className={`${tone.bg} rounded-xl p-5 text-white sm:p-6`}>
       <p className={`text-[11px] font-bold uppercase tracking-[0.06em] ${tone.sub}`}>
         Compliance status
       </p>
@@ -1195,7 +1196,7 @@ function ServiceHistory({
   const ordered = [...groups.values()].sort((a, b) => (a.key < b.key ? 1 : a.key > b.key ? -1 : 0))
 
   return (
-    <div className="rounded-xl border border-slate-200 bg-white p-4 sm:p-5 print:hidden">
+    <div data-tour="scan-history" className="rounded-xl border border-slate-200 bg-white p-4 sm:p-5 print:hidden">
       <p className="text-[11px] font-bold uppercase tracking-[0.06em] text-slate-500">
         Service history
       </p>
@@ -1271,7 +1272,7 @@ function ServiceHistory({
 function ServicerCard({ servicer }: { servicer: PublicScanServicer }) {
   const tel = servicer.phone?.replace(/[^\d+]/g, '')
   return (
-    <div className="rounded-xl border border-slate-200 bg-white p-4 sm:p-5">
+    <div data-tour="scan-servicer" className="rounded-xl border border-slate-200 bg-white p-4 sm:p-5">
       <p className="text-[11px] font-bold uppercase tracking-[0.06em] text-slate-500">
         Serviced by
       </p>
@@ -1461,7 +1462,7 @@ function AssetTreeCard({
   onAssetSelect: (entry: ScanChildEntry) => void
 }) {
   return (
-    <aside className="bg-white border border-slate-200 rounded-xl overflow-hidden lg:sticky lg:top-4 lg:self-start print:hidden">
+    <aside data-tour="scan-tree" className="bg-white border border-slate-200 rounded-xl overflow-hidden lg:sticky lg:top-4 lg:self-start print:hidden">
       <div className="px-4 py-3 border-b border-slate-100">
         <h3 className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Asset tree</h3>
         <p className="mt-1 text-xs text-slate-500">Click an asset to view its public record. Secure details stay locked.</p>
@@ -1574,7 +1575,7 @@ function LocationView({
   }, [node.id])
 
   return (
-    <div className="space-y-4">
+    <div data-tour="scan-location" className="space-y-4">
       <BreadcrumbBar steps={node.breadcrumb} tenantId={tenantId} />
 
       <div className="bg-white border border-slate-200 rounded-xl p-6">
@@ -1620,7 +1621,7 @@ function GroupView({
   }, [node.id])
 
   return (
-    <div className="space-y-4">
+    <div data-tour="scan-location" className="space-y-4">
       <BreadcrumbBar steps={node.breadcrumb} tenantId={tenantId} />
 
       <div className="bg-white border border-slate-200 rounded-xl p-6">
@@ -1664,11 +1665,19 @@ function SecuredNodeView({
   initialAccessCode?: string
 }) {
   const [unlockedDetails, setUnlockedDetails] = useState<SecuredScanUnlock | null>(null)
+  const queryClient = useQueryClient()
 
   return (
     <div className="space-y-4">
       <BreadcrumbBar steps={breadcrumb} tenantId={tenantId} />
-      <div className="bg-white border border-slate-200 rounded-xl p-6 text-center">
+      {/* Same owner door as a secured item: the building's owner should not
+          need a code from the servicer to see their own property. */}
+      <OwnerSignInCard
+        onSignedIn={() => {
+          void queryClient.invalidateQueries({ queryKey: ['public-scan'] })
+        }}
+      />
+      <div data-tour="scan-secured" className="bg-white border border-slate-200 rounded-xl p-6 text-center">
         <div className="text-5xl mb-3" aria-hidden="true">{"🔒"}</div>
         <p className="text-xs uppercase tracking-wide text-slate-500 mb-1">
           {kind === 'location' ? 'Service location' : 'Group'}

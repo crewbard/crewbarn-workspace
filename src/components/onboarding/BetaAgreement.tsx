@@ -59,7 +59,7 @@ export function BetaAgreement({ onAccepted, compact = false }: { onAccepted?: ()
 
   return (
     <div className="space-y-4">
-      <div className={`space-y-3 rounded-xl border border-slate-200 bg-white p-4 ${compact ? 'max-h-72 overflow-y-auto' : ''}`}>
+      <div data-tour="onboarding-beta-terms" className={`space-y-3 rounded-xl border border-slate-200 bg-white p-4 ${compact ? 'max-h-72 overflow-y-auto' : ''}`}>
         <div className="text-[11px] font-bold uppercase tracking-wider text-amber-700">CrewBarn beta agreement · {BETA_AGREEMENT_VERSION}</div>
         {TERMS.map((t) => (
           <div key={t.title}>
@@ -69,11 +69,11 @@ export function BetaAgreement({ onAccepted, compact = false }: { onAccepted?: ()
         ))}
       </div>
       {err && <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{err}</div>}
-      <label className="flex items-start gap-2 text-sm text-slate-800">
+      <label data-tour="onboarding-beta-tick" className="flex items-start gap-2 text-sm text-slate-800">
         <input type="checkbox" checked={read} onChange={(e) => setRead(e.target.checked)} className="mt-0.5 h-4 w-4 accent-amber-500" />
         <span>I’ve read the agreement and I accept it on behalf of my company.</span>
       </label>
-      <button type="button" onClick={() => accept.mutate()} disabled={!read || accept.isPending} className="rounded-md bg-amber-500 px-4 py-2 text-sm font-bold text-white hover:bg-amber-600 disabled:opacity-50">
+      <button type="button" data-tour="onboarding-beta-accept" onClick={() => accept.mutate()} disabled={!read || accept.isPending} className="rounded-md bg-amber-500 px-4 py-2 text-sm font-bold text-white hover:bg-amber-600 disabled:opacity-50">
         {accept.isPending ? 'Saving\u2026' : 'Accept and unlock setup'}
       </button>
     </div>

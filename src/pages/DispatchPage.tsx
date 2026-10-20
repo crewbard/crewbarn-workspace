@@ -1,18 +1,27 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link, useSearchParams } from 'react-router-dom'
 import { apiRequest } from '@/lib/api'
+import { continueAfterFailedConflictCheck } from '@/lib/conflictCheck'
+import { type JobSub, SUB_STATE_CLASS } from '@/lib/subLane'
 import { loadGoogleMaps } from '@/lib/googleMaps'
+import { dispatchJobAppearance } from '@/lib/dispatchJobColor'
+import { assignedVisits, hasRouteCoordinates, recentRouteOrigin, routePlanForTech, routeSegments, type RoutePoint } from '@/lib/dispatchRoutePlan'
 import { format, startOfWeek, endOfWeek, startOfMonth, endOfMonth, startOfYear, endOfYear } from 'date-fns'
 import { useLazyGeocode } from '@/hooks/useLazyGeocode'
 import { useRealtimePositions, type Position } from '@/hooks/useRealtimePositions'
 import { useAuth } from '@/hooks/useAuth'
+import { useTheme } from '@/hooks/useTheme'
 import { MarkerClusterer } from '@googlemaps/markerclusterer'
-import { toHexColor } from '@/lib/statusColor'
 import { JobTypeChip } from '@/components/JobTypeChip'
 import { Modal } from '@/components/ui/Modal'
 import { IncomingRequestsPanel } from '@/components/dispatch/IncomingRequestsPanel'
 import { IncomingEstimateRequestsPanel } from '@/components/dispatch/IncomingEstimateRequestsPanel'
+import { TechDayPanel } from '@/components/dispatch/TechDayPanel'
+import { FieldEncounterPanel } from '@/components/dispatch/FieldEncounterPanel'
+import {
+  FIELD_ENCOUNTERS_KEY, encounterAnswerLabel, encounterColor, encounterTime, fetchFieldEncounters, type FieldEncounterRow,
+} from '@/lib/fieldEncounters'
 
 /**
  * /dispatch — the Dispatch dashboard.
@@ -22,7 +31,7 @@ import { IncomingEstimateRequestsPanel } from '@/components/dispatch/IncomingEst
  * and every technician's most recent GPS position.
  *
  * Data:
- *   - GET /v1/dispatch/board      full payload, refetched every 2 min
+ *   - GET /v1/dispatch/board      full payload, refetched every 30 s
  *   - Reverb `position.updated` — server pushes each new position as it's
  *                                  ingested (useRealtimePositions). ~1s
  *                                  latency from phone to map; no polling.
@@ -40,6 +49,8 @@ interface BoardJob {
   kind?: 'job' | 'estimate'
   /** Estimates only: quote lifecycle (draft/sent/approved/…). */
   approval_status?: string | null
+  /** Server confirms all active invoices are paid, without exposing amounts. */
+  paid_in_full?: boolean
   id: string
   work_order_number: number | null
   display_number: string | null
@@ -61,6 +72,8 @@ interface BoardJob {
     latitude: number | null
     longitude: number | null
   } | null
+  /** Sent to a sub company: not this company's to assign. */
+  sub?: JobSub | null
 }
 
 interface BoardTech {
@@ -230,7 +243,7 @@ function rangeToDates(range: MapRange): { from: string; to: string } {
   const f = (d: Date) => format(d, 'yyyy-MM-dd')
   switch (range) {
     case 'week':
-      return { from: f(startOfWeek(now)), to: f(endOfWeek(now)) }
+      return { from: f(startOfWeek(now, { weekStartsOn: 1 })), to: f(endOfWeek(now, { weekStartsOn: 1 })) }
     case 'month':
       return { from: f(startOfMonth(now)), to: f(endOfMonth(now)) }
     case 'year':
@@ -299,6 +312,10 @@ function confirmTimeOffAssignment(techName: string, conflicts: ApprovedTimeOffBl
 }
 
 export function DispatchPage() {
+  const { theme } = useTheme()
+  const focus = theme === 'focus'
+  const [focusRailSection, setFocusRailSection] = useState<'crew' | 'queue' | 'subs'>('crew')
+  const [focusWorkspaceView, setFocusWorkspaceView] = useState<'board' | 'map'>('board')
   const [searchParams] = useSearchParams()
   const requestedTechId = searchParams.get('tech')
   const [territoryId, setTerritoryId] = useState(() => searchParams.get('territory') ?? '')
@@ -346,13 +363,25 @@ export function DispatchPage() {
   // a tech in the roster auto-switches to the map (focusOnTech below).
   const [mobileView, setMobileView] = useState<'roster' | 'map'>(() => requestedTechId ? 'map' : 'roster')
 
-  // Click a tech in the roster to pan + zoom the map to them. The `seq`
+  // Click a tech in the roster to fit their daily route. The `seq`
   // bumps on every click so re-clicking the same tech re-centres the map.
   const [focusTech, setFocusTech] = useState<{ id: string; seq: number } | null>(() => requestedTechId ? { id: requestedTechId, seq: 1 } : null)
+  // The tech whose day is open on the map (TechDayPanel).
+  const [dayTechId, setDayTechId] = useState<string | null>(null)
+  // Until the dispatcher acts, show the first technician with visits. Once
+  // changed, expansion belongs to the dispatcher and polling cannot reopen it.
+  const [expandedTechs, setExpandedTechs] = useState<Set<string> | null>(null)
   const focusOnTech = (id: string) => {
     setFocusTech((prev) => ({ id, seq: (prev?.seq ?? 0) + 1 }))
+    setDayTechId(id)
+    setExpandedTechs((previous) => new Set(previous ?? visibleExpandedTechs).add(id))
+    if (focus) setFocusWorkspaceView('map')
     // On mobile, jump to the map so the focus actually shows.
     setMobileView('map')
+  }
+  const showAllTechs = () => {
+    setFocusTech(null)
+    setDayTechId(null)
   }
 
   useEffect(() => {
@@ -394,6 +423,9 @@ export function DispatchPage() {
   const selectedTerritoryId = territoryId || data?.selected_territory_id || ''
   const techs = data?.techs ?? []
 
+  const firstTechWithVisits = techs.find((tech) => jobs.some((job) => job.lead_tech_account_id === tech.id))
+  const visibleExpandedTechs = expandedTechs ?? new Set(firstTechWithVisits ? [firstTechWithVisits.id] : [])
+
   // Merge the Reverb-pushed positions with the board payload — NEWEST fix
   // wins (a refetched board can be fresher than the last push if the socket
   // hiccuped). Board fixes get stamped with the fetch time so their age can
@@ -417,12 +449,25 @@ export function DispatchPage() {
     return m
   }, [techs])
 
-  const unassigned = jobs.filter((j) => !j.lead_tech_account_id)
+  // A job sent to a sub isn't waiting on a tech of ours: it goes under
+  // "Sent to subs", grouped by the company doing it.
+  const unassigned = jobs.filter((j) => !j.lead_tech_account_id && !j.sub)
+  const sentToSubs = useMemo(() => {
+    const bySub = new Map<string, { name: string; jobs: BoardJob[] }>()
+    for (const j of jobs) {
+      if (!j.sub) continue
+      const key = j.sub.subcontractor_id ?? j.sub.name
+      const group = bySub.get(key) ?? { name: j.sub.name, jobs: [] }
+      group.jobs.push(j)
+      bySub.set(key, group)
+    }
+    return Array.from(bySub.values()).sort((a, b) => a.name.localeCompare(b.name))
+  }, [jobs])
   const needsScheduling = data?.needs_scheduling ?? []
   // The MAP plots the selected date range (day/week/month/year) from the
   // lightweight map-jobs feed; the roster above stays on today's board.
   const mapJobs = mapBoard.data?.data?.jobs ?? []
-  const mappableJobs = mapJobs.filter((j) => j.location?.latitude != null && j.location?.longitude != null)
+  const mappableJobs = mapJobs.filter((j) => hasRouteCoordinates(j.location))
   const unmappableCount = mapJobs.length - mappableJobs.length
 
   // Auto-fill coordinates for in-view jobs that lack them, so the map populates
@@ -430,10 +475,10 @@ export function DispatchPage() {
   useLazyGeocode(mapJobs)
 
   return (
-    <div data-tour="dispatch-root" className="h-[calc(100vh-3.5rem)] flex flex-col md:flex-row">
+    <div data-tour="dispatch-root" data-focus-page="dispatch" data-easy-board="" className="h-[calc(100vh-3.5rem)] flex flex-col md:flex-row">
       {/* Mobile-only Roster / Map toggle. Hidden on md+ where both panes
           show side by side. */}
-      <div className="md:hidden flex border-b border-slate-200 bg-white shrink-0">
+      <div data-tour="dispatch-mobile-toggle" className="md:hidden flex border-b border-slate-200 bg-white shrink-0">
         <button
           type="button"
           onClick={() => setMobileView('roster')}
@@ -468,14 +513,14 @@ export function DispatchPage() {
           mobileView === 'map' ? 'hidden' : 'flex'
         } md:flex w-full md:w-80 border-r border-slate-200 bg-white flex-col overflow-hidden shrink-0`}
       >
-        <div className="px-4 py-3 border-b border-slate-200">
+        <div data-tour="dispatch-header" className="px-4 py-3 border-b border-slate-200">
           <div className="flex items-center justify-between gap-2">
             <h1 className="text-lg font-bold text-navy-900">Dispatch</h1>
             <span className="flex items-center gap-2">
-              <Link to="/dispatch/route-history" className="text-[11px] text-amber-700 hover:underline whitespace-nowrap">
+              <Link data-tour="dispatch-link-routes" to="/dispatch/route-history" className="text-[11px] text-amber-700 hover:underline whitespace-nowrap">
                 Routes →
               </Link>
-              <Link to="/dispatch/field-review" className="text-[11px] text-amber-700 hover:underline whitespace-nowrap">
+              <Link data-tour="dispatch-link-field-review" to="/dispatch/field-review" className="text-[11px] text-amber-700 hover:underline whitespace-nowrap">
                 Field review →
               </Link>
             </span>
@@ -486,7 +531,7 @@ export function DispatchPage() {
             {jobs.length} job{jobs.length === 1 ? '' : 's'}
           </p>
           {(data?.territories.length ?? 0) > 0 && (
-            <label className="block mt-2">
+            <label data-tour="dispatch-territory" className="block mt-2">
               <span className="sr-only">Dispatch territory</span>
               <select
                 value={selectedTerritoryId}
@@ -502,11 +547,33 @@ export function DispatchPage() {
           )}
         </div>
 
+        {focus && (
+          <nav data-focus-dispatch-tabs data-tour="dispatch-rail-tabs" aria-label="Dispatch rail" className="flex gap-1 border-b border-slate-200 px-2 py-2">
+            {([
+              { key: 'crew', label: 'Crew', count: techs.length },
+              { key: 'queue', label: 'To assign', count: unassigned.length + needsScheduling.length },
+              { key: 'subs', label: 'Subs', count: sentToSubs.reduce((total, group) => total + group.jobs.length, 0) },
+            ] as const).map(({ key, label, count }) => (
+              <button
+                key={key}
+                type="button"
+                data-tour={`dispatch-rail-${key}`}
+                aria-pressed={focusRailSection === key}
+                onClick={() => setFocusRailSection(key)}
+                className="min-w-0 flex-1 rounded-md px-2 py-1.5 text-xs font-semibold"
+              >
+                {label} <span className="opacity-70 tabular-nums">{count}</span>
+              </button>
+            ))}
+          </nav>
+        )}
+
         <div className="flex-1 overflow-y-auto">
           {/* Tech roster */}
-          <section className="px-4 py-3">
-            <div className="text-[10px] uppercase tracking-wide text-slate-500 font-semibold mb-2">
-              Technicians ({techs.length})
+          <section data-tour="dispatch-roster" data-focus-rail-active={focus ? String(focusRailSection === 'crew') : undefined} className="px-4 py-3">
+            <div className="flex items-center justify-between gap-2 mb-2">
+              <span className="text-[10px] uppercase tracking-wide text-slate-500 font-semibold">Technicians ({techs.length})</span>
+              <button type="button" onClick={showAllTechs} aria-pressed={!focusTech} className="rounded px-1.5 py-1 text-[11px] font-medium text-amber-800 hover:bg-amber-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-amber-500">All technicians</button>
             </div>
             {board.isLoading && <p className="text-xs text-slate-400 italic">Loading…</p>}
             {board.isError && <p role="alert" className="text-xs text-rose-700">Dispatch data unavailable. <button type="button" onClick={() => board.refetch()} className="underline">Try again</button></p>}
@@ -519,26 +586,21 @@ export function DispatchPage() {
                 const liveAge = liveAgeSeconds(pos, nowMs)
                 const f = freshness(liveAge)
                 const ws = WORK_STATUS_META[t.work_status] ?? WORK_STATUS_META.idle
+                const visits = assignedVisits(jobs, t.id)
+                const expanded = visibleExpandedTechs.has(t.id)
                 return (
                   <li
                     key={t.id}
-                    onClick={() => focusOnTech(t.id)}
-                    role="button"
-                    tabIndex={0}
-                    aria-label={`Locate technician on map: ${t.name}`}
-                    onKeyDown={(event) => {
-                      if (event.key === 'Enter' || event.key === ' ') {
-                        event.preventDefault()
-                        focusOnTech(t.id)
-                      }
-                    }}
-                    onContextMenu={(e) => {
-                      e.preventDefault()
-                      setPingMenu({ x: e.clientX, y: e.clientY, tech: t })
-                    }}
-                    className="flex items-center gap-2.5 px-2 py-1.5 rounded-md hover:bg-slate-50 cursor-pointer"
-                    title={pos ? 'Click to find on map · right-click to ping' : 'No GPS — right-click to ping the phone'}
+                    data-tour="dispatch-tech-row"
+                    data-gps={liveAge == null ? 'none' : liveAge <= 90 ? 'live' : 'recent'}
+                    className={`rounded-lg border overflow-hidden ${focusTech?.id === t.id ? 'border-amber-300 bg-amber-50/50' : 'border-slate-200 bg-white'}`}
                   >
+                    <div className="flex items-center">
+                    <button type="button" onClick={() => focusOnTech(t.id)} aria-pressed={focusTech?.id === t.id}
+                      aria-label={`Show ${t.name}'s visits and route on map`}
+                      onContextMenu={(e) => { e.preventDefault(); setPingMenu({ x: e.clientX, y: e.clientY, tech: t }) }}
+                      className="flex min-w-0 flex-1 items-center gap-2.5 px-2 py-2 text-left hover:bg-slate-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-amber-500"
+                      title="Show visits and route · right-click to ping the phone">
                     {/* Dot = workload (open / scheduled / on a job). */}
                     <span
                       className={['w-2.5 h-2.5 rounded-full shrink-0', ws.dot].join(' ')}
@@ -583,6 +645,40 @@ export function DispatchPage() {
                           : `${t.job_count} job${t.job_count === 1 ? '' : 's'}`
                       })()}
                     </span>
+                    </button>
+                    <button type="button" aria-expanded={expanded} aria-controls={`dispatch-visits-${t.id}`}
+                      aria-label={`${expanded ? 'Collapse' : 'Expand'} ${t.name}'s visits`}
+                      onClick={() => setExpandedTechs((previous) => { const next = new Set(previous ?? visibleExpandedTechs); if (next.has(t.id)) next.delete(t.id); else next.add(t.id); return next })}
+                      className="self-stretch px-2.5 text-slate-500 hover:bg-slate-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-amber-500">
+                      <span aria-hidden="true">{expanded ? '⌃' : '⌄'}</span>
+                    </button>
+                    </div>
+                    <div id={`dispatch-visits-${t.id}`} hidden={!expanded} className="border-t border-slate-100 px-2 py-2">
+                      <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-wide text-slate-500">Today's visits · includes overdue</p>
+                      {visits.length === 0 ? <p className="py-1 text-xs text-slate-500">No scheduled visits on this board.</p> : (
+                        <ol className="space-y-1">
+                          {visits.map((visit) => {
+                            const scheduled = visit.scheduled_start_at ? new Date(visit.scheduled_start_at) : null
+                            const validDate = scheduled && !Number.isNaN(scheduled.getTime()) ? scheduled : null
+                            const dateLabel = validDate && format(validDate, 'yyyy-MM-dd') !== data?.date ? format(validDate, 'MMM d') : null
+                            return <li key={`${visit.kind ?? 'job'}:${visit.id}`}>
+                              <Link to={visit.kind === 'estimate' ? `/estimates/${visit.id}` : `/jobs/${visit.id}`} className="block rounded-md px-2 py-1.5 text-xs hover:bg-slate-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-amber-500">
+                                <div className="flex items-baseline justify-between gap-2">
+                                  <span className="font-semibold tabular-nums text-slate-700">{dateLabel && `${dateLabel} · `}{validDate ? format(validDate, 'h:mm a') : 'Time not set'}</span>
+                                  <span className="text-[10px] text-slate-500">{visit.kind === 'estimate' ? 'Assessment' : 'Job'} {visit.display_number ?? visit.work_order_number ?? ''}</span>
+                                </div>
+                                <div className="mt-0.5 truncate font-medium text-slate-900">{visit.title || (visit.kind === 'estimate' ? 'Assessment' : 'Work order')}</div>
+                                {visit.customer_name && <div className="truncate text-[11px] text-slate-500">{visit.customer_name}</div>}
+                                <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[10px] text-slate-500">
+                                  <span className="inline-flex items-center gap-1"><span aria-hidden="true" className="inline-block h-2 w-2 shrink-0 rounded-full" style={{ backgroundColor: dispatchJobAppearance(visit).color }} />{dispatchJobAppearance(visit).label}</span>
+                                  {!hasRouteCoordinates(visit.location) && <span>No map coordinates</span>}
+                                </div>
+                              </Link>
+                            </li>
+                          })}
+                        </ol>
+                      )}
+                    </div>
                   </li>
                 )
               })}
@@ -590,7 +686,7 @@ export function DispatchPage() {
           </section>
 
           {/* Unassigned jobs */}
-          <section className="px-4 py-3 border-t border-slate-100">
+          <section data-tour="dispatch-unassigned" data-count={board.isSuccess ? unassigned.length : undefined} data-focus-rail-active={focus ? String(focusRailSection === 'queue') : undefined} className="px-4 py-3 border-t border-slate-100">
             <div className="text-[10px] uppercase tracking-wide text-slate-500 font-semibold mb-2">
               Unassigned today ({board.isSuccess ? unassigned.length : '—'})
             </div>
@@ -604,6 +700,7 @@ export function DispatchPage() {
                   // suggest-tech modal is work-order-only, so route there.
                   <li key={j.id}>
                     <Link
+                      data-tour="dispatch-assessment"
                       to={`/estimates/${j.id}`}
                       className="block px-2 py-1.5 rounded-md border border-sky-200 bg-sky-50/60 hover:bg-sky-100"
                     >
@@ -628,6 +725,7 @@ export function DispatchPage() {
                   <li key={j.id}>
                     <button
                       type="button"
+                      data-tour="dispatch-suggest-open"
                       onClick={() => setSuggestJobId(j.id)}
                       className="w-full text-left px-2 py-1.5 rounded-md border border-amber-200 bg-amber-50/60 hover:bg-amber-100"
                     >
@@ -658,11 +756,49 @@ export function DispatchPage() {
             </ul>
           </section>
 
+          {/* Sent to subs: today's jobs other companies are doing for us,
+              by company, with their tech and where they're at. */}
+          {sentToSubs.length > 0 && (
+            <section data-tour="dispatch-subs" data-focus-rail-active={focus ? String(focusRailSection === 'subs') : undefined} className="px-4 py-3 border-t border-slate-100" aria-labelledby="dispatch-sent-to-subs">
+              <div id="dispatch-sent-to-subs" className="text-[10px] uppercase tracking-wide text-slate-500 font-semibold mb-2">
+                Sent to subs ({sentToSubs.reduce((n, g) => n + g.jobs.length, 0)})
+              </div>
+              <div className="space-y-2">
+                {sentToSubs.map((group) => (
+                  <div key={group.name}>
+                    <div className="text-xs font-semibold text-slate-800 truncate">{group.name}</div>
+                    <ul className="mt-1 space-y-1">
+                      {group.jobs.map((j) => (
+                        <li key={j.id}>
+                          <Link to={`/jobs/${j.id}`} className="block rounded-md border border-slate-200 px-2 py-1.5 hover:bg-slate-50">
+                            <div className="flex items-center justify-between gap-2">
+                              <span className="text-sm font-medium text-slate-900 truncate">
+                                {j.title || `WO ${j.display_number ?? j.work_order_number ?? ''}`}
+                              </span>
+                              {j.sub && (
+                                <span className={`shrink-0 rounded px-1.5 py-0.5 text-[10px] font-semibold ${SUB_STATE_CLASS[j.sub.state]}`}>{j.sub.label}</span>
+                              )}
+                            </div>
+                            <div className="text-[11px] text-slate-600 truncate">
+                              {j.scheduled_start_at ? new Date(j.scheduled_start_at).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }) : 'No time'}
+                              {j.sub?.tech_name ? ` · ${j.sub.tech_name}` : ''}
+                              {j.customer_name ? ` · ${j.customer_name}` : ''}
+                            </div>
+                          </Link>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                ))}
+              </div>
+            </section>
+          )}
+
           {/* Needs scheduling: accepted requests and anything else entered
               without a date. Without this lane these lived only on the
               customer's account, which is where they went "missing". */}
           {needsScheduling.length > 0 && (
-            <section className="px-4 py-3 border-t border-slate-100">
+            <section data-tour="dispatch-needs-scheduling" data-focus-rail-active={focus ? String(focusRailSection === 'queue') : undefined} className="px-4 py-3 border-t border-slate-100">
               <div className="text-[10px] uppercase tracking-wide text-slate-500 font-semibold mb-2">
                 Needs scheduling ({needsScheduling.length})
               </div>
@@ -699,10 +835,13 @@ export function DispatchPage() {
               </ul>
             </section>
           )}
+          {focus && focusRailSection === 'subs' && sentToSubs.length === 0 && (
+            <p className="px-4 py-5 text-sm text-slate-500">No jobs are assigned to subs today.</p>
+          )}
         </div>
 
         {unmappableCount > 0 && (
-          <div className="px-4 py-2 border-t border-slate-200 text-[11px] text-slate-500">
+          <div data-tour="dispatch-unmappable" className="px-4 py-2 border-t border-slate-200 text-[11px] text-slate-500">
             {unmappableCount} job{unmappableCount === 1 ? '' : 's'} not on the map — no saved coordinates.
           </div>
         )}
@@ -746,25 +885,121 @@ export function DispatchPage() {
         </div>
       )}
 
+      {focus && focusWorkspaceView === 'board' && (
+        <main data-focus-dispatch-board className="hidden md:flex flex-1 min-w-0 flex-col overflow-hidden bg-slate-50">
+          <div className="flex shrink-0 items-center justify-between gap-3 border-b border-slate-200 bg-white px-5 py-3">
+            <div className="min-w-0">
+              <h1 className="text-lg font-bold text-slate-900">Dispatch board</h1>
+              <p className="text-xs text-slate-500">Assign work, scan today's schedule, and open the map when you need it.</p>
+            </div>
+            <button type="button" onClick={() => setFocusWorkspaceView('map')} className="shrink-0 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50">
+              Open live map
+            </button>
+          </div>
+          <div className="min-h-0 flex-1 overflow-y-auto p-4 xl:p-5">
+            <div data-focus-dispatch-metrics className="grid grid-cols-2 gap-2 lg:grid-cols-4">
+              <div><strong>{board.isSuccess ? jobs.length : '—'}</strong><span>Today's visits</span></div>
+              <div><strong>{board.isSuccess ? unassigned.length : '—'}</strong><span>Need a technician</span></div>
+              <div><strong>{board.isSuccess ? needsScheduling.length : '—'}</strong><span>Need a date</span></div>
+              <div><strong>{board.isSuccess ? techs.filter((tech) => tech.work_status === 'idle').length : '—'}</strong><span>Available crew</span></div>
+            </div>
+            {board.isError && (
+              <div role="alert" className="mt-4 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-800">
+                Could not refresh the dispatch board. <button type="button" onClick={() => { void board.refetch() }} className="font-semibold underline">Retry</button>
+              </div>
+            )}
+            <div data-focus-dispatch-columns className="mt-4 grid gap-4 xl:grid-cols-[minmax(0,1.7fr)_minmax(250px,0.8fr)]">
+              <section className="min-w-0 rounded-xl border border-slate-200 bg-white shadow-sm">
+                <div className="flex items-center justify-between border-b border-slate-200 px-4 py-3">
+                  <h2 className="text-sm font-bold text-slate-900">Today's work</h2>
+                  <span className="text-xs text-slate-500">{data?.date ?? 'Today'}</span>
+                </div>
+                {board.isLoading ? (
+                  <p role="status" className="p-4 text-sm text-slate-500">Loading today's work…</p>
+                ) : jobs.length === 0 ? (
+                  <p className="p-4 text-sm text-slate-500">No visits on today's board.</p>
+                ) : (
+                  <div className="divide-y divide-slate-100">
+                    {[...jobs].sort((a, b) => (a.scheduled_start_at ?? '').localeCompare(b.scheduled_start_at ?? '')).map((job) => (
+                      <div key={`${job.kind ?? 'job'}-${job.id}`} data-focus-dispatch-job className="flex items-center gap-3 px-4 py-3">
+                        <div className="w-14 shrink-0 text-xs font-semibold tabular-nums text-slate-600">
+                          {job.scheduled_start_at ? format(new Date(job.scheduled_start_at), 'h:mm a') : '—'}
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <Link to={job.kind === 'estimate' ? `/estimates/${job.id}` : `/jobs/${job.id}`} className="block truncate text-sm font-semibold text-slate-900 hover:text-amber-700">
+                            {job.title || (job.kind === 'estimate' ? `Estimate ${job.display_number ?? ''}` : `Job ${job.display_number ?? job.work_order_number ?? ''}`)}
+                          </Link>
+                          <div className="truncate text-xs text-slate-500">{job.customer_name ?? 'Customer not listed'}{job.location?.address ? ` · ${job.location.address}` : ''}</div>
+                        </div>
+                        <div className="hidden min-w-24 max-w-36 truncate text-xs text-slate-600 lg:block">{job.lead_tech_name ?? (job.sub ? `Sub: ${job.sub.name}` : 'Unassigned')}</div>
+                        {job.lead_tech_account_id || job.sub ? (
+                          <span className="hidden rounded-full bg-slate-100 px-2 py-1 text-[11px] font-medium text-slate-700 lg:inline">{job.status?.name ?? 'Scheduled'}</span>
+                        ) : job.kind === 'estimate' ? (
+                          <Link to={`/estimates/${job.id}`} className="shrink-0 rounded-md border border-sky-200 px-2 py-1 text-xs font-semibold text-sky-800">Open</Link>
+                        ) : (
+                          <button type="button" onClick={() => setSuggestJobId(job.id)} className="shrink-0 rounded-md bg-amber-500 px-2 py-1 text-xs font-semibold text-slate-950 hover:bg-amber-400">Assign</button>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </section>
+              <div className="min-w-0 space-y-4">
+                <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+                  <h2 className="text-sm font-bold text-slate-900">Crew availability</h2>
+                  <div className="mt-2 space-y-1">
+                    {techs.length === 0 && <p className="text-xs text-slate-500">No crew on this board.</p>}
+                    {techs.map((tech) => (
+                      <button key={tech.id} type="button" onClick={() => focusOnTech(tech.id)} className="flex w-full items-center justify-between gap-2 rounded-lg px-2 py-2 text-left hover:bg-slate-50">
+                        <span className="truncate text-sm font-medium text-slate-800">{tech.name}</span>
+                        <span className="shrink-0 text-xs text-slate-500">{WORK_STATUS_META[tech.work_status].label} · {tech.job_count} visits</span>
+                      </button>
+                    ))}
+                  </div>
+                </section>
+                <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+                  <h2 className="text-sm font-bold text-slate-900">Incoming requests</h2>
+                  <div className="mt-2 max-h-72 overflow-y-auto"><IncomingRequestsPanel /><IncomingEstimateRequestsPanel /></div>
+                </section>
+                <Link to="/schedule" className="block rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-amber-800 shadow-sm hover:bg-amber-50">Open scheduling calendar →</Link>
+              </div>
+            </div>
+          </div>
+        </main>
+      )}
+
       {/* Map — full-width on mobile when map is selected */}
       <div
+        data-tour="dispatch-map"
         className={`${
           mobileView === 'roster' ? 'hidden' : 'block'
-        } md:block flex-1 relative`}
+        } ${focus && focusWorkspaceView === 'board' ? 'md:hidden' : 'md:block'} flex-1 relative`}
       >
+        {focus && focusWorkspaceView === 'map' && (
+          <button type="button" onClick={() => { setFocusWorkspaceView('board'); setMobileView('roster') }} className="absolute left-1/2 top-3 z-20 hidden -translate-x-1/2 rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-bold text-slate-800 shadow md:block">
+            Dispatch board
+          </button>
+        )}
+        {(!focus || focusWorkspaceView === 'map' || mobileView === 'map') && (
+          <>
         {/* Floating incoming-requests + estimate-RFQ panels — both hide when
             empty. Sit BELOW the Day/Week/Month/Year toggle (top-3 left-3) and
             clear of the legend on the right; scroll inside their own box so a
             busy morning doesn't paper over the whole map. */}
         <div className="absolute top-14 left-3 right-3 md:right-48 z-10 pointer-events-none">
-          <div className="pointer-events-auto max-w-2xl max-h-[60vh] overflow-y-auto rounded-xl">
+          <div data-tour="dispatch-incoming" className="pointer-events-auto max-w-2xl max-h-[60vh] overflow-y-auto rounded-xl">
             <IncomingRequestsPanel />
             <IncomingEstimateRequestsPanel />
           </div>
         </div>
 
         <DispatchMap
-          jobs={mappableJobs}
+          dayTechId={dayTechId}
+          onOpenDay={(id) => { if (id) focusOnTech(id); else setDayTechId(null) }}
+          onShowAll={showAllTechs}
+          jobs={mapJobs}
+          jobsLoading={mapBoard.isLoading}
+          jobsError={mapBoard.isError}
           positions={positionByAccount}
           techsById={techsById}
           focusTech={focusTech}
@@ -776,6 +1011,8 @@ export function DispatchPage() {
           <div className="absolute top-3 left-1/2 -translate-x-1/2 bg-red-50 border border-red-200 text-red-800 text-xs px-3 py-1.5 rounded shadow">
             {(board.error as Error).message}
           </div>
+        )}
+          </>
         )}
       </div>
 
@@ -908,8 +1145,9 @@ export function SuggestTechModal({
       try {
         const conflicts = await fetchApprovedTimeOff(suggestion.account_id, scheduledDate, scheduledDate)
         if (!confirmTimeOffAssignment(suggestion.name, conflicts, 'Assign this job')) return
-      } catch {
-        // If this dispatcher cannot read staff PTO, do not block assignment here.
+      } catch (error) {
+        // A dispatcher who can't see staff time off (403) assigns as before; other failures ask.
+        if (!continueAfterFailedConflictCheck(error, 'tech time off')) return
       }
     }
     assign.mutate(suggestion.account_id)
@@ -919,6 +1157,7 @@ export function SuggestTechModal({
     <Modal isOpen onClose={onClose} title="Suggest a tech" size="sm"
       subtitle={wo ? `${wo.title || `WO ${wo.display_number ?? ''}`}${wo.address ? ` · ${wo.address}` : ''}` : 'Loading…'}>
         <Modal.Body>
+          <div data-tour="dispatch-suggest">
           {suggest.isLoading && <p className="text-sm text-slate-500">Ranking technicians…</p>}
           {suggest.isError && (
             <div role="alert" className="text-sm text-red-700">
@@ -938,7 +1177,7 @@ export function SuggestTechModal({
             <p className="text-sm text-slate-500 italic">No technicians on the roster.</p>
           )}
 
-          <ul className="space-y-1.5">
+          <ul data-tour="dispatch-suggest-list" className="space-y-1.5">
             {suggest.isSuccess && ranked.map((s, i) => (
               <li
                 key={s.account_id}
@@ -981,6 +1220,7 @@ export function SuggestTechModal({
                 </div>
                 <button
                   type="button"
+                  data-tour="dispatch-suggest-assign"
                   onClick={() => { void assignWithTimeOffCheck(s) }}
                   disabled={assign.isPending || wo?.lead_tech_account_id === s.account_id}
                   className="text-xs px-3 py-1 rounded-md bg-amber-500 hover:bg-amber-600 text-white font-medium disabled:opacity-40 shrink-0"
@@ -994,6 +1234,7 @@ export function SuggestTechModal({
           {assign.isError && (
             <p role="alert" className="text-xs text-red-700 mt-2">{(assign.error as Error).message}</p>
           )}
+          </div>
         </Modal.Body>
 
         <Modal.Footer className="justify-between">
@@ -1001,6 +1242,7 @@ export function SuggestTechModal({
             Ranked by distance + availability
           </span>
           <Link
+            data-tour="dispatch-suggest-job"
             to={`/jobs/${jobId}`}
             className="text-xs text-amber-700 hover:underline font-medium"
           >
@@ -1017,9 +1259,9 @@ export function SuggestTechModal({
 const ROUTE_COLORS = ['#2563eb', '#db2777', '#16a34a', '#ea580c', '#7c3aed', '#0891b2', '#ca8a04']
 
 // Map overlay layers the dispatcher can toggle (persisted per browser).
-type MapLayers = { techs: boolean; jobs: boolean; routes: boolean; traffic: boolean }
+type MapLayers = { techs: boolean; jobs: boolean; routes: boolean; traffic: boolean; checks: boolean }
 const LAYERS_KEY = 'crewbarn.dispatchMap.layers'
-const DEFAULT_LAYERS: MapLayers = { techs: true, jobs: true, routes: true, traffic: false }
+const DEFAULT_LAYERS: MapLayers = { techs: true, jobs: true, routes: true, traffic: false, checks: true }
 function loadMapLayers(): MapLayers {
   try {
     const raw = localStorage.getItem(LAYERS_KEY)
@@ -1030,7 +1272,12 @@ function loadMapLayers(): MapLayers {
 }
 
 function DispatchMap({
+  dayTechId,
+  onOpenDay,
+  onShowAll,
   jobs,
+  jobsLoading,
+  jobsError,
   positions,
   techsById,
   focusTech,
@@ -1038,7 +1285,13 @@ function DispatchMap({
   onRangeChange,
   nowMs,
 }: {
+  /** The tech whose day is open (TechDayPanel); a marker click or the roster opens it. */
+  dayTechId: string | null
+  onOpenDay: (techId: string | null) => void
+  onShowAll: () => void
   jobs: BoardJob[]
+  jobsLoading: boolean
+  jobsError: boolean
   positions: Map<string, Position>
   techsById: Map<string, BoardTech>
   /** Bumps each time the dispatcher clicks a tech in the roster. */
@@ -1055,7 +1308,18 @@ function DispatchMap({
   const jobClusterer = useRef<MarkerClusterer | null>(null)
   const techMarkers = useRef<Map<string, TechAvatarMarker>>(new Map())
   const directionsSvc = useRef<google.maps.DirectionsService | null>(null)
-  const routeRenderers = useRef<Map<string, google.maps.DirectionsRenderer>>(new Map())
+  const routeDrawings = useRef<Map<string, { key: string; color: string; renderers: google.maps.DirectionsRenderer[]; points: RoutePoint[]; hasOrigin: boolean }>>(new Map())
+  const [routeStates, setRouteStates] = useState<Record<string, 'loading' | 'ready' | 'error'>>({})
+  const [routeOrigins, setRouteOrigins] = useState<Record<string, boolean>>({})
+  const [routeRevision, setRouteRevision] = useState(0)
+  const routeGeneration = useRef(0)
+  const routeRequests = useRef(new Map<string, number>())
+  const selectedTechId = focusTech?.id ?? null
+  const selectedTechRef = useRef(selectedTechId)
+  useLayoutEffect(() => { selectedTechRef.current = selectedTechId }, [selectedTechId])
+  // A stable primitive prevents board polls and GPS renders from issuing the same Directions requests.
+  const routePlanKey = JSON.stringify(jobs.map((job) => [job.kind, job.id, job.lead_tech_account_id, job.scheduled_start_at, job.status?.category, job.location?.latitude, job.location?.longitude]).sort())
+  const selectedPlan = selectedTechId ? routePlanForTech(jobs, selectedTechId) : null
   const trafficLayer = useRef<google.maps.TrafficLayer | null>(null)
   // Once the user pans/zooms, the viewport is theirs — auto-fit stands down
   // until the date range changes. Until then we keep fitting as pins land
@@ -1064,6 +1328,16 @@ function DispatchMap({
   const [error, setError] = useState<string | null>(null)
   const [ready, setReady] = useState(false)
   const [layers, setLayers] = useState<MapLayers>(loadMapLayers)
+  // Location checks: "is this the job's address?" when a tech starts a job
+  // or estimate on the phone. A dot each, today; click for the details.
+  const [openCheck, setOpenCheck] = useState<FieldEncounterRow | null>(null)
+  const checkMarkers = useRef<google.maps.Marker[]>([])
+  const checksQ = useQuery({
+    queryKey: FIELD_ENCOUNTERS_KEY,
+    queryFn: () => fetchFieldEncounters(),
+    refetchInterval: 60_000,
+    enabled: layers.checks,
+  })
   const layersRef = useRef(layers)
   useEffect(() => {
     layersRef.current = layers
@@ -1109,6 +1383,7 @@ function DispatchMap({
   const [selectedJobIds, setSelectedJobIds] = useState<string[]>([])
   const [assignTo, setAssignTo] = useState('')
   const [assigning, setAssigning] = useState(false)
+  const [assignError, setAssignError] = useState<string | null>(null)
 
   // Init the map once.
   useEffect(() => {
@@ -1172,6 +1447,33 @@ function DispatchMap({
     for (const m of techMarkers.current.values()) m.setMap(layers.techs ? map : null)
   }, [ready, layers.techs])
 
+  // Location check dots: green yes, amber no, grey not answered.
+  useEffect(() => {
+    for (const m of checkMarkers.current) m.setMap(null)
+    checkMarkers.current = []
+    const map = mapRef.current
+    if (!ready || !map || !layers.checks) return
+    for (const c of checksQ.data ?? []) {
+      const marker = new google.maps.Marker({
+        map,
+        position: { lat: c.latitude, lng: c.longitude },
+        zIndex: 900,
+        title: `${c.tech?.name ?? 'Tech'} · ${encounterTime(c)} · ${encounterAnswerLabel(c)}`,
+        icon: { path: google.maps.SymbolPath.CIRCLE, scale: 6, fillColor: encounterColor(c), fillOpacity: 1, strokeColor: '#ffffff', strokeWeight: 2 },
+      })
+      marker.addListener('click', () => {
+        onOpenDay(null)
+        setOpenCheck(c)
+      })
+      checkMarkers.current.push(marker)
+    }
+  }, [ready, layers.checks, checksQ.data]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Opening a tech's day (roster, marker) closes a check that was open.
+  useEffect(() => {
+    if (dayTechId) setOpenCheck(null)
+  }, [dayTechId])
+
   // Lasso bulk-assign. Google removed DrawingManager in Maps JS 3.65, so this
   // is a two-click box: click one corner, then the opposite corner. Active only
   // while lasso mode is on; jobs inside the box are selected + the panel opens.
@@ -1218,27 +1520,34 @@ function DispatchMap({
     if (!ready || !mapRef.current) return
     const map = mapRef.current
     const seen = new Set<string>()
+    const selectedStops = selectedTechId && range === 'day' ? routePlanForTech(jobs, selectedTechId).remaining.filter((job) => hasRouteCoordinates(job.location)) : []
+    const stopNumbers = new Map(selectedStops.map((job, index) => [`${job.kind ?? 'job'}:${job.id}`, index + 1]))
 
     for (const j of jobs) {
-      if (j.location?.latitude == null || j.location?.longitude == null) continue
+      if (!hasRouteCoordinates(j.location)) continue
       seen.add(j.id)
-      const pos = { lat: j.location.latitude, lng: j.location.longitude }
-      const color = j.status ? toHexColor(j.status.color) : '#64748b'
+      const pos = { lat: j.location!.latitude!, lng: j.location!.longitude! }
+      const appearance = dispatchJobAppearance(j)
+      const color = appearance.color
       let marker = jobMarkers.current.get(j.id)
       if (!marker) {
         marker = new google.maps.Marker({ position: pos })
         marker.addListener('click', () => {
           if (!infoRef.current) return
+          // Payments and status can change between board polls; do not show
+          // the job snapshot captured when this marker was first created.
+          const currentJob = jobsRef.current.find((job) => job.id === j.id && job.kind === j.kind) ?? j
+          const currentAppearance = dispatchJobAppearance(currentJob)
           infoRef.current.setContent(
             `<div style="font:13px system-ui;max-width:220px">
-               ${j.kind === 'estimate' ? `<div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:#0369a1">Assessment</div>` : ''}
-               <div style="font-weight:600">${escapeHtml(j.title || (j.kind === 'estimate' ? 'Assessment' : 'Work order'))}</div>
-               <div style="color:#475569">${escapeHtml(j.customer_name ?? '')}</div>
-               ${j.bill_to_name ? `<div style="margin-top:2px"><span style="background:#eef2ff;color:#4338ca;font-size:10px;font-weight:600;padding:1px 5px;border-radius:4px">${escapeHtml(j.bill_to_name)}</span></div>` : ''}
-               <div style="color:#64748b;font-size:12px">${escapeHtml(j.location?.address ?? '')}</div>
+               ${currentJob.kind === 'estimate' ? `<div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:#0369a1">Assessment</div>` : ''}
+               <div style="font-weight:600">${escapeHtml(currentJob.title || (currentJob.kind === 'estimate' ? 'Assessment' : 'Work order'))}</div>
+               <div style="color:#475569">${escapeHtml(currentJob.customer_name ?? '')}</div>
+               ${currentJob.bill_to_name ? `<div style="margin-top:2px"><span style="background:#eef2ff;color:#4338ca;font-size:10px;font-weight:600;padding:1px 5px;border-radius:4px">${escapeHtml(currentJob.bill_to_name)}</span></div>` : ''}
+               <div style="color:#64748b;font-size:12px">${escapeHtml(currentJob.location?.address ?? '')}</div>
                <div style="margin-top:4px;font-size:12px">
-                 ${j.status ? `<span style="color:${toHexColor(j.status.color)}">●</span> ${escapeHtml(j.status.name)}` : ''}
-                 ${j.lead_tech_name ? ` · ${escapeHtml(j.lead_tech_name)}` : ' · <em>unassigned</em>'}
+                 <span style="color:${currentAppearance.color}">●</span> ${escapeHtml(currentAppearance.label)}
+                 ${currentJob.lead_tech_name ? ` · ${escapeHtml(currentJob.lead_tech_name)}` : ' · <em>unassigned</em>'}
                </div>
              </div>`,
           )
@@ -1249,15 +1558,17 @@ function DispatchMap({
       }
       marker.setPosition(pos)
       const jobAtRisk = atRiskSets.jobs.has(j.id)
+      const stopNumber = stopNumbers.get(`${j.kind ?? 'job'}:${j.id}`)
       const markerLabel = j.title || (j.kind === 'estimate' ? 'Assessment' : 'Work order')
-      marker.setTitle(jobAtRisk ? `${markerLabel} — tech may be late` : markerLabel)
-      marker.setZIndex(jobAtRisk ? 600 : null)
+      marker.setTitle(`${stopNumber ? `Stop ${stopNumber} · ` : ''}${markerLabel} — ${appearance.label}${jobAtRisk ? ' — tech may be late' : ''}`)
+      marker.setLabel(stopNumber ? { text: String(stopNumber), color: '#ffffff', fontSize: '10px', fontWeight: '700' } : null)
+      marker.setZIndex(stopNumber ? 700 : jobAtRisk ? 600 : null)
       marker.setIcon(
         jobAtRisk
           ? atRiskJobIcon(color)
           : {
               path: google.maps.SymbolPath.CIRCLE,
-              scale: 8,
+              scale: stopNumber ? 11 : 8,
               fillColor: color,
               fillOpacity: 1,
               strokeColor: '#ffffff',
@@ -1278,11 +1589,11 @@ function DispatchMap({
     // pins — until the user pans/zooms (their viewport wins until the range
     // changes). A lone pin gets a sane city zoom; fitBounds on a single
     // point slams to max zoom (a wall of green).
-    if (!userMoved.current && jobs.length > 0) {
+    if (!focusTech && !userMoved.current && jobs.length > 0) {
       const pts: google.maps.LatLngLiteral[] = []
       for (const j of jobs) {
-        if (j.location?.latitude != null && j.location?.longitude != null) {
-          pts.push({ lat: j.location.latitude, lng: j.location.longitude })
+        if (hasRouteCoordinates(j.location)) {
+          pts.push({ lat: j.location!.latitude!, lng: j.location!.longitude! })
         }
       }
       if (pts.length === 1) {
@@ -1294,7 +1605,7 @@ function DispatchMap({
         map.fitBounds(bounds, 64)
       }
     }
-  }, [ready, jobs, atRiskSets])
+  }, [ready, jobs, atRiskSets, focusTech, selectedTechId, range])
 
   // Cluster the job markers — keeps thousands of pins fast + readable. Rebuilds
   // only when the job set or the Jobs layer changes, NOT on every GPS poll, so
@@ -1341,6 +1652,7 @@ function DispatchMap({
         appState: appStateLabel(p, age),
         source: p.source,
         atRisk,
+        onOpen: () => onOpenDay(accountId),
       }
       let marker = techMarkers.current.get(accountId)
       if (!marker) {
@@ -1357,117 +1669,139 @@ function DispatchMap({
         techMarkers.current.delete(id)
       }
     }
-  }, [ready, positions, techsById, atRiskSets, nowMs])
+  }, [ready, positions, techsById, atRiskSets, nowMs, onOpenDay])
 
-  // Pan / zoom + open the info window when the dispatcher clicks a tech
-  // in the roster. Bumps on every click (seq) so re-clicking re-centres.
+  useEffect(() => { if (!focusTech) userMoved.current = false }, [focusTech])
+
+  // Re-focus the selected route when clicked, when geocoding finishes, or when
+  // Directions adds road geometry. Live GPS ticks never seize the viewport.
   useEffect(() => {
-    if (!ready || !mapRef.current || !focusTech) return
+    if (!ready || !mapRef.current) return
     const map = mapRef.current
-    const p = positions.get(focusTech.id)
-    if (!p) return // tech has no GPS fix — nothing to focus on
-    map.panTo({ lat: p.latitude, lng: p.longitude })
-    map.setZoom(Math.max(map.getZoom() ?? 0, 16))
-    // Pin the avatar's hover card open so the roster click shows the details.
-    techMarkers.current.get(focusTech.id)?.showCard()
+    const candidateDrawing = focusTech ? routeDrawings.current.get(focusTech.id) : null
+    const drawing = candidateDrawing?.key === routePlanKey ? candidateDrawing : null
+    const plan = focusTech ? routePlanForTech(jobs, focusTech.id) : null
+    const selectedJobs = focusTech ? jobs.filter((job) => job.lead_tech_account_id === focusTech.id) : jobs
+    let points = range === 'day' && focusTech
+      ? drawing?.points ?? plan?.stops ?? []
+      : selectedJobs.filter((job) => hasRouteCoordinates(job.location)).map((job) => ({ lat: job.location!.latitude!, lng: job.location!.longitude! }))
+    if (focusTech) {
+      userMoved.current = true
+      const position = positions.get(focusTech.id)
+      if (!points.length && position && hasRouteCoordinates(position)) points = [{ lat: position.latitude, lng: position.longitude }]
+    } else if (userMoved.current) return
+    if (points.length === 1) { map.setCenter(points[0]); map.setZoom(12) }
+    else if (points.length > 1) {
+      const bounds = new google.maps.LatLngBounds()
+      points.forEach((point) => bounds.extend(point))
+      map.fitBounds(bounds, { top: 64, left: 64, bottom: 96, right: focusTech && (mapEl.current?.clientWidth ?? 0) > 800 ? 400 : 64 })
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [focusTech, ready])
+  }, [focusTech, ready, range, routePlanKey, routeRevision])
+
+  // Selection changes only route visibility/style, with no Directions request.
+  useEffect(() => {
+    for (const [techId, drawing] of routeDrawings.current) {
+      for (const renderer of drawing.renderers) {
+        renderer.setMap(layers.routes && range === 'day' && (!selectedTechId || selectedTechId === techId) ? mapRef.current : null)
+        renderer.setOptions({ polylineOptions: { strokeColor: drawing.color, strokeWeight: selectedTechId === techId ? 6 : 4, strokeOpacity: selectedTechId === techId ? 0.95 : 0.7 } })
+      }
+    }
+  }, [selectedTechId, layers.routes, range, routeRevision])
+
+  // Called by the board effect and deliberately by Refresh route. The latter
+  // uses this render's newest GPS snapshot and leaves other routes untouched.
+  const requestTechRoute = async (tid: string, color: string, generation: number) => {
+    const request = (routeRequests.current.get(tid) ?? 0) + 1
+    routeRequests.current.set(tid, request)
+    const current = () => routeGeneration.current === generation && routeRequests.current.get(tid) === request
+    const previousDrawing = routeDrawings.current.get(tid)
+    if (previousDrawing) for (const renderer of previousDrawing.renderers) renderer.setMap(null)
+    routeDrawings.current.delete(tid)
+    setRouteStates((previous) => ({ ...previous, [tid]: 'loading' }))
+    const { stops } = routePlanForTech(jobs, tid)
+    const p = positions.get(tid)
+    const origin = recentRouteOrigin(p ?? null, liveAgeSeconds(p ?? null, Date.now()), STALE_AFTER_SECONDS)
+    const hasOrigin = Boolean(origin)
+    setRouteOrigins((previous) => ({ ...previous, [tid]: hasOrigin }))
+    const path = origin && stops.length ? [origin, ...stops] : stops
+    const drawing = { key: routePlanKey, color, renderers: [] as google.maps.DirectionsRenderer[], points: path, hasOrigin }
+    routeDrawings.current.set(tid, drawing)
+    try {
+      const g = await loadGoogleMaps()
+      const { DirectionsService, DirectionsRenderer } = (await g.maps.importLibrary('routes')) as google.maps.RoutesLibrary
+      if (!current() || !mapRef.current) return
+      if (!directionsSvc.current) directionsSvc.current = new DirectionsService()
+      for (const segment of routeSegments(path)) {
+        const res = await directionsSvc.current.route({
+          origin: segment[0], destination: segment[segment.length - 1],
+          waypoints: segment.slice(1, -1).map((point) => ({ location: point, stopover: true })),
+          optimizeWaypoints: false, travelMode: g.maps.TravelMode.DRIVING,
+        })
+        if (!current() || !mapRef.current) return
+        const renderer = new DirectionsRenderer({ suppressMarkers: true, preserveViewport: true })
+        renderer.setOptions({ polylineOptions: { strokeColor: color, strokeWeight: selectedTechRef.current === tid ? 6 : 4, strokeOpacity: selectedTechRef.current === tid ? 0.95 : 0.7 } })
+        renderer.setDirections(res)
+        renderer.setMap(!selectedTechRef.current || selectedTechRef.current === tid ? mapRef.current : null)
+        drawing.renderers.push(renderer)
+        const roadPoints = res.routes[0]?.overview_path ?? []
+        drawing.points = [...drawing.points, ...roadPoints.map((point) => ({ lat: point.lat(), lng: point.lng() }))]
+      }
+      if (current()) setRouteStates((previous) => ({ ...previous, [tid]: 'ready' }))
+    } catch {
+      if (!current()) return
+      // Hide partial routes: disconnected segments must not look complete.
+      for (const renderer of drawing.renderers) renderer.setMap(null)
+      drawing.renderers = []
+      drawing.points = path
+      setRouteStates((previous) => ({ ...previous, [tid]: 'error' }))
+    }
+    if (current() && (!selectedTechRef.current || selectedTechRef.current === tid)) setRouteRevision((revision) => revision + 1)
+  }
 
   // Per-tech road routes (DirectionsService) — only in the DAY view, where a
   // tech's stops form an actual daily route. Wider ranges just show pins.
   // Recomputes on job/range change, not every GPS tick (keeps Directions cheap).
   useEffect(() => {
     if (!ready || !mapRef.current) return
+    const generation = ++routeGeneration.current
 
     const clearRoutes = () => {
-      for (const r of routeRenderers.current.values()) r.setMap(null)
-      routeRenderers.current.clear()
+      for (const drawing of routeDrawings.current.values()) for (const renderer of drawing.renderers) renderer.setMap(null)
+      routeDrawings.current.clear()
     }
+    clearRoutes()
     if (range !== 'day' || !layers.routes) {
-      clearRoutes()
       return
     }
 
-    let cancelled = false
+    const techIds = [...new Set(jobs.map((job) => job.lead_tech_account_id).filter((id): id is string => Boolean(id)))].sort()
     ;(async () => {
-      try {
-        const g = await loadGoogleMaps()
-        const { DirectionsService, DirectionsRenderer } =
-          (await g.maps.importLibrary('routes')) as google.maps.RoutesLibrary
-        if (cancelled || !mapRef.current) return
-        if (!directionsSvc.current) directionsSvc.current = new DirectionsService()
-
-        // Group the view's jobs by lead tech, ordered by scheduled time.
-        // Finished/cancelled work isn't a stop — the route line only covers
-        // what's still left to drive to (completed jobs keep their pin, they
-        // just drop out of the route).
-        const byTech = new Map<string, BoardJob[]>()
-        for (const j of jobs) {
-          const tid = j.lead_tech_account_id
-          if (!tid || j.location?.latitude == null || j.location?.longitude == null) continue
-          const cat = j.status?.category
-          if (cat === 'complete' || cat === 'cancelled') continue
-          byTech.set(tid, [...(byTech.get(tid) ?? []), j])
-        }
-
-        const seen = new Set<string>()
-        let colorIdx = 0
-        for (const [tid, techJobs] of byTech) {
-          techJobs.sort((a, b) => (a.scheduled_start_at ?? '').localeCompare(b.scheduled_start_at ?? ''))
-          const stops = techJobs.map((j) => ({ lat: j.location!.latitude!, lng: j.location!.longitude! }))
-          const p = positions.get(tid)
-          const path = p ? [{ lat: p.latitude, lng: p.longitude }, ...stops] : stops
-          const color = ROUTE_COLORS[colorIdx % ROUTE_COLORS.length]
-          colorIdx++
-          if (path.length < 2) continue // need ≥2 points to draw a route
-          seen.add(tid)
-          try {
-            const res = await directionsSvc.current.route({
-              origin: path[0],
-              destination: path[path.length - 1],
-              waypoints: path.slice(1, -1).slice(0, 23).map((s) => ({ location: s, stopover: true })),
-              travelMode: g.maps.TravelMode.DRIVING,
-            })
-            if (cancelled || !mapRef.current) return
-            let r = routeRenderers.current.get(tid)
-            if (!r) {
-              r = new DirectionsRenderer({ suppressMarkers: true, preserveViewport: true })
-              routeRenderers.current.set(tid, r)
-            }
-            r.setOptions({
-              polylineOptions: { strokeColor: color, strokeWeight: 4, strokeOpacity: 0.7 },
-            })
-            r.setDirections(res)
-            r.setMap(mapRef.current)
-          } catch {
-            // No drivable route (e.g. a lone stop with no GPS origin) — skip.
-          }
-        }
-
-        // Drop routes for techs no longer in view.
-        for (const [tid, r] of routeRenderers.current) {
-          if (!seen.has(tid)) {
-            r.setMap(null)
-            routeRenderers.current.delete(tid)
-          }
-        }
-      } catch {
-        // Maps/routes library unavailable — no-op.
+      // Publish pending routes when the external map loader answers, so all
+      // technicians read as loading while their Directions requests queue.
+      await loadGoogleMaps().catch(() => null)
+      if (routeGeneration.current !== generation) return
+      setRouteStates(Object.fromEntries(techIds.map((id) => [id, 'loading'])))
+      for (const [index, tid] of techIds.entries()) {
+        if (routeGeneration.current !== generation) return
+        await requestTechRoute(tid, ROUTE_COLORS[index % ROUTE_COLORS.length], generation)
       }
     })()
 
     return () => {
-      cancelled = true
+      routeGeneration.current = generation + 1
+      clearRoutes()
     }
     // positions intentionally excluded — routes recompute on jobs/range, not
     // on every live GPS tick (would burn Directions calls).
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [ready, jobs, range, layers.routes])
+  }, [ready, routePlanKey, range, layers.routes])
 
   const startLasso = () => {
     lassoRect.current?.setMap(null)
     lassoRect.current = null
     setSelectedJobIds([])
+    setAssignError(null)
     setLassoMode(true)
   }
   const clearLasso = () => {
@@ -1476,6 +1810,7 @@ function DispatchMap({
     setLassoMode(false)
     setSelectedJobIds([])
     setAssignTo('')
+    setAssignError(null)
   }
 
   const confirmLassoAssignment = async (): Promise<boolean> => {
@@ -1495,8 +1830,8 @@ function DispatchMap({
       const conflicts = blocks.filter((block) => scheduledDates.some((date) => timeOffCoversDate(block, date)))
       const techName = techsById.get(assignTo)?.name ?? conflicts[0]?.account_name ?? 'This tech'
       return confirmTimeOffAssignment(techName, conflicts, `Assign ${selectedJobIds.length} job${selectedJobIds.length === 1 ? '' : 's'}`)
-    } catch {
-      return true
+    } catch (error) {
+      return continueAfterFailedConflictCheck(error, 'tech time off')
     }
   }
 
@@ -1505,16 +1840,38 @@ function DispatchMap({
     const okToAssign = await confirmLassoAssignment()
     if (!okToAssign) return
     setAssigning(true)
+    setAssignError(null)
+    // Jobs and estimate visits live behind different endpoints. Keep going
+    // past a failure so one bad row doesn't strand the rest, then report.
+    const failed: string[] = []
+    let firstMessage: string | null = null
     try {
       for (const id of selectedJobIds) {
-        await apiRequest(`/v1/work-orders/${id}`, {
-          method: 'PATCH',
-          body: { lead_tech_account_id: assignTo },
-        })
+        const kind = jobs.find((job) => job.id === id)?.kind ?? 'job'
+        const url = kind === 'estimate' ? `/v1/estimates/${id}` : `/v1/work-orders/${id}`
+        try {
+          await apiRequest(url, {
+            method: 'PATCH',
+            body: { lead_tech_account_id: assignTo },
+          })
+        } catch (e) {
+          failed.push(id)
+          if (!firstMessage) firstMessage = e instanceof Error ? e.message : String(e)
+        }
       }
       qc.invalidateQueries({ queryKey: ['dispatch-board'] })
       qc.invalidateQueries({ queryKey: ['dispatch-map-jobs'] })
-      clearLasso()
+      if (failed.length === 0) {
+        clearLasso()
+      } else {
+        // Leave only the ones that didn't go through selected, so a retry
+        // doesn't re-send the ones that already worked.
+        const total = selectedJobIds.length
+        setSelectedJobIds(failed)
+        setAssignError(
+          `${failed.length} of ${total} could not be assigned${firstMessage ? `: ${firstMessage}` : '.'} They are still selected so you can try again.`,
+        )
+      }
     } finally {
       setAssigning(false)
     }
@@ -1537,12 +1894,67 @@ function DispatchMap({
   return (
     <div className="h-full relative bg-slate-100">
       <div ref={mapEl} className="absolute inset-0" />
+      {selectedTechId && selectedPlan && (
+        <div data-tour="dispatch-selected-route" className="absolute bottom-16 left-3 z-10 max-w-[min(20rem,calc(100%-1.5rem))] rounded-lg border border-amber-200 bg-white/95 px-3 py-2 shadow" aria-live="polite">
+          <div className="flex items-center justify-between gap-3">
+            <span className="text-xs font-semibold text-slate-900">{techsById.get(selectedTechId)?.name ?? 'Technician'} · {range === 'day' ? 'daily route' : `${range} visits`}</span>
+            <button type="button" onClick={onShowAll} className="shrink-0 text-[11px] font-medium text-amber-800 underline">All technicians</button>
+          </div>
+          <p className="mt-1 text-[11px] text-slate-600">
+            {jobsError ? 'Map visits unavailable. The route may be out of date.'
+              : jobsLoading ? 'Loading map visits…'
+              : range !== 'day' ? 'Showing this range’s visit pins. Choose Day to see a daily route.'
+              : selectedPlan.remaining.length === 0 ? 'No unfinished visits in this day’s map range.'
+              : selectedPlan.stops.length === 0 ? 'No visit coordinates available to plot this route.'
+              : !layers.routes ? 'Routes layer is off.'
+              : routeStates[selectedTechId] === 'error' ? 'Driving route unavailable. Visit pins are still shown.'
+              : routeStates[selectedTechId] === 'loading' ? 'Loading driving route…'
+              : selectedPlan.stops.length === 1 && !routeOrigins[selectedTechId] ? 'One mapped stop. No recent GPS origin to draw a driving route.'
+              : `${selectedPlan.stops.length} mapped stop${selectedPlan.stops.length === 1 ? '' : 's'}, in scheduled order.`}
+          </p>
+          {range === 'day' && !jobsLoading && !jobsError && selectedPlan.missingCoordinates > 0 && <p className="mt-1 text-[11px] text-amber-800">{selectedPlan.missingCoordinates} unfinished visit{selectedPlan.missingCoordinates === 1 ? ' is' : 's are'} missing map coordinates.</p>}
+          {range === 'day' && layers.routes && routeStates[selectedTechId] === 'ready' && !jobsLoading && !jobsError && selectedPlan.stops.length > 1 && !routeOrigins[selectedTechId] && <p className="mt-1 text-[10px] text-slate-500">No recent GPS origin. Route starts at the first mapped visit.</p>}
+          {range === 'day' && selectedPlan.stops.length > 0 && routeOrigins[selectedTechId] && <p className="mt-1 text-[10px] text-slate-500">Starts at the last GPS fix when this route was loaded.</p>}
+          <button type="button" data-tour="dispatch-refresh-route"
+            disabled={!ready || range !== 'day' || !layers.routes || jobsLoading || jobsError || !selectedPlan.stops.length || routeStates[selectedTechId] === 'loading'}
+            onClick={() => {
+              const ids = [...new Set(jobs.map((job) => job.lead_tech_account_id).filter((id): id is string => Boolean(id)))].sort()
+              void requestTechRoute(selectedTechId, ROUTE_COLORS[Math.max(0, ids.indexOf(selectedTechId)) % ROUTE_COLORS.length], routeGeneration.current)
+            }}
+            className="mt-2 rounded border border-slate-300 px-2 py-1 text-[11px] font-medium text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+            title="Rebuild this route using the newest recent GPS fix">
+            Refresh route
+          </button>
+        </div>
+      )}
+      {openCheck ? (
+        <FieldEncounterPanel
+          check={openCheck}
+          onClose={() => setOpenCheck(null)}
+          onOpenDay={(id) => {
+            setOpenCheck(null)
+            onOpenDay(id)
+          }}
+        />
+      ) : dayTechId && (
+        <TechDayPanel
+          techId={dayTechId}
+          fallbackName={techsById.get(dayTechId)?.name}
+          onClose={() => onOpenDay(null)}
+          onOpenCheck={(c) => {
+            onOpenDay(null)
+            setOpenCheck(c)
+          }}
+        />
+      )}
       {/* Date-range selector — which jobs to plot (roster stays on today). */}
-      <div className="absolute top-3 left-3 z-10 bg-white/95 border border-slate-200 rounded-md shadow flex overflow-hidden text-[11px]">
+      <div data-tour="dispatch-map-range" className="absolute top-3 left-3 z-10 bg-white/95 border border-slate-200 rounded-md shadow flex overflow-hidden text-[11px]">
         {(['day', 'week', 'month', 'year'] as MapRange[]).map((r) => (
           <button
             key={r}
             type="button"
+            data-tour={`dispatch-map-range-${r}`}
+            aria-pressed={range === r}
             onClick={() => onRangeChange(r)}
             className={`px-2.5 py-1 capitalize ${
               range === r ? 'bg-amber-500 text-white font-semibold' : 'text-slate-600 hover:bg-slate-50'
@@ -1554,6 +1966,7 @@ function DispatchMap({
       </div>
       {/* Lasso bulk-assign — draw a box around jobs, assign them to one tech. */}
       <button
+        data-tour="dispatch-lasso"
         type="button"
         onClick={lassoMode ? clearLasso : startLasso}
         className={`absolute bottom-4 left-3 z-10 px-3 py-1.5 rounded-md shadow border text-[11px] font-medium ${
@@ -1571,13 +1984,14 @@ function DispatchMap({
       )}
       {/* Map layers — toggle overlays on/off (persisted per browser). Top-right
           so it clears the incoming-request panels (top-left). */}
-      <div className="absolute top-3 right-3 z-10 bg-white/95 border border-slate-200 rounded-md shadow px-3 py-2 text-[11px] text-slate-600 space-y-1 w-40">
+      <div data-tour="dispatch-layers" className="absolute top-3 right-3 z-10 bg-white/95 border border-slate-200 rounded-md shadow px-3 py-2 text-[11px] text-slate-600 space-y-1 w-40">
         <div className="font-semibold text-slate-700 text-[10px] uppercase tracking-wide">Map layers</div>
         {([
           ['techs', 'Technicians'],
           ['jobs', 'Jobs'],
           ['routes', 'Routes (day)'],
           ['traffic', 'Traffic'],
+          ['checks', 'Location checks'],
         ] as [keyof MapLayers, string][]).map(([key, label]) => (
           <label key={key} className="flex items-center gap-2 cursor-pointer">
             <input
@@ -1591,8 +2005,10 @@ function DispatchMap({
         ))}
         <div className="pt-1 border-t border-slate-100 space-y-0.5 text-[10px]">
           <div className="flex items-center gap-1.5">
-            <span className="inline-block w-2.5 h-2.5 rounded-full bg-slate-400" /> Job pin = status color
+            <span className="inline-block w-2.5 h-2.5 rounded-full" style={{ backgroundColor: '#16a34a' }} /> Complete & paid in full
           </div>
+          <div className="flex items-center gap-1.5"><span className="inline-block w-2.5 h-2.5 rounded-full" style={{ backgroundColor: '#d97706' }} /> Complete · payment not confirmed</div>
+          <div className="text-slate-500">Other job pins use status colors; green is reserved for complete and paid jobs.</div>
           {layers.traffic && (
             <>
               <div className="text-slate-500 font-medium pt-0.5">Traffic</div>
@@ -1602,12 +2018,20 @@ function DispatchMap({
             </>
           )}
           <div className="flex items-center gap-1.5 pt-0.5"><span className="text-red-600">⚠</span> over job / red tech = predicted late</div>
+          {layers.checks && (
+            <>
+              <div className="text-slate-500 font-medium pt-0.5">Location checks</div>
+              <div className="flex items-center gap-1.5"><span className="inline-block w-2.5 h-2.5 rounded-full bg-green-600" /> Job is here</div>
+              <div className="flex items-center gap-1.5"><span className="inline-block w-2.5 h-2.5 rounded-full bg-amber-600" /> Job is elsewhere</div>
+              <div className="flex items-center gap-1.5"><span className="inline-block w-2.5 h-2.5 rounded-full bg-slate-500" /> Not answered</div>
+            </>
+          )}
           <div className="text-slate-400 pt-0.5">Faded tech pill = stale GPS</div>
         </div>
       </div>
 
       {selectedJobIds.length > 0 && (
-        <div className="absolute bottom-4 left-1/2 -translate-x-1/2 z-20 bg-white rounded-lg shadow-lg border border-slate-200 px-4 py-2.5 flex items-center gap-3">
+        <div data-tour="dispatch-lasso-bar" className="absolute bottom-4 left-1/2 -translate-x-1/2 z-20 bg-white rounded-lg shadow-lg border border-slate-200 px-4 py-2.5 flex flex-wrap items-center gap-3">
           <span className="text-sm font-semibold text-slate-800">
             {selectedJobIds.length} job{selectedJobIds.length === 1 ? '' : 's'} selected
           </span>
@@ -1632,6 +2056,11 @@ function DispatchMap({
           <button type="button" onClick={clearLasso} className="text-sm text-slate-500 hover:text-slate-700">
             Clear
           </button>
+          {assignError && (
+            <div role="alert" className="basis-full max-w-md text-xs text-red-700">
+              {assignError}
+            </div>
+          )}
         </div>
       )}
     </div>
@@ -1689,6 +2118,8 @@ interface TechMarkerInfo {
   appState: string | null
   source: string
   atRisk: boolean
+  /** Click: open the tech's day (TechDayPanel). */
+  onOpen?: () => void
 }
 
 function initialsFor(name: string): string {
@@ -1788,8 +2219,15 @@ function getTechAvatarMarkerClass(): TechAvatarMarkerCtorType {
         this.hovered = false
         this.syncCard()
       })
+      // Click opens the tech's day; the hover card is just the glance.
       this.root.addEventListener('click', (e) => {
         e.stopPropagation()
+        if (this.info.onOpen) {
+          this.pinned = false
+          this.syncCard()
+          this.info.onOpen()
+          return
+        }
         this.pinned = !this.pinned
         this.syncCard()
       })

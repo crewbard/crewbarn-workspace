@@ -258,18 +258,20 @@ export function ReportQuestionsPage() {
 
   return (
     <div className={easy ? 'w-full min-w-0 px-4 py-6 sm:px-6 2xl:px-8' : 'mx-auto w-full max-w-[1400px] px-4 py-6 sm:px-6 2xl:px-8'}>
+      <div data-tour="reports-front-header">
       {easy ? <EasyPageHeading title="Reports" description="What do you want to know? Search a question or report name, then open it to review the numbers and available exports." /> : <>
       <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-[#B4762A]">Reports</p>
       <h1 className="mt-1.5 text-[30px] font-bold leading-tight text-[#0A1220]">
         What do you want to know?
       </h1>
       <p className="mt-2 max-w-[640px] text-[14px] leading-relaxed text-slate-600">
-        Same twenty reports underneath — asked as questions instead of listed by name. Pick one and
-        the answer comes first; the table you&rsquo;d export is below it.
+        The same reports as the full workspace, plus sales tax, asked as questions instead of
+        listed by name. Pick one and the answer comes first; the table you&rsquo;d export is below it.
       </p>
       </>}
+      </div>
 
-      <div className="relative mt-5 max-w-[1120px]">
+      <div className="relative mt-5 max-w-[1120px]" data-tour="reports-search">
         <span className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-slate-400">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
             <circle cx="11" cy="11" r="7" />
@@ -287,7 +289,7 @@ export function ReportQuestionsPage() {
       </div>
 
       {presets.data?.data && presets.data.data.length > 0 && !term && (
-        <section className="mt-6">
+        <section className="mt-6" data-tour="reports-pinned">
           <h2 className="text-[11px] font-bold uppercase tracking-[0.12em] text-slate-400">
             Pinned — your saved views
           </h2>
@@ -321,16 +323,17 @@ export function ReportQuestionsPage() {
       )}
 
       {hits === 0 && (
-        <p className="mt-8 text-[14px] text-slate-500">
+        <p data-tour="reports-nomatch" className="mt-8 text-[14px] text-slate-500">
           Nothing matches “{search}”. Try a word from the question, or a report name like{' '}
           <span className="font-mono text-[12.5px]">ar-aging</span>.
         </p>
       )}
 
-      {groups.map((group) => {
+      <div data-tour="reports-groups">
+      {groups.map((group, gi) => {
         const tone = TONES[group.key]
         return (
-          <section key={group.key} className="mt-7">
+          <section key={group.key} className="mt-7" data-tour={gi === 0 ? 'reports-questions' : undefined}>
             <h2 className="text-[11px] font-bold uppercase tracking-[0.12em] text-slate-400">
               {group.title}
             </h2>
@@ -338,6 +341,7 @@ export function ReportQuestionsPage() {
               {group.questions.map((q) => (
                 <div
                   key={q.id}
+                  data-tour="reports-question-card"
                   role="button"
                   tabIndex={0}
                   onClick={() => open(q)}
@@ -401,10 +405,11 @@ export function ReportQuestionsPage() {
           </section>
         )
       })}
+      </div>
 
       {/* The full workspace still exists — every filter and grouping the
           overlay doesn't surface lives there, so it stays one click away. */}
-      <p className="mt-8 text-[12.5px] text-slate-500">
+      <p className="mt-8 text-[12.5px] text-slate-500" data-tour="reports-browse-link">
         Need the filters?{' '}
         <Link to="/accounting/reports/browse" className="font-semibold text-[#B4762A] hover:underline">
           Open the full reports workspace

@@ -1,9 +1,10 @@
-import { useEffect, useMemo, useState } from 'react'
+import { Fragment, useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useLowStock } from '@/hooks/useLowStock'
 import { useVendors } from '@/hooks/useVendors'
 import { useCreatePurchaseOrder, purchaseOrderKeys } from '@/hooks/usePurchaseOrders'
 import { createPurchaseOrderItem } from '@/lib/purchaseOrders'
+import { CART_KEYS, addAsks } from '@/lib/purchaseRequests'
 import { useQueryClient } from '@tanstack/react-query'
 import { PERM, usePermissions } from '@/hooks/usePermissions'
 import { tenantDate, useTenantTimezone } from '@/hooks/useTenantTime'
@@ -12,6 +13,8 @@ import type { LowStockItem } from '@/types/lowStock'
 import type { Vendor } from '@/types/vendor'
 import { useTheme } from '@/hooks/useTheme'
 import { EasyPageHeading } from '@/components/easy/EasyPageHeading'
+import { ReferenceCardOverlay } from '@/components/ReferenceCardOverlay'
+import { ItemFacts, ItemMore, ItemThumb, MoreToggle, useWideScreen } from '@/components/needsOrdered/LowStockItemDetails'
 
 /**
  * Standalone "Needs Ordered" report. Surfaces every catalog item whose
@@ -39,6 +42,10 @@ export function NeedsOrderedPage() {
   // Per-row state: selected? + qty (defaults to suggested_qty)
   const [selected, setSelected] = useState<Record<string, boolean>>({})
   const [qtys, setQtys] = useState<Record<string, string>>({})
+  // Rows opened to their full detail, and the reference card being read.
+  const [expanded, setExpanded] = useState<Record<string, boolean>>({})
+  const [cardId, setCardId] = useState<string | null>(null)
+  const wide = useWideScreen()
 
   useEffect(() => {
     // Seed qty defaults whenever the data refreshes — but only for rows
@@ -47,7 +54,8 @@ export function NeedsOrderedPage() {
       const next = { ...prev }
       for (const it of items) {
         if (next[it.id] === undefined) {
-          next[it.id] = String(Math.ceil(it.suggested_qty || 0))
+          // What's already on order comes off, so a ticked row doesn't order it twice.
+          next[it.id] = String(Math.max(0, Math.ceil((it.suggested_qty || 0) - (it.on_order_qty || 0))))
         }
       }
       return next
@@ -70,9 +78,54 @@ export function NeedsOrderedPage() {
   }
 
   const [creating, setCreating] = useState(false)
+  const queryClient = useQueryClient()
+  const [sending, setSending] = useState(false)
+  const [sendError, setSendError] = useState<string | null>(null)
+
+  /*
+   * Order parts is the one place to order from: the ticked items join
+   * everything else the crew asked for, and the buyer picks suppliers there.
+   */
+  async function sendToOrderParts() {
+    const picked = items.filter((it) => selected[it.id] && Number(qtys[it.id]) > 0)
+    if (picked.length === 0) return
+    setSending(true)
+    setSendError(null)
+    try {
+      await addAsks(picked.map((it) => ({ catalog_item_id: it.id, qty: Number(qtys[it.id]), for_kind: 'stock' as const, source: 'low_stock' as const })))
+      for (const key of CART_KEYS) void queryClient.invalidateQueries({ queryKey: [...key] })
+      setSelected({})
+      navigate('/order-parts')
+    } catch (err) {
+      setSendError(err instanceof Error ? err.message : 'They were not added.')
+    } finally {
+      setSending(false)
+    }
+  }
+
+  // One quantity box, shared by the table and the phone cards.
+  const qtyInput = (it: LowStockItem) => (
+    <input
+      type="number"
+      min="0"
+      step="any"
+      inputMode="decimal"
+      aria-label={`Order quantity for ${it.name}`}
+      value={qtys[it.id] ?? ''}
+      onChange={(e) =>
+        setQtys((p) => ({
+          ...p,
+          [it.id]: // Decimals allowed: things bought by the foot or gallon.
+          e.target.value.replace(/[^0-9.]/g, '').replace(/(\..*)\./g, '$1'),
+        }))
+      }
+      className="w-20 text-sm text-right px-2 py-1 border border-slate-300 rounded focus:outline-none focus:border-amber-500"
+    />
+  )
 
   return (
     <div className={easy ? 'w-full min-w-0 p-6 space-y-6' : 'max-w-6xl mx-auto p-6 space-y-6'}>
+      <div data-tour="needs-header">
       {easy ? <EasyPageHeading title="What needs ordering" description="Review low stock, choose the items and quantities you need, then create a draft purchase order. Nothing is ordered by selecting a row." /> : <div>
         <h1 className="text-3xl font-semibold text-slate-900">Needs Ordered</h1>
         <p className="text-sm text-slate-600 mt-1">
@@ -84,6 +137,7 @@ export function NeedsOrderedPage() {
         <div className="rounded-xl border border-slate-200 bg-white p-4"><p className="text-sm text-slate-500">Items at their reorder threshold</p><p className="mt-1 text-2xl font-semibold">{items.length}</p></div>
         <div className="rounded-xl border border-slate-200 bg-white p-4"><p className="text-sm text-slate-500">Selected with a positive quantity</p><p className="mt-1 text-2xl font-semibold">{selectedCount}</p></div>
       </section>}
+      </div>
 
       {lowStockQuery.isLoading && (
         <div className="bg-white border border-slate-200 rounded-xl shadow-sm p-12 text-center text-sm text-slate-500">
@@ -100,7 +154,7 @@ export function NeedsOrderedPage() {
       )}
 
       {!lowStockQuery.isLoading && !lowStockQuery.isError && items.length === 0 && (
-        <div className="bg-white border border-slate-200 rounded-xl shadow-sm p-12 text-center">
+        <div data-tour="needs-empty" className="bg-white border border-slate-200 rounded-xl shadow-sm p-12 text-center">
           <p className="text-sm text-slate-600">
             ✓ Nothing to reorder right now. Every stocked item is above its threshold.
           </p>
@@ -108,8 +162,10 @@ export function NeedsOrderedPage() {
       )}
 
       {!lowStockQuery.isLoading && !lowStockQuery.isError && items.length > 0 && (
-        <div className={`bg-white border border-slate-200 rounded-xl shadow-sm ${easy ? 'overflow-x-auto' : 'overflow-hidden'}`}>
-          <table className={`w-full text-sm ${easy ? 'min-w-[760px]' : ''}`}>
+        <div data-tour="needs-table" className="bg-white border border-slate-200 rounded-xl shadow-sm">
+          {wide ? (
+          <div className="overflow-x-auto">
+          <table className="w-full text-sm min-w-[880px]">
             <thead className="bg-slate-50 text-xs uppercase tracking-wide text-slate-500 border-b border-slate-200">
               <tr>
                 <th className="px-4 py-3 w-10">
@@ -125,21 +181,26 @@ export function NeedsOrderedPage() {
                 <th className="text-left px-4 py-3 font-medium">Supplier hint</th>
                 <th className="text-right px-4 py-3 font-medium">On hand</th>
                 <th className="text-right px-4 py-3 font-medium">Threshold</th>
+                <th className="text-right px-4 py-3 font-medium">On order</th>
                 <th className="text-right px-4 py-3 font-medium">Order qty</th>
                 <th className="text-right px-4 py-3 font-medium">Owner cost</th>
                 <th className="text-right px-4 py-3 font-medium">Line total</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
-              {items.map((it) => {
+              {items.map((it, index) => {
                 const qtyN = Number(qtys[it.id]) || 0
                 const lineTotal = (qtyN * it.owner_cost_cents) / 100
                 const checked = !!selected[it.id]
+                const open = !!expanded[it.id]
+                const tour = index === 0
                 return (
-                  <tr key={it.id} className={checked ? 'bg-amber-50/40' : ''}>
+                  <Fragment key={it.id}>
+                  <tr className={checked ? 'bg-amber-50/40' : ''}>
                     <td className="px-4 py-3 align-top">
                       <input
                         type="checkbox"
+                        aria-label={`Select ${it.name}`}
                         checked={checked}
                         onChange={(e) =>
                           setSelected((p) => ({ ...p, [it.id]: e.target.checked }))
@@ -147,53 +208,113 @@ export function NeedsOrderedPage() {
                         className="rounded border-slate-300"
                       />
                     </td>
-                    <td className="px-4 py-3">
-                      <div className="font-medium text-slate-900">{it.name}</div>
-                      {it.sku && (
-                        <div className="text-xs font-mono text-slate-500">{it.sku}</div>
-                      )}
+                    <td className="px-4 py-3 align-top">
+                      <div className="flex gap-3">
+                        <ItemThumb it={it} tour={tour} />
+                        <div className="min-w-0">
+                          <div className="font-medium text-slate-900">{it.name}</div>
+                          <ItemFacts it={it} tour={tour} />
+                          <MoreToggle open={open} tour={tour} onToggle={() => setExpanded((p) => ({ ...p, [it.id]: !p[it.id] }))} />
+                        </div>
+                      </div>
                     </td>
-                    <td className="px-4 py-3 text-xs text-slate-600">
+                    <td className="px-4 py-3 align-top text-xs text-slate-600">
                       {it.supplier_name || <span className="text-slate-400">—</span>}
                       {it.supplier_sku && (
                         <div className="font-mono text-slate-400 text-[11px]">{it.supplier_sku}</div>
                       )}
                     </td>
-                    <td className="px-4 py-3 text-right tabular-nums text-red-700 font-semibold">
+                    <td className="px-4 py-3 align-top text-right tabular-nums text-red-700 font-semibold">
                       {it.current_stock}
                     </td>
-                    <td className="px-4 py-3 text-right tabular-nums text-slate-600">
+                    <td className="px-4 py-3 align-top text-right tabular-nums text-slate-600">
                       {it.reorder_threshold}
                     </td>
-                    <td className="px-4 py-3 text-right">
-                      <input
-                        type="number"
-                        min="0"
-                        step="1"
-                        inputMode="numeric"
-                        value={qtys[it.id] ?? ''}
-                        onChange={(e) =>
-                          setQtys((p) => ({
-                            ...p,
-                            [it.id]: e.target.value.replace(/[^0-9]/g, ''),
-                          }))
-                        }
-                        className="w-20 text-sm text-right px-2 py-1 border border-slate-300 rounded focus:outline-none focus:border-amber-500"
-                      />
+                    <td className="px-4 py-3 align-top text-right tabular-nums text-slate-600" title="Still to arrive on open purchase orders, drafts included">
+                      {it.on_order_qty ? it.on_order_qty : <span className="text-slate-400">—</span>}
                     </td>
-                    <td className="px-4 py-3 text-right font-mono text-slate-700">
+                    <td className="px-4 py-3 align-top text-right">
+                      {qtyInput(it)}
+                    </td>
+                    <td className="px-4 py-3 align-top text-right font-mono text-slate-700">
                       ${(it.owner_cost_cents / 100).toFixed(2)}
                     </td>
-                    <td className="px-4 py-3 text-right font-mono text-slate-900 font-semibold">
+                    <td className="px-4 py-3 align-top text-right font-mono text-slate-900 font-semibold">
                       ${lineTotal.toFixed(2)}
                     </td>
                   </tr>
+                  {open && (
+                    <tr className={checked ? 'bg-amber-50/40' : 'bg-slate-50/60'}>
+                      <td />
+                      <td colSpan={8} className="px-4 pb-4 pt-1">
+                        <ItemMore it={it} onOpenCard={setCardId} />
+                      </td>
+                    </tr>
+                  )}
+                  </Fragment>
                 )
               })}
             </tbody>
           </table>
+          </div>
+          ) : (
+          <div>
+            <label className="flex items-center gap-2 border-b border-slate-200 bg-slate-50 px-4 py-2 text-xs font-medium uppercase tracking-wide text-slate-500">
+              <input
+                type="checkbox"
+                checked={items.length > 0 && items.every((it) => selected[it.id])}
+                onChange={(e) => toggleAll(e.target.checked)}
+                className="rounded border-slate-300"
+              />
+              Select all
+            </label>
+            <ul className="divide-y divide-slate-100">
+              {items.map((it, index) => {
+                const qtyN = Number(qtys[it.id]) || 0
+                const lineTotal = (qtyN * it.owner_cost_cents) / 100
+                const checked = !!selected[it.id]
+                const open = !!expanded[it.id]
+                const tour = index === 0
+                return (
+                  <li key={it.id} className={`px-4 py-3 ${checked ? 'bg-amber-50/40' : ''}`}>
+                    <div className="flex gap-3">
+                      <input
+                        type="checkbox"
+                        aria-label={`Select ${it.name}`}
+                        checked={checked}
+                        onChange={(e) => setSelected((p) => ({ ...p, [it.id]: e.target.checked }))}
+                        className="mt-1 rounded border-slate-300"
+                      />
+                      <ItemThumb it={it} size="lg" tour={tour} />
+                      <div className="min-w-0 flex-1">
+                        <div className="font-medium text-slate-900">{it.name}</div>
+                        <ItemFacts it={it} tour={tour} />
+                        {it.supplier_name && (
+                          <div className="mt-0.5 text-xs text-slate-500"><span className="text-slate-400">Supplier hint</span> {it.supplier_name}</div>
+                        )}
+                        <dl className="mt-2 grid grid-cols-3 gap-2 text-xs">
+                          <div><dt className="text-slate-400">On hand</dt><dd className="tabular-nums font-semibold text-red-700">{it.current_stock}</dd></div>
+                          <div><dt className="text-slate-400">Threshold</dt><dd className="tabular-nums text-slate-700">{it.reorder_threshold}</dd></div>
+                          <div><dt className="text-slate-400">On order</dt><dd className="tabular-nums text-slate-700">{it.on_order_qty ? it.on_order_qty : '—'}</dd></div>
+                        </dl>
+                        <div className="mt-2 flex flex-wrap items-center justify-between gap-2 text-xs">
+                          <label className="flex items-center gap-2 text-slate-500">Order qty {qtyInput(it)}</label>
+                          <span className="font-mono text-slate-600">${(it.owner_cost_cents / 100).toFixed(2)} each</span>
+                          <span className="font-mono font-semibold text-slate-900">${lineTotal.toFixed(2)}</span>
+                        </div>
+                        <MoreToggle open={open} tour={tour} onToggle={() => setExpanded((p) => ({ ...p, [it.id]: !p[it.id] }))} />
+                        {open && <div className="mt-2 rounded-md bg-slate-50 p-3"><ItemMore it={it} onOpenCard={setCardId} /></div>}
+                      </div>
+                    </div>
+                  </li>
+                )
+              })}
+            </ul>
+          </div>
+          )}
 
-          <div className="px-5 py-3 bg-slate-50 border-t border-slate-200 flex items-center justify-end gap-3">
+          <div data-tour="needs-create" data-selected={selectedCount > 0 ? 'yes' : 'no'} data-can-create={canCreate ? 'yes' : 'no'} className="px-5 py-3 bg-slate-50 border-t border-slate-200 flex items-center justify-end gap-3">
+            {sendError && <span role="alert" className="text-sm text-red-700">{sendError}</span>}
             <span className="text-sm text-slate-600">
               {selectedCount} selected
             </span>
@@ -201,14 +322,26 @@ export function NeedsOrderedPage() {
               type="button"
               onClick={() => setCreating(true)}
               disabled={!canCreate || selectedCount === 0}
-              className="text-sm px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white rounded-md font-medium transition-colors disabled:bg-slate-300 disabled:cursor-not-allowed"
-              title={!canCreate ? 'Admin only' : undefined}
+              className="text-sm px-3 py-2 border border-slate-300 bg-white hover:bg-slate-50 text-slate-700 rounded-md font-medium transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+              title={!canCreate ? 'You need Edit inventory to create purchase orders.' : 'One draft order to one vendor, straight away'}
             >
               Create PO from selected
+            </button>
+            <button
+              type="button"
+              data-tour="needs-to-order-parts"
+              onClick={() => void sendToOrderParts()}
+              disabled={!canCreate || selectedCount === 0 || sending}
+              className="text-sm px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white rounded-md font-medium transition-colors disabled:bg-slate-300 disabled:cursor-not-allowed"
+              title={!canCreate ? 'You need Edit inventory to order parts.' : 'Order them with everything else the crew asked for, and pick suppliers there'}
+            >
+              {sending ? 'Adding…' : 'Add to Order parts'}
             </button>
           </div>
         </div>
       )}
+
+      {cardId && <ReferenceCardOverlay cardId={cardId} onClose={() => setCardId(null)} />}
 
       {creating && (
         <CreatePoFromSelectionModal
@@ -249,6 +382,9 @@ function CreatePoFromSelectionModal({
   const queryClient = useQueryClient()
   const createPoMutation = useCreatePurchaseOrder()
   const [creatingLines, setCreatingLines] = useState(false)
+  // Set when the PO was created but a line failed, so the person can open
+  // the partial draft instead of creating a duplicate.
+  const [partialPoId, setPartialPoId] = useState<string | null>(null)
 
   const subtotalCents = items.reduce(
     (sum, it) => sum + (Number(qtys[it.id]) || 0) * it.owner_cost_cents,
@@ -277,6 +413,10 @@ function CreatePoFromSelectionModal({
       return
     }
     setError(null)
+    let createdPoId: string | null = null
+    let createdPoNumber: string | null = null
+    const added: string[] = []
+    let current: string | null = null
     try {
       setProgress('Creating PO…')
       const po = await createPoMutation.mutateAsync({
@@ -284,6 +424,8 @@ function CreatePoFromSelectionModal({
         order_date: tenantDate(tenantTimezone),
         status: 'draft',
       })
+      createdPoId = po.id
+      createdPoNumber = po.po_number ?? null
 
       // Create line items sequentially. (Most users will reorder small
       // batches — a parallel push would be faster but harder to surface
@@ -295,12 +437,14 @@ function CreatePoFromSelectionModal({
         const qty = Number(qtys[it.id]) || 0
         if (qty <= 0) continue
         setProgress(`Adding line ${i + 1} of ${items.length}…`)
+        current = it.name
         await createPurchaseOrderItem(po.id, {
           catalog_item_id: it.id,
           description: it.name,
           qty_ordered: qty,
           unit_cost_cents: it.owner_cost_cents,
         })
+        added.push(it.name)
       }
       setCreatingLines(false)
       // Invalidate the PO detail/items so the line items show up there.
@@ -311,7 +455,18 @@ function CreatePoFromSelectionModal({
     } catch (err) {
       setProgress(null)
       setCreatingLines(false)
-      setError(err instanceof ApiError ? err.message : err instanceof Error ? err.message : String(err))
+      const msg = err instanceof ApiError ? err.message : err instanceof Error ? err.message : String(err)
+      if (createdPoId) {
+        queryClient.invalidateQueries({ queryKey: purchaseOrderKeys.detail(createdPoId) })
+        setPartialPoId(createdPoId)
+        setError(
+          `Draft PO ${createdPoNumber ?? ''} was created, but "${current ?? 'a line'}" could not be added: ${msg}. ` +
+          (added.length > 0 ? `Lines already on it: ${added.join(', ')}.` : 'No lines were added yet.') +
+          ' Open the PO to finish it rather than creating another one.'
+        )
+      } else {
+        setError(msg)
+      }
     }
   }
 
@@ -323,7 +478,7 @@ function CreatePoFromSelectionModal({
         if (e.target === e.currentTarget && !isPending) onClose()
       }}
     >
-      <div className="bg-white rounded-xl shadow-xl max-w-lg w-full overflow-hidden">
+      <div data-tour="needs-create-modal" data-vendors={vendors.length > 0 ? 'yes' : 'none'} className="bg-white rounded-xl shadow-xl max-w-lg w-full overflow-hidden">
         <div className="px-6 py-4 border-b border-slate-100">
           <h2 className="text-lg font-semibold text-slate-900">Create draft PO</h2>
           <p className="text-xs text-slate-500 mt-1">
@@ -371,6 +526,15 @@ function CreatePoFromSelectionModal({
           >
             Cancel
           </button>
+          {partialPoId ? (
+            <button
+              type="button"
+              onClick={() => onCreated(partialPoId)}
+              className="text-sm px-4 py-2 rounded-md bg-amber-500 hover:bg-amber-600 text-white font-medium transition-colors"
+            >
+              Open the draft PO
+            </button>
+          ) : (
           <button
             type="button"
             onClick={handleCreate}
@@ -379,6 +543,7 @@ function CreatePoFromSelectionModal({
           >
             {isPending ? 'Creating…' : 'Create draft PO'}
           </button>
+          )}
         </div>
       </div>
     </div>

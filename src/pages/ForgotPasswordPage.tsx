@@ -59,7 +59,7 @@ export function ForgotPasswordPage() {
           </Link>
         </div>
       ) : (
-        <form onSubmit={onSubmit} className="space-y-5">
+        <form data-tour="forgot-form" onSubmit={onSubmit} className="space-y-5">
           <div>
             <h2 className="text-2xl font-bold text-navy-800">Forgot your password?</h2>
             <p className="text-sm text-navy-500 mt-1">

@@ -13,6 +13,8 @@ import { paymentMethodLabel } from '@/lib/paymentMethod'
 import { InvoicePreviewOverlay } from '@/components/InvoicePreviewOverlay'
 import { RecordPaymentModal } from '@/components/invoices/RecordPaymentModal'
 import { TerminalChargeButton } from '@/components/invoices/TerminalChargeButton'
+import { usePermissions } from '@/hooks/usePermissions'
+import { useRecordShortcuts } from '@/hooks/useShortcuts'
 
 /**
  * Invoice detail. View-only for line items + notes (those are edited via
@@ -55,17 +57,22 @@ export function InvoiceDetail({
   /** Inside the job page's overlay: no page gutters, no "source job" link, delete closes the overlay. */
   embedded?: boolean
   /** Opt-in presentation, including invoices opened from a job. */
-  presentation?: 'standard' | 'easy'
+  presentation?: 'standard' | 'easy' | 'focus'
   onDeleted?: () => void
   /** Anything that changed the invoice (sent, paid, cancelled) — the host refetches its own view. */
   onChanged?: () => void
 }) {
   const id = invoiceId
   const easy = presentation === 'easy'
+  const focus = presentation === 'focus'
   const navigate = useNavigate()
   const qc = useQueryClient()
   const [showMarkPaid, setShowMarkPaid] = useState(false)
   const [showPreview, setShowPreview] = useState(false)
+  const [focusTab, setFocusTab] = useState<'overview' | 'charges' | 'payments' | 'delivery' | 'history'>('overview')
+  // Viewing needs invoices.view; anything that changes the invoice needs invoices.edit.
+  const { has } = usePermissions()
+  const canEdit = has('invoices.edit')
 
   // Deep-link from the Invoices list next-step chip (?action=payment) →
   // auto-open the record-payment modal (it still confirms amount/method).
@@ -73,11 +80,11 @@ export function InvoiceDetail({
   const [searchParams, setSearchParams] = useSearchParams()
   useEffect(() => {
     if (!embedded && searchParams.get('action') === 'payment') {
-      setShowMarkPaid(true)
+      if (canEdit) setShowMarkPaid(true)
       searchParams.delete('action')
       setSearchParams(searchParams, { replace: true })
     }
-  }, [embedded, searchParams, setSearchParams])
+  }, [embedded, searchParams, setSearchParams, canEdit])
 
   const changed = () => {
     qc.invalidateQueries({ queryKey: ['invoice', id] })
@@ -113,6 +120,13 @@ export function InvoiceDetail({
 
   const gutters = embedded ? '' : 'px-4 py-4 sm:px-6 sm:py-6 2xl:px-8'
 
+  // Keyboard shortcuts on the invoice page: an invoice has no thread of its
+  // own, so M opens its customer's messages. (Nothing here is edited in place, so no E.)
+  const invoiceCustomerId = q.data?.customer?.id ?? q.data?.customer_id
+  useRecordShortcuts({
+    messages: invoiceCustomerId && has('customers.view') ? () => navigate(`/customers/${invoiceCustomerId}?tab=messages`) : undefined,
+  }, !embedded)
+
   if (q.isLoading) {
     return (
       <div className={`mx-auto w-full max-w-none text-slate-500 ${gutters}`}>
@@ -144,10 +158,110 @@ export function InvoiceDetail({
   const isCancelled = inv.status === 'cancelled'
 
   const anyMutation = send.isPending || cancel.isPending || destroy.isPending
+  const actionsCard = (
+    <Card title="Actions" tour="invoice-actions">
+      {(send.isError || cancel.isError || destroy.isError) && (
+        <div className="text-xs bg-red-50 border border-red-200 text-red-800 rounded px-2 py-1.5 mb-2">
+          {(send.error || cancel.error || (destroy.error as Error))?.message ?? 'Action failed.'}
+        </div>
+      )}
+
+      <div className="space-y-2">
+        <button
+          type="button"
+          data-tour="invoice-print"
+          onClick={() => setShowPreview(true)}
+          className="w-full text-sm px-3 py-2 rounded border border-slate-300 hover:bg-slate-100 text-slate-700 font-medium"
+        >
+          View / Print invoice
+        </button>
+
+        {canEdit && isDraft && (
+          <div data-tour="invoice-mark-sent" className="space-y-2">
+            <button
+              type="button"
+              disabled={anyMutation}
+              onClick={() => send.mutate()}
+              className="w-full text-sm px-3 py-2 rounded bg-amber-500 hover:bg-amber-600 text-white font-semibold disabled:opacity-50"
+            >
+              {send.isPending ? 'Marking…' : 'Mark as sent (no email)'}
+            </button>
+            <p className="text-[11px] leading-snug text-slate-500">
+              This only changes the status. To send it to the customer, open View / Print invoice and use
+              Email or Text.
+            </p>
+          </div>
+        )}
+
+        {canEdit && (isDraft || isSent) && (
+          <button
+            type="button"
+            data-tour="invoice-mark-paid"
+            disabled={anyMutation}
+            onClick={() => setShowMarkPaid(true)}
+            className="w-full text-sm px-3 py-2 rounded bg-emerald-600 hover:bg-emerald-700 text-white font-semibold disabled:opacity-50"
+          >
+            Mark paid…
+          </button>
+        )}
+
+        {/* Push the balance to a GoDaddy Smart Terminal. Only renders
+            when the tenant has a terminal ticked in Card payments. */}
+        {canEdit && isSent && (
+          <div data-tour="invoice-terminal">
+            <TerminalChargeButton
+              invoice={inv}
+              disabled={anyMutation}
+              onSettled={changed}
+            />
+          </div>
+        )}
+
+        {canEdit && (isDraft || isSent) && (
+          <button
+            type="button"
+            data-tour="invoice-cancel"
+            disabled={anyMutation}
+            onClick={() => {
+              if (confirm(`Cancel invoice ${inv.display_number}? This cannot be undone.`)) {
+                cancel.mutate()
+              }
+            }}
+            className="w-full text-sm px-3 py-2 rounded border border-slate-300 hover:bg-slate-100 text-slate-700 disabled:opacity-50"
+          >
+            {cancel.isPending ? 'Cancelling…' : 'Cancel invoice'}
+          </button>
+        )}
+
+        {canEdit && isDraft && (
+          <button
+            type="button"
+            data-tour="invoice-delete"
+            disabled={anyMutation}
+            onClick={() => destroy.mutate()}
+            className="w-full text-sm px-3 py-2 rounded text-rose-700 hover:bg-rose-50 disabled:opacity-50"
+          >
+            {destroy.isPending ? 'Deleting…' : 'Delete draft'}
+          </button>
+        )}
+
+        {(isPaid || isCancelled) && (
+          <p className="text-xs text-slate-500 italic">
+            No actions — this invoice is {inv.status}.
+          </p>
+        )}
+        {!canEdit && !isPaid && !isCancelled && (
+          <p className="text-xs text-slate-500 italic">
+            Your role can view this invoice but can&apos;t change it.
+          </p>
+        )}
+      </div>
+    </Card>
+  )
 
   return (
-    <div className={`mx-auto w-full max-w-none space-y-4 sm:space-y-6 ${gutters}`}>
-      <div className={easy ? 'flex flex-wrap items-baseline gap-3 rounded-2xl bg-emerald-950 p-5 sm:p-7' : 'flex items-baseline gap-2 sm:gap-3 flex-wrap'}>
+    <div data-focus-record="invoice" data-focus-invoice-tab={focus ? focusTab : undefined} className={`mx-auto w-full max-w-none space-y-4 sm:space-y-6 ${gutters}`}>
+      <div data-tour="invoice-header" data-status={inv.status} data-overdue={inv.is_overdue && !isPaid && !isCancelled ? 'yes' : 'no'} data-transfer={inv.bank_transfer_promised_at && !isPaid && !isCancelled ? 'promised' : 'none'} className={easy ? 'flex flex-wrap items-baseline gap-3 rounded-2xl bg-emerald-950 p-5 sm:p-7' : 'flex items-baseline gap-2 sm:gap-3 flex-wrap'}>
         {easy && <p className="w-full text-xs font-semibold uppercase tracking-widest text-emerald-200">Customer billing</p>}
         <span className={`text-sm font-mono ${easy ? 'text-emerald-200' : 'text-slate-500'}`}>#{inv.display_number}</span>
         <h1 className={easy ? 'break-words text-2xl font-semibold tracking-tight text-white sm:text-3xl' : 'text-xl sm:text-2xl font-bold text-navy-900'}>
@@ -173,7 +287,7 @@ export function InvoiceDetail({
         )}
       </div>
 
-      {easy && <section aria-label="Invoice summary" className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+      {(easy || focus) && <section aria-label="Invoice summary" data-tour="invoice-glance" className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
         <h2 className="mb-3 text-sm font-semibold text-slate-700">At a glance</h2>
         <dl className="grid grid-cols-1 gap-4 sm:grid-cols-3">
           <div><dt className="text-sm text-slate-500">Invoice total</dt><dd className="mt-1 text-2xl font-bold tabular-nums text-slate-900">{formatCurrency(m.total_cents)}</dd></div>
@@ -183,10 +297,18 @@ export function InvoiceDetail({
         <p className="mt-4 border-t border-slate-100 pt-3 text-sm text-slate-600">{isCancelled ? 'This invoice is cancelled. Review its details and existing records below.' : isPaid ? 'Payment is recorded. Review the invoice and payment details below.' : 'Review the customer, due date and line items before using the invoice actions below. Nothing is sent or charged by opening this page.'}</p>
       </section>}
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+      {focus && <nav data-tour="invoice-sections" aria-label="Invoice sections" className="flex flex-wrap gap-2 rounded-xl border border-slate-200 bg-white p-1.5">
+        {([['overview', 'Overview'], ['charges', `Charges (${inv.line_items?.length ?? 0})`], ['payments', 'Payments'], ['delivery', 'Delivery & files'], ['history', 'History']] as const).map(([tab, label]) => (
+          <button key={tab} type="button" data-tour={`invoice-section-${tab}`} aria-pressed={focusTab === tab} onClick={() => setFocusTab(tab)} className={`rounded-lg px-4 py-2 text-sm font-semibold transition-colors ${focusTab === tab ? 'bg-slate-900 text-white' : 'text-slate-600 hover:bg-slate-100'}`}>
+            {label}
+          </button>
+        ))}
+      </nav>}
+
+      <div className={`grid grid-cols-1 gap-6 ${focus ? '' : 'md:grid-cols-3'}`}>
         {/* Main column: line items + totals */}
-        <div className="md:col-span-2 space-y-6">
-          <Card title="Line items">
+        <div className={`${focus && focusTab !== 'charges' ? 'hidden' : ''} ${focus ? '' : 'md:col-span-2'} space-y-6`}>
+          <Card title="Line items" tour="invoice-lines">
             {(inv.line_items ?? []).length === 0 ? (
               <p className="text-sm text-slate-500 italic py-2">No line items.</p>
             ) : (
@@ -271,7 +393,7 @@ export function InvoiceDetail({
 
             {/* Totals strip — full-width on mobile (was max-w-xs/ml-auto
                 which made it sit awkwardly in a narrow column). */}
-            <div className="mt-4 sm:ml-auto sm:max-w-xs space-y-1 text-sm">
+            <div data-tour="invoice-totals" className="mt-4 sm:ml-auto sm:max-w-xs space-y-1 text-sm">
               <Row label="Subtotal" value={formatCurrency(m.subtotal_cents)} />
               <Row label="Tax" value={formatCurrency(m.tax_cents)} />
               {(m.tax_exempt_adjustment_cents ?? 0) > 0 && (
@@ -308,8 +430,8 @@ export function InvoiceDetail({
             </div>
           </Card>
 
-          {(inv.customer_notes || inv.terms || inv.internal_notes) && (
-            <Card title="Notes & terms">
+          {!focus && (inv.customer_notes || inv.terms || inv.internal_notes) && (
+            <Card title="Notes & terms" tour="invoice-notes">
               {inv.customer_notes && (
                 <Field label="Customer-visible notes">
                   <p className="text-sm whitespace-pre-wrap">{inv.customer_notes}</p>
@@ -332,8 +454,9 @@ export function InvoiceDetail({
         </div>
 
         {/* Side column: meta + actions */}
-        <div className="space-y-6">
-          <Card title="Bill to">
+        <div className={`${focus && focusTab !== 'overview' ? 'hidden' : ''} ${focus ? 'grid grid-cols-1 items-start gap-3 lg:grid-cols-2' : 'space-y-6'}`}>
+          {focus && actionsCard}
+          <Card title="Bill to" tour="invoice-bill-to">
             {inv.customer ? (
               <Link
                 to={`/customers/${inv.customer.id}`}
@@ -345,7 +468,7 @@ export function InvoiceDetail({
               <p className="text-sm text-slate-500">—</p>
             )}
             {inv.work_order && !embedded && (
-              <div className="mt-3 pt-3 border-t border-slate-200">
+              <div data-tour="invoice-source-job" className="mt-3 pt-3 border-t border-slate-200">
                 <div className="text-[11px] font-semibold uppercase tracking-wider text-slate-500 mb-1">
                   Source job
                 </div>
@@ -353,13 +476,21 @@ export function InvoiceDetail({
                   to={`/jobs/${inv.work_order.id}`}
                   className="text-sm text-amber-700 hover:underline font-mono"
                 >
-                  #{inv.work_order.display_number ?? inv.work_order.id} {inv.work_order.title}
+                  {inv.work_order.display_number ?? `#${inv.work_order.id}`} {inv.work_order.title}
                 </Link>
+                {(inv.work_order.their_work_order_number || inv.work_order.their_po_number) && (
+                  <div className="mt-1 text-xs text-slate-600">
+                    {[
+                      inv.work_order.their_work_order_number ? `Their WO # ${inv.work_order.their_work_order_number}` : null,
+                      inv.work_order.their_po_number ? `PO # ${inv.work_order.their_po_number}` : null,
+                    ].filter(Boolean).join(' · ')}
+                  </div>
+                )}
               </div>
             )}
           </Card>
 
-          <Card title="Dates">
+          <Card title="Dates" tour="invoice-dates">
             <Row label="Issued" value={formatDate(inv.issued_at)} />
             <Row label="Due" value={formatDate(inv.due_at)} />
             {inv.sent_at && <Row label="Sent" value={formatDate(inv.sent_at)} />}
@@ -369,8 +500,8 @@ export function InvoiceDetail({
             )}
           </Card>
 
-          {isPaid && (inv.payment_method || inv.payment_reference) && (
-            <Card title="Payment">
+          {!focus && isPaid && (inv.payment_method || inv.payment_reference) && (
+            <Card title="Payment" tour="invoice-payment">
               {inv.payment_method && <Row label="Method" value={paymentMethodLabel(inv.payment_method)} />}
               {inv.payment_reference && (
                 <Row label="Reference" value={inv.payment_reference} />
@@ -378,91 +509,64 @@ export function InvoiceDetail({
             </Card>
           )}
 
-          <Card title="Actions">
-            {(send.isError || cancel.isError || destroy.isError) && (
-              <div className="text-xs bg-red-50 border border-red-200 text-red-800 rounded px-2 py-1.5 mb-2">
-                {(send.error || cancel.error || (destroy.error as Error))?.message ?? 'Action failed.'}
-              </div>
-            )}
-
-            <div className="space-y-2">
-              <button
-                type="button"
-                onClick={() => setShowPreview(true)}
-                className="w-full text-sm px-3 py-2 rounded border border-slate-300 hover:bg-slate-100 text-slate-700 font-medium"
-              >
-                View / Print invoice
-              </button>
-
-              {isDraft && (
-                <button
-                  type="button"
-                  disabled={anyMutation}
-                  onClick={() => send.mutate()}
-                  className="w-full text-sm px-3 py-2 rounded bg-amber-500 hover:bg-amber-600 text-white font-semibold disabled:opacity-50"
-                >
-                  {send.isPending ? 'Sending…' : 'Mark as sent'}
-                </button>
-              )}
-
-              {(isDraft || isSent) && (
-                <button
-                  type="button"
-                  disabled={anyMutation}
-                  onClick={() => setShowMarkPaid(true)}
-                  className="w-full text-sm px-3 py-2 rounded bg-emerald-600 hover:bg-emerald-700 text-white font-semibold disabled:opacity-50"
-                >
-                  Mark paid…
-                </button>
-              )}
-
-              {/* Push the balance to a GoDaddy Smart Terminal. Only renders
-                  when the tenant has a terminal ticked in Card payments. */}
-              {isSent && (
-                <TerminalChargeButton
-                  invoice={inv}
-                  disabled={anyMutation}
-                  onSettled={changed}
-                />
-              )}
-
-              {(isDraft || isSent) && (
-                <button
-                  type="button"
-                  disabled={anyMutation}
-                  onClick={() => {
-                    if (confirm(`Cancel invoice ${inv.display_number}? This cannot be undone.`)) {
-                      cancel.mutate()
-                    }
-                  }}
-                  className="w-full text-sm px-3 py-2 rounded border border-slate-300 hover:bg-slate-100 text-slate-700 disabled:opacity-50"
-                >
-                  {cancel.isPending ? 'Cancelling…' : 'Cancel invoice'}
-                </button>
-              )}
-
-              {isDraft && (
-                <button
-                  type="button"
-                  disabled={anyMutation}
-                  onClick={() => destroy.mutate()}
-                  className="w-full text-sm px-3 py-2 rounded text-rose-700 hover:bg-rose-50 disabled:opacity-50"
-                >
-                  {destroy.isPending ? 'Deleting…' : 'Delete draft'}
-                </button>
-              )}
-
-              {(isPaid || isCancelled) && (
-                <p className="text-xs text-slate-500 italic">
-                  No actions — this invoice is {inv.status}.
-                </p>
-              )}
-            </div>
-          </Card>
+          {!focus && actionsCard}
         </div>
       </div>
 
-      {showMarkPaid && (
+      {focus && focusTab === 'payments' && <section data-tour="invoice-payment-workspace" className="grid grid-cols-1 items-start gap-3 lg:grid-cols-2">
+        <Card title="Payment position" tour="invoice-payment-position">
+          <Row label="Invoice total" value={formatCurrency(m.total_cents)} />
+          <Row label="Payments recorded" value={formatCurrency(m.amount_paid_cents)} />
+          <Row label="Balance due" value={<strong>{isCancelled ? 'Cancelled' : formatCurrency(m.balance_due_cents)}</strong>} divider />
+          {inv.paid_at && <Row label="Paid on" value={formatDate(inv.paid_at)} />}
+        </Card>
+        <Card title="Recorded payment" tour="invoice-payment">
+          {(inv.receipts ?? []).map((r, i) => (
+            <Row
+              key={r.receipt_number ?? i}
+              label={`${r.receipt_number ?? 'Payment'}${r.received_at ? ` · ${formatDate(r.received_at)}` : ''}${r.payment_method ? ` · ${paymentMethodLabel(r.payment_method)}` : ''}`}
+              value={formatCurrency(r.amount_cents)}
+            />
+          ))}
+          {(inv.receipts ?? []).length === 0 && inv.payment_method && <Row label="Method" value={paymentMethodLabel(inv.payment_method)} />}
+          {inv.payment_reference && <Row label="Reference" value={inv.payment_reference} />}
+          {(inv.receipts ?? []).length === 0 && !inv.payment_method && !inv.payment_reference && <p className="text-sm text-slate-600">No payment method or reference is recorded on this invoice.</p>}
+          {canEdit && (isDraft || isSent) && <button type="button" data-tour="invoice-payment-record" disabled={anyMutation} onClick={() => setShowMarkPaid(true)} className="mt-4 rounded-lg bg-emerald-700 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-800 disabled:opacity-50">Record payment…</button>}
+          {canEdit && isSent && <div className="mt-3"><TerminalChargeButton invoice={inv} disabled={anyMutation} onSettled={changed} /></div>}
+        </Card>
+      </section>}
+
+      {focus && focusTab === 'delivery' && <section data-tour="invoice-delivery-workspace" className="grid grid-cols-1 items-start gap-3 lg:grid-cols-2">
+        <Card title="Customer copy" tour="invoice-delivery-preview">
+          <p className="mb-3 text-sm text-slate-600">Preview the invoice before printing, emailing, or texting it to the customer.</p>
+          <button type="button" data-tour="invoice-delivery-print" onClick={() => setShowPreview(true)} className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-800 hover:bg-slate-50">View / Print invoice</button>
+          {inv.sent_at && <p className="mt-3 text-sm text-slate-600">Marked sent {formatDate(inv.sent_at)}.</p>}
+          {inv.work_order && <p className="mt-3 text-sm"><Link to={`/jobs/${inv.work_order.id}`} className="font-semibold text-amber-700 hover:underline">Open source job and files →</Link></p>}
+        </Card>
+        <Card title="Notes & terms" tour="invoice-notes">
+          {inv.customer_notes && <Field label="Customer-visible notes"><p className="text-sm whitespace-pre-wrap">{inv.customer_notes}</p></Field>}
+          {inv.terms && <Field label="Terms"><p className="text-sm whitespace-pre-wrap">{inv.terms}</p></Field>}
+          {inv.internal_notes && <Field label="Internal (staff only)"><p className="text-sm whitespace-pre-wrap text-slate-600">{inv.internal_notes}</p></Field>}
+          {!inv.customer_notes && !inv.terms && !inv.internal_notes && <p className="text-sm text-slate-600">No notes or terms are recorded on this invoice.</p>}
+        </Card>
+      </section>}
+
+      {focus && focusTab === 'history' && <section data-tour="invoice-history-workspace" className="grid grid-cols-1 items-start gap-3 lg:grid-cols-2">
+        <Card title="Invoice milestones" tour="invoice-history">
+          <Row label="Issued" value={formatDate(inv.issued_at)} />
+          <Row label="Due" value={formatDate(inv.due_at)} />
+          {inv.sent_at && <Row label="Sent" value={formatDate(inv.sent_at)} />}
+          {inv.paid_at && <Row label="Paid" value={formatDate(inv.paid_at)} />}
+          {inv.cancelled_at && <Row label="Cancelled" value={formatDate(inv.cancelled_at)} />}
+        </Card>
+        <Card title="Related records" tour="invoice-related-records">
+          {inv.customer && <p className="mb-3 text-sm"><span className="mr-2 text-slate-500">Customer</span><Link to={`/customers/${inv.customer.id}`} className="font-semibold text-amber-700 hover:underline">{inv.customer.display_name}</Link></p>}
+          {inv.work_order && !embedded && <p className="text-sm"><span className="mr-2 text-slate-500">Source job</span><Link to={`/jobs/${inv.work_order.id}`} className="font-semibold text-amber-700 hover:underline">{inv.work_order.display_number ?? `#${inv.work_order.id}`} {inv.work_order.title}</Link></p>}
+          {!inv.customer && !inv.work_order && <p className="text-sm text-slate-600">No related records are available here.</p>}
+        </Card>
+      </section>}
+
+      {showMarkPaid && canEdit && (
         <RecordPaymentModal
           invoice={inv}
           onClose={() => setShowMarkPaid(false)}
@@ -474,15 +578,15 @@ export function InvoiceDetail({
       )}
 
       {showPreview && (
-        <InvoicePreviewOverlay invoice={inv} onClose={() => setShowPreview(false)} />
+        <InvoicePreviewOverlay invoice={inv} onClose={() => setShowPreview(false)} canTakePayment={canEdit} />
       )}
     </div>
   )
 }
 
-function Card({ title, children }: { title: string; children: React.ReactNode }) {
+function Card({ title, children, tour }: { title: string; children: React.ReactNode; tour?: string }) {
   return (
-    <section className="bg-white border border-slate-200 rounded-xl shadow-sm p-5">
+    <section data-tour={tour} className="bg-white border border-slate-200 rounded-xl shadow-sm p-5">
       <h2 className="text-xs font-semibold text-slate-600 uppercase tracking-wider mb-3">
         {title}
       </h2>

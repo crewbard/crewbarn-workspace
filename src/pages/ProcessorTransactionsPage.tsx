@@ -31,6 +31,8 @@ interface Tx {
   card_brand: string | null
   card_last4: string | null
   source_device: string | null
+  /** The tech the office mapped that phone or terminal to. */
+  device_tech_account_id: string | null
   occurred_at: string | null
   match_state: State
   payment_id: string | null
@@ -39,6 +41,13 @@ interface Tx {
   ignored_at: string | null
   ignored_reason: string | null
   is_captured_sale: boolean
+}
+
+interface StaffRow {
+  id: string
+  email: string
+  first_name: string | null
+  last_name: string | null
 }
 
 interface ListResponse {
@@ -90,7 +99,7 @@ export function ProcessorTransactionsPage() {
   return (
     <div className={easy ? 'w-full min-w-0 px-3 py-4 sm:px-6 sm:py-6' : 'max-w-6xl mx-auto px-6 py-8'}>
       <Link to="/accounting" className="text-sm font-medium text-amber-700 hover:underline">← Accounting</Link>
-<div data-easy-accounting-header={easy || undefined} className={easy ? 'flex min-w-0 w-full flex-col items-stretch gap-4' : 'mt-2 flex flex-wrap items-start justify-between gap-4'}>
+<div data-tour="processor-header" data-easy-accounting-header={easy || undefined} className={easy ? 'flex min-w-0 w-full flex-col items-stretch gap-4' : 'mt-2 flex flex-wrap items-start justify-between gap-4'}>
         <div className={easy ? 'min-w-0 w-full' : undefined}>
           {easy ? <EasyPageHeading title="Card transactions" description="Review unmatched processor transactions, then use the existing matching controls to connect them to your records." /> : <h1 className="text-2xl font-bold text-navy-900">Card processor</h1>}
           <p className="mt-1 max-w-2xl text-sm text-slate-600">
@@ -98,7 +107,7 @@ export function ProcessorTransactionsPage() {
             GoDaddy without CrewBarn seeing it — attach it to an invoice, or say it isn't yours.
           </p>
         </div>
-        <div className="text-right text-xs text-slate-500">
+        <div className="text-right text-xs text-slate-500" data-tour="processor-sync" data-connected={list.isLoading ? 'checking' : d?.connected ? 'yes' : 'no'}>
           <button
             type="button"
             onClick={() => sync.mutate()}
@@ -116,13 +125,14 @@ export function ProcessorTransactionsPage() {
       )}
 
       {/* State strip — the counts are the filter */}
-      <div className="mt-6 flex flex-wrap gap-2">
+      <div data-tour="processor-states" className="mt-6 flex flex-wrap gap-2">
         {(['unmatched', 'matched', 'reversal', 'ignored'] as State[]).map((s) => (
           <button
             key={s}
             type="button"
             onClick={() => { setState(s); setOpen(null) }}
             aria-pressed={state === s}
+            data-tour={`processor-state-${s}`}
             className={`rounded-full border px-3 py-1.5 text-xs font-semibold ${state === s ? 'border-slate-900 bg-slate-900 text-white' : 'border-slate-300 bg-white text-slate-700 hover:bg-slate-50'}`}
           >
             {STATE_LABEL[s]} · {list.isError ? 'Unavailable' : list.isLoading ? '…' : counts?.[s]?.n ?? 0}
@@ -138,11 +148,11 @@ export function ProcessorTransactionsPage() {
           Card transactions could not be loaded. <button type="button" onClick={() => void list.refetch()} className="ml-2 underline">Retry</button>
         </div>
       ) : !d || d.data.length === 0 ? (
-        <div className="mt-6 rounded-xl border-2 border-dashed border-slate-200 p-10 text-center text-sm text-slate-500">
+        <div data-tour="processor-empty" data-state={state} className="mt-6 rounded-xl border-2 border-dashed border-slate-200 p-10 text-center text-sm text-slate-500">
           {state === 'unmatched' ? 'Nothing waiting. Every GoDaddy transaction is accounted for.' : `No ${STATE_LABEL[state].toLowerCase()} transactions.`}
         </div>
       ) : (
-        <div className="mt-4 overflow-x-auto rounded-xl border border-slate-200 bg-white">
+        <div data-tour="processor-table" className="mt-4 overflow-x-auto rounded-xl border border-slate-200 bg-white">
           <table className="w-full text-sm">
             <thead className="bg-slate-50 text-left text-[11px] font-bold uppercase tracking-wide text-slate-500">
               <tr>
@@ -182,18 +192,21 @@ function Row({ t, state, open, onToggle, onChanged, onError }: { t: Tx; state: S
         </td>
         <td className="max-w-[16rem] truncate px-4 py-2.5 text-xs text-slate-500">
           {state === 'matched' && t.payment ? (
-            <Link to="/accounting/cash-drawer" className="text-amber-700 hover:underline">
+            <Link to="/accounting/cash-drawer/classic" className="text-amber-700 hover:underline">
               {t.payment.method} · {t.payment.refunded_at ? 'refunded' : t.payment.status}
             </Link>
           ) : state === 'ignored' ? (t.ignored_reason ?? '—') : (t.source_device ?? '—')}
         </td>
         <td className="whitespace-nowrap px-4 py-2.5 text-right">
           {state === 'unmatched' && t.is_captured_sale && (
-            <button type="button" onClick={onToggle} className="rounded-md border border-slate-300 bg-white px-2.5 py-1 text-xs font-semibold text-slate-700 hover:border-amber-300 hover:bg-amber-50">
+            <button type="button" data-tour="processor-match-open" onClick={onToggle} className="rounded-md border border-slate-300 bg-white px-2.5 py-1 text-xs font-semibold text-slate-700 hover:border-amber-300 hover:bg-amber-50">
               {open ? 'Close' : 'Match…'}
             </button>
           )}
           {state === 'ignored' && <UnignoreButton id={t.id} onChanged={onChanged} onError={onError} />}
+          {state === 'matched' && t.payment && !t.payment.refunded_at && UNLINKABLE.includes(t.payment.method) && (
+            <UnlinkButton paymentId={t.payment.id} onChanged={onChanged} onError={onError} />
+          )}
         </td>
       </tr>
       {open && (
@@ -218,12 +231,23 @@ function MatchPanel({ t, onChanged, onError }: { t: Tx; onChanged: () => void; o
     queryFn: () => apiRequest<{ data: Array<{ id: string; invoice_number: string; customer?: { display_name?: string }; money: { balance_due_cents: number } }> }>(`/v1/invoices?balance=open&q=${encodeURIComponent(search)}&per_page=8`),
     enabled: search.trim().length >= 2,
   })
-  const [overflow, setOverflow] = useState<'credit' | 'tip'>('credit')
+  // GoDaddy says what the customer tipped: the extra is that tip, for a tech.
+  const [overflow, setOverflow] = useState<'credit' | 'tip'>(t.tip_cents > 0 ? 'tip' : 'credit')
+  const [tipTechId, setTipTechId] = useState(t.device_tech_account_id ?? '')
+  const staff = useQuery({
+    queryKey: ['tenant-accounts'],
+    queryFn: () => apiRequest<{ data: StaffRow[] }>('/v1/tenant-accounts'),
+    enabled: t.tip_cents > 0,
+  })
   const [reason, setReason] = useState('')
+  const tipToTech = overflow === 'tip' && t.tip_cents > 0
 
   const match = useMutation({
     mutationFn: (body: { invoice_id?: string; customer_id?: string }) =>
-      apiRequest(`/v1/processor-transactions/${t.id}/match`, { method: 'POST', body: { ...body, overflow } }),
+      apiRequest(`/v1/processor-transactions/${t.id}/match`, {
+        method: 'POST',
+        body: { ...body, overflow, tip_tech_account_id: tipToTech ? tipTechId || null : null },
+      }),
     onSuccess: onChanged,
     onError: (e: Error) => onError(e.message),
   })
@@ -243,7 +267,7 @@ function MatchPanel({ t, onChanged, onError }: { t: Tx; onChanged: () => void; o
   const rows = search.trim().length >= 2 ? candidates : (sugg.data?.data ?? [])
 
   return (
-    <div className="grid gap-4 md:grid-cols-[1fr_16rem]">
+    <div data-tour="processor-match" className="grid gap-4 md:grid-cols-[1fr_16rem]">
       <div>
         <div className="text-xs font-bold uppercase tracking-wide text-slate-500">Attach {money(t.amount_cents)} to</div>
         <input
@@ -254,7 +278,7 @@ function MatchPanel({ t, onChanged, onError }: { t: Tx; onChanged: () => void; o
         />
         <ul className="mt-2 divide-y divide-slate-100 rounded-md border border-slate-200 bg-white">
           {rows.length === 0 ? (
-            <li className="px-3 py-2 text-xs text-slate-500">{sugg.isLoading || found.isLoading ? 'Looking…' : 'No open invoices match. Search, or put it on a customer account.'}</li>
+            <li className="px-3 py-2 text-xs text-slate-500">{sugg.isLoading || found.isLoading ? 'Looking…' : 'No open invoices match. Search by invoice # or customer name, or ignore it if it isn\'t yours.'}</li>
           ) : rows.map((s) => {
             const over = t.amount_cents - s.balance_due_cents
             return (
@@ -268,7 +292,16 @@ function MatchPanel({ t, onChanged, onError }: { t: Tx; onChanged: () => void; o
                 <button
                   type="button"
                   disabled={match.isPending}
-                  onClick={() => match.mutate({ invoice_id: s.invoice_id })}
+                  onClick={() => {
+                    const over = t.amount_cents - s.balance_due_cents
+                    if (over > 0 && tipToTech && !tipTechId) {
+                      onError('Pick which tech earned the tip.')
+                      return
+                    }
+                    const extra = over > 0 ? ` The extra ${money(over)} is recorded as ${overflow === 'tip' ? 'a tip' : 'customer credit'}.` : ''
+                    if (!window.confirm(`Record this ${money(t.amount_cents)} card payment on invoice #${s.invoice_number}${s.customer_name ? ` (${s.customer_name})` : ''}?${extra}`)) return
+                    match.mutate({ invoice_id: s.invoice_id })
+                  }}
                   className="shrink-0 rounded-md bg-emerald-600 px-2.5 py-1 text-xs font-semibold text-white hover:bg-emerald-700 disabled:opacity-50"
                 >
                   Match
@@ -284,6 +317,19 @@ function MatchPanel({ t, onChanged, onError }: { t: Tx; onChanged: () => void; o
             <option value="tip">a tip</option>
           </select>
         </label>
+        {tipToTech && (
+          <label className="mt-2 flex items-center gap-2 text-xs text-slate-600">
+            The {money(t.tip_cents)} tip goes to
+            <select value={tipTechId} onChange={(e) => setTipTechId(e.target.value)} className="rounded border border-slate-300 bg-white px-1.5 py-0.5 text-xs">
+              <option value="">Pick the tech…</option>
+              {(staff.data?.data ?? []).map((a) => (
+                <option key={a.id} value={a.id}>
+                  {[a.first_name, a.last_name].filter(Boolean).join(' ') || a.email}
+                </option>
+              ))}
+            </select>
+          </label>
+        )}
       </div>
       <div className="space-y-2 border-l border-slate-200 pl-4">
         <div className="text-xs font-bold uppercase tracking-wide text-slate-500">Or</div>
@@ -296,7 +342,10 @@ function MatchPanel({ t, onChanged, onError }: { t: Tx; onChanged: () => void; o
         <button
           type="button"
           disabled={ignore.isPending}
-          onClick={() => ignore.mutate()}
+          onClick={() => {
+            if (!window.confirm(`Ignore this ${money(t.amount_cents)} card transaction? It moves to Ignored and can be brought back.`)) return
+            ignore.mutate()
+          }}
           className="w-full rounded-md border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50"
         >
           Ignore this transaction
@@ -304,6 +353,34 @@ function MatchPanel({ t, onChanged, onError }: { t: Tx; onChanged: () => void; o
         <p className="text-[11px] text-slate-400">Ignored rows stay listed under Ignored and can be brought back.</p>
       </div>
     </div>
+  )
+}
+
+/** Payments recorded against a sale (not ones CrewBarn charged itself): a wrong link can come off. */
+const UNLINKABLE = ['godaddy', 'card_terminal', 'card_manual']
+
+/**
+ * An admin's correction (cash-flow managers; the server checks). The payment
+ * stays, to void or to link the right sale to; the sale goes back to Needs
+ * matching.
+ */
+function UnlinkButton({ paymentId, onChanged, onError }: { paymentId: string; onChanged: () => void; onError: (m: string) => void }) {
+  const un = useMutation({
+    mutationFn: () => apiRequest(`/v1/payments/${encodeURIComponent(paymentId)}/godaddy-unlink`, { method: 'POST' }),
+    onSuccess: onChanged,
+    onError: (e: Error) => onError(e.message),
+  })
+  return (
+    <button
+      type="button"
+      onClick={() => {
+        if (window.confirm('Take this GoDaddy sale off its payment? The payment stays: void it, or link the right sale to it. The sale goes back to Needs matching. Only a cash-flow manager can do this.')) un.mutate()
+      }}
+      disabled={un.isPending}
+      className="text-xs font-semibold text-slate-500 hover:text-red-700"
+    >
+      Unlink
+    </button>
   )
 }
 

@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
+import { Link } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { useWorkOrders } from '@/hooks/useWorkOrders'
 import { useCreateInvoice, useInvoices } from '@/hooks/useInvoices'
@@ -6,7 +7,8 @@ import { tenantDate, useTenantTimezone } from '@/hooks/useTenantTime'
 import { Modal } from '@/components/ui/Modal'
 import { CatalogItemPickerModal } from '@/components/CatalogItemPickerModal'
 import { computeLineDiscountCents } from '@/components/WorkOrderLineItemEditorCore'
-import type { LineType } from '@/types/workOrderLineItem'
+import type { LineType, WorkOrderLineItem } from '@/types/workOrderLineItem'
+import type { WorkOrderMoney } from '@/types/workOrder'
 import { ReceivePaymentModal } from '@/components/ReceivePaymentModal'
 import { listLineItems } from '@/lib/workOrders'
 import { apiRequest, ApiError } from '@/lib/api'
@@ -26,8 +28,12 @@ interface TaxClassRow {
  * InvoiceCreatorModal — overlay for creating an invoice.
  *
  * Two paths drive the same modal:
- *   1. Convert WO → invoice: pick a work order, line items get
- *      snapshotted server-side.
+ *   1. Convert WO → invoice: pick a work order. The job owns its
+ *      invoice (Patrick, 2026-10-18), so its lines are shown as they
+ *      are and copied server-side; changes are made on the job. (This
+ *      modal used to send the job's lines back as its own, editable,
+ *      and the first open of the invoice then added the job's lines
+ *      again: billed twice.)
  *   2. Counter / POS sale: skip the WO, type line items inline
  *      (description, qty, unit price, taxable). Used for walk-in
  *      shop sales — key copy, parts, etc. — where there's no field
@@ -227,57 +233,20 @@ export function InvoiceCreatorModal({
     setLastAppliedDefault(defaultTaxClassId)
   }, [defaultTaxClassId, lastAppliedDefault])
 
-  // When the user picks a WO, fetch its line items and seed the editor
-  // with them. They see what's about to be invoiced + can add MORE
-  // lines (extra parts, last-minute upcharges) before saving.
+  // When the user picks a WO, fetch its line items to show them. They are
+  // the job's, not the editor's: the invoice copies them server-side.
   const woLinesQuery = useQuery({
     queryKey: ['wo-line-items-for-invoice', workOrderId],
     queryFn: () => listLineItems(workOrderId),
     enabled: !!workOrderId,
   })
+  const fromJob = !!workOrderId
+  const jobLines = woLinesQuery.data ?? []
   useEffect(() => {
-    if (!workOrderId) {
-      // Reset to a blank line set when the WO selection is cleared.
-      setLines([emptyLine(defaultTaxClassId)])
-      return
-    }
-    if (woLinesQuery.data) {
-      // WO line items already carry their own tax_class_id — prefer
-      // that over the invoice-level default since the WO was priced
-      // with intent (e.g. resale-certified part with no tax). Fall back
-      // to the invoice default if the WO line had no class.
-      const seeded: DraftLine[] = woLinesQuery.data.map((wl) => {
-        const woTaxable = !!wl.money?.is_taxable
-        // If the WO line carries an explicit tax_class_id, use it.
-        // If it's non-taxable, force empty (don't fall back to the
-        // invoice default — that would re-tax a deliberately
-        // non-taxable line).
-        const taxClass = wl.tax_class_id
-          ? wl.tax_class_id
-          : woTaxable
-            ? defaultTaxClassId
-            : ''
-        return {
-          line_type: wl.line_type ?? 'item',
-          description: wl.description ?? '',
-          quantity: String(wl.quantity ?? 1),
-          unit_label: wl.unit_label ?? 'each',
-          unit_price_dollars: ((Number(wl.money?.customer_cost_cents) || 0) / 100).toFixed(2),
-          is_taxable: woTaxable,
-          tax_class_id: taxClass,
-          discount_id: wl.money?.discount_id ?? null,
-          discount_kind: wl.money?.discount_kind ?? null,
-          discount_value: Number(wl.money?.discount_value) || 0,
-        }
-      })
-      setLines(
-        seeded.length > 0
-          ? [...seeded, emptyLine(defaultTaxClassId)]
-          : [emptyLine(defaultTaxClassId)],
-      )
-    }
+    // Back to a blank counter sale when the WO selection is cleared.
+    if (!workOrderId) setLines([emptyLine(defaultTaxClassId)])
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [workOrderId, woLinesQuery.data])
+  }, [workOrderId])
 
   function patchLine(i: number, p: Partial<DraftLine>) {
     setLines((curr) => curr.map((row, idx) => (idx === i ? { ...row, ...p } : row)))
@@ -374,9 +343,11 @@ export function InvoiceCreatorModal({
   // True when the user has typed something on at least one line —
   // used to gate "Create + take payment" so the counter button only
   // lights up after they enter a sale.
-  const hasInlineLines = lines.some(
-    (l) => l.description.trim() !== '' || parseFloat(l.unit_price_dollars || '0') > 0,
-  )
+  const hasInlineLines = fromJob
+    ? jobLines.length > 0
+    : lines.some(
+        (l) => l.description.trim() !== '' || parseFloat(l.unit_price_dollars || '0') > 0,
+      )
 
   async function handleSave(takePaymentAfter: boolean) {
     setError(null)
@@ -409,12 +380,11 @@ export function InvoiceCreatorModal({
         due_at: dueAt || null,
         customer_notes: customerNotes.trim() || null,
         terms: terms.trim() || null,
-        // The editor is now the single source of truth for line items
-        // — when a WO is picked we pre-seed it from the WO's lines, so
-        // any extras the user typed are included. Skip the server-side
-        // copy_line_items_from_work_order to avoid duplicating lines.
-        copy_line_items_from_work_order: false,
-        line_items: lineItems.length > 0 ? lineItems : undefined,
+        // A job's invoice copies the job's lines server-side; only a
+        // counter sale sends lines of its own.
+        ...(fromJob
+          ? { copy_line_items_from_work_order: true }
+          : { line_items: lineItems.length > 0 ? lineItems : undefined }),
       })
       onCreated?.(inv)
 
@@ -507,8 +477,7 @@ export function InvoiceCreatorModal({
             </select>
             {selectedWo && (
               <p className="mt-1 text-xs text-emerald-700">
-                ✓ Line items loaded below — edit, remove, or add extras before saving.
-                {woLinesQuery.isFetching && ' (loading…)'}
+                ✓ The invoice will show this job's lines, below.
               </p>
             )}
             {!workOrderId && (
@@ -525,9 +494,17 @@ export function InvoiceCreatorModal({
             )}
           </Labeled>
 
-          {/* Inline line items. When a WO is picked, this seeds from
-              the WO's existing lines so the user sees what's coming +
-              can edit / remove / add more before the invoice is saved. */}
+          {/* A job's lines, as they are (the job owns its invoice), or the
+              counter-sale editor when no job is picked. */}
+          {fromJob ? (
+            <JobLines
+              workOrderId={workOrderId}
+              lines={jobLines}
+              loading={woLinesQuery.isLoading}
+              failed={woLinesQuery.isError}
+              money={selectedWo?.money}
+            />
+          ) : (
           <div className="border border-slate-200 rounded-lg overflow-hidden">
               <div className="bg-slate-50 px-3 py-2 flex items-center justify-between gap-3 flex-wrap">
                 <div className="text-xs font-semibold text-slate-700 uppercase tracking-wide">
@@ -553,7 +530,7 @@ export function InvoiceCreatorModal({
                   {taxClasses.length === 0 && !taxClassesQ.isLoading && (
                     <span className="text-[11px] text-amber-700">
                       No tax classes set up.{' '}
-                      <a href="/settings/tax-classes" className="underline">
+                      <a href="/catalog/tax-classes" className="underline">
                         Add one
                       </a>
                     </span>
@@ -649,7 +626,7 @@ export function InvoiceCreatorModal({
                               type="text"
                               value={ln.description}
                               onChange={(e) => patchLine(i, { description: e.target.value })}
-                              placeholder="Key copy / part / labor…"
+                              placeholder="Part / labor / service call…"
                               className="flex-1 px-2 py-1.5 text-sm border border-slate-300 rounded focus:outline-none focus:ring-1 focus:ring-amber-500"
                             />
                             <button
@@ -768,6 +745,7 @@ export function InvoiceCreatorModal({
                 </div>
               </div>
             </div>
+          )}
 
           {/* Dates */}
           <div className="grid grid-cols-2 gap-3">
@@ -868,6 +846,87 @@ export function InvoiceCreatorModal({
       }}
     />
     </>
+  )
+}
+
+/**
+ * The job's lines, read-only: a job's invoice shows exactly these, and they
+ * are changed on the job.
+ */
+function JobLines({
+  workOrderId,
+  lines,
+  loading,
+  failed,
+  money,
+}: {
+  workOrderId: string
+  lines: WorkOrderLineItem[]
+  loading: boolean
+  failed: boolean
+  money?: WorkOrderMoney
+}) {
+  const dollars = (cents: number | null | undefined) => `$${((Number(cents) || 0) / 100).toFixed(2)}`
+  return (
+    <div className="border border-slate-200 rounded-lg overflow-hidden">
+      <div className="bg-slate-50 px-3 py-2 flex items-center justify-between gap-3 flex-wrap">
+        <div className="text-xs font-semibold text-slate-700 uppercase tracking-wide">Line items from the job</div>
+        <Link to={`/jobs/${encodeURIComponent(workOrderId)}`} className="text-xs font-semibold text-amber-700 hover:text-amber-800">
+          Change these on the job
+        </Link>
+      </div>
+      <p className="px-3 py-2 text-xs text-slate-600 border-b border-slate-100">
+        A job's invoice always shows the job's lines. To change a line or add a charge, change it on the job.
+      </p>
+      {loading ? (
+        <p className="px-3 py-3 text-sm text-slate-500">Loading the job's lines…</p>
+      ) : failed ? (
+        <p className="px-3 py-3 text-sm text-red-700">The job's lines didn't load. Close this and try again.</p>
+      ) : lines.length === 0 ? (
+        <p className="px-3 py-3 text-sm text-amber-800">This job has no lines yet. Add them on the job first.</p>
+      ) : (
+        <table className="w-full text-sm">
+          <thead className="bg-slate-50 border-b border-slate-200">
+            <tr>
+              <th className="text-left px-3 py-1.5 text-xs font-medium text-slate-600">Description</th>
+              <th className="text-right px-2 py-1.5 text-xs font-medium text-slate-600 w-20">Qty</th>
+              <th className="text-right px-2 py-1.5 text-xs font-medium text-slate-600 w-28">Unit $</th>
+              <th className="text-right px-2 py-1.5 text-xs font-medium text-slate-600 w-24">Line $</th>
+            </tr>
+          </thead>
+          <tbody>
+            {lines.map((l) => {
+              const discount = l.line_type === 'discount'
+              return (
+                <tr key={l.id} className={`border-b border-slate-100 last:border-b-0 ${discount ? 'bg-rose-50/40' : ''}`}>
+                  <td className="px-3 py-1.5 text-slate-900">
+                    {l.description || <span className="text-slate-400">No description</span>}
+                    {l.line_type === 'fee' && (
+                      <span className="ml-2 inline-block text-[10px] uppercase tracking-wide text-slate-500 bg-slate-100 px-2 py-0.5 rounded font-medium">Fee</span>
+                    )}
+                  </td>
+                  <td className="px-2 py-1.5 text-right tabular-nums">{discount ? '' : Number(l.quantity ?? 1)}</td>
+                  <td className="px-2 py-1.5 text-right font-mono tabular-nums">{discount ? '' : dollars(l.money?.customer_cost_cents)}</td>
+                  <td className={`px-2 py-1.5 text-right font-mono tabular-nums ${discount ? 'text-rose-600' : 'text-slate-900'}`}>
+                    {discount ? `−${dollars(l.money?.discount_amount_cents)}` : dollars(l.money?.subtotal_cents)}
+                  </td>
+                </tr>
+              )
+            })}
+          </tbody>
+        </table>
+      )}
+      {money && lines.length > 0 && (
+        <div className="bg-slate-50 px-3 py-2 text-xs text-slate-700 text-right space-x-4">
+          <span>Subtotal <span className="font-mono">{dollars(money.subtotal_cents)}</span></span>
+          <span>Tax <span className="font-mono">{dollars(money.tax_cents)}</span></span>
+          {money.tax_exempt_adjustment_cents > 0 && (
+            <span className="text-amber-700">Tax exempt <span className="font-mono">-{dollars(money.tax_exempt_adjustment_cents)}</span></span>
+          )}
+          <span className="font-semibold">Total <span className="font-mono">{dollars(money.total_cents)}</span></span>
+        </div>
+      )}
+    </div>
   )
 }
 

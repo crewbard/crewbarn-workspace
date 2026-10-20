@@ -7,8 +7,8 @@ import { printLabelPdf, type PdfLabel } from '@/lib/pdfLabels'
 import { LabelStudio } from '@/components/labels/LabelStudio'
 import type { LabelFaceData } from '@/components/labels/LabelFace'
 import { downloadLabelPng } from '@/lib/pngLabels'
-import { printLabelsViaBluetooth } from '@/lib/escposBluetooth'
-import type { ThermalSizeKey } from '@/lib/thermalLabels'
+import { printLabelsViaBluetooth } from '@/lib/bluetoothPrint'
+import { isFullSheetSize, type ThermalSizeKey } from '@/lib/thermalLabels'
 
 /**
  * Placard for a building or area — /asset-groups/{id}/labels.
@@ -29,6 +29,7 @@ export function AssetGroupLabelsPage() {
   const [search, setSearch] = useSearchParams()
   const size = (search.get('size') ?? 'sheet') as ThermalSizeKey
   const copies = Math.max(1, Math.min(50, Number(search.get('copies')) || 1))
+  const gap = Math.max(0, Math.min(0.5, Number(search.get('gap')) || 0))
   const [btBusy, setBtBusy] = useState(false)
   const [btError, setBtError] = useState<string | null>(null)
 
@@ -107,20 +108,21 @@ export function AssetGroupLabelsPage() {
         }
       `}</style>
 
+      <div data-tour="placard-studio">
       <LabelStudio
-        backTo={{ href: `/asset-groups/${id}`, label: group.name }}
+        backTo={{ href: '/assets', label: 'Assets' }}
         faces={faces}
         size={size}
         onSize={(next) => setParam('size', next === 'sheet' ? null : next)}
         copies={copies}
         onCopies={(n) => setParam('copies', n === 1 ? null : String(n))}
-        gap={0}
-        onGap={() => {}}
+        gap={gap}
+        onGap={(g) => setParam('gap', g === 0 ? null : String(g))}
         onPrint={() => {
           // A placard on a roll goes through the PDF; on paper it is the
           // browser's print, the same split as everywhere else.
           if (size === 'sheet') window.print()
-          else void printLabelPdf({ labels, thermalSize: size, copies })
+          else void printLabelPdf({ labels, thermalSize: size, copies, gap, multiUp: isFullSheetSize(size) })
         }}
         busy={btBusy ? 'Sending to the printer…' : null}
         onBluetooth={async () => {
@@ -140,6 +142,7 @@ export function AssetGroupLabelsPage() {
         }}
         error={btError}
       />
+      </div>
 
       {btError && (
         <div className="no-print border-b border-rose-200 bg-rose-50 px-6 py-2 text-xs text-rose-700">
@@ -147,7 +150,8 @@ export function AssetGroupLabelsPage() {
         </div>
       )}
 
-      <div className="flex flex-col items-center gap-8 p-8">
+      {/* The printable copy: the browser's print window only, never on screen. */}
+      <div className="hidden flex-col items-center gap-8 p-8 print:flex">
         {Array.from({ length: copies }).map((_, i) => (
           <div
             key={i}

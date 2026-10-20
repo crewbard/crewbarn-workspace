@@ -7,8 +7,10 @@ import {
   listSmsTemplates,
   renderTemplateForComposer,
   type ComposeSmsResult,
+  type ComposerUsedJob,
 } from '@/lib/comms'
 import { EmojiBar } from '@/components/comms/EmojiBar'
+import { TemplateFillPanel, fillTag, findBlankTags, hasBlankTags } from '@/components/comms/TemplateFillPanel'
 
 /**
  * SmsComposerModal starts a customer SMS thread. Existing threads still reply
@@ -19,6 +21,10 @@ export function SmsComposerModal({
   onClose,
   customerId,
   workOrderId,
+  estimateId,
+  invoiceId,
+  locationId,
+  contractId,
   defaultPhone,
   defaultBody,
   onSent,
@@ -27,6 +33,14 @@ export function SmsComposerModal({
   onClose: () => void
   customerId?: string | null
   workOrderId?: string | null
+  /** Fill template tags from this estimate (and the job it came from). */
+  estimateId?: string | null
+  /** Fill template tags from this invoice (and its job). */
+  invoiceId?: string | null
+  /** The service location the page is about, for address tags. */
+  locationId?: string | null
+  /** Fill template tags from this service agreement. */
+  contractId?: string | null
   defaultPhone?: string | null
   defaultBody?: string | null
   onSent?: (conversationId: string) => void
@@ -35,6 +49,12 @@ export function SmsComposerModal({
   const [body, setBody] = useState(defaultBody ?? '')
   const [error, setError] = useState<string | null>(null)
   const [applyingTemplate, setApplyingTemplate] = useState(false)
+  const [templateId, setTemplateId] = useState('')
+  // The job the template was filled in from, shown under the picker.
+  const [usedJob, setUsedJob] = useState<ComposerUsedJob | null>(null)
+  // What the template last put in the box, so picking another job swaps it
+  // rather than adding a second copy.
+  const [lastInserted, setLastInserted] = useState<string | null>(null)
 
   const templatesQuery = useQuery({
     queryKey: ['sms-templates', 'composer'],
@@ -67,25 +87,48 @@ export function SmsComposerModal({
   const reset = () => {
     setTo(defaultPhone ?? '')
     setBody(defaultBody ?? '')
+    setTemplateId('')
+    setUsedJob(null)
+    setLastInserted(null)
     setError(null)
   }
 
-  const applyTemplate = async (id: string) => {
-    if (!id) return
+  const insertTemplateText = (text: string) => {
+    setBody((prev) => {
+      if (lastInserted && prev.includes(lastInserted)) return prev.replace(lastInserted, text)
+      return prev.trim() === '' ? text : `${prev}\n${text}`
+    })
+    setLastInserted(text)
+  }
+
+  // `jobId` re-fills the same template from a job picked under "change".
+  const applyTemplate = async (id: string, jobId?: string) => {
+    setTemplateId(id)
+    if (!id) {
+      setUsedJob(null)
+      setLastInserted(null)
+      return
+    }
     setApplyingTemplate(true)
     try {
-      // Render merge tags against this customer/job before inserting.
+      // Fill the tags in from everything this page knows.
       const r = await renderTemplateForComposer({
         channel: 'sms',
         template_id: id,
         customer_id: customerId ?? null,
-        work_order_id: workOrderId ?? null,
+        work_order_id: jobId ?? workOrderId ?? null,
+        estimate_id: estimateId ?? null,
+        invoice_id: invoiceId ?? null,
+        location_id: locationId ?? null,
+        contract_id: contractId ?? null,
       })
-      setBody((prev) => (prev.trim() === '' ? r.body : `${prev}\n${r.body}`))
+      setUsedJob(r.used_job)
+      insertTemplateText(r.body)
     } catch {
       try {
         const templateBody = await getSmsTemplateBody(id)
-        setBody((prev) => (prev.trim() === '' ? templateBody : `${prev}\n${templateBody}`))
+        setUsedJob(null)
+        insertTemplateText(templateBody)
       } catch {
         /* ignore */
       }
@@ -96,7 +139,15 @@ export function SmsComposerModal({
 
   if (!isOpen) return null
 
-  const canSend = to.trim() !== '' && body.trim() !== '' && !sendMutation.isPending
+  // Anything a template couldn't fill stays as {{tag}} until it's typed in.
+  const blanks = findBlankTags(body)
+  const hasBlanks = hasBlankTags(body)
+  const fillBlank = (tag: string, value: string) => {
+    setBody((b) => fillTag(b, tag, value))
+    setLastInserted((t) => (t === null ? t : fillTag(t, tag, value)))
+  }
+
+  const canSend = to.trim() !== '' && body.trim() !== '' && !hasBlanks && !sendMutation.isPending
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onMouseDown={onClose}>
@@ -138,8 +189,8 @@ export function SmsComposerModal({
                 Start from a template {applyingTemplate && <span className="text-slate-400">...</span>}
               </label>
               <select
-                defaultValue=""
-                onChange={(e) => applyTemplate(e.target.value)}
+                value={templateId}
+                onChange={(e) => void applyTemplate(e.target.value)}
                 className="block w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-amber-500 focus:outline-none focus:ring-1 focus:ring-amber-500"
               >
                 <option value="">No template</option>
@@ -151,6 +202,15 @@ export function SmsComposerModal({
               </select>
             </div>
           )}
+
+          <TemplateFillPanel
+            usedJob={templateId ? usedJob : null}
+            customerId={customerId}
+            onPickJob={(jobId) => void applyTemplate(templateId, jobId)}
+            blanks={blanks}
+            onFill={fillBlank}
+            busy={applyingTemplate}
+          />
 
           <div>
             <label className="mb-1 block text-xs font-medium text-slate-500">Message</label>
@@ -169,6 +229,7 @@ export function SmsComposerModal({
         </div>
 
         <div className="flex items-center justify-end gap-2 border-t border-slate-200 px-5 py-3">
+          {hasBlanks && <span className="mr-auto text-xs font-medium text-amber-700">Fill in the blanks first</span>}
           <button
             type="button"
             onClick={onClose}

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef } from 'react'
 import type { Account } from '@/lib/auth'
-import { getRealtimeEcho, resolveTenantId } from '@/lib/realtimeEcho'
+import { getRealtimeEcho, listenPrivate, resolveTenantId } from '@/lib/realtimeEcho'
 
 /**
  * Live comms messages over Reverb (replaces the worker-pinning SSE streams).
@@ -59,15 +59,9 @@ export function useRealtimeComms(
     if (!echo) return
 
     const channelName = `tenant.${tenantId}.${suffix}`
-    echo.private(channelName).listen('.comms.message', (m: CommsMessageEvent) => cb.current(m))
-
-    return () => {
-      try {
-        echo.leave(channelName)
-      } catch {
-        /* ignore */
-      }
-    }
+    // The app-wide toasts, the Messages page and the dashboard all listen on
+    // the comms channel; listenPrivate's cleanup removes only this listener.
+    return listenPrivate(echo, channelName, '.comms.message', (m: CommsMessageEvent) => cb.current(m))
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tenantId, suffix])
 }

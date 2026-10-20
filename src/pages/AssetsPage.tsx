@@ -14,6 +14,7 @@ import { useAssetPhotos } from "@/hooks/useAssetPhotos"
 import { useAssetComponents } from "@/hooks/useAssetComponents"
 import { ApiError, apiRequest } from "@/lib/api"
 import { AssetComponentsManager } from "@/components/AssetComponentsManager"
+import { AssetInstalledParts } from "@/components/AssetInstalledParts"
 import { AssetDocumentUploader } from "@/components/AssetDocumentUploader"
 import { AssetPhotoUploader } from "@/components/AssetPhotoUploader"
 import { AssetQrCard } from "@/components/AssetQrCard"
@@ -23,11 +24,14 @@ import { AssetHistoryTimeline } from "@/components/AssetHistoryTimeline"
 import { AssetNoteBox } from '@/components/AssetNoteBox'
 import { AssetCustomFieldsForm, assetCustomFieldsAreValid, normalizeAssetCustomFields } from "@/components/AssetCustomFieldsForm"
 import { NewAssetWizardModal } from "@/components/NewAssetWizardModal"
+import { AgreementBuilderButton, CoveredByPlan } from "@/components/agreements/AgreementBuilderButton"
 import type { Asset, AssetServiceLocation } from "@/types/asset"
 import type { AssetType, InspectionCadence } from "@/types/assetType"
 import type { CustomerServiceLocation } from "@/types/customer"
 import { INSPECTION_CADENCES, INSPECTION_CADENCE_LABELS } from "@/types/assetType"
 import { QrScanButton } from "@/components/QrScanButton"
+import { usePermissions } from "@/hooks/usePermissions"
+import { extractScanCode } from "@/components/assets/scanUrl"
 import { assetDocumentCategory, assetDocumentKindLabel, assetDocumentStatusLabel, assetDocumentVisibilityLabel } from "@/lib/assetDocumentLabels"
 
 // ---------- Page ----------
@@ -46,6 +50,9 @@ const PUBLIC_FIELD_OPTIONS: { key: string; label: string; hint: string }[] = [
 ]
 
 export function AssetsPage() {
+  const { theme } = useTheme()
+  const focus = theme === 'focus'
+  const [focusView, setFocusView] = useState<'rows' | 'tree'>('rows')
   const [search, setSearch] = useState("")
   const [debouncedSearch, setDebouncedSearch] = useState("")
   const [filterTypeId, setFilterTypeId] = useState<string>("")
@@ -56,12 +63,16 @@ export function AssetsPage() {
   const [showCreate, setShowCreate] = useState(false)
   const [scanError, setScanError] = useState<string | null>(null)
   const lookupByCode = useLookupAssetByCode()
+  const canEdit = usePermissions().has("assets.edit")
 
   // SLICE-2.5: scan handler — try direct lookup via the cache-aware hook.
   // Found → open the edit modal. Not found / error → put scanned value in
   // search box so the user can confirm what they scanned, plus toast.
-  async function handleScan(code: string) {
+  async function handleScan(scanned: string) {
     setScanError(null)
+    // Printed stickers carry the full public scan URL so a phone camera can
+    // open them; the lookup wants just the code at the end of it.
+    const code = extractScanCode(scanned)
     try {
       const asset = await lookupByCode.mutateAsync(code)
       setEditing(asset)
@@ -110,8 +121,8 @@ export function AssetsPage() {
   }, [deepLinkId, assets, editing, searchParams, setSearchParams])
 
   return (
-    <div className="max-w-7xl mx-auto p-6 space-y-6">
-      <Header onNew={() => setShowCreate(true)} onScan={handleScan} hasTypes={types.length > 0} />
+    <div data-focus-page="assets" className="max-w-7xl mx-auto p-6 space-y-6">
+      <Header onNew={() => setShowCreate(true)} onScan={handleScan} hasTypes={types.length > 0} canEdit={canEdit} />
       {scanError && (
         <div className="bg-red-50 border border-red-200 rounded-md px-3 py-2 mt-2">
           <p className="text-sm text-red-700">{scanError}</p>
@@ -138,6 +149,10 @@ export function AssetsPage() {
           setFilterGroupName(name ?? "")
         }}
       />
+      {focus && <div data-tour="assets-view" role="group" aria-label="Asset view" className="inline-flex rounded-lg border border-slate-200 bg-white p-1">
+        <button type="button" data-tour="assets-view-rows" aria-pressed={focusView === 'rows'} onClick={() => setFocusView('rows')} className={`rounded-md px-3 py-1.5 text-sm font-semibold ${focusView === 'rows' ? 'bg-slate-900 text-white' : 'text-slate-600 hover:bg-slate-100'}`}>Rows</button>
+        <button type="button" data-tour="assets-view-tree" aria-pressed={focusView === 'tree'} onClick={() => setFocusView('tree')} className={`rounded-md px-3 py-1.5 text-sm font-semibold ${focusView === 'tree' ? 'bg-slate-900 text-white' : 'text-slate-600 hover:bg-slate-100'}`}>Location tree</button>
+      </div>}
 
       {types.length === 0 && !isLoading && <NoTypesNotice />}
 
@@ -169,10 +184,14 @@ export function AssetsPage() {
               filterLocationId ||
               filterGroupId
             )
-            return filtersActive ? (
-              <AssetsTable assets={assets} onEdit={setEditing} />
-            ) : (
-              <AssetsTree assets={assets} onEdit={setEditing} />
+            return (
+              <div data-tour="assets-list">
+                {filtersActive || (focus && focusView === 'rows') ? (
+                  <AssetsTable assets={assets} onEdit={setEditing} />
+                ) : (
+                  <AssetsTree assets={assets} onEdit={setEditing} />
+                )}
+              </div>
             )
           })()}
           {meta && (
@@ -211,15 +230,15 @@ export function AssetsPage() {
 
 // ---------- Header ----------
 
-function Header({ onNew, onScan, hasTypes }: { onNew: () => void; onScan: (code: string) => void; hasTypes: boolean }) {
+function Header({ onNew, onScan, hasTypes, canEdit }: { onNew: () => void; onScan: (code: string) => void; hasTypes: boolean; canEdit: boolean }) {
   const { theme } = useTheme()
   const easy = theme === 'easy-side' || theme === 'easy-top'
   return (
-    <div className={easy ? 'flex w-full min-w-0 flex-col items-stretch gap-4' : 'flex items-start justify-between gap-6'}>
+    <div data-tour="assets-header" className={easy ? 'flex w-full min-w-0 flex-col items-stretch gap-4' : 'flex items-start justify-between gap-6'}>
       <div className={easy ? 'w-full min-w-0' : undefined}>
         {easy ? <EasyPageHeading title="Customer equipment & assets" description="Find or scan equipment, open its service history, or add an asset using the existing controls." /> : <h1 className="text-3xl font-semibold text-slate-900">Assets</h1>}
         <p className="text-sm text-slate-600 mt-1">
-          Physical things at customer locations - doors, extinguishers, safes, AC units. Tracked across years.
+          Physical things at customer locations - water heaters, AC units, doors, panels. Tracked across years.
         </p>
       </div>
       <div className="flex gap-2 flex-shrink-0">
@@ -228,15 +247,18 @@ function Header({ onNew, onScan, hasTypes }: { onNew: () => void; onScan: (code:
           buttonLabel="📷 Scan asset"
           buttonClassName="text-sm px-4 py-2 bg-white border border-slate-300 hover:bg-slate-50 text-slate-700 rounded-md font-medium transition-colors"
         />
-        <button
-          type="button"
-          onClick={onNew}
-          disabled={!hasTypes}
-          title={!hasTypes ? "Create an asset type first" : ""}
-          className="text-sm px-4 py-2 bg-amber-500 hover:bg-amber-600 disabled:bg-slate-300 disabled:cursor-not-allowed text-white rounded-md font-medium transition-colors"
-        >
-          + New Asset
-        </button>
+        {canEdit && (
+          <button
+            type="button"
+            data-tour="assets-new"
+            onClick={onNew}
+            disabled={!hasTypes}
+            title={!hasTypes ? "Create an asset type first" : ""}
+            className="text-sm px-4 py-2 bg-amber-500 hover:bg-amber-600 disabled:bg-slate-300 disabled:cursor-not-allowed text-white rounded-md font-medium transition-colors"
+          >
+            + New Asset
+          </button>
+        )}
       </div>
     </div>
   )
@@ -246,9 +268,9 @@ function Header({ onNew, onScan, hasTypes }: { onNew: () => void; onScan: (code:
 
 function NoTypesNotice() {
   return (
-    <div className="bg-amber-50 border border-amber-200 rounded-xl p-6">
+    <div data-tour="assets-no-types" className="bg-amber-50 border border-amber-200 rounded-xl p-6">
       <p className="text-sm text-amber-900">
-        <strong>No asset types defined yet.</strong> Asset types are categories like "Fire Door" or "Extinguisher" - they define what custom fields each asset has. Create types in <a href="/asset-types" className="font-medium underline hover:text-amber-700">Asset Types</a> before adding assets.
+        <strong>No asset types defined yet.</strong> Asset types are categories like "Water Heater" or "Rooftop Unit" - they define what custom fields each asset has. Create types in <Link to="/asset-types" className="font-medium underline hover:text-amber-700">Asset Types</Link> before adding assets.
       </p>
     </div>
   )
@@ -281,11 +303,13 @@ function FiltersBar({
 }) {
   const [pickerOpen, setPickerOpen] = useState(false)
   const [managerOpen, setManagerOpen] = useState(false)
+  // Bumped on Clear so the location search box forgets its label.
+  const [locPickerKey, setLocPickerKey] = useState(0)
   const trimmedLoc = filterLocationId.trim()
   const locReady = trimmedLoc.length > 0
 
   return (
-    <div className="space-y-2">
+    <div data-tour="assets-filters" className="space-y-2">
       <div data-easy-list-toolbar className="flex gap-3">
         <input
           type="search"
@@ -308,18 +332,32 @@ function FiltersBar({
         </select>
       </div>
       <div data-easy-list-toolbar className="flex gap-3 items-center">
-        <input
-          type="text"
-          value={filterLocationId}
-          onChange={(e) => onFilterLocationChange(e.target.value)}
-          placeholder="Filter by location id (loc_xxx) — required to filter by group"
-          className="flex-1 text-sm px-3 py-2 border border-slate-200 rounded-md focus:outline-none focus:border-amber-500 font-mono"
-        />
+        <div className="flex-1 min-w-0">
+          <ServiceLocationSelect
+            key={locPickerKey}
+            value={filterLocationId}
+            existingLocation={null}
+            disabled={false}
+            onSelect={(location) => onFilterLocationChange(location.id)}
+          />
+        </div>
+        {locReady && (
+          <button
+            type="button"
+            onClick={() => {
+              onFilterLocationChange("")
+              setLocPickerKey((k) => k + 1)
+            }}
+            className="text-xs text-slate-500 hover:text-slate-900"
+          >
+            All locations
+          </button>
+        )}
         <button
           type="button"
           onClick={() => setPickerOpen(true)}
           disabled={!locReady}
-          title={!locReady ? "Paste a location id first" : ""}
+          title={!locReady ? "Pick a service location first" : ""}
           className="text-sm px-3 py-2 border border-slate-200 rounded-md hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed bg-white min-w-[180px] text-left truncate"
         >
           {filterGroupId
@@ -339,7 +377,7 @@ function FiltersBar({
           type="button"
           onClick={() => setManagerOpen(true)}
           disabled={!locReady}
-          title={!locReady ? "Paste a location id first" : "Manage this location's groups"}
+          title={!locReady ? "Pick a service location first" : "Manage this location's groups"}
           className="text-xs text-amber-700 hover:text-amber-800 disabled:opacity-50 disabled:cursor-not-allowed"
         >
           Manage…
@@ -454,7 +492,7 @@ function AssetsTable({ assets, onEdit }: { assets: Asset[]; onEdit: (a: Asset) =
             <th className="text-left px-6 py-3 font-medium">Location</th>
             <th className="text-left px-6 py-3 font-medium">Group</th>
             <th className="text-left px-6 py-3 font-medium">Cadence</th>
-            <th className="text-center px-6 py-3 font-medium" title="Coming with Slice 9 (secured assets)">Secured</th>
+            <th className="text-center px-6 py-3 font-medium" title="Secured assets hide their details from public scans">Secured</th>
             <th className="text-center px-6 py-3 font-medium">Active</th>
             <th className="px-6 py-3"></th>
           </tr>
@@ -492,7 +530,7 @@ function AssetsTable({ assets, onEdit }: { assets: Asset[]; onEdit: (a: Asset) =
               </td>
               <td className="px-6 py-4 text-center">
                 {asset.is_secured ? (
-                  <span className="inline-flex items-center px-2 py-0.5 text-xs bg-red-50 text-red-700 rounded font-medium" title="SLICE-9: secured asset variant">🔒</span>
+                  <span className="inline-flex items-center px-2 py-0.5 text-xs bg-red-50 text-red-700 rounded font-medium" title="Secured asset">🔒</span>
                 ) : (
                   <span className="text-slate-300 text-xs">-</span>
                 )}
@@ -1101,6 +1139,7 @@ function EditAssetModal({
 
   const updateMutation = useUpdateAsset()
   const deleteMutation = useDeleteAsset()
+  const readOnly = !usePermissions().has("assets.edit")
 
   const isDirty = JSON.stringify(form) !== JSON.stringify(initial)
   const selectedType = types.find((type) => type.id === form.asset_type_id)
@@ -1120,7 +1159,8 @@ function EditAssetModal({
   }
 
   const handleDelete = () => {
-    // Confirmation handled by the global delete modal (password + reason).
+    // The server may also ask for a password and reason (delete rules).
+    if (!window.confirm(`Delete "${asset.name}"? Its photos, documents and history go with it.`)) return
     deleteMutation.mutate(asset.id, { onSuccess: () => onClose() })
   }
 
@@ -1135,33 +1175,45 @@ function EditAssetModal({
     : null
 
   return (
-    <ModalShell title={`Edit: ${asset.name}`} onClose={onClose}>
-      <AssetForm form={form} onChange={setForm} types={types} mode="edit" existingAsset={asset} />
+    <ModalShell title={readOnly ? asset.name : `Edit: ${asset.name}`} onClose={onClose}>
+      <div data-tour="assets-plan-bar" className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 px-6 py-3">
+        <CoveredByPlan assetId={asset.id} />
+        <AgreementBuilderButton source={{ type: "asset", id: asset.id }} tour="assets-build-agreement" />
+      </div>
+      <div data-tour="assets-edit">
+        <AssetForm form={form} onChange={setForm} types={types} mode="edit" existingAsset={asset} readOnly={readOnly} />
+      </div>
       {errorMsg && <div className="px-6 pb-2"><ErrorBanner message={errorMsg} /></div>}
       <Footer>
-        <button
-          type="button"
-          onClick={handleDelete}
-          disabled={deleteMutation.isPending}
-          className="text-sm px-3 py-2 text-red-600 hover:text-red-800 disabled:opacity-50 mr-auto"
-        >
-          {deleteMutation.isPending ? "Deleting..." : "Delete"}
-        </button>
+        {readOnly ? (
+          <span className="mr-auto text-xs text-slate-500">View only. Ask an admin for asset edit access.</span>
+        ) : (
+          <button
+            type="button"
+            onClick={handleDelete}
+            disabled={deleteMutation.isPending}
+            className="text-sm px-3 py-2 text-red-600 hover:text-red-800 disabled:opacity-50 mr-auto"
+          >
+            {deleteMutation.isPending ? "Deleting..." : "Delete"}
+          </button>
+        )}
         <button
           type="button"
           onClick={onClose}
           className="text-sm px-4 py-2 text-slate-600 hover:text-slate-900"
         >
-          Cancel
+          {readOnly ? "Close" : "Cancel"}
         </button>
-        <button
-          type="button"
-          onClick={handleSave}
-          disabled={!canSave}
-          className="text-sm px-4 py-2 rounded-md bg-amber-500 hover:bg-amber-600 disabled:bg-slate-300 disabled:cursor-not-allowed text-white font-medium transition-colors"
-        >
-          {updateMutation.isPending ? "Saving..." : "Save changes"}
-        </button>
+        {!readOnly && (
+          <button
+            type="button"
+            onClick={handleSave}
+            disabled={!canSave}
+            className="text-sm px-4 py-2 rounded-md bg-amber-500 hover:bg-amber-600 disabled:bg-slate-300 disabled:cursor-not-allowed text-white font-medium transition-colors"
+          >
+            {updateMutation.isPending ? "Saving..." : "Save changes"}
+          </button>
+        )}
       </Footer>
     </ModalShell>
   )
@@ -1175,12 +1227,14 @@ function AssetForm({
   types,
   mode,
   existingAsset,
+  readOnly = false,
 }: {
   form: AssetFormState
   onChange: (form: AssetFormState) => void
   types: AssetType[]
   mode: "create" | "edit"
   existingAsset?: Asset
+  readOnly?: boolean
 }) {
   const set = (key: keyof AssetFormState, value: unknown) => {
     onChange({ ...form, [key]: value })
@@ -1207,6 +1261,7 @@ function AssetForm({
 
   return (
     <div className="p-6 space-y-4">
+      <fieldset disabled={readOnly} className="m-0 min-w-0 space-y-4 border-0 p-0">
       <Field label="Name" required>
         <input
           type="text"
@@ -1243,7 +1298,7 @@ function AssetForm({
               placeholder="Blank = CrewBarn generates"
               className="flex-1 text-sm px-3 py-2 border border-slate-200 rounded focus:outline-none focus:border-amber-500 font-mono"
             />
-            <QrScanButton onScan={(code) => set("asset_code", code)} />
+            {!readOnly && <QrScanButton onScan={(code) => set("asset_code", extractScanCode(code))} />}
           </div>
           <p className="text-xs text-slate-500 mt-1">
             This is CrewBarn's internal asset identity and the code printed on the QR label. Leave blank to auto-generate one.
@@ -1345,7 +1400,7 @@ function AssetForm({
               type="text"
               value={form.manufacturer}
               onChange={(e) => set("manufacturer", e.target.value)}
-              placeholder="e.g. Curries"
+              placeholder="e.g. Acme"
               className="w-full text-sm px-3 py-2 border border-slate-200 rounded focus:outline-none focus:border-amber-500"
             />
           </Field>
@@ -1508,6 +1563,8 @@ function AssetForm({
         </div>
       </div>
 
+      </fieldset>
+
       {existingAsset && (
         <p className="text-xs text-slate-400 border-t border-slate-100 pt-3">
           Display label: <span className="font-medium">{existingAsset.display_label}</span>
@@ -1534,16 +1591,19 @@ function AssetForm({
           <AssetQrCard
             assetId={existingAsset.id}
             assetName={existingAsset.name}
-            assetCode={existingAsset.asset_code} />
+            assetCode={existingAsset.asset_code}
+              tenantId={existingAsset.tenant_id} />
         
-         <h3 className="text-xs font-medium text-slate-700 uppercase tracking-wide mb-3">Photos</h3>
+         <h3 data-tour="asset-photos" className="text-xs font-medium text-slate-700 uppercase tracking-wide mb-3">Photos</h3>
           <AssetPhotoUploader assetId={existingAsset.id} />
           <h3 className="text-xs font-medium text-slate-700 uppercase tracking-wide mb-3 mt-6">Documents</h3>
           <AssetDocumentUploader assetId={existingAsset.id} />
           <h3 className="text-xs font-medium text-slate-700 uppercase tracking-wide mb-3 mt-6">Installed components</h3>
           <AssetComponentsManager assetId={existingAsset.id} />
+          <h3 className="text-xs font-medium text-slate-700 uppercase tracking-wide mb-3 mt-6">Parts fitted to it</h3>
+          <AssetInstalledParts assetId={existingAsset.id} />
 
-          <h3 className="text-xs font-medium text-slate-700 uppercase tracking-wide mb-3 mt-6">Service history</h3>
+          <h3 data-tour="asset-history" className="text-xs font-medium text-slate-700 uppercase tracking-wide mb-3 mt-6">Service history</h3>
           <p className="text-xs text-slate-500 mb-3">
             Quotes and jobs that reference this item, parts installed against it, and what techs
             logged or noted on site. Newest first.
@@ -1553,9 +1613,11 @@ function AssetForm({
             somebody came here to do; reading the history is what they do
             on the way past.
           */}
-          <div className="mb-3">
-            <AssetNoteBox assetId={existingAsset.id} />
-          </div>
+          {!readOnly && (
+            <div className="mb-3">
+              <AssetNoteBox assetId={existingAsset.id} />
+            </div>
+          )}
           <AssetHistoryTimeline assetId={existingAsset.id} />
         </div>
       )}

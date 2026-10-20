@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef } from 'react'
 import type { Account } from '@/lib/auth'
-import { getRealtimeEcho, resolveTenantId } from '@/lib/realtimeEcho'
+import { getRealtimeEcho, listenPrivate, resolveTenantId } from '@/lib/realtimeEcho'
 
 /**
  * New Google reviews, over Reverb.
@@ -40,15 +40,7 @@ export function useRealtimeReviews(
     if (!echo) return
 
     const channelName = `tenant.${tenantId}.reviews`
-    echo.private(channelName).listen('.review.received', (r: GoogleReviewEvent) => cb.current(r))
-
-    return () => {
-      try {
-        echo.leave(channelName)
-      } catch {
-        /* ignore */
-      }
-    }
+    return listenPrivate(echo, channelName, '.review.received', (r: GoogleReviewEvent) => cb.current(r))
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tenantId])
 }

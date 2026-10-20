@@ -3,8 +3,8 @@ import type { FolderLayout } from '@/hooks/useTheme'
 /**
  * On-page folder-layout switcher (Cabinet / Tree / Accordion). A light
  * segmented control matching the Cards/Files + This week/Filters toolbar
- * buttons; the active segment uses the brand accent. Shown on the list pages
- * only when the "files" folder view is active.
+ * buttons; the active segment uses the brand accent. Selecting a layout on
+ * any list view opens Files immediately in the chosen layout.
  */
 const OPTIONS: Array<{ id: FolderLayout; label: string }> = [
   { id: 'cabinet', label: 'Cabinet' },
@@ -29,6 +29,7 @@ export function FolderLayoutSwitch({
             type="button"
             onClick={() => onChange(opt.id)}
             aria-pressed={active}
+            title={`Open Files in ${opt.label} layout`}
             data-easy-view-option
             className={
               'rounded px-2.5 py-1 text-xs font-semibold transition-colors ' +

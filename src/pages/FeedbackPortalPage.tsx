@@ -58,19 +58,23 @@ export function FeedbackPortalPage() {
   return (
     <div className="mx-auto max-w-4xl px-4 py-6 sm:px-6 sm:py-8">
       {/* Header */}
-      <div className="overflow-hidden rounded-2xl bg-gradient-to-br from-navy-900 to-navy-800 p-6 text-white sm:p-8">
+      <div data-tour="feedback-header" className="overflow-hidden rounded-2xl bg-gradient-to-br from-navy-900 to-navy-800 p-6 text-white sm:p-8">
         <div className="text-xs font-semibold uppercase tracking-wide text-amber-300">CrewBarn feedback</div>
         <h1 className="mt-1 text-2xl font-bold sm:text-3xl">Bugs &amp; Ideas</h1>
         <p className="mt-2 max-w-2xl text-sm leading-relaxed text-white/80">
           Hit a bug or have an idea to make CrewBarn better? Post it here and upvote what matters most — the
           most-wanted rises to the top and shapes what we build next.
         </p>
+        <p className="mt-2 max-w-2xl text-xs leading-relaxed text-white/70">
+          This board is shared across CrewBarn, so others may see what you post. Leave out customer names,
+          phone numbers and addresses.
+        </p>
       </div>
 
       <SubmitForm onCreated={invalidate} />
 
       {/* Toolbar */}
-      <div className="mt-6 flex flex-wrap items-center justify-between gap-3">
+      <div data-tour="feedback-filters" className="mt-6 flex flex-wrap items-center justify-between gap-3">
         <div className="inline-flex rounded-lg border border-slate-200 bg-white p-0.5 text-sm">
           {(['all', 'bug', 'idea'] as const).map((t) => (
             <button
@@ -98,12 +102,12 @@ export function FeedbackPortalPage() {
       </div>
 
       {/* List */}
-      <section className="mt-4 space-y-3">
+      <section data-tour="feedback-list" className="mt-4 space-y-3">
         {q.isLoading ? (
           <div className="rounded-xl border border-slate-200 bg-white p-6 text-sm text-slate-500">Loading…</div>
         ) : posts.length === 0 ? (
           <div className="rounded-xl border border-dashed border-slate-300 bg-white p-10 text-center text-sm text-slate-500">
-            Nothing here yet — be the first to post a {type === 'bug' ? 'bug' : type === 'idea' ? 'idea' : 'bug or idea'}.
+            Nothing here yet — be the first to post {type === 'bug' ? 'a bug' : type === 'idea' ? 'an idea' : 'a bug or idea'}.
           </div>
         ) : (
           posts.map((p) => (
@@ -111,7 +115,7 @@ export function FeedbackPortalPage() {
               key={p.id}
               post={p}
               isAdmin={isAdmin}
-              voting={voteMut.isPending}
+              voting={voteMut.isPending && voteMut.variables === p.id}
               onVote={() => voteMut.mutate(p.id)}
               onStatus={(status) => statusMut.mutate({ id: p.id, status })}
             />
@@ -204,7 +208,7 @@ function SubmitForm({ onCreated }: { onCreated: () => void }) {
   })
 
   return (
-    <div className="mt-5 rounded-xl border border-slate-200 bg-white p-4">
+    <div data-tour="feedback-form" className="mt-5 rounded-xl border border-slate-200 bg-white p-4">
       <div className="flex items-center gap-2">
         <div className="inline-flex rounded-lg border border-slate-200 p-0.5 text-sm">
           {(['idea', 'bug'] as const).map((t) => (

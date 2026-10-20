@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react'
 import { Modal } from '@/components/ui/Modal'
+import { ApiError } from '@/lib/api'
 import { SubcontractorPicker } from '@/components/subs/SubcontractorPicker'
+import { SubInviteModal, type InviteResult, type NotInvitedSub } from '@/components/staff/SubCompanies'
 import {
   getSubcontractor,
   subOutWorkOrder,
@@ -18,6 +20,14 @@ import type { Subcontractor } from '@/types/subcontractor'
  * Fields are intentionally narrower than the create form — the WO
  * already exists, so customer/location/scope are baked in; we only
  * collect the sub + NTE + special instructions.
+ *
+ * A sub company whose documents aren't all in is refused once, saying what's
+ * missing (documents_missing); "Send anyway" sends it, because most of this
+ * work is urgent, and the job notes what was missing.
+ *
+ * With the sub network on, every sub accepts an invite before it gets work:
+ * a sub not on CrewBarn (sub_not_on_crewbarn) can be invited from here, and
+ * one already on CrewBarn takes the job right after.
  */
 export function SubOutModal({
   isOpen,
@@ -44,6 +54,30 @@ export function SubOutModal({
   const [submitting, setSubmitting] = useState(false)
   const [errors, setErrors] = useState<Record<string, string>>({})
   const [serverErr, setServerErr] = useState<string | null>(null)
+  // The sub's documents aren't all in: what the server said, until sent anyway.
+  const [missingDocs, setMissingDocs] = useState<string | null>(null)
+  // The sub isn't on CrewBarn yet (or is still setting up): invite it here.
+  const [notReady, setNotReady] = useState<{ code: string; message: string; sub: NotInvitedSub } | null>(null)
+  const [inviting, setInviting] = useState(false)
+  const [invited, setInvited] = useState<InviteResult | null>(null)
+  // Editing, and the current sub's details didn't load. The job still has
+  // that sub, so saving keeps it unless another is picked. message is null
+  // for a 403: the details aren't this person's to see, which isn't an error.
+  const [subLoadFailure, setSubLoadFailure] = useState<{ message: string | null } | null>(null)
+
+  const loadCurrentSub = (id: string) => {
+    setSubLoadFailure(null)
+    void getSubcontractor(id)
+      .then((s) => setSub(s))
+      .catch((e: unknown) => {
+        setSub(null)
+        setSubLoadFailure({
+          message: e instanceof ApiError && e.status === 403
+            ? null
+            : e instanceof Error && e.message ? e.message : 'Something went wrong.',
+        })
+      })
+  }
 
   // On open: hydrate from initial values when editing. The picker
   // needs the full Subcontractor object so we fetch by id; cheap call
@@ -52,17 +86,19 @@ export function SubOutModal({
     if (!isOpen) return
     setErrors({})
     setServerErr(null)
+    setMissingDocs(null)
+    setNotReady(null)
+    setInvited(null)
     if (isEdit) {
       setNteDollars(
         initialNteCents != null ? (initialNteCents / 100).toFixed(2) : '',
       )
       setInstructions(initialSpecialInstructions ?? '')
-      // Fetch sub for the picker. Failure isn't fatal — we just leave
-      // it empty and the user can re-select.
-      void getSubcontractor(initialSubcontractorId!)
-        .then((s) => setSub(s))
-        .catch(() => setSub(null))
+      // Fetch sub for the picker. Failure isn't fatal, but it is said:
+      // an empty picker alone reads as "no sub on this job".
+      loadCurrentSub(initialSubcontractorId!)
     } else {
+      setSubLoadFailure(null)
       setSub(null)
       setNteDollars('')
       setInstructions('')
@@ -75,12 +111,16 @@ export function SubOutModal({
     initialSpecialInstructions,
   ])
 
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault()
+  async function handleSubmit(e: React.FormEvent | null, sendAnyway = false) {
+    e?.preventDefault()
     setErrors({})
     setServerErr(null)
+    setMissingDocs(null)
+    setNotReady(null)
     const e2: Record<string, string> = {}
-    if (!sub) e2.subcontractor_id = 'Pick the sub doing the work.'
+    // The sub already on the job counts as picked when its details didn't load.
+    const subId = sub?.id ?? (isEdit && subLoadFailure ? initialSubcontractorId! : null)
+    if (!subId) e2.subcontractor_id = 'Pick the sub doing the work.'
     const nte = parseFloat(nteDollars)
     if (isNaN(nte) || nte < 0) e2.sub_nte_cents = 'NTE must be a non-negative number.'
     if (Object.keys(e2).length > 0) { setErrors(e2); return }
@@ -88,9 +128,10 @@ export function SubOutModal({
     setSubmitting(true)
     try {
       const payload = {
-        subcontractor_id: sub!.id,
+        subcontractor_id: subId!,
         sub_nte_cents: Math.round(nte * 100),
         sub_special_instructions: instructions.trim() || null,
+        ...(sendAnyway ? { send_anyway: true } : {}),
       }
       if (isEdit) {
         await updateSubOutWorkOrder(workOrderId, payload)
@@ -100,13 +141,27 @@ export function SubOutModal({
       onSubbed?.()
       onClose()
     } catch (err) {
-      const e = err as { payload?: { message?: string; errors?: Record<string, string[]> } }
-      if (e?.payload?.errors) {
+      if (err instanceof ApiError && err.code === 'documents_missing') {
+        setMissingDocs(err.message)
+      } else if (err instanceof ApiError && (err.code === 'sub_not_on_crewbarn' || err.code === 'sub_setting_up')) {
+        const s = (err.details as { subcontractor?: { id: string; business_name: string; contact_name: string | null; email: string | null; phone: string | null } } | undefined)?.subcontractor
+        setNotReady({
+          code: err.code,
+          message: err.message,
+          sub: {
+            subcontractor_id: s?.id ?? subId!,
+            business_name: s?.business_name ?? sub?.business_name ?? 'this sub',
+            contact_name: s?.contact_name ?? null,
+            email: s?.email ?? null,
+            phone: s?.phone ?? null,
+          },
+        })
+      } else if (err instanceof ApiError && err.status === 422 && err.details && typeof err.details === 'object') {
         const flat: Record<string, string> = {}
-        for (const [k, v] of Object.entries(e.payload.errors)) flat[k] = v[0]
+        for (const [k, v] of Object.entries(err.details as Record<string, unknown>)) flat[k] = Array.isArray(v) ? String(v[0]) : String(v)
         setErrors(flat)
       } else {
-        setServerErr(e?.payload?.message ?? String(err))
+        setServerErr(err instanceof Error ? err.message : String(err))
       }
     } finally {
       setSubmitting(false)
@@ -117,17 +172,77 @@ export function SubOutModal({
     'w-full px-3 py-2 text-sm border border-slate-300 rounded-md focus:outline-none focus:ring-1 focus:ring-amber-500 focus:border-amber-500'
 
   return (
+    <>
     <Modal
       isOpen={isOpen}
       onClose={onClose}
       title={isEdit ? 'Edit sub assignment' : 'Sub this job out'}
       size="md"
+      disableEscapeClose={inviting}
     >
       <Modal.Body>
         <form id="sub-out-form" onSubmit={handleSubmit} className="space-y-4">
           {serverErr && (
             <div className="text-xs bg-red-50 border border-red-200 text-red-800 rounded-md px-3 py-2">
               {serverErr}
+            </div>
+          )}
+
+          {missingDocs && (
+            <div role="alert" className="rounded-md border border-amber-300 bg-amber-50 px-3 py-3 text-sm text-amber-900">
+              <p>{missingDocs}</p>
+              <p className="mt-1 text-xs text-amber-800">Sending anyway notes on this job what was missing.</p>
+              <button
+                type="button"
+                onClick={() => void handleSubmit(null, true)}
+                disabled={submitting}
+                className="mt-2 rounded-md bg-amber-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-amber-700 disabled:opacity-50"
+              >
+                {submitting ? 'Sending…' : 'Send anyway (urgent)'}
+              </button>
+            </div>
+          )}
+
+          {notReady && (
+            <div role="alert" className="rounded-md border border-amber-300 bg-amber-50 px-3 py-3 text-sm text-amber-900">
+              <p>{notReady.message}</p>
+              {invited?.on_crewbarn ? (
+                <>
+                  <p className="mt-1 text-xs text-amber-800">{invited.company_name} is on CrewBarn, so the job can go now.</p>
+                  <button
+                    type="button"
+                    onClick={() => void handleSubmit(null)}
+                    disabled={submitting}
+                    className="mt-2 rounded-md bg-amber-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-amber-700 disabled:opacity-50"
+                  >
+                    {submitting ? 'Sending…' : 'Send the job now'}
+                  </button>
+                </>
+              ) : invited ? (
+                <p className="mt-1 text-xs text-amber-800">We emailed {invited.email} an invite code. Once they've set up, send the job again.</p>
+              ) : notReady.code === 'sub_not_on_crewbarn' ? (
+                <button
+                  type="button"
+                  onClick={() => setInviting(true)}
+                  className="mt-2 rounded-md bg-amber-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-amber-700"
+                >
+                  Invite {notReady.sub.business_name}
+                </button>
+              ) : null}
+            </div>
+          )}
+
+          {isEdit && subLoadFailure?.message && !sub && (
+            <div role="alert" className="text-xs bg-red-50 border border-red-200 text-red-800 rounded-md px-3 py-2">
+              Couldn't load the sub on this job ({subLoadFailure.message}). It's still assigned — saving keeps it
+              unless you pick another.
+              <button
+                type="button"
+                onClick={() => loadCurrentSub(initialSubcontractorId!)}
+                className="ml-2 font-semibold underline"
+              >
+                Try again
+              </button>
             </div>
           )}
 
@@ -149,8 +264,8 @@ export function SubOutModal({
               />
             </div>
             <p className="text-[11px] text-slate-500 mt-1">
-              Max payout authorized to the sub. They'll get this on the customer doc and can request
-              an increase from the portal if they need to exceed.
+              Max payout authorized to the sub, including labor, materials and tax. If they need to go
+              over it, they request an increase from their portal for you to approve.
             </p>
           </Field>
 
@@ -165,7 +280,7 @@ export function SubOutModal({
           </Field>
 
           <p className="text-[11px] text-slate-500">
-            The sub will be emailed their assignment + see the WO in their portal under <strong>Subbed jobs</strong>.
+            The job goes to the sub's own CrewBarn, under <strong>Inbound sub jobs</strong>, and they're emailed that it's there.
           </p>
         </form>
       </Modal.Body>
@@ -193,6 +308,14 @@ export function SubOutModal({
         </button>
       </Modal.Footer>
     </Modal>
+    {inviting && notReady && (
+      <SubInviteModal
+        initial={notReady.sub}
+        onInvited={setInvited}
+        onClose={() => setInviting(false)}
+      />
+    )}
+    </>
   )
 }
 

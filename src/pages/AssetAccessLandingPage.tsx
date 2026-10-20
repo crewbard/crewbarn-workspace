@@ -113,7 +113,9 @@ export function AssetAccessLandingPage() {
       return
     }
     setError(null)
-    navigate(`${scanPath(parsed)}?access_code=${encodeURIComponent(accessCode.trim())}`)
+    // Access codes are secrets: do not put them in the address bar, browser
+    // history, copied links, or referrer headers.
+    navigate(scanPath(parsed), { state: { assetAccessCode: accessCode.trim() } })
   }
 
   const openScannedQr = (value: string) => {
@@ -133,7 +135,7 @@ export function AssetAccessLandingPage() {
 
   return (
     <div className="min-h-screen bg-slate-50 text-slate-900">
-      <header className="border-b border-slate-200 bg-white">
+      <header data-tour="asset-landing-header" className="border-b border-slate-200 bg-white">
         <div className="mx-auto flex max-w-5xl items-center justify-between px-5 py-4">
           <div className="text-xl font-black tracking-tight">
             Crew<span className="text-amber-500">Barn</span>
@@ -145,20 +147,20 @@ export function AssetAccessLandingPage() {
       </header>
 
       {(previewState === 'loading' || preview || previewState === 'missing') && (
-        <div className="mx-auto max-w-5xl px-5 pt-6">
+        <div data-tour="asset-landing-preview" className="mx-auto max-w-5xl px-5 pt-6">
           <ScannedPreview state={previewState} node={preview} onOpen={() => parsed && navigate(scanPath(parsed))} />
         </div>
       )}
 
       <main className="mx-auto grid max-w-5xl gap-6 px-5 py-10 lg:grid-cols-[1.1fr_0.9fr]">
-        <section className="rounded-xl border border-slate-200 bg-white p-7 shadow-sm">
+        <section data-tour="asset-landing-scan" className="rounded-xl border border-slate-200 bg-white p-7 shadow-sm">
           <p className="text-xs font-semibold uppercase tracking-wide text-amber-700">Asset access</p>
           <h1 className="mt-3 text-3xl font-black tracking-tight text-slate-950">
             Open a CrewBarn asset record
           </h1>
           <p className="mt-3 max-w-2xl text-sm leading-6 text-slate-600">
             Use this page only for asset QR codes and one-time security keys. If you are trying to manage
-            CrewBarn jobs, customers, accounting, or settings, use the normal SaaS login.
+            CrewBarn jobs, customers, accounting, or settings, use the normal staff sign-in.
           </p>
 
           <div className="mt-7 grid gap-3 sm:grid-cols-2">
@@ -178,7 +180,7 @@ export function AssetAccessLandingPage() {
               href={SAAS_LOGIN_URL}
               className="rounded-lg border border-slate-200 bg-slate-50 p-4 hover:border-amber-300 hover:bg-amber-50"
             >
-              <div className="text-sm font-bold text-slate-950">CrewBarn SaaS login</div>
+              <div className="text-sm font-bold text-slate-950">CrewBarn staff sign-in</div>
               <p className="mt-1 text-xs leading-5 text-slate-600">
                 Staff and admins sign in at app.crewbarn.com, not the assets subdomain.
               </p>
@@ -186,7 +188,7 @@ export function AssetAccessLandingPage() {
           </div>
         </section>
 
-        <section className="rounded-xl border border-slate-200 bg-white p-7 shadow-sm">
+        <section data-tour="asset-landing-key" className="rounded-xl border border-slate-200 bg-white p-7 shadow-sm">
           <h2 className="text-xl font-black text-slate-950">Security key access</h2>
           <p className="mt-2 text-sm leading-6 text-slate-600">
             Approved users can unlock secured details with the scan link and the one-time key from the asset owner.

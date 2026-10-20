@@ -1,11 +1,13 @@
 import { Navigate } from 'react-router-dom'
 import { useAuth } from '@/hooks/useAuth'
 import { getActingTenant } from '@/lib/api'
+import { appExtensions } from '@/lib/appExtensions'
 
 /**
  * Home (`/`) gate. A platform admin with NO tenant selected has no tenant
  * context — the tenant dashboard's queries would fail ("writes will fail until
- * you pick one"). Send them to the platform ops dashboard instead. Everyone
+ * you pick one"). Send them to the platform ops dashboard instead (registered
+ * by src/admin/register.tsx as `staffHome`). Everyone
  * else (and admins who have picked a tenant) gets the normal tenant dashboard.
  */
 export function HomeRoute({ children }: { children: React.ReactNode }) {
@@ -19,8 +21,9 @@ export function HomeRoute({ children }: { children: React.ReactNode }) {
   // the console. Sales and Billing are owners of the demo shop: they get the
   // normal app on their home tenant, with the console a click away.
   const crossTenant = !!account?.is_platform_admin && (account.platform_capabilities ?? []).includes('tenant_data.access')
-  if (crossTenant && !getActingTenant()) {
-    return <Navigate to="/admin" replace />
+  const staffHome = appExtensions().staffHome
+  if (crossTenant && staffHome && !getActingTenant()) {
+    return <Navigate to={staffHome} replace />
   }
 
   // Employee portal: the account's own setting decides where "/" goes. An

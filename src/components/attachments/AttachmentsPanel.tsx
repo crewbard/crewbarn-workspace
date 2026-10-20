@@ -33,6 +33,8 @@ export interface AttachmentRow {
   website_caption?: string | null
   website_alt_text?: string | null
   website_service_tags?: string[]
+  /** The client's work order (their form, or a photo of the signed sheet). Jobs only. */
+  client_wo?: boolean
   website_area_tags?: string[]
   website_approved_by_account_id?: string | null
   website_approved_at?: string | null
@@ -109,6 +111,12 @@ export function AttachmentsPanel({
       apiRequest(`${basePath}/attachments/${id}`, { method: 'DELETE' }),
     onSuccess: () => qc.invalidateQueries({ queryKey: cacheKey }),
   })
+
+  // A job's photo or file can be marked as the client's work order, which a
+  // customer, job type or company can require before Complete.
+  const isJob = basePath.startsWith('/v1/work-orders/')
+  const toggleClientWo = (a: AttachmentRow) =>
+    updateAttachment.mutate({ id: a.id, body: { client_wo: !a.client_wo } })
 
   const items = q.data?.data ?? []
   const filtered = items.filter((a) => a.kind === (mode === 'images' ? 'image' : 'document'))
@@ -195,10 +203,15 @@ export function AttachmentsPanel({
                     </div>
                   )}
                 </button>
-                {isWebsiteCandidate && (
-                  <span className="absolute left-1.5 top-1.5 rounded-full bg-emerald-600/95 px-2 py-0.5 text-[10px] font-semibold text-white shadow-sm">
-                    Website
-                  </span>
+                {(isWebsiteCandidate || (isJob && a.client_wo)) && (
+                  <div className="absolute left-1.5 top-1.5 flex flex-wrap gap-1">
+                    {isWebsiteCandidate && (
+                      <span className="rounded-full bg-emerald-600/95 px-2 py-0.5 text-[10px] font-semibold text-white shadow-sm">Website</span>
+                    )}
+                    {isJob && a.client_wo && (
+                      <span className="rounded-full bg-sky-700/95 px-2 py-0.5 text-[10px] font-semibold text-white shadow-sm">Client WO</span>
+                    )}
+                  </div>
                 )}
                 <div className="absolute inset-x-1.5 bottom-1.5 flex gap-1 opacity-0 transition-opacity group-hover:opacity-100">
                   <button
@@ -213,6 +226,17 @@ export function AttachmentsPanel({
                   >
                     {isWebsiteCandidate ? 'Hide site' : 'Show site'}
                   </button>
+                  {isJob && (
+                    <button
+                      type="button"
+                      onClick={() => toggleClientWo(a)}
+                      disabled={updateAttachment.isPending}
+                      className="flex-1 rounded bg-white/95 px-2 py-1 text-[10px] font-semibold text-sky-800 shadow-sm hover:bg-white"
+                      title={a.client_wo ? "Not the client's work order" : "This is the client's work order"}
+                    >
+                      {a.client_wo ? 'Not client WO' : 'Client WO'}
+                    </button>
+                  )}
                 </div>
                 <button
                   type="button"
@@ -239,14 +263,28 @@ export function AttachmentsPanel({
             >
               <span className="text-2xl">📄</span>
               <div className="flex-1 min-w-0">
-                <div className="text-sm font-medium text-slate-900 truncate">
-                  {a.original_filename}
+                <div className="flex items-center gap-2 text-sm font-medium text-slate-900">
+                  <span className="truncate">{a.original_filename}</span>
+                  {isJob && a.client_wo && (
+                    <span className="shrink-0 rounded-full bg-sky-100 px-2 py-0.5 text-[10px] font-semibold text-sky-800">Client WO</span>
+                  )}
                 </div>
                 <div className="text-[11px] text-slate-500">
                   {Math.round(a.size_bytes / 1024)} KB
                   {a.created_at && ` · uploaded ${new Date(a.created_at).toLocaleString()}`}
                 </div>
               </div>
+              {isJob && (
+                <button
+                  type="button"
+                  onClick={() => toggleClientWo(a)}
+                  disabled={updateAttachment.isPending}
+                  className="text-xs px-3 py-1.5 rounded-md border border-sky-200 text-sky-800 hover:bg-sky-50 disabled:opacity-50"
+                  title="A customer, job type or company can require the client's work order before Complete"
+                >
+                  {a.client_wo ? 'Not client WO' : "Mark as client's WO"}
+                </button>
+              )}
               {a.url && (
                 <button
                   type="button"

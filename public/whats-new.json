@@ -1,6 +1,1711 @@
 {
   "releases": [
     {
+      "version": "2026-10-19zzzx",
+      "items": [
+        "Choose Quick setup (password only) or Full onboarding when adding staff, or send a fresh setup link from their staff settings. Email and text delivery are shown separately. After setup, app users receive the phone-app download link.",
+        "Owners and anyone allowed to manage staff can choose the days and times for company quiet hours, or set a person's own schedule.",
+        "Employee pay now has a clear payment schedule: weekly, every two weeks, twice a month, monthly and more. Twice-monthly pay starts with the 1st and 16th. Salary amounts can be entered by payment period, with the yearly amount shown so job costing stays clear.",
+        "Adding someone with hourly, salary or commission pay no longer fails when unused pay fields are left blank."
+      ]
+    },
+    {
+      "version": "2026-10-19zzzw",
+      "items": [
+        "Put away & receive now opens even when a line is typed in rather than a product: it offers Create product for that line first, then carries on to the spot, receiving and Print QR. You can also skip those lines and receive the rest.",
+        "Receive into: after picking a location, tap Choose spot to pick the exact spot in the Bins tree (or build a new one there). The button shows the spot's full name. Leaving it as is still means any bin in that location, and Use catalog default is still there."
+      ]
+    },
+    {
+      "version": "2026-10-19zzzv",
+      "items": [
+        "Receiving a purchase order is quicker: tap Put away & receive, keep the location and spot it picks for you (where that item went last time, or its usual bin), and receive it all in one tap. Then print the QR labels right there.",
+        "Need somewhere new? Add a location, or build a rack, shelf, bin or drawer with sections without leaving the order. The builder starts from your own layout with the next name (Rack B becomes Rack C), and the new spot is picked for you, shown with its full name like Rack C › Row 1 › Bin 3 › Section C.",
+        "The classic receive panel is still there with everything it had."
+      ]
+    },
+    {
+      "version": "2026-10-19zzzu",
+      "items": [
+        "Estimates: a Suggest button beside each line's price works out what that line should cost from your company's own costs: its parts plus the hours of work you enter, at your target margin and minimums. Use this price fills it in; nothing changes until you save. Owners and people who can see revenue also see where the money goes.",
+        "Ask CBI what to charge for a job (\"what should I charge for two seals and 2 hours?\") and it suggests a price and explains it. It never changes a price.",
+        "Company Cost Model: a new Books check card shows what your expenses, bills, payroll runs and clocked job hours say each cost is a month, next to what you typed. Pick typed, books or the average for each cost and press Apply; nothing changes on its own."
+      ]
+    },
+    {
+      "version": "2026-10-19zzzt",
+      "items": [
+        "Customer app builds are back on."
+      ]
+    },
+    {
+      "version": "2026-10-19zzzs",
+      "items": [
+        "The public API welcome page now shows only the service name and status, without creating an anonymous browser session."
+      ]
+    },
+    {
+      "version": "2026-10-19zzzr",
+      "items": [
+        "Customer app builds are paused for a few days while we add a security check to app updates, so every app only takes updates that really come from CrewBarn. None of your builds are used, and your app keeps working as it is."
+      ]
+    },
+    {
+      "version": "2026-10-19zzzq",
+      "items": [
+        "Print Bridge 2.0.1: connecting a printer now pauses after five wrong codes, and only trusted websites can connect. Browsers already paired can keep printing. This needs the updated Print Bridge on your PC; offices using their own website can add it to the trusted list."
+      ]
+    },
+    {
+      "version": "2026-10-19zzzp",
+      "items": [
+        "Trades your customers bring in: the link to set up their free CrewBarn account now works for 14 days after it's emailed. The customer can send it again for a fresh link, and the link to the job keeps working the whole time.",
+        "A customer can bring in 5 trades a day, and their invites can set up at most 10 new companies in all."
+      ]
+    },
+    {
+      "version": "2026-10-19zzzo",
+      "items": [
+        "Ask CBI what fits a vehicle (\"what fits a 2016 F-150?\") or what a part fits, and it answers from your shop's confirmed fits. The parts and vehicles in its answer are links, like in notes and messages.",
+        "Tell CBI a part fits (or doesn't fit) a vehicle and it offers to save it. You confirm first; saved fits from people who can't edit the catalog wait under Suggested fits.",
+        "Lessons about prices and money are now always checked by a person, even when auto-approve is on. If your company had pricing set to auto-approve, it is switched off."
+      ]
+    },
+    {
+      "version": "2026-10-19zzzn",
+      "items": [
+        "Staff invites: when the invite email goes out, the set-up link is no longer shown to the office, because whoever has it can set that person's password. You still see it if the email couldn't be sent, so you can pass it on. A new hire still gets it by text.",
+        "Every invite, set-up link and sign-up code that gets used is now recorded, and platform admins can see them under Security with \"Invites used\"."
+      ]
+    },
+    {
+      "version": "2026-10-19zzzm",
+      "items": [
+        "Signing in (in the installed CrewBarn app especially) no longer throws you back to the sign-in page on the first try. The extra security check that ties a sign-in to your computer now waits until your browser has finished setting it up."
+      ]
+    },
+    {
+      "version": "2026-10-19zzzl",
+      "items": [
+        "CBI now knows what fits what. Ask it \"what fits a 2016 F-150?\" or \"what does the R8 key fit?\" and it answers from the fits you've confirmed, with what's in stock.",
+        "Tell CBI a part fits (or doesn't fit) something and it saves it as a suggestion. New: Suggested fits in Product catalog → Fitment, where someone who can edit the catalog confirms or rejects each one. A suggestion never shows in filters or the fits card until it's confirmed.",
+        "Find fits in job history: CrewBarn looks at the parts used on past jobs and the vehicle on each job, and suggests those fits for review. For trades with vehicles for now."
+      ]
+    },
+    {
+      "version": "2026-10-19zzzk",
+      "items": [
+        "Customer portal: when a manager on a customer's account invites a coworker, that person now waits for your office to add them as a contact, instead of being added straight to your records. A contact you switched off stays off.",
+        "Removing someone from a customer's portal also cancels the invites they sent, and removing a customer cancels its open portal invites.",
+        "Re-entering your password while signed in (changing it, confirming a delete, saving your portal profile) now allows 5 wrong tries, then waits an hour."
+      ]
+    },
+    {
+      "version": "2026-10-19zzzi",
+      "items": [
+        "Logos, website pictures and attachments: CrewBarn no longer stores SVG files, because a script can hide inside one. Pick an SVG anyway and CrewBarn turns it into a normal PNG picture before it uploads, so your logo still works.",
+        "Signatures, documents and job photos are no longer kept in browser and network caches for a year. Only things meant for everyone, like QR codes, app icons, product pictures and profile pictures, are."
+      ]
+    },
+    {
+      "version": "2026-10-19zzzh",
+      "items": [
+        "Signing in: after 5 wrong passwords or codes, that email waits an hour before it can sign in again from that computer. The sign-in page now says how long, and resetting the password ends the wait straight away. Someone on another computer is never kept out by it.",
+        "One computer gets 30 wrong tries an hour across every email, so nobody can try one password on lots of people.",
+        "The customer portal and apps follow the same rule, and a wrong emailed or texted code counts as a wrong try."
+      ]
+    },
+    {
+      "version": "2026-10-19zzzg",
+      "items": [
+        "Calls that come in while you're closed now show as After hours on the call pop-up and in Calls. It goes by the business hours you set (and by after-hours answering, when it's on). When CBI answered the call, the pop-up says so, flags it Urgent if CBI thought it was, and shows the one-line summary.",
+        "New: Mark as spam on the call pop-up and in Calls. Calls from that number then show as Likely spam, with no ring and a shorter timer. Not spam takes it back off the list."
+      ]
+    },
+    {
+      "version": "2026-10-19zzzf",
+      "items": [
+        "Customer app builder: the Apple Issuer ID has to be the long code from App Store Connect, like 57246542-96fe-1a63-e053-0824d011072a. Anything else is turned away with a note saying where to find it.",
+        "Someone you've switched off can't turn their login back on with an old invite or onboarding link. Switching a person off now cancels any links they haven't used.",
+        "Files texted to you are kept as what they really are. One that isn't a picture, video, sound or PDF is saved as a download instead of opening in your browser."
+      ]
+    },
+    {
+      "version": "2026-10-19zzze",
+      "items": [
+        "The incoming-call pop-up is redesigned. It's smaller and fits what it has to say: who's calling (the number shows once, not twice), the open job they're most likely calling about, and chips for the vehicles their jobs mention (click one to open the vehicle card), what they owe, their tags and where they are. Unknown callers get Create customer with the number filled in.",
+        "Missed calls and voicemails get their own look: Call back and Text back for a missed call, and a voicemail plays right on the card with the transcript under it.",
+        "It sits under the top bar instead of on it, says how long until it hides (and that hovering pauses it), and Esc or ✕ hides it into Calls like before. When a second call rings, a small bar under the card shows who else is waiting, with Show and Call back. Still no sound."
+      ]
+    },
+    {
+      "version": "2026-10-19zzzd",
+      "items": [
+        "Call transcripts: a year, a model number, a house number, a ZIP code or an arrival window said near each other is no longer blacked out as if it were a card number. A card read out a few digits at a time still is.",
+        "The billing ZIP code asked for after a card's security code stays in the transcript; only the code itself comes out."
+      ]
+    },
+    {
+      "version": "2026-10-19zzzc",
+      "items": [
+        "Vehicles in notes, texts and call transcripts now link however they're written: a range of years (2015-2020 Ford F-150, 15-18 Tacoma), a model run together or split apart (f150, F 150, silverado1500), and the models and makes your own products are saved as fitting, even ones the key library doesn't carry. Click one to open the vehicle card on the right vehicle, with Parts that fit for every year in the range.",
+        "Phone numbers and removed card numbers are never read as years, and a backwards or 40-year range is left alone rather than linked to the wrong vehicle."
+      ]
+    },
+    {
+      "version": "2026-10-19zzzb",
+      "items": [
+        "Templates: the preview before adding or restoring starter templates loads faster, especially when your company has duplicate copies. Edited templates and copies used by jobs, customers or reminders stay protected."
+      ]
+    },
+    {
+      "version": "2026-10-19zzza",
+      "items": [
+        "Pop-up cards (an incoming call, a text, a new request): the picture or initials now sit in the middle of their ring instead of slightly off to one side."
+      ]
+    },
+    {
+      "version": "2026-10-19zzy",
+      "items": [
+        "Vehicle card: a new Parts that fit tab lists the products whose saved fits match this vehicle and year, in stock first, with the van and shop counts. Open a row for the full part card: stock, on order, who sells it, last jobs, Add to cart and Make a card. Locksmiths still open on Keys, and everything on the Keys side is where it was. Mobile mechanics open straight on Parts that fit, with Key info one click away.",
+        "Product window: every fit line now opens what else fits it. A vehicle opens its vehicle card, and anything else (a Trane 4TTR4036 condenser, a LiftMaster 8500W opener) opens a Parts that fit card with every product saved for it. When nothing matches the exact model, the card says it is showing the closest model family instead."
+      ]
+    },
+    {
+      "version": "2026-10-19zzx",
+      "items": [
+        "Stripe card refunds and combined inspection PDFs now open the correct action.",
+        "Invalid reference-card links show a not-found response instead of a server error.",
+        "Using one office action no longer uses up an unrelated action's request allowance. Existing shared limits and sign-in protection stay in place."
+      ]
+    },
+    {
+      "version": "2026-10-19zzv",
+      "items": [
+        "Call transcripts: a phone number that's read back, said twice or followed by an address is no longer blacked out as if it were a card number. Card numbers still are.",
+        "Phone numbers blacked out before this can be put back: Platform admin can transcribe those calls again from their recordings (Maintenance)."
+      ]
+    },
+    {
+      "version": "2026-10-19zzu",
+      "items": [
+        "Product catalog: every product now has a Fits section. Record what a part fits in your trade's own fields (a 2015–2020 Ford F-150 with regular ignition, a Kwikset KW1 cylinder, a Trane 4TTR4036 condenser), from the product window or its Edit form, with suggestions from what you've entered before and, for vehicles, the key library.",
+        "Product catalog: a new Fits filter. Pick what the part fits (your trade's own subjects, like Vehicle or Unit), then fill in make, model and year (or brand, keyway, tonnage…), and the list shows only the parts that fit. Years work as ranges, F150 finds F-150, and a series like 4TTR4036* finds every model in it."
+      ]
+    },
+    {
+      "version": "2026-10-19zzt",
+      "items": [
+        "Fitment drafts for every trade: CrewBarn now knows what parts fit in each trade, each in its own fields: vehicles, keyways and safes for locksmiths, units for HVAC, openers and springs for garage companies, and vehicles with engines for mobile mechanics. Your trade's draft is ready and works now (marked Draft). Open Product catalog → Fitment fields to rename, add or remove fields, use it as it is, or turn it off. Companies that do more than one trade get all their trades' subjects.",
+        "Your fitment fields are yours: once you change them, CrewBarn's updates to the trade drafts never overwrite them. When a newer draft adds fields, you're offered them, and you can always go back to the trade draft."
+      ]
+    },
+    {
+      "version": "2026-10-19zzs",
+      "items": [
+        "Product catalog: tick products in the list and a price bar appears. Set them all to cost plus a markup, to the cent or up to the dollar, in one go; products with no cost are left alone, and Undo puts the old prices back.",
+        "Product catalog: click a price in the list to change it right there. Enter saves, Esc cancels."
+      ]
+    },
+    {
+      "version": "2026-10-19zzr",
+      "items": [
+        "Product catalog: clicking a product opens the same product window Order parts uses, now with its stock by place (the shop and each van, bin by bin), the purchase orders it is still coming in on, its recent movements, and Order more, Print labels and Add stock from PO buttons next to Edit."
+      ]
+    },
+    {
+      "version": "2026-10-19zzq",
+      "items": [
+        "Inventory Movements: a new Opening balance entry records how much of each item was on each shelf and van on the day every stock change started being logged, so an item's history adds up to its count from then on. Your administrator writes these once. They never change your stock."
+      ]
+    },
+    {
+      "version": "2026-10-19zzp",
+      "items": [
+        "Purchase orders: a Supplier copy to print or save as PDF and send. It shows the supplier's part numbers, descriptions, quantities, costs and totals with your company and theirs on top, and never your bins, your own SKUs or your notes.",
+        "A line with no supplier part number is marked on the order, so you can add it before the order goes out. Until then the supplier copy shows that line's description only."
+      ]
+    },
+    {
+      "version": "2026-10-19zzo",
+      "items": [
+        "New API connections require a signing key. Existing connections can be upgraded with confirmation, and the API guide includes a signing helper and setup instructions."
+      ]
+    },
+    {
+      "version": "2026-10-19zzj",
+      "items": [
+        "Easy layout: pages use the full width of the screen again, in both Easy · Top bar and Easy · Side bar, with the same spacing on every page. Tile grids add columns on wider monitors and the Bins detail panel grows with the screen."
+      ]
+    },
+    {
+      "version": "2026-10-19zzi",
+      "items": [
+        "Phone app in your account menu (your picture or initials, top right): scan the QR code with an Android phone to install the CrewBarn app. On a phone, it's at the bottom of the menu.",
+        "The app download link and QR code now open the newest CrewBarn app, version 1.10, and crewbarn.com has its Get the app section back."
+      ]
+    },
+    {
+      "version": "2026-10-19zzh",
+      "items": [
+        "Supported browsers can now add an automatic device security check after sign-in. Your password and verification steps stay the same, and the browser renews its protection in the background."
+      ]
+    },
+    {
+      "version": "2026-10-19zzg",
+      "items": [
+        "Customers: the circle with a customer's initials is now light on dark backgrounds too, such as the customer page header in the Easy theme, so the initials are easy to read. It looks the same as before on white."
+      ]
+    },
+    {
+      "version": "2026-10-19zzf",
+      "items": [
+        "Easy layout: every page now sits on the same canvas with the same spacing, in both Easy · Top bar and Easy · Side bar. Product catalog, Tool Shed and Settings no longer jump to a narrower width.",
+        "Easy page titles use your company's chrome colour from Settings > Appearance, the same as the menu bar.",
+        "The section tabs stay put under the top bar while you scroll, in both Easy layouts.",
+        "Schedule, Dispatch and Messages fill the screen under the bars exactly, with no extra scrollbar or gap."
+      ]
+    },
+    {
+      "version": "2026-10-19zze",
+      "items": [
+        "Customer portal: signing in now signs the customer out everywhere else, in other browsers and on other phones. A phone that was signed out stops getting their notifications."
+      ]
+    },
+    {
+      "version": "2026-10-19zz",
+      "items": [
+        "Order parts: taking a part out of the cart asks for your password and a reason again, like every other delete, when your shop has those turned on. Undo still puts it back.",
+        "Inventory Stock: the \"short\" tag next to Keep at least is back, showing how many a spot is missing."
+      ]
+    },
+    {
+      "version": "2026-10-19zy",
+      "items": [
+        "Bins: Add product opens the Add stock window again, with the bin filled in. Pick a product, or make one with + New product (with its photo). The stock it adds is listed in Movements under Stock received, with who added it. When your shop requires purchase orders, Bins still opens the purchase order window."
+      ]
+    },
+    {
+      "version": "2026-10-19zx",
+      "items": [
+        "Product catalog: switch between List and Grid at the top. The grid shows each product's photo, or an icon for what it is when there is no photo yet, with its price and stock. Your choice is remembered on this computer.",
+        "The catalog now pages through every product with Previous and Next instead of stopping at the first 50."
+      ]
+    },
+    {
+      "version": "2026-10-19zw",
+      "items": [
+        "Product catalog: a Needs attention line shows how many products are out, running low, or have no price, supplier or photo. Click a number to see those products.",
+        "Quick filters under it: All, Low, Out, No price, No photo, No supplier, Not stocked and Inactive, each with its count. All still shows every product; Inactive shows just the inactive ones.",
+        "On the category cards, click the Low or Out pill to open that category already filtered. Cards with no photo show an icon instead of \"No photo\", a logo is shown whole, and the value says \"at cost\". The catalog follows your theme colours."
+      ]
+    },
+    {
+      "version": "2026-10-19zv",
+      "items": [
+        "Product catalog: the Stock column now shows every product's real total across all bins and places. Some products wrongly read \"0 each\" before, while their category card counted them.",
+        "A product with no customer price shows \"No price\" instead of $0.00, so it's easy to spot."
+      ]
+    },
+    {
+      "version": "2026-10-19zu",
+      "items": [
+        "Platform admins see their own shop's parts-waiting count in the header again. It was failing with an error."
+      ]
+    },
+    {
+      "version": "2026-10-19zt",
+      "items": [
+        "Inventory opens on Stock, and the tabs read Stock, Bins, Units, Movements, Reconciliation, Locations, Settings. Stock shows how many rows are low or out, and Reconciliation how many are waiting. The picked tab follows your theme colour.",
+        "Adding stock from a bin now opens the Receive stock window with that bin filled in, so it is listed in Movements with who added it. Changing a count is still done on Stock: click the row, then Edit levels.",
+        "On the Easy layout the bin list no longer draws labels over the fill bar."
+      ]
+    },
+    {
+      "version": "2026-10-19zs",
+      "items": [
+        "Inventory > Units, Movements and Reconciliation say in plain words how things get there when they are empty. Units tells you when serial numbers are turned off, with a link to Settings, or who can turn them on. A filter with no matches offers Clear filters."
+      ]
+    },
+    {
+      "version": "2026-10-19zr",
+      "items": [
+        "Inventory > Stock is grouped by place, with chips for All, Low, Out and Held for jobs. Columns read On hand, Keep at least, Held for jobs and Free to use, with an OK, Low or Out tag. Click a row to see its details: edit levels, transfer, print its QR code, see where else the item is and its recent history."
+      ]
+    },
+    {
+      "version": "2026-10-19zq",
+      "items": [
+        "Order parts: each part has its picture next to its name (a picture icon when it has none). Click the picture, the name or the part number to open the item on top of the page, with its photo, part numbers, descriptions, supplier, cost and stock; close it and your choices are still there.",
+        "Remove from cart takes a part out, or one person's line of it, with Undo for a few seconds. Whoever orders parts can remove anything; others only what they asked for. No password needed, and who took it out is kept."
+      ]
+    },
+    {
+      "version": "2026-10-19zp",
+      "items": [
+        "Inventory > Movements now lists every stock change. Stock added on a stock row or in a bin, a serial unit added by hand and the stock you start with show under Stock received; changing a count shows as Count corrected, with who did it. Changes made before today are not in the list."
+      ]
+    },
+    {
+      "version": "2026-10-19zo",
+      "items": [
+        "In the phone app, the Scan button reads bin stickers and part labels as well as equipment. A bin shows what's in it; a part shows how many there are, where, and which bin.",
+        "In the phone app, Settings has an Inventory lookup: search a part by name, SKU or barcode to see where it is. From a part, Take onto a job puts it on one of your jobs. When your shop tracks each part, you scan its label and it comes off the shelf."
+      ]
+    },
+    {
+      "version": "2026-10-19zn",
+      "items": [
+        "Call pricing stays tucked away behind a small Review pricing button at the top of the call summary. Open it to review the recommendation, costs and details in an overlay, then close it to return to the conversation."
+      ]
+    },
+    {
+      "version": "2026-10-19zm",
+      "items": [
+        "Inventory has one + Stock in button, at the top and on Stock Levels, with the three ways stock comes in: From a purchase order (the window where you put each line in its bin), Counter pickup for stock bought without a PO or the stock you start with, and Count correction to fix a count after you count a shelf.",
+        "When your shop requires purchase orders, Counter pickup is greyed out with the reason, unless an owner or admin has allowed you the override in Staff. Then it asks for your reason and a code, as before."
+      ]
+    },
+    {
+      "version": "2026-10-19zl",
+      "items": [
+        "Inventory › Settings is now in four groups: Receiving & buying, Where stock lives, Tracking every unit, and Jobs. Settings that depend on another sit under it and say what they need. Each has a one-line summary; More shows the full explanation.",
+        "Only an owner or admin can change inventory settings now. Everyone else can still see them, with a note saying whom to ask, and tapping one explains why it can’t change."
+      ]
+    },
+    {
+      "version": "2026-10-19zk",
+      "items": [
+        "A purchase order line that is not in your catalog yet has a Create product button, on the order and in Inventory › Bins › Add from a purchase order. It opens the usual New product window filled in from the line: name, vendor part number as the SKU, the vendor as supplier and the unit cost as your cost.",
+        "Once it is saved, the product is linked to the line and you are back to receiving with the rest of the line filled in. The stock comes in when you receive it, so there is no starting quantity to enter.",
+        "Labels for a purchase order line, and Print labels after receiving, now print one QR code per unit when unit tracking is on, the same stickers as the product label sheet."
+      ]
+    },
+    {
+      "version": "2026-10-19zj",
+      "items": [
+        "Add from a purchase order: drag a line onto any spot to put just that line there, and the rest goes where you chose. On a phone or with the keyboard, tap \"Put this line somewhere else\" and pick the spot. Print labels then offers a sheet for each place.",
+        "Tracked items can take their real serial numbers while you receive them: scan or type one per line. Any you leave out get a number made for them, as before. A serial that is already in use is caught before anything is received.",
+        "Inventory › Bins search now finds what is inside, too: type an item's name or SKU to see every place holding it."
+      ]
+    },
+    {
+      "version": "2026-10-19zi",
+      "items": [
+        "Stock can no longer be put on a rack or shelf that only holds other places. Pick a bin or a row inside it. This holds everywhere stock comes in: Add stock, receiving, purchase orders, transfers and new serial-numbered units.",
+        "Receiving a purchase order into a bin from another location is refused with a plain reason, instead of booking the stock in one place and the bin in another.",
+        "A new rack, shelf or bin can only go under a parent in the same location."
+      ]
+    },
+    {
+      "version": "2026-10-19zh",
+      "items": [
+        "Purchase-orders-only shops can now let chosen people add stock without an order. Turn on \"Can override PO-only receiving\" on an employee's page (owners and admins only). Everyone else still sees the plain reason, with a link to the open orders.",
+        "To override, write why (at least 10 characters) and type a 6-digit code we text or email you. The code keeps the override open for 30 minutes on that device, and you can end it early. It works in Add stock, Receive stock, New product and the starter stock step, and from Bins with \"Add without a purchase order (override)\".",
+        "Inventory › Settings › Allow count corrections: when a count goes up during a recount, a written reason is enough, no code needed.",
+        "Inventory › Settings now lists every stock override and count correction: who, when, what, where, how much, and why. Nothing in it can be edited or deleted. Tick \"Also show codes and switch changes\" to see codes sent and who turned the switch on or off."
+      ]
+    },
+    {
+      "version": "2026-10-19zg",
+      "items": [
+        "Inventory › Bins: + Add product is on the toolbar, in every place's panel and at the top of its right-click menu, for locations, racks and shelves too. A bin opens the Add stock window with that bin filled in (and + New product there keeps it as the Default Bin). A rack or shelf asks which spot first.",
+        "When your shop requires purchase orders, Add product opens Add from a purchase order instead, with every spot inside as coloured tiles to pick from. After receiving, Print labels prints a QR sticker for each unit that came in.",
+        "The Racks, Shelves, Bins and Rows chips now highlight those places without hiding what is inside them, so you can still open a rack down to its bins. All kinds is the default, and a bar says which filter is on with one click to clear it.",
+        "The Bins screen, its menus, panels and windows now follow your theme and accent colour instead of fixed colours. The fill colours (empty, healthy, near full, over capacity) stay the same everywhere.",
+        "Buttons that are off now say why in readable text, with a link to fix it (for example Start a purchase order, or Add a bin here)."
+      ]
+    },
+    {
+      "version": "2026-10-19zf",
+      "items": [
+        "Your sign-in is tied to a key on your device, adding protection if someone copies a session token. Sign in the same way as before; signing in on a new device ends the previous session for that app.",
+        "Uploads send small pieces on slower connections and recover confirmed progress after an interruption. Cancelling an upload clears its temporary files; the final save still needs your current sign-in and normal permissions."
+      ]
+    },
+    {
+      "version": "2026-10-19ze",
+      "items": [
+        "After hours: CBI can now talk with callers instead of only taking a voicemail. It asks what's wrong, their name and address, and answers simple questions from notes you give it.",
+        "In an emergency, CBI offers to put the caller through to your on-call tech. The whole conversation is written into the customer's thread, and CBI makes a job draft from it.",
+        "Choose \"Talks with the caller\" in Settings → Communication → After hours. It needs CBI AI set up."
+      ]
+    },
+    {
+      "version": "2026-10-19zd",
+      "items": [
+        "After hours: CBI can answer your CrewBarn number when you're closed. Turn it on now, or let it follow your business hours. CBI reads your message, then takes a voicemail.",
+        "Pick an on-call tech, and callers can press 1 in an emergency. CBI rings the tech, who presses 1 to take the call. The call is recorded in the customer's thread. If the tech doesn't pick up, the caller leaves a voicemail.",
+        "Find it in Settings → Communication → After hours. Using Net2Phone? Set its after-hours schedule to forward your office line to your CrewBarn number."
+      ]
+    },
+    {
+      "version": "2026-10-19zc",
+      "items": [
+        "Teach CBI loads lesson names and access checks together to reduce waiting. Loaded lessons stay visible while the other list loads; a slow connection offers a retry instead of refreshing endlessly.",
+        "When correcting a lesson, choose who can use it, see any save problem beside your wording, and keep that wording for another try. Lessons without a linked record cannot use the record-only choice. Corrections still need a separate approval before CBI uses them."
+      ]
+    },
+    {
+      "version": "2026-10-19w",
+      "items": [
+        "Calls land on the right job: the one the tech is on today, else today's scheduled job, else the customer's only open job, else the one the call is about. A job finished months ago no longer collects new calls, and calls without a recording are linked too."
+      ]
+    },
+    {
+      "version": "2026-10-19v",
+      "items": [
+        "Build structure now draws what you will get the same way the Bins Racks view shows it: each rack a card, each shelf a line of tiles, with the code and how many fit on every tile. It changes as you type.",
+        "Tap any tile to change just that one: its name, its code, how many fit, whether stock sits in it, or how many rows it has (plus and minus). On a phone it opens from the bottom of the screen. Right-click, or press and hold, for quick actions. Codes next to each other can never be the same.",
+        "Add another like this one: the copy button beside a rack or shelf adds one more just like it, with its bins, rows and how many fit, and the next code (S4 after S3). Select several lets you tick tiles and add rows or set how many fit on all of them at once.",
+        "Each layer card shows its real first and last code and what fits, for example R1-S1-BIN-01 → R2-S4-BIN-10 · fits 20 · 80 in all. Undo (or Ctrl+Z) takes back any change while you build.",
+        "Inventory › Bins › Select › Add rows: add rows to every ticked bin at once. New rows carry on after the rows each bin already has (D, E after A, B, C), and Undo takes them back.",
+        "Saved shapes: in Inventory › Bins › Build structure, press Save as a shape to keep the rack, cabinet or truck you just drew. You can also save a rack you already have, or a whole location, like your best-stocked truck. Saved shapes belong to your company and show under Your saved shapes.",
+        "Build a saved shape in one click: pick the place at the top and press Build in that place. If its codes are already used there, it moves on to the next free ones (a second R1 becomes R3), so nothing you already have is touched. Open to adjust lets you change it first.",
+        "Undo a build: after Create you see how many places were made, with Print their labels for just the new ones, and Undo, which takes the whole build back for 15 minutes as long as nothing has been put in them yet."
+      ]
+    },
+    {
+      "version": "2026-10-19u",
+      "items": [
+        "Incoming calls: the pop-up shows the caller's open jobs and what they owe, with their latest job one click away and a New job button.",
+        "Net2Phone: \"Text back callers you miss?\" in Quick settings now works for Net2Phone lines too. It's off until you turn it on."
+      ]
+    },
+    {
+      "version": "2026-10-19t",
+      "items": [
+        "See where a suggested price goes before preparing an estimate: materials, labor, overhead, company-paid insurance, profit and growth. Each amount has a plain-English explanation, and missing details stay marked for review.",
+        "The price review also appears when you start an estimate from a call. Company cost details follow your financial permissions. Insurance and payroll are counted once, and reviewing a price does not change the catalog or move money."
+      ]
+    },
+    {
+      "version": "2026-10-19a",
+      "items": [
+        "Net2Phone: Settings → Communication can set your webhook up in Net2Phone for you, with a secret address and signing, for the main line and the intake line separately. It shows whose Net2Phone key you saved and whether they're an admin.",
+        "Net2Phone: a call or text whose signature doesn't check out is held instead of refused, so Net2Phone never switches your webhook off and nothing is lost. Settings shows how many are held.",
+        "Net2Phone: the intake line has its own key and checking switches, so turning checking on for the main line no longer stops intake calls and texts."
+      ]
+    },
+    {
+      "version": "2026-10-18zk",
+      "items": [
+        "Inventory › Bins is easier to read: lines join each place to the one it sits in, racks, shelves, bins and rows each get their own icon and colour, and every place shows how many units are in it and everything under it. The location you are scrolling through stays at the top.",
+        "Click a bin to see it in a panel: where it is, how many items and units, how many empty spots, what is inside it as coloured tiles, and big buttons to print labels, add a row, move it or open its catalog.",
+        "Racks view: switch from List to Racks to see each rack as shelves of tiles, coloured by how full each bin is. Click a bin's number badge to see its rows as tiles too.",
+        "Right-click any bin or row (press and hold on a phone) for quick actions: add stock from a purchase order, add stock by hand, add a row with the next code already filled in, print labels, set how many fit, or see what's inside. If a bin has rows, it asks which row.",
+        "Add from a purchase order: pick lines still waiting on open orders, type how many arrived, and receive them straight into that bin or row. It tells you if the item usually lives somewhere else, and warns (but doesn't stop you) if the bin would be over capacity. When your shop requires purchase orders for stock, this is the way stock goes in, and Add to bin says why it is off.",
+        "Capacity: give any bin, shelf or row a number of units it fits, in the bin form, in Build structure for each layer that holds stock, or for many places at once from Select. A shelf without its own number adds up its bins. Places then show as Light, Healthy, Well stocked, Near full or Over capacity, and Undo puts a change back.",
+        "Find a bin by name, code or barcode, or scan its label with a barcode scanner. Matches are highlighted and their racks open by themselves. Chips show only racks, shelves, bins or rows, the empty spots, or the places near full.",
+        "Select lets you tick a whole rack or shelf (everything inside comes with it) and print all their labels in one go.",
+        "Fixed: receiving stock with the Receive stock button worked even when your shop requires purchase orders for stock. It now says to receive it on the purchase order instead.",
+        "Fixed: adding a bin with a code its neighbour already uses now says so in words instead of failing with an error. The bin form also keeps the kind words Build structure writes (like Row or Level) instead of blanking them on save."
+      ]
+    },
+    {
+      "version": "2026-10-18zj",
+      "items": [
+        "Employee payroll now stores each person's monthly health-insurance premium and company/employee split. Choose a percentage or fixed company contribution, then confirm whether it is already included in payroll or should be added to company pricing costs. This setup does not create paycheck deductions.",
+        "Company cost model separates Profit and Growth targets. CBI prices can cover recorded costs, the target profit share and a separate growth reserve, with checks against impossible percentages and counting insurance twice. Growth starts at zero."
+      ]
+    },
+    {
+      "version": "2026-10-18zi",
+      "items": [
+        "CBI call summaries can compare current catalog prices with a higher suggested price based on your configured company costs and pricing targets. Missing inputs stay visible for office review; no catalog, job or invoice price changes automatically.",
+        "Review quantities, labor and after-hours assumptions in a temporary pricing preview. Set your pricing currency in Company cost model first. Source access and billing permissions still apply; private company costs stay out of call summaries."
+      ]
+    },
+    {
+      "version": "2026-10-18zg",
+      "items": [
+        "Sales tax report: when a job changes an invoice that was already sent, the changed and new lines are split by state, county and city again, so the report adds up to the invoices' tax."
+      ]
+    },
+    {
+      "version": "2026-10-18zf",
+      "items": [
+        "Printed and emailed invoices list the invoice's own lines, so the lines always add up to the total. An invoice with a line the job didn't have used to print without it."
+      ]
+    },
+    {
+      "version": "2026-10-18ze",
+      "items": [
+        "Customer portal: when a tech takes part of an invoice in cash or check, the portal shows the rest still owed and the customer can pay it online. It used to count the tech's payment twice, so the invoice looked paid or had \"nothing outstanding\"."
+      ]
+    },
+    {
+      "version": "2026-10-18zd",
+      "items": [
+        "A card link charges the customer once. If the card goes through but the payment can't be recorded (the invoice was paid another way meanwhile, say), trying again no longer charges the card a second time.",
+        "When that happens the customer sees their payment went through, and the office gets a notice to match the sale on Card processor, Needs matching, or refund it."
+      ]
+    },
+    {
+      "version": "2026-10-18zc",
+      "items": [
+        "Print labels: every label now shows in the preview, laid out in rows across the screen with a tick box on each, instead of the first three and \"+ 365 more\". Untick the ones you don't want and only the ticked labels print, whether through the Print Bridge, Bluetooth, the image download or the print window. Everything starts ticked, so printing works as before if you don't change anything.",
+        "Picking labels: Select all, Select none, a search box, a group picker (every label of one type, or everything inside one rack or shelf) and shift-click to tick a run of labels in one go. The count says how many of how many are selected.",
+        "Print labels: the screen no longer shows a stray copy of the labels below the page. That copy is only for printing and now stays hidden on screen."
+      ]
+    },
+    {
+      "version": "2026-10-18z",
+      "items": [
+        "Voiding a GoDaddy card payment puts its sale back in Card processor, Needs matching, so it can be recorded on the right invoice. A sale refunded in GoDaddy stays out.",
+        "The tech app's list of GoDaddy app sales shows a sale again after the office voids the payment it was recorded on.",
+        "Card tips always go to a tech. A tip added in the tech app on a terminal push or a card link goes to that tech. Match on the Card processor page gives it to the tech whose phone took the sale, or asks which tech."
+      ]
+    },
+    {
+      "version": "2026-10-18y",
+      "items": [
+        "Receive payment: with GoDaddy picked, Link payment shows the GoDaddy sales from the day the job was invoiced and before. Pick the one the tech took in the GoDaddy app and it's recorded against that invoice with its tip going to the tech.",
+        "Linking checks that an invoice can't be paid twice: a sale can only be linked once, it never turns into credit, and if the tech already typed the payment in, you link that payment instead of recording it again.",
+        "Card processor: a payment linked to the wrong GoDaddy sale can be unlinked from the Matched tab (cash-flow managers)."
+      ]
+    },
+    {
+      "version": "2026-10-18x",
+      "items": [
+        "Card payments with a tip now record. Before, a card payment where the customer added a tip (Tap to Pay, a Smart Terminal, a card-on-phone link, a sale taken in the GoDaddy app, or Match on the Card processor page) failed with an error after the card was charged. The tip now goes to the tech and shows up in payroll.",
+        "Smart Terminal from the office no longer charges the tip twice."
+      ]
+    },
+    {
+      "version": "2026-10-18w",
+      "items": [
+        "Platform admin, Print Bridge: the Published now card shows the builds you uploaded, with their version, size and checksum, even with no tenant picked in the admin banner. Before, it said Nothing published. If the check fails, the card says why instead.",
+        "Downloading the Print Bridge now checks the file against the checksum recorded when it was published, and refuses a download that arrived damaged."
+      ]
+    },
+    {
+      "version": "2026-10-18u",
+      "items": [
+        "Invoices: opening an invoice no longer changes it, in the office or for your customer in the portal. A job's invoice is updated when the job's lines change, and sending it still brings a draft up to date.",
+        "Service plan walkthroughs: pressing Finish now puts the walkthrough's hours on the job's invoice straight away. If that invoice already has a payment on it, Finish asks you to deal with the payment first, the same as editing a job's lines."
+      ]
+    },
+    {
+      "version": "2026-10-18t",
+      "items": [
+        "Print labels: you can now set up the Print Bridge right on the Print labels screen. Press Set up here under the status light to download it, type the code from its window, pick your label printer, choose what it speaks and print a test label, without going to Settings. The setup opens by itself when something needs a look and folds away when the light is green.",
+        "Settings, Label printer shows the same setup, so a printer chosen in either place is the printer in both."
+      ]
+    },
+    {
+      "version": "2026-10-18q",
+      "items": [
+        "Invoices: a job's invoice always shows the job's lines. New invoice on a customer's page now lists the job's lines as they are; to change a line or add a charge, change it on the job. Before, an invoice made there could show every job line twice once it was opened."
+      ]
+    },
+    {
+      "version": "2026-10-18p",
+      "items": [
+        "Print labels: when the Print Bridge is set up, a light above the Print button shows whether labels will go straight to your label printer: green with the printer's name, amber when the printer isn't found or chosen, red when the Print Bridge isn't running, grey when it isn't set up yet, with a link to fix it.",
+        "Print Bridge 2.0 prints to DYMO, Brother QL and other printers that need their own driver, at the label's exact size. It also tells CrewBarn what each printer is from its Windows driver, so the right language is picked without guessing, and it can send straight to a network label printer's address.",
+        "Bluetooth label printers can now be sent TSPL as well as ESC/POS: set it on Settings, Label printer. The test label there prints at the size you last picked."
+      ]
+    },
+    {
+      "version": "2026-10-18o",
+      "items": [
+        "CBI role settings now separate own work, other staff's work, locations, billing, accounting, confirmed changes, public research and learning. CBI still needs the matching app permission; custom roles cannot bypass protected access.",
+        "Staff can suggest lessons for review after Confirm. Reviewers approve the exact wording; personal lessons, source records and financial information keep their access restrictions. Learning sources and retention have a separate Owner/Admin control."
+      ]
+    },
+    {
+      "version": "2026-10-18n",
+      "items": [
+        "Live updates on the job board and the dispatch map now share the app's one live connection instead of opening their own, so they stay steadier and a tab no longer holds three connections."
+      ]
+    },
+    {
+      "version": "2026-10-18m",
+      "items": [
+        "CBI now understands Work and Connect, reads permitted current files with source links, and can research public business addresses and replacement parts.",
+        "Saved CBI notes, tasks, customers, schedule changes and messages wait for your Confirm. CBI cannot delete records; your role still controls access.",
+        "Review learned knowledge with revision history, edit it, or restore earlier wording as a suggestion requiring fresh approval. File indexing is a separate optional setting."
+      ]
+    },
+    {
+      "version": "2026-10-18l",
+      "items": [
+        "CBI now shows you the exact \"running behind\" text and sends it only when you press Confirm, like its other texts. Texting customers through CBI needs permission to edit jobs or customers, so view-only staff can no longer have CBI text anyone."
+      ]
+    },
+    {
+      "version": "2026-10-18k",
+      "items": [
+        "Label printers: CrewBarn now speaks TSPL, the language most 4×6 shipping label printers use (Rollo, MUNBYN, iDPRT, JADENS, TSC and similar), and EPL for older Zebras like the LP 2844. If your printer blinks but nothing comes out, open Settings, Label printer, pick it under What it speaks and print a test label.",
+        "Work it out from the name now recognises those printers, and shows which language it picked."
+      ]
+    },
+    {
+      "version": "2026-10-18i",
+      "items": [
+        "Invoices open faster, and two people opening the same invoice at once can no longer put a job line on it twice. An invoice that already shows a job line twice is put right the next time someone in the office opens it, unless a payment or write-off is on it."
+      ]
+    },
+    {
+      "version": "2026-10-18h",
+      "items": [
+        "The homepage intro’s AI connector answer uses one continuous recording with the same Eryn voice, removing the audible change at its closing sentence."
+      ]
+    },
+    {
+      "version": "2026-10-18g",
+      "items": [
+        "Call recordings: newer recordings are saved to your storage again. Old ones the phone provider no longer gives out were holding up the line; they're now marked and skipped, and one that plays later is saved then."
+      ]
+    },
+    {
+      "version": "2026-10-18f",
+      "items": [
+        "Every report now adds up all of its rows, not just the first 1,000: invoices, payments, credits, expenses, vendor bills, purchase orders, sub payouts, bank matching, stock movement and spend, job profit, tech performance and the books audit. When a list is cut short it says so, and the spreadsheet has every row."
+      ]
+    },
+    {
+      "version": "2026-10-18e",
+      "items": [
+        "Invoices: the list no longer stops at 200. Press Show more at the bottom to load the next page.",
+        "Invoice search now finds jobs, POs and line items too, and the tab counts and folders always agree with the list you're looking at, including when it's filtered to one customer or job."
+      ]
+    },
+    {
+      "version": "2026-10-18d",
+      "items": [
+        "Settings > Communication no longer breaks when your account switches to or from bring-your-own numbers while the page is open. The optional CrewBarn mobile number card now just shows the right view."
+      ]
+    },
+    {
+      "version": "2026-10-18c",
+      "items": [
+        "Switching portal accounts or signing out now ignores late account-refresh responses from the previous session. An earlier sign-out finishing late no longer clears a newer login."
+      ]
+    },
+    {
+      "version": "2026-10-18b",
+      "items": [
+        "If the secure GoDaddy card form cannot load, you can try loading it again without refreshing the page. Slow loading now times out with a clear message. Reloading the form never submits a payment."
+      ]
+    },
+    {
+      "version": "2026-10-18a",
+      "items": [
+        "New-message pop-ups and the Messages list keep updating after you leave the dashboard. Before, leaving it stopped them until the page was reloaded.",
+        "Live updates keep working after you sign out and back in without reloading the page.",
+        "Removing several items at once that need your password asks once, instead of leaving the save stuck. Completion and texting questions that come up together are asked one at a time.",
+        "The counts on the menu keep their last number during a brief connection problem, instead of dropping to zero."
+      ]
+    },
+    {
+      "version": "2026-10-17w",
+      "items": [
+        "Payment links now show a clear error and a Try again button when payment details cannot load. Unavailable links ask for a new link, and opening another link no longer carries over the previous paid confirmation."
+      ]
+    },
+    {
+      "version": "2026-10-17v",
+      "items": [
+        "A written-off invoice is now final: changing the job's line items no longer re-prices it. Put further work on a new invoice.",
+        "When a job change re-prices a sent invoice, your books now follow it, so receivables show what's actually owed.",
+        "Who owes me money, What do I owe vendors and stock value now add up every invoice, bill and stock line, not just the first 1,000. When the list is cut short it says so, and the spreadsheet has every row."
+      ]
+    },
+    {
+      "version": "2026-10-17u",
+      "items": [
+        "When something doesn't load, CrewBarn now says so with a Try again button, instead of showing $0, an empty list or \"all caught up\". This covers the dashboard, Accounting, Invoices, Jobs, Messages, Service agreements, SN units and the cash drawer.",
+        "Time-off and bin checks no longer pass silently when they can't run: you're told the check didn't run and asked before scheduling, assigning, approving time off or receiving stock. Reassigning from a calendar card now checks time off too.",
+        "A failed invoice list no longer lets a payment be recorded as a credit, signed PDFs can't be replaced by unsigned copies when signatures don't load, and downloads that come back as an error page say so instead of saving a broken file.",
+        "Fixed links that went to the dashboard: message results in search, custom fields from the merge tag panel, purchase orders in reports, tax classes from a new invoice, and part links in the assistant's answers."
+      ]
+    },
+    {
+      "version": "2026-10-17t",
+      "items": [
+        "The homepage intro keeps its familiar voices, with reworked answer endings and matching captions so each answer finishes naturally before the next question."
+      ]
+    },
+    {
+      "version": "2026-10-17s",
+      "items": [
+        "Properties on the portal: when an admin uploads an outside trade's invoice for a request, that work now shows in the property's Records tab too, under the trade they named."
+      ]
+    },
+    {
+      "version": "2026-10-17r",
+      "items": [
+        "When a customer is a property on the portal, its page can show that the property has records for your trade from earlier work. Ask to see them; once the property says yes, you can add its equipment to yours, with the history.",
+        "A property can ask for your records of its buildings. Share them or say no on the customer. They get what a customer can already see, never prices or internal notes."
+      ]
+    },
+    {
+      "version": "2026-10-17q",
+      "items": [
+        "If your files are in your own Cloudflare bucket, CrewBarn now sets it up for large uploads by itself when you connect it, and keeps checking until Cloudflare switches it on. Any rules your bucket already has stay as they are.",
+        "Connections, Storage & maps, Storage shows where that stands in one line. You only see steps to follow if CrewBarn couldn't do it with your key."
+      ]
+    },
+    {
+      "version": "2026-10-17p",
+      "items": [
+        "Catalogs and card files up to 150 MB now upload straight to storage from your browser, with the same progress bar. It's faster for big price books, and it keeps working once CrewBarn's connection is behind its firewall.",
+        "If your files are in your own Cloudflare bucket, Connections, Storage & maps, Storage now has Large uploads: set it up there, or paste the rule it shows into Cloudflare."
+      ]
+    },
+    {
+      "version": "2026-10-17o",
+      "items": [
+        "Customer portal, for condos and HOAs: a new Records tab keeps the work done at the property. When a company finishes a job you sent, what they did, the photos they shared, the parts they put in and the equipment they worked on are copied over.",
+        "You keep these records even if you change companies, and prices never come over. Filter by building, unit or trade; admins can hide anything."
+      ]
+    },
+    {
+      "version": "2026-10-17n",
+      "items": [
+        "Customer portal, for condos with several buildings: a building's address no longer goes onto your customer's account by itself. The job comes in on an address you already have, with the building named on it.",
+        "The job says which address the property gave and has a button to add it and move the job there. You'll also find it waiting under the customer's Locations, or you can keep the job where it is."
+      ]
+    },
+    {
+      "version": "2026-10-17m",
+      "items": [
+        "Dispatch shows scheduled visits under each technician. Expand a technician to see times, customers, job status and assessment links while keeping the existing queues and detail panel.",
+        "Select a technician to fit their remaining daily route on the map, with numbered stops in scheduled order. All technicians brings the other routes back, and Refresh route deliberately updates the selected plan using a recent GPS fix.",
+        "Dispatch explains missing coordinates, unavailable driving routes and older GPS fixes instead of inventing a route. Week, month and year views show visit pins; daily routes stay in Day view.",
+        "Green job dots now mean complete and paid in full across all active invoices. Completed jobs without confirmed full payment stay amber; other job dots follow status colors. The map legend and visit lists explain the colors."
+      ]
+    },
+    {
+      "version": "2026-10-17l",
+      "items": [
+        "The Tasks link now shows how many open tasks there are, above the link the way Calls shows its count. Hover it to see how many are overdue."
+      ]
+    },
+    {
+      "version": "2026-10-17k",
+      "items": [
+        "The homepage intro has a phone layout with readable workflow steps and connected-app cards that follow the narration. Captions and playback controls stay in view.",
+        "While the intro plays, supported browsers can keep the screen awake. Pausing, closing or leaving the page releases it.",
+        "The parts workflow now shows stock checks, office review of the purchase order, receiving, return scheduling and supplier bills.",
+        "After the final answer and reflection, the homepage intro fades away to reveal the website. Watch intro opens it again.",
+        "The intro time calculator now counts finding job information separately, with a linked research benchmark or your own ask-CBI-and-check times. Coverage and office review stay editable, and task buckets exclude duplicate time.",
+        "Intro scripts and styles use release-specific URLs so returning visitors receive the current version instead of cached older files."
+      ]
+    },
+    {
+      "version": "2026-10-17j",
+      "items": [
+        "Opening a task now opens it over the page you're on, wherever the task is listed: Tasks, a job, or a customer. Close it and you're back where you were.",
+        "Order parts, payroll, the cash drawer, a purchase order, the ledger, bills, card payments, bank matching and time off open right inside the task, next to its notes and the complete button.",
+        "Pages you reach from another page have a back button at the top, saying where it goes, like \"Back to Tasks\". On Dispatch and the schedule it sits in the bottom corner."
+      ]
+    },
+    {
+      "version": "2026-10-17i",
+      "items": [
+        "Changes your customers make in their portal no longer change your contacts on their own. They wait in a new From the portal box on the customer's Contacts, where you see what changed and import it, or dismiss it.",
+        "That covers a person's own profile, a company's team page, and a property's billing and service contacts. The bell tells you when something arrives, and a job from the portal points you to it.",
+        "The button that stopped portal edits on a contact is gone, since nothing changes without you now. A change you dismiss isn't offered again."
+      ]
+    },
+    {
+      "version": "2026-10-17h",
+      "items": [
+        "Field requirements on a customer or job type: the Default dropdowns now line up in one column, including Job photos."
+      ]
+    },
+    {
+      "version": "2026-10-17g",
+      "items": [
+        "CrewBarn’s homepage intro now shows how the office, technician apps, customer portal and CBI connect, one question and workflow branch at a time.",
+        "Try a fictional customer call after the intro: hear both speakers, review the recording and summary, then verify a sample job before creating it.",
+        "The intro includes an editable time-planning calculator with published research sources. Its numbers are estimates, with office review included."
+      ]
+    },
+    {
+      "version": "2026-10-17f",
+      "items": [
+        "Customer portal, for condos and HOAs: a new Settings panel says who companies deal with. That's who pays (the billing and main contact) and who meets the crew (normally your maintenance person). A building can have its own.",
+        "A job a property sends now arrives with its urgency, the unit, and who lets the crew in: the resident who asked for work in their own unit, or the maintenance person for common areas. It shows on the job page as \"On site\", and in the crew app as the site contact.",
+        "A property is now one customer at each company, whichever of its admins sends the work, instead of landing on an admin's own account."
+      ]
+    },
+    {
+      "version": "2026-10-17e",
+      "items": [
+        "Customer portal, for condos and HOAs with more than one building: admins can list each building with its own street address, under the property's Units tab.",
+        "People, units and requests can each say which building they're in. Invites, the join page and the organization's own app ask for it, and a request starts in the asker's building.",
+        "Unit numbers are kept per building, so 101 in one building and 101 in the next are two separate units with their own history.",
+        "When a request goes to a company, it uses that company's address for the request's building. If the company doesn't have that address yet, one tap adds it."
+      ]
+    },
+    {
+      "version": "2026-10-17d",
+      "items": [
+        "Your company's app: someone who downloads it is not added to your customers until they ask for their first job. That request brings their address, and only then do they show up in your customer list.",
+        "If their email is already on one of your customers, they're tied to that customer instead of becoming a duplicate, and your office gets a notice.",
+        "The \"Connect to this company?\" question when opening your app is gone, because nothing is shared until they ask for work."
+      ]
+    },
+    {
+      "version": "2026-10-17c",
+      "items": [
+        "Customer portal: opening a company's app link now asks \"Connect to this company?\" before sharing anything, instead of connecting straight away.",
+        "Customer portal: a property invite only works for the person it was sent to. Anyone signed in under another email gets a code at the invited address first.",
+        "When a customer's portal account is matched to one of your customers by email, your office now gets a notice saying who, and where to take it back."
+      ]
+    },
+    {
+      "version": "2026-10-17b",
+      "items": [
+        "Reference cards learn what worked. When a job closes, the tech can say in a few taps what worked and which parts it took, and the card for that vehicle, equipment or part keeps it. Next time, the card shows the parts used most, how long it usually takes and the techs' notes.",
+        "A job on a vehicle with no card yet starts one, so your cards build themselves from the work. It's optional, and closing a job never waits on it.",
+        "When a caller names the vehicle, model or part, its card opens with what worked on your past jobs. CBI can answer from it too.",
+        "Reference cards have an on/off switch in your company's modules. Off turns off the cards, the parts lookup on calls, the vehicle key lookup and the close-out question."
+      ]
+    },
+    {
+      "version": "2026-10-17a",
+      "items": [
+        "General ledger: the GL detail list and its spreadsheet download load again, and the page no longer warns that some ledger data could not be loaded."
+      ]
+    },
+    {
+      "version": "2026-10-16e",
+      "items": [
+        "CrewBarn opens faster. The app used to download every screen before showing the first one; now the first screen comes up right away and the rest download quietly in the background.",
+        "Your browser keeps CrewBarn's files between visits, so opening it again doesn't download them again until there's an update."
+      ]
+    },
+    {
+      "version": "2026-10-16d",
+      "items": [
+        "Platform admin: prices under Integrations are typed in dollars now, not cents.",
+        "Platform admin: the AssemblyAI and Google Business Profile key boxes are gone. Each business adds its own AssemblyAI key in its Call transcription settings, and the Google sign-in keys live on the server."
+      ]
+    },
+    {
+      "version": "2026-10-16c",
+      "items": [
+        "Writing your organization's website with AI now uses credits. Every organization gets enough free credits to build one website; one credit is one AI suggestion, and a suggestion that fails doesn't count.",
+        "When the credits run out, buy more right in the website builder. They're added as soon as the payment goes through.",
+        "Platform admin sets the free credits, the pack size and the price under Integrations, AI for organization websites."
+      ]
+    },
+    {
+      "version": "2026-10-16b",
+      "items": [
+        "All 43 organization website themes now use the new guided builder. The older collection has refreshed layouts for communities, parks, government, schools, arts, clubs and support organizations, with real sample screenshots in the theme picker.",
+        "Every theme supports linked pages for shared spaces, notices, contacts and resources. Clicking a page in the preview opens its matching editing controls. Existing words, photos and private-resource settings are kept.",
+        "Choose a theme, answer one question at a time, add photos and a logo, review the website and continue to Cloudflare. AI suggestions remain yours to review before applying."
+      ]
+    },
+    {
+      "version": "2026-10-16a",
+      "items": [
+        "The Website tab now puts the three new guided community themes first, with full sample previews. Classic themes are grouped separately, and existing websites keep their current theme until you choose a new one.",
+        "Organization websites have three new condo designs: Coastal Editorial, Modern Community Desk and Garden Commons. The existing 40 themes are still available.",
+        "The new guided editor asks about one section at a time, highlights it in a larger preview, and lets you review AI suggestions or write the words yourself. Add your own photos and logo, then continue to your existing Cloudflare publishing steps.",
+        "Give each shared space its own page, opening hours, location and resident rules. Public visitors see amenities and hours; active members sign in to read published rules and resident documents in Amenities & rules."
+      ]
+    },
+    {
+      "version": "2026-10-15g",
+      "items": [
+        "The App tab has a store guide: every step to list your organization's app on the App Store and Google Play from your own accounts, with what to paste where. Open it on screen or download it as a PDF.",
+        "Make a reviewer sign-in for Apple's and Google's review: an email and password for them, a member of your property only. Turn it off once the app is approved.",
+        "Your app's store listings now link to your own privacy and delete-account pages (your website's, or ones CrewBarn hosts for you)."
+      ]
+    },
+    {
+      "version": "2026-10-15f",
+      "items": [
+        "In the apps, sign in with a 6-digit code to your email, no password needed. It works for people who joined with Google too. Signing in with a password still works, and the website is unchanged.",
+        "You can delete your CrewBarn account yourself: Profile, Delete my account. A code to your email confirms it. Companies you've worked with keep their own records of the work."
+      ]
+    },
+    {
+      "version": "2026-10-15e",
+      "items": [
+        "Organization websites have 40 themes to choose from, for condos and HOAs, parks, local government, community groups, schools, culture, clubs and support groups, each with its own layout.",
+        "A property's Website tab can write the website for you: CrewBarn's AI looks at what your portal says about you, asks a few questions, and writes the words. Change anything after.",
+        "Add your logo, a big photo for the top, and up to 8 more photos for a gallery. They're sized for the web, and phone location details are removed.",
+        "No domain yet? Buy one right in the Website tab through your own Cloudflare, at Cloudflare's price, after you confirm it. Then press Build and deploy."
+      ]
+    },
+    {
+      "version": "2026-10-15d",
+      "items": [
+        "Properties can have their own website, free: pick Residential, Community or a members-only page, fill it in with a live preview, and publish it to your own Cloudflare on your own domain. It's on the property's new Website tab.",
+        "Board announcements can go on the website too: tick Show on our website, and it's there a couple of minutes later.",
+        "Platform admin has Organization sites: websites that look like a company's wait there for a quick check. Approve one and it publishes, or block it."
+      ]
+    },
+    {
+      "version": "2026-10-15c",
+      "items": [
+        "Platform admin has Organization apps: build any property's own app to test it, with the same icon editor, Try the app phone preview and build console as the company app builder. Builds there are on CrewBarn."
+      ]
+    },
+    {
+      "version": "2026-10-15b",
+      "items": [
+        "Properties have a bulletin board: a cork board with announcements, photos and sticky notes. Right-click the board (long-press on a phone) to pin something, just like the crew's sticky notes.",
+        "Admins and maintenance can mark an announcement important (red pin, first on the board) and tell everyone by phone and email. Pins can come down by themselves after a week, a month or a date you pick.",
+        "Residents pin too, unless an admin turns that off under Settings. Admins can take any pin down."
+      ]
+    },
+    {
+      "version": "2026-10-15a",
+      "items": [
+        "A property's own app sends notifications: new messages and notices, new repair requests to the admins and maintenance, updates on your own request, and being approved to join. Tapping one opens it.",
+        "Android notifications go through CrewBarn's Firebase, set up during the app's build. For iPhone, the property adds its Apple push key on the App tab; the steps are there.",
+        "Platform admins: paste the Firebase service account under Integrations, Customer app builder."
+      ]
+    },
+    {
+      "version": "2026-10-14f",
+      "items": [
+        "A property's own app opens just that property, in its name, icon and colour: Home, Messages and Profile, and only the features its admins turned on. It never uses location.",
+        "People sign in with their CrewBarn account. Someone invited by email is in at once. Anyone else asks to join (when joining is on), or pastes the invite or code they were sent.",
+        "Profile in the app has an About section, powered by CrewBarn, with the privacy link. The profile picture is the same one everywhere on CrewBarn."
+      ]
+    },
+    {
+      "version": "2026-10-14e",
+      "items": [
+        "Properties in the customer portal can have their own app: the property's name and icon on everyone's phone, with repair requests, messages and notices. Admins set it up on the property's new App tab: $250 for 3 builds, and 3 more for $250 when needed.",
+        "Once the app is on Google Play and the App Store, paste the links on the App tab. Everyone in the property sees Get the app with QR codes, and the lobby sign shows them too.",
+        "Platform admins set the organization app price under Integrations, Customer app builder."
+      ]
+    },
+    {
+      "version": "2026-10-14d",
+      "items": [
+        "Properties in the customer portal have Messages. People message each other and the management, with photos, and start groups. Admins and maintenance post notices to everyone, or to one group.",
+        "Property admins decide who may message whom: residents message each other unless you turn it off, and start groups only if you turn it on, for everyone or for one person. Admins don't see conversations they're not in.",
+        "A property can now be a business, for a company's own team and offices.",
+        "Have a join code from a lobby sign or a text? Enter it on the Properties page to ask to join."
+      ]
+    },
+    {
+      "version": "2026-10-14c",
+      "items": [
+        "Leads are calls to make, not visits. A job in the Lead status no longer sets off running-late calls, arrival alerts or appointment reminders.",
+        "Give a lead a call-by time: on the new-job form when the status is Lead, or in the lead card on the job's Overview.",
+        "In the phone app, a lead's big button calls the customer, which marks the lead called.",
+        "Five minutes after the call-by time with no call, CrewBarn calls the tech: who to call, by when and what the lead is about, then press 1 to call the customer. If they don't answer, it leaves a voicemail, and Schedule flashes for dispatch if the lead still isn't called.",
+        "Call scripts (CBI calls) has a new section for the tech's lead call."
+      ]
+    },
+    {
+      "version": "2026-10-14b",
+      "items": [
+        "Job tasks: the steps of a job, in order. Add them in Job Basics when you create a job or an estimate, or on the job's new Job tasks tab. Tick Photo or video on any task where the tech must show it was done.",
+        "Task groups (Tool Shed): sets of tasks you use again and again. Pull one onto a job in one click, or tie it to a job type so every new job of that type starts with its tasks.",
+        "The phone app shows the job's tasks with a Done button. A task that needs proof opens the camera, the tech chooses photo or video, and it's saved to that task, even with no signal.",
+        "A job can't be completed until every task is done. Someone allowed to complete without proof can still do so, with a reason.",
+        "Your customers see the work steps on the job in their portal: each step, when it was done, and the photos and videos that show it.",
+        "The job's old Tasks tab is now called Revisits: follow-ups you can schedule, even after the job is closed.",
+        "Photos added to a service-log entry on the phone now save. Before this, they were refused."
+      ]
+    },
+    {
+      "version": "2026-10-14a",
+      "items": [
+        "Hiring's Resend set-up link is for someone who hasn't set up their login yet. A login you switched off stays off until you turn it back on under Staff."
+      ]
+    },
+    {
+      "version": "2026-10-13b",
+      "items": [
+        "When you bring your own storage, the endpoint must be your Cloudflare R2 address, like https://<account id>.r2.cloudflarestorage.com."
+      ]
+    },
+    {
+      "version": "2026-10-13a",
+      "items": [
+        "Only an owner can change an owner's account under Staff: their status, phone, logins, two-factor or setup links.",
+        "Resend invite is for people who haven't set up their login yet. Someone already signing in keeps their password, and their onboarding form link goes to them by email only.",
+        "GoDaddy card refunds are checked against your cash-flow managers before anything is sent to GoDaddy, and a double click can't send the same refund twice.",
+        "A GoDaddy business can be connected to only one CrewBarn company."
+      ]
+    },
+    {
+      "version": "2026-10-12s",
+      "items": [
+        "The phone app shows job times at the job's location, not in the phone's own time zone. A job in another time zone shows its zone beside the time, like 2:30 PM PDT."
+      ]
+    },
+    {
+      "version": "2026-10-12r",
+      "items": [
+        "In the phone app, Price books can search inside every searchable catalog. Type a part number or words to see the page, line and price, then tap to open the book on that page."
+      ]
+    },
+    {
+      "version": "2026-10-12q",
+      "items": [
+        "Creating a job from a call by a customer on file now shows their address on file, already chosen, when no address was said on the call. Customers with several addresses get a choice, and an address said on the call is offered too.",
+        "Each call in a conversation shows who it was with: Open customer account for a customer on file, or Not a customer."
+      ]
+    },
+    {
+      "version": "2026-10-12p",
+      "items": [
+        "Catalogs are searchable without opening them. Make a catalog searchable once and watch it read: each page goes by with its part numbers lighting up, and the prices, sections and parts it finds count up as it goes. New catalogs are read as soon as they're uploaded.",
+        "The Catalogs page search box now also finds part numbers and words inside your catalogs, with the page and the price. Click one and the book opens on that page.",
+        "Blueprint parts are priced straight from your vendor's searchable catalogs."
+      ]
+    },
+    {
+      "version": "2026-10-12o",
+      "items": [
+        "In the phone app, a job shows the parts that came in for it. Tap Fit, say how many went on and which door, and they go on the job and onto the door's record.",
+        "In the phone app, each door or asset shows the parts fitted to it, with the job and the PO. Techs can write in what was already there and take parts off when they're replaced."
+      ]
+    },
+    {
+      "version": "2026-10-12n",
+      "items": [
+        "Attach a purchase order to a job or estimate, even after it arrives. The parts that came in are set aside for that job.",
+        "Put an order's parts on the job straight from the PO: they become the job's line items at the customer's price and come out of stock. Choose the door each part goes on, and the door keeps the record.",
+        "Assets now list the parts fitted to them, with the date, the job and the PO: closers, hinges and locksets on a fire door, serial-numbered or not. Write in what was already there, and mark parts taken off when they're replaced."
+      ]
+    },
+    {
+      "version": "2026-10-12m",
+      "items": [
+        "Parts from a blueprint: upload a blueprint or door hardware schedule on Purchase orders, or from a job or estimate's Parts panel. CBI reads every part off it, prices them from your vendor's catalog, and you check the list before it becomes a draft purchase order on that job or estimate.",
+        "Draft POs from vendor calls now match parts to items you stock, and use your cost when no price was said on the call."
+      ]
+    },
+    {
+      "version": "2026-10-12l",
+      "items": [
+        "Calls with vendors now become draft purchase orders. When a tech calls a supplier from a job or estimate (or a supplier calls in), CrewBarn reads the call and drafts a PO with the parts, quantities and prices said, on that job or estimate. You get a notification to check it against the call and send it.",
+        "Purchase orders written from a call are marked \"From a call\", with a link to listen to it."
+      ]
+    },
+    {
+      "version": "2026-10-12k",
+      "items": [
+        "Phone app: when a tech starts a new job or estimate, the phone asks \"Is this the address where the job is located?\" and shows the address. Yes picks the customer's address when one is right there, or starts a new customer at that address.",
+        "Dispatch map: a Location checks layer shows each check as a dot: green if the job is there, amber if it's elsewhere. Click one for the details, or find them in the tech's day.",
+        "Fixed: estimates created in the phone app now keep the address you picked."
+      ]
+    },
+    {
+      "version": "2026-10-12j",
+      "items": [
+        "Phone app: jobs and estimates show their suppliers: the vendor, your account number with them, and their phone. Tap Call to ring them on your company line.",
+        "Techs can now call customers and vendors on the company line from the phone app. A vendor call made from a job or estimate is kept with it.",
+        "Vendors have a Catalogs tab: upload a price book there or link one from your catalog library.",
+        "Phone app: Catalog → Price books. Save a catalog to the phone once and read it anywhere, even without signal. Tap the right side to turn the page, the left to go back, double-tap to zoom."
+      ]
+    },
+    {
+      "version": "2026-10-12i",
+      "items": [
+        "Website builder: 20 more looks are available, including industrial designs and report-style layouts for inspectors. Preview your own site before choosing one; your live site stays the same until you publish.",
+        "Website wording now follows your company's trade when CrewBarn fills in default text. Your own writing stays in place, and inspection sites describe scope and findings instead of repair work."
+      ]
+    },
+    {
+      "version": "2026-10-12h",
+      "items": [
+        "Quick settings: setup now asks yes or no to each thing CrewBarn can do by itself, like reminders, follow-ups, review requests, missed-call texts, GPS check-in and the office's daily to-do list. Change any answer later at the top of the Automations page.",
+        "A yes that needs something you haven't set up yet, like a texting number or your Google listing, waits and switches on by itself once it's there.",
+        "New: text back callers you miss. When nobody picks up a call to your CrewBarn number, the caller gets one text from your number.",
+        "New: overdue invoice reminders that actually send, at 7, 30 and 60 days past due, and follow-ups on estimates nobody has answered. Neither goes once the invoice is paid or the estimate is answered.",
+        "Fixed: the day-after invoice nudge no longer goes to customers who already paid, win-back and warranty-expiring messages now send, and \"Call the customer when the tech is late\" now saves."
+      ]
+    },
+    {
+      "version": "2026-10-12g",
+      "items": [
+        "Website builder: clicking a link inside the live preview now opens that page in the preview, instead of showing \"refused to connect\". Links to other sites, like the request-service page, open in a new tab.",
+        "Your website: the small coloured bar beside your logo is gone. A site without a logo still shows it beside the company name."
+      ]
+    },
+    {
+      "version": "2026-10-12f",
+      "items": [
+        "Responsibilities links and bookmarks on app.crewbarn.com now open it in Connect."
+      ]
+    },
+    {
+      "version": "2026-10-12e",
+      "items": [
+        "Responsibilities now opens in Connect, under Team, instead of sending you back to the work dashboard. Clicking a person or an overdue item opens it in the work dashboard in a new tab, so the board stays open."
+      ]
+    },
+    {
+      "version": "2026-10-12d",
+      "items": [
+        "Locksmiths: when a property in the customer portal names you as the holder of its restricted key system, the system now shows on that customer's Keys tab. It lists the manufacturer and keyway, the system number, who may authorize copies, the notes, and the signed authorization letter. The property keeps it up to date.",
+        "Key requests on a customer's Keys tab now keep their line breaks, and a request with long notes is no longer refused."
+      ]
+    },
+    {
+      "version": "2026-10-12c",
+      "items": [
+        "Property portal: a restricted key system's \"Held by\" now lists your companies on CrewBarn, so you can pick the locksmith company that holds it. Key requests go straight to that locksmith, and they see the key details on every job. A locksmith that isn't on CrewBarn can still be typed in."
+      ]
+    },
+    {
+      "version": "2026-10-12b",
+      "items": [
+        "Property portal: a property on a restricted key system can now record it. When you set up a property, or on its Settings, choose \"Is this property on a restricted key system?\" and add the manufacturer and keyway, the system number, who holds it, who may authorize copies, and the authorization letter.",
+        "The locksmith the property hires sees the restricted key details on the job, with the letter attached. Residents and other trades don't. Residents' key-copy requests are now switched on inside the restricted key form."
+      ]
+    },
+    {
+      "version": "2026-10-12a",
+      "items": [
+        "The website studio: your site opens with a live preview beside the controls. Changes save as a draft, and the public site doesn't change until you press Publish. There's Undo, a history of what you published, and phone or computer previews.",
+        "Write a blog post from a finished job, using the job's photos, and choose a look for your site from previews of your own site.",
+        "Connect your Google account once from the website's Google tab. CrewBarn puts your site on Google, shows your search numbers, shares new blog posts to your Business Profile, and can help answer reviews.",
+        "A blog post, service or city page that isn't on your published site now shows \"Page not found\" instead of an empty page."
+      ]
+    },
+    {
+      "version": "2026-10-11z",
+      "items": [
+        "On a vehicle's key card, you can rename any row to your shop's own name: hover the row and choose \"rename\". The book's name is still shown when you hover the new one, and clearing the name goes back to the book's.",
+        "When a call or text is taken as a job billed to the dealer, and one of your customers has exactly that dealer's name, the new job uses that dealer as its billing customer. You can still change it. If there's no match, or more than one, it stays a note as before."
+      ]
+    },
+    {
+      "version": "2026-10-11y",
+      "items": [
+        "Every payment now has its own receipt number, like R-000123. It shows on the payment, in the office drawer, on each deposit, and on the invoice, which lists every payment with its receipt number and date. Payments already in CrewBarn are numbered in the order they came in.",
+        "The QuickBooks card on Connected apps and Import is read-only for people who can view settings but not change them."
+      ]
+    },
+    {
+      "version": "2026-10-11x",
+      "items": [
+        "Anyone who can view settings can now open Marketplace listing, Partner connections and Webhooks to look. Only people who can edit settings can change them, and only they see a webhook's signing secret.",
+        "Turning on two-step sign-in no longer offers \"Text\" when CrewBarn can't send texts yet."
+      ]
+    },
+    {
+      "version": "2026-10-11w",
+      "items": [
+        "Voiding a card payment that's still waiting on Stripe now closes its card page, so the customer can't pay it afterwards.",
+        "The GoDaddy hourly sync no longer gives up on the whole hour over one transaction it can't read. It skips that one and brings in the rest."
+      ]
+    },
+    {
+      "version": "2026-10-11v",
+      "items": [
+        "Inventory → Transfer stock now works with a van on either side. Each item goes to the van's tech, and the stock moves when they check it in on their phone. Before, a transfer to or from a van failed on the web.",
+        "Job applicants' driver's-licence photos are now stored encrypted, and only the hiring view opens them."
+      ]
+    },
+    {
+      "version": "2026-10-11u",
+      "items": [
+        "Card payments through Stripe now go straight to your own Stripe account, whether the customer pays in the portal or you use \"Card via Stripe\" in the office, and the card fees come out of your account. CrewBarn never holds your customers' money; its own Stripe is only for your CrewBarn bill.",
+        "A customer coming back from Stripe's card page sees the invoice paid right away."
+      ]
+    },
+    {
+      "version": "2026-10-11t",
+      "items": [
+        "Inventory → Bins: \"Open catalog\" opens much faster on a full rack. It used to take several seconds, and the Stock Levels list loads faster too.",
+        "In the bin catalog, \"View product\" opens the product's details on top of the catalog instead of taking you to the product catalog. Close it and you're back where you were."
+      ]
+    },
+    {
+      "version": "2026-10-11s",
+      "items": [
+        "Card payments are offered only when your company has connected its own card processor (Stripe or GoDaddy Payments in Tool Shed → Payments). Without one, the customer portal says to call or email you to pay, and \"Card via Stripe\" and the phone's hosted card page are hidden, so a payment can't go anywhere but to you."
+      ]
+    },
+    {
+      "version": "2026-10-11r",
+      "items": [
+        "A trade on the free plan that a customer brought in is paid directly, not by card through CrewBarn. In Company info, under \"How customers pay you\", it can say how: a check, Zelle, or its own payment link.",
+        "Customers of such a trade see \"Pay them directly\" with those instructions on the invoice, the statement and the customer app, and the invoice email has a \"How to pay\" box. No card button is offered.",
+        "Any company can fill in \"How customers pay you\". It shows on its invoice emails while there's a balance."
+      ]
+    },
+    {
+      "version": "2026-10-11q",
+      "items": [
+        "A trade who isn't ready to sign up can open the job in a pop-up from the invite page: confirm it, book the visit, mark it done and attach the invoice, then close it and carry on."
+      ]
+    },
+    {
+      "version": "2026-10-11p",
+      "items": [
+        "Customer portal: picking an option, like how urgent a repair is, a property's kind, or someone's role, now shows which one is picked. So does choosing a new time when moving a visit.",
+        "An outside trade updating a job without an account can book the visit and mark it done again, and the visit time the resident is told now matches the time the trade picked.",
+        "Requests show their unit and spot once (\"Unit 4B, Bathroom\") instead of repeating the unit."
+      ]
+    },
+    {
+      "version": "2026-10-11o",
+      "items": [
+        "Global search now finds older text inside customer conversations and file names attached to jobs, estimates, and customer accounts. Results take you to the related record; private file contents and storage paths are not exposed."
+      ]
+    },
+    {
+      "version": "2026-10-11n",
+      "items": [
+        "Properties: every unit and common area has its own repair history, so you can see what keeps breaking in 4B or the pool house. Admins can add notes to a unit and add common areas.",
+        "Residents can mark a repair Urgent or Emergency, and the property's staff see it first, with the urgency in the email subject.",
+        "Each request has a timeline of everything that happened to it: who took it, where it was sent, when it was booked and when it was fixed.",
+        "Properties keep their own list of the trades they use. A trade brought in from a request is added on its own, and you can send the next job to them in one tap.",
+        "An outside trade a customer brings in can update the job without signing up: confirm it, book the visit, mark it done and attach their invoice, all from the emailed link."
+      ]
+    },
+    {
+      "version": "2026-10-11m",
+      "items": [
+        "Schedule one job on specific workdays instead of blocking every day between the start and end. Choose the dates and times in the job form; each planned session can be moved on the calendar without moving the others. Existing continuous multi-day jobs still work. This requires the matching API update and database migration.",
+        "Search now checks more job, customer, estimate, and invoice details, including addresses, alternate phone numbers, line items, notes, custom fields, and customer reference numbers. A full all-records search, tenant report builder, scheduled personal messages, and complete data backup are still future work."
+      ]
+    },
+    {
+      "version": "2026-10-11l",
+      "items": [
+        "Properties in the customer portal now have a Maintenance role for a building's own maintenance person. They hear about every repair request and accept the ones they'll fix. They add notes and photos as they work and mark it repaired, and the resident and the property admins get an email.",
+        "When a repair needs an outside trade, maintenance taps Needs an outside trade and a property admin approves sending it out, or keeps it in-house. Admins can let a maintenance person hire on their own."
+      ]
+    },
+    {
+      "version": "2026-10-11k",
+      "items": [
+        "Customers using your own company app can bring in the other trades they use too: Trades is in the app's menu and under More. The trades marketplace still shows in your app only if you turn it on under the app's Features."
+      ]
+    },
+    {
+      "version": "2026-10-11j",
+      "items": [
+        "Customer portal: customers can bring the trades they use into CrewBarn. Invite a trade for a job, or upload their invoice for work already done. CrewBarn sets the trade up with a free account with the job in it and emails them to claim it. Property admins can do this right from a repair request, and the trade's invoice closes it.",
+        "A trade invited by a customer can open the whole CrewBarn app. They can work that customer's jobs, add photos and videos, send their invoice and edit their own business details. Everything else is locked until they start using CrewBarn, and a quiet \"Start using CrewBarn\" strip shows on every page."
+      ]
+    },
+    {
+      "version": "2026-10-11i",
+      "items": [
+        "A property's printed sign is now a full letter-size page. It starts with \"For Residents\" (\"For Tenants\" for a commercial property), explains what residents can do, shows a large QR code with the steps to join, and has the CrewBarn name at the bottom."
+      ]
+    },
+    {
+      "version": "2026-10-11h",
+      "items": [
+        "Customer portal: Properties. Anyone with a portal account can set up a property, like a condo, an apartment building or an office building, and run it as its admin. Residents or tenants send repair requests with photos. The admin decides what happens to each one: send it to a company, handle it in-house, decline it, or find a pro. Residents can see when it's scheduled and when it's done, and they get an email at each step.",
+        "Add people to a property one at a time, as a pasted list or CSV file (hundreds at once), or with a join code and QR for the property's website or a printed lobby sign. Scanning the code only asks to join; an admin approves each person.",
+        "Property admins choose what each resident sees (every request, or only their own) and can make others admins. For a restricted key system, turn on key requests: residents ask for a key copy or report one lost, and an admin approves it. Admins, and residents they authorize, can order keys without approval, and those go straight to the property's usual company.",
+        "Company apps have a new Trades marketplace feature, off until you turn it on. Your customers can find other trades, like an electrician or a roofer, without leaving your app, which keeps them coming back to it. Companies in your trade never show."
+      ]
+    },
+    {
+      "version": "2026-10-11g",
+      "items": [
+        "Customer app builder: choose Concierge, Field Notes, or Signal as a new home-screen design. Existing app layouts remain available.",
+        "Make a customer app icon in one tap from your business initials or a simple shape. The selected design carries through to the customer portal and installed app; enabled features still control what customers see."
+      ]
+    },
+    {
+      "version": "2026-10-11f",
+      "items": [
+        "CBI talks while it thinks: answers appear as they're written, and read-back starts on the first sentence instead of waiting for the whole reply. On the phone this works for spoken questions too.",
+        "While CBI is working on an answer, its button gives off a soft pulse.",
+        "The tech's day on the Dispatch map now shows their clocked hours, about how long they drive between jobs, and a Tomorrow view, with Call, Text and Locate buttons.",
+        "When CBI offers to do something for you, the phone app shows its questions with a Go button too. On the web and the phone, the Service address suggests real addresses as you type.",
+        "Ask CrewBarn on the phone (More menu) takes a photo too."
+      ]
+    },
+    {
+      "version": "2026-10-11e",
+      "items": [
+        "Ask CBI how to do something, like \"how do I create a job?\", and it offers a walkthrough: tap Walk me through it and CBI opens the page and walks you through it step by step. CBI steps aside while you follow along; tap the CBI button to come back to the same chat.",
+        "CBI can also do it for you. For a new job, a quote or a task it shows the few questions it needs: fill them in and press Go. If anything is missing, CBI asks, and when it asks what time or which tech, it tells you who is free then.",
+        "Booking a job through CBI with a tech who already has something at that time? The Confirm says so, and who is free instead.",
+        "On the Dispatch map, click a tech (or their name in the list) to see their day: what they're on right now and for how long, each job with when they got there and how long they were on it, their to-dos, and a one-line summary."
+      ]
+    },
+    {
+      "version": "2026-10-11d",
+      "items": [
+        "Task circles now respond as soon as you mark a to-do done or reopen it. If saving fails, the circle returns to its previous state and shows an error."
+      ]
+    },
+    {
+      "version": "2026-10-11c",
+      "items": [
+        "CBI stays open while you work: the page beside it is no longer dimmed, so you can click a job or customer CBI shows you and look around while the chat stays put. On a wide screen the page moves over to make room. CBI also knows which job or customer you have open, so you can ask about \"this customer\".",
+        "Show CBI a photo: tap the camera in CBI (or paste a picture on the web) and ask \"what part is this?\" or \"do we have this in stock?\". It works when CBI runs on Claude, and photos aren't saved.",
+        "\"Quote Rita good, better, best\": CBI drafts the estimate with two to four options at your price-list prices, with a trip charge in every option if you ask. It stays a draft for you to check and send.",
+        "\"Tell Rita I'm 15 minutes out\": the running-late text now gives the time you'll get there, and the late watch holds you to that time.",
+        "CBI starts reading its answer aloud after the first sentence instead of waiting for the whole reply."
+      ]
+    },
+    {
+      "version": "2026-10-11b",
+      "items": [
+        "Close out a job by voice: \"done at Rita's, swapped the unit, used the new part and an hour of labor, mark it complete\". CBI saves the note, adds the items at your price-list prices, and sets the status, all on one Confirm. If the job still needs a signature or photos, CBI tells you what's missing and saves the note and parts anyway.",
+        "\"Invoice Rita and text her the link\": CBI makes the invoice from the job, and after you Confirm it texts the customer a link to view and pay it in your customer portal. The customer needs portal access or an email on file to open it; if they have neither, CBI leaves the invoice as a draft and tells you. Ask again and it resends the link. Stocked parts that need a QR scan are still added in the app."
+      ]
+    },
+    {
+      "version": "2026-10-11a",
+      "items": [
+        "CBI can do more of the day: ask \"what's the gate code at Rita's?\", \"who's free Thursday afternoon?\", \"tell Rita I'm 10 minutes out\", \"move the Smith job to Friday at 2 and give it to Ian\", or \"what's my day?\" for your stops in order with gate codes and parts to bring.",
+        "Texting a customer and moving a job always wait for your Confirm, and texts only go to customers who agreed to them."
+      ]
+    },
+    {
+      "version": "2026-10-10f",
+      "items": [
+        "Call summaries know who's who: whoever answers with your company's name is your staff, not the customer, and each summary starts with the customer's name (or Caller), what they wanted, and what's next. CBI's day summary reads like a short dispatcher's briefing."
+      ]
+    },
+    {
+      "version": "2026-10-10e",
+      "items": [
+        "CBI is much faster. It now runs on a fast model of its own (Claude Haiku 5.5, change it under Settings → CBI AI), and it no longer re-reads all its instructions on every step.",
+        "Every call and voicemail now gets a one-line summary when its transcript arrives, so \"Hey CrewBarn, summarize today's calls\" answers in seconds: how many calls, and the ones that need someone.",
+        "The model list adds Claude Haiku 5.5, Sonnet 5.5 and Opus 5.5."
+      ]
+    },
+    {
+      "version": "2026-10-10d",
+      "items": [
+        "CBI in the phone app now reads the conversation you have open in Messages. Ask it to set up a job from a text or call and the caller's phone number goes on the customer, and the conversation shows on the new job."
+      ]
+    },
+    {
+      "version": "2026-10-10c",
+      "items": [
+        "Customers can now press 9 on any CBI call to stop them: they're tagged Do not call and CBI never calls them again. Every customer call ends by telling them so.",
+        "CBI only dials US and Canadian numbers, and stops for the day at your daily limit (100 calls to start, change it in Shop Rules → Late techs). When it does, the office gets a notice in the bell.",
+        "Quiet hours now hold every automated email to staff, not just task reminders: job status and reminder emails to a tech or the office, the stale-jobs digest, open-visit alerts, and access requests all arrive when quiet hours end."
+      ]
+    },
+    {
+      "version": "2026-10-10b",
+      "items": [
+        "CBI's running-late calls are smarter. A late that flickers on and off as a tech's GPS wobbles no longer calls anyone twice: CBI calls the tech and the customer at most once a day per job. If the tech already called or texted the customer about it, CBI calls nobody and the office isn't flashed.",
+        "When a voicemail picks up, CBI waits for the beep and leaves a short message with your office number, instead of the press-1 menu, and it no longer counts as reaching the customer. If the tech doesn't answer CBI's call, the office sees the late straight away instead of after the tech's head start."
+      ]
+    },
+    {
+      "version": "2026-10-10a",
+      "items": [
+        "New Employee settings under Connect → Team. Quiet hours (8 PM to 7 AM to start): nobody gets task reminder emails, phones don't buzz, and CBI doesn't call a tech or a customer. Reminders arrive when quiet hours end, and a tech running late for a job still gets the alert.",
+        "Task reminder emails can be switched off for everyone there, and each person can keep their own quiet hours and task emails on their staff record.",
+        "Daily duties now start from a date, set to yesterday, so old invoices and estimates no longer fill everyone's to-dos. To-dos already made for older records close on the next hourly check. Change the date, or look back through everything, on the same page."
+      ]
+    },
+    {
+      "version": "2026-10-09j",
+      "items": [
+        "Daily duty to-dos no longer send \"Task due soon\" and \"Task overdue\" emails. Someone who owned a busy duty, like answering calls and texts, could get hundreds. The to-dos are still on the Responsibilities board and in My to-dos, and your other tasks still email reminders as before."
+      ]
+    },
+    {
+      "version": "2026-10-09i",
+      "items": [
+        "A job's CBI calls now show how the call is going as it happens: ringing, answered and on the call, then how long it lasted. Before, a call said Calling until it was over. A call CBI connected no longer offers Create job from this call, since it's already about the job."
+      ]
+    },
+    {
+      "version": "2026-10-09h",
+      "items": [
+        "The running-late calls are now CBI calls. Find their scripts under Connect → CBI AI → Calls → CBI calls, switch them all off in one place under CBI AI → Allowed actions, and see every call CBI made, and to whom, in CBI's Activity. The job's Messages and History tabs and the Schedule's CBI: call customer button say CBI too."
+      ]
+    },
+    {
+      "version": "2026-10-09g",
+      "items": [
+        "Pick the voice for each automated call script: thirteen natural AI voices, women's and men's, each described (warm, calm, deep, upbeat...), plus how it sounds: friendly, calm, professional or upbeat. Press Listen in the editor to hear it before you save. The whole call, from the message to Connecting you and Goodbye, now speaks in that one voice."
+      ]
+    },
+    {
+      "version": "2026-10-09f",
+      "items": [
+        "Customers who get the running-late call can now press 2 to talk to their technician (press 1 is still your office). Every call script has a When they press 2 choice, and Test call can really put you through to the office or to a phone standing in for the tech."
+      ]
+    },
+    {
+      "version": "2026-10-09e",
+      "items": [
+        "A customer's invoice email subject is now built from a dropdown: pick Insert a tag for their work order or PO number, the invoice number or total, the customer name or account number, the service location, or a customer or job field you added. It shows an example of the finished subject as you go."
+      ]
+    },
+    {
+      "version": "2026-10-09d",
+      "items": [
+        "Automated calls now have scripts you can edit, like your text and email templates, with the same tags (customer name, start time, how late, ETA). Find them under Connect → Phone, text & email → Automated call scripts, with a Test call button to hear one on your phone.",
+        "Press 1: a tech who gets the running-late call can press 1 to be connected straight to the customer, on a recorded call kept on the job. A customer who gets a call can press 1 to talk to your office.",
+        "Calling the customer when their tech is late: off by default. Choose Only when the office presses Call customer, or Automatically, under Shop Rules → GPS check-in. Each customer (Contacts tab) and each job can follow that or say Never; customers tagged do-not-call are never called.",
+        "Every automated call is kept on its job: who was called, whether they answered and for how long, and what they pressed. See it in the job's Messages and History tabs."
+      ]
+    },
+    {
+      "version": "2026-10-09c",
+      "items": [
+        "A tech who may be late now hears it first: a red flashing Running late pop-up in the phone app with the customer, how far away they are, and a Call customer button, plus an automated phone call telling them to open the app and call.",
+        "Dispatch is told a few minutes later (5 by default, set it under Shop Rules → GPS check-in). If the tech calls the customer first, the Schedule button doesn't flash for it, and the Schedule page shows who called and when."
+      ]
+    },
+    {
+      "version": "2026-10-09b",
+      "items": [
+        "Daily duties from Responsibilities stay off the calendar, in the office and in the phone app. They’re on each person’s to-do list and the Today board."
+      ]
+    },
+    {
+      "version": "2026-10-09a",
+      "items": [
+        "New: Responsibilities, under Tool Shed → Team. Give jobs, estimates, billing, the books, parts and people each an owner and a backup. Every hour CrewBarn puts what needs doing on that person's to-do list, one item at a time, and takes it off once it's done.",
+        "A job that didn't get finished lands on the office's list and the tech's. Finished jobs nobody invoiced, invoices nobody sent, money still in a truck, bills coming due and time off waiting for an answer each land on the right person's list.",
+        "The Today board shows who has what, what's overdue and what got done. Tap a person to see their list. Each area's checks can be turned off, and you set how long before each one counts.",
+        "When a tech may be late for a job, the Schedule button flashes red and blue, like a police light, until somebody in the office presses Got it on the Schedule page. If nobody does within 5 minutes, a toast pops up on every office screen. Turn it off, or change the minutes, under Shop Rules → GPS check-in.",
+        "Calls a tech makes from a job in the phone app are tied to that job. Once the call is transcribed, CrewBarn writes a note on the job, records when the tech said they'd arrive, and if the customer asked for another day, puts a move request in front of the office. The schedule never moves without the office."
+      ]
+    },
+    {
+      "version": "2026-10-08b",
+      "items": [
+        "Correcting an expense or a vendor bill now corrects your books too. Fix a $500 typo to $50 and the reports say $50. Expenses and bills edited before today are corrected the next time they're saved.",
+        "Moving an approved reimbursement back to pending or rejected takes it off what you owe the employee.",
+        "A payment taken on a draft invoice is held as a customer deposit until the invoice is issued, instead of making receivables go negative.",
+        "Saving a vendor bill without picking its category no longer resets the category."
+      ]
+    },
+    {
+      "version": "2026-10-08a",
+      "items": [
+        "Take your secure files with you: Company Files can export every company and customer secure file as one encrypted zip that opens in 7-Zip (or Keka on a Mac). The password is shown to you once and CrewBarn doesn't keep it. API keys can no longer reach secure files at all.",
+        "Deleting or voiding an expense, a vendor bill or an invoice now takes it off your books too, so reports stop counting what isn't there. A bill with payments, or a reimbursed expense, asks you to reverse those first.",
+        "A customer paying a Stripe charge you had voided no longer brings it back as paid. You get an alert to refund it instead. GoDaddy sales are recorded once even if the phone and the office both record them.",
+        "Marking a draft invoice paid issues it first, so it's dated and on your books. Drafts never count as overdue.",
+        "Saving one field on a payroll profile no longer resets the rest of it to zero.",
+        "Techs who see only their own jobs now see only their own estimates (also on the calendar), their own GPS device, and messages about their jobs. They can't approve their own NTE increase."
+      ]
+    },
+    {
+      "version": "2026-10-07e",
+      "items": [
+        "Estimates can offer good, better and best. Press + New tier under the line items: what you have becomes Good and Better starts as a copy, so you only change what's different. Add Best the same way, rename any of them, say what sets each apart, and mark one Recommended.",
+        "Your customer sees each option with its price in their portal and picks one. The job and invoice carry only the option they chose. Mark Approved asks which one they took when they say yes in person."
+      ]
+    },
+    {
+      "version": "2026-10-07d",
+      "items": [
+        "Customer app settings (Tool Shed → Customer app) save themselves a moment after each change. There's no Save button to forget, and the build buttons wait until it says All changes saved."
+      ]
+    },
+    {
+      "version": "2026-10-07c",
+      "items": [
+        "The customer portal's intro film and tour keep the customer's phone screen on while they play, instead of the phone dimming and locking partway through."
+      ]
+    },
+    {
+      "version": "2026-10-07b",
+      "items": [
+        "Switching storage now moves your files: to your own bucket, back to CrewBarn storage, or from one bucket to another. The copy starts right away, and everything stays visible meanwhile, including catalogs, which used to show as missing until the copy finished. Storage & maps shows how the move is going.",
+        "Before a text goes to a customer who hasn't agreed to texts, CrewBarn asks whether they agreed. Say yes and it's sent, and their agreement is saved on their record with your name and the date. Replying to someone who texted you first goes straight through.",
+        "Calls recorded through CrewBarn now tell the customer \"This call may be recorded\", and click-to-call only rings a staff or company phone first.",
+        "A new franchise owner gets a link to set their own password instead of a password in the email. Emailing an invoice to an address that isn't on the customer now needs permission to edit invoices."
+      ]
+    },
+    {
+      "version": "2026-10-07a",
+      "items": [
+        "A customer's own work-order form is now filled in when the job is completed: the date, times in and out, technician, work performed, parts, their WO and PO numbers, and the signature go into its blanks. A completion page still follows as proof of the work.",
+        "On the job's Doc tab, each blank shows what goes in it, and you can change it. Preview on the form shows where everything will land before the job is done, with anything still missing named in grey. A finished job can be filled again after a late signature or a correction.",
+        "The completion page now shows each line's unit price (it printed $0.00), the technician's name rather than their email, and times in the job's own time zone.",
+        "The API guide (Tool Shed → Developers → API guide) now covers the rest of what an API key can call: jobs, estimates, invoices, customers, payments, catalog, inventory, equipment, subcontractors and messaging.",
+        "API keys can no longer change the bank details customers pay into, read the Google Maps key, save the legal reviewer's key, or change Google review settings and replies. Deleting a subcontractor now asks for your password and a reason like every other delete."
+      ]
+    },
+    {
+      "version": "2026-10-06f",
+      "items": [
+        "Google reviews can answer themselves (Tool Shed → Google reviews → Answer reviews automatically). Choose what each star rating gets: 4–5 stars can post a reply on their own after a wait you set, and 1–3 stars only ever get a draft for you to read and post.",
+        "Replies are written by your AI from what the customer said, if you allow it, or from your own reply list, which fills in their first name, your company name and your phone number.",
+        "Any review without a reply, old ones included, has a Write a draft button. A draft that's waiting to post shows when it will go up. You can edit and post it yourself, or stop it posting on its own."
+      ]
+    },
+    {
+      "version": "2026-10-06e",
+      "items": [
+        "\"Fill in map coordinates\" now says how many of the addresses it couldn't place still have an open job. Those jobs are missing from the dispatch map. It handles them first, and each example names the customer with a link, so you can add the address."
+      ]
+    },
+    {
+      "version": "2026-10-06d",
+      "items": [
+        "A Google Maps key is checked before it's saved, in setup and in Tool Shed → Storage & maps. A wrong paste no longer replaces a working key, and setup keeps your saved key if you leave the box blank.",
+        "The Maps \"Test key\" button no longer hangs on \"Testing…\". It says whether Google refused the key (wrong key, or not allowed on this site) or didn't answer.",
+        "\"Fill in map coordinates\" says why it skipped an address (no address on file, Google found nothing, Google refused, or the position couldn't be saved) and lists the first few."
+      ]
+    },
+    {
+      "version": "2026-10-06c",
+      "items": [
+        "Finishing a job at check-out now sets off your \"job completed\" automations (review requests and the like). It used to skip them, because the job was marked complete before its status moved.",
+        "If a job's status can't move at check-in or check-out (a rule, or a status that needs an invoice first), the tech now sees why and the office gets a note on the job. The job is still marked complete. Before, nothing was said.",
+        "Status texts go only to customers who have agreed to texts, on the customer or their main contact, like every other automatic text. Emails, and texts to your techs and office, are unchanged.",
+        "Status messages and automations now also go out when a sub's update moves your job, and a sub's late update no longer reopens a job you closed or cancelled.",
+        "Webhooks need a public https:// address. Older ones saved with http:// stop sending until you update them."
+      ]
+    },
+    {
+      "version": "2026-10-06b",
+      "items": [
+        "Order low stock automatically (Settings → Inventory): when a stocked item drops to its reorder threshold, CrewBarn adds it to a draft purchase order for its vendor. Nothing is sent: you check the draft and mark it ordered, and stock already on order counts, so nothing is ordered twice.",
+        "Restock vans to par (Settings → Inventory): when a van carries fewer of an item than its par, the shop gets a transfer request for the difference, for the van's tech to confirm when it arrives.",
+        "Needs ordered shows what's already on order for each item, and takes it off the suggested quantity."
+      ]
+    },
+    {
+      "version": "2026-10-06a",
+      "items": [
+        "New completion requirements for clients who send their own work orders: their WO # entered on the job, and their work order attached. Set them in Preferences, on a job type, or on a customer account (a chain's parent account covers every store).",
+        "Mark a job's photo or file as Client WO: in the job's photos and documents on the web, or with the photo label on the phone. A photo of the signed paper sheet counts. When a job is missing it, the phone's close-out opens the camera ready to label it, and asks for their WO # if that's missing too.",
+        "Their WO # and PO # now print on every invoice: in Job details on your current layout, or under the job after Templates → Restore CrewBarn defaults on your invoice. They also show on statements and in the customer portal, and a customer's invoice email subject can include them with {{job.their_work_order_number}} and {{job.their_po_number}}.",
+        "Photos and files work again for companies on their own Cloudflare storage. Without a public web address saved for the bucket, every image was broken; CrewBarn now serves them itself. Switching to your own bucket also copies your existing files into it, and every saved link moves with them."
+      ]
+    },
+    {
+      "version": "2026-10-05g",
+      "items": [
+        "Status flow rules: when two rules cover the same move, the one from the exact starting status now wins over an Any status rule. A rule's own requirements (schedule, technician, signature, photos) always apply. Each rule shows who may make the move, and you can change it.",
+        "Jobs you sub out: the signature the sub's tech takes now counts as a signature on your job, and their Before and After photos keep their labels. If your Complete was waiting on that proof, the job moves on when it arrives."
+      ]
+    },
+    {
+      "version": "2026-10-05f",
+      "items": [
+        "Completion rules: set the proof every job needs in Preferences (a signature, a number of photos, a Before and an After photo, parts and labour). A job type or a customer account can set its own rule: require more, or turn one off for that customer. A chain's parent account sets it for every store. A job can't be marked Complete, or moved to any status after it, until its proof is in, on the web, the phone or CBI.",
+        "When the proof really can't be had (the store is closed at night, nobody to sign), someone with \"Complete without proof\" in Roles can complete the job anyway with a reason. Owner, Admin and Dispatcher have it to start. The reason, who gave it and what was missing show on the job.",
+        "A status can now require the job to be Complete, or to have an invoice, before it can be used. Moving a completed job back to work reopens it, so it's checked again next time. \"An invoice needs the job Complete\" is a setting in Preferences. Turn it off if you bill progress or deposits.",
+        "Techs can label photos Before or After, also after they're taken. Money taken on a job before it has an invoice is now recorded as a down payment, and it's applied when the invoice is made."
+      ]
+    },
+    {
+      "version": "2026-10-05e",
+      "items": [
+        "Portal invites are now secured by a 6-digit code sent to the email you invited. Your customer can accept with a new account, an existing one, or Google, even under a different email: the code to the invited address proves it's them. The contact shows which email they sign in with.",
+        "Taking someone off a customer account now ends their portal access to that account only. Delete or deactivate the contact, or use Remove portal access on it. They keep their portal and their other accounts: a property manager taken off one property's account still sees the others. Their access to that account's jobs, invoices and assets ends at once, and signing in again doesn't bring it back; only a new invite does.",
+        "Someone on several of your customer accounts (a property manager, say) now sees each account in the portal by the name it's listed under, and moves between them by name. Links in your emails and texts open on the account the job or invoice belongs to."
+      ]
+    },
+    {
+      "version": "2026-10-05d",
+      "items": [
+        "CBI now answers \"who are our techs\" from your Staff & crews list: everyone marked Works as a technician (an owner who works jobs counts), with office staff listed separately. People removed from Staff & crews no longer show up, in that answer or in crew lists.",
+        "Sub companies on the free plan: the phone app no longer offers what the free plan leaves out (new jobs, estimates, assets, receipts, payments), and explains once when a screen needs a paid plan. Their techs now get the drive-time ETA on a job, the company's tracking hours, and the job's work order form.",
+        "When a sub's tech closes out a job as complete, the company that sent it now gets \"finished the job\" on its copy."
+      ]
+    },
+    {
+      "version": "2026-10-05c",
+      "items": [
+        "Customer tags now come from your Tags library (Tool Shed → Tags). The customer form offers your active tags in their colors, and you can add your own. Rename a tag and every customer that has it follows; remove one and it comes off them.",
+        "Every company starts with the seven tags the form used to have built in (vip, commercial, recurring, warning, do-not-call, referred, priority), so tags already on customers stay put."
+      ]
+    },
+    {
+      "version": "2026-10-05b",
+      "items": [
+        "Every sub now gets your jobs in its own CrewBarn. A sub that isn't on CrewBarn yet has to accept an invite before you can send it work: Sub this out says so and lets you invite them on the spot. A company already on CrewBarn can take the job right away.",
+        "Staff & crews lists your earlier subs under Not on CrewBarn yet, each with Invite. Tool Shed → Subcontractors shows where each sub stands.",
+        "The old ways of reaching a sub are gone: the one-job link, the sub pages in the customer portal, sub.crewbarn.com, and connecting a sub's own software."
+      ]
+    },
+    {
+      "version": "2026-10-05a",
+      "items": [
+        "Customer portal sign-in now rejects signup verification attempts for accounts that are already verified. Existing customers must use the normal sign-in flow.",
+        "A provider-locked company contact stays unchanged when its linked portal user updates their profile. A person who manages one company and handles accounting for another can reach the right screens without gaining asset-control rights for the accounting company.",
+        "Connect now opens Company files and Label printer in the work app where those tools belong. View-only staff can open Modules without receiving edit rights. Asset security keys no longer appear in the scan page address."
+      ]
+    },
+    {
+      "version": "2026-10-04l",
+      "items": [
+        "Sending work to a company that already uses CrewBarn: under Staff & crews, add a sub company by its owner's email and CrewBarn recognizes it. No invite code. Send the first job straight away; when they accept it, you're connected and they share the documents you asked for.",
+        "You can now ask a sub for an insurance certificate that names your company as certificate holder. They upload one just for you, and only you can see it.",
+        "Missing documents no longer stop an urgent job. Sub this out tells you what's missing and offers Send anyway; the job gets a note saying what was still missing."
+      ]
+    },
+    {
+      "version": "2026-10-04k",
+      "items": [
+        "New switch under Tool Shed → Marketplace: Show the marketplace to my customers. Turn it off and your customers see no marketplace in their portal, so no browsing other companies and no asking them for quotes. They can still request work and quotes from you. A customer who also works with another company on CrewBarn loses it too."
+      ]
+    },
+    {
+      "version": "2026-10-04j",
+      "items": [
+        "Every authenticated CrewBarn page and settings area now has a guided walkthrough and workflow roadmap available from Help. Tours do not start on their own after onboarding.",
+        "Guides now cover the full job lifecycle, estimates, service agreements, customer records, schedule and dispatch, communications, accounting, inventory, assets, inspections, purchasing, documents, catalog and order book, staff and permissions, automations, Connect, AI, payments, maps, security and integrations.",
+        "AI, communication, storage and map walkthroughs include direct links to the provider setup pages when a key or outside account is required."
+      ]
+    },
+    {
+      "version": "2026-10-04i",
+      "items": [
+        "The first-login CrewBarn introduction now gives a fuller tour of the platform, including catalog import, estimates, service agreements, the full job lifecycle, documents, inspections, inventory, accounting, permissions, Connect settings and status-trigger automations.",
+        "Customer arrival updates are explained correctly: CrewBarn calculates an ETA from the technician’s location and sends the customer the job status and ETA. The technician’s live location stays private inside CrewBarn and is not shared with the customer."
+      ]
+    },
+    {
+      "version": "2026-10-04h",
+      "items": [
+        "Adding someone under Staff & crews works again. Since September 25 it stopped with an error before the person was saved; anyone you tried to add then needs adding again."
+      ]
+    },
+    {
+      "version": "2026-10-04g",
+      "items": [
+        "When you ask CBI to change a job's status, book a job or remember a rule, it now shows exactly what it will do with Confirm and Cancel buttons, and nothing changes until you press Confirm. Saying yes in the chat does not count, so nothing CBI reads in a job note or a customer's message can make a change on its own.",
+        "CBI also treats text in jobs, messages, call transcripts and imported records as information, never as instructions."
+      ]
+    },
+    {
+      "version": "2026-10-04f",
+      "items": [
+        "The dashboard has a New vs returning customers card: new customers, jobs from new customers and jobs from returning customers, by day, week, month or year, each with the period before for comparison.",
+        "A customer counts as new when their first job ever falls in that period, history brought in from another system included, so long-standing customers are never counted as new because they were imported recently."
+      ]
+    },
+    {
+      "version": "2026-10-04e",
+      "items": [
+        "Tax on new jobs, estimates and invoices is worked out once on the total for each tax rate, the way a register does, instead of line by line and then added up, which could land a cent off. Each line still shows its share, and the shares add up to the total.",
+        "Jobs, estimates and invoices made before today keep the tax they were made with, so nothing already sent or paid changes by a cent."
+      ]
+    },
+    {
+      "version": "2026-10-04d",
+      "items": [
+        "Every job has an Automations switch in its header. Off, nothing automatic goes out for that job: no status texts or emails, reminders, automation rules or dormant nudges to the tech. Jobs brought in from another system start with it off, so working through them messages nobody. Owners and admins can turn it on or off; the roles page lets you give that to others (Jobs → Edit + automations switch)."
+      ]
+    },
+    {
+      "version": "2026-10-04c",
+      "items": [
+        "Disabling someone on Staff & crews now signs them out everywhere at once: the web, the phone app and any API keys, and their phone stops getting notifications. Before, a phone already signed in kept working until its session ran out. Their jobs, notes and time stay on file.",
+        "A job given a Canceled-type status no longer shows under Past scheduled on the dashboard or in CBI's daily stale-jobs summary, the same as on the Jobs list. Every open job still shows there and on the dormant list, however old."
+      ]
+    },
+    {
       "version": "2026-10-04b",
       "items": [
         "Call transcription has a Test saved key button. It checks that the key for the service you chose is accepted, without transcribing anything, and tells you plainly if it was pasted wrong or revoked."

@@ -3,15 +3,45 @@ import { Link, NavLink, useLocation } from 'react-router-dom'
 import { usePermissions } from '@/hooks/usePermissions'
 import { useModuleVisibility } from '@/hooks/useModuleVisibility'
 import { useNavBadges } from '@/hooks/useNavBadges'
+import { useLateRisks } from '@/hooks/useLateRisks'
 import { useUnhandledIncomingCalls } from '@/hooks/useUnhandledIncomingCalls'
 import { useIntakePendingCount } from '@/hooks/useIntakePendingCount'
 import { useFranchiseFeature } from '@/hooks/useFranchiseFeature'
+import { useTheme } from '@/hooks/useTheme'
+import { useSettingsInWorkspace } from '@/hooks/useSettingsInWorkspace'
+import { isCompanySetting } from '@/lib/workspaceScope'
+import { canViewSetting, cbiLearningAccess } from '@/lib/settingAccess'
 import {
   NAV_CATEGORIES,
   categoryForPath,
   type CategoryId,
   type NavItem,
 } from '@/lib/navTaxonomy'
+
+/**
+ * What each page's route checks (RequirePermission in main.tsx), for rail
+ * items whose taxonomy gate is missing or differs. Any one key is enough.
+ * Keeps the rail from offering a page that answers "access denied".
+ */
+const ROUTE_ACCESS: Record<string, string[]> = {
+  '/schedule': ['jobs.view'],
+  '/dispatch': ['jobs.view'],
+  '/tasks': ['tasks.view', 'jobs.view', 'customers.view'],
+  '/sub-reviews': ['jobs.view'],
+  '/inbound-sub-jobs': ['jobs.view'],
+  '/sub-payouts': ['jobs.view'],
+  '/company-assets': ['assets.view'],
+  '/communications': ['customers.view'],
+  '/intake': ['customers.view'],
+  '/accounting': ['invoices.view'],
+  '/vendors': ['inventory.view'],
+  '/tool-shed/company-files': ['company.secure_files.list'],
+  '/tool-shed/data-export': ['settings.edit'],
+  '/tool-shed/pricing': ['catalog.view'],
+  '/tool-shed/roles': ['staff.view'],
+  '/tool-shed/subcontractors': ['jobs.view'],
+  '/tool-shed': ['settings.view'],
+}
 
 /**
  * Rail shell — categories on the left edge, their contents in the panel.
@@ -47,6 +77,7 @@ const RAIL_ICONS: Record<CategoryId, string[]> = {
 }
 
 const COLLAPSE_KEY = 'crewbarn_rail_collapsed'
+const FOCUS_COLLAPSE_KEY = 'crewbarn_focus_rail_collapsed'
 
 function RailIcon({ id }: { id: CategoryId }) {
   return (
@@ -59,10 +90,14 @@ function RailIcon({ id }: { id: CategoryId }) {
 }
 
 export function CategoryRail() {
+  const { theme } = useTheme()
+  const focus = theme === 'focus'
   const location = useLocation()
-  const { has, isLoading } = usePermissions()
-  const { isRouteVisible } = useModuleVisibility()
+  const { has, hasAny, isLoading } = usePermissions()
+  const { show: showCompanySettings } = useSettingsInWorkspace()
+  const { isRouteVisibleInWork: isRouteVisible, isRouteVisible: isEnabledRoute } = useModuleVisibility()
   const badges = useNavBadges()
+  const lateRisks = useLateRisks()
   const calls = useUnhandledIncomingCalls()
   const intakeCount = useIntakePendingCount()
   const franchise = useFranchiseFeature()
@@ -71,17 +106,25 @@ export function CategoryRail() {
   // What the panel shows. Follows the route, but a click on another category
   // pins it there so you can look around without navigating first.
   const [shown, setShown] = useState<CategoryId>(activeCategory)
-  const [collapsed, setCollapsed] = useState(
+  const [railCollapsed, setRailCollapsed] = useState(
     () => typeof window !== 'undefined' && localStorage.getItem(COLLAPSE_KEY) === '1',
   )
+  const [focusCollapsed, setFocusCollapsed] = useState(
+    () => typeof window !== 'undefined' && localStorage.getItem(FOCUS_COLLAPSE_KEY) === '1',
+  )
+  const collapsed = focus ? focusCollapsed : railCollapsed
+  const setCollapsed = focus ? setFocusCollapsed : setRailCollapsed
 
   useEffect(() => {
     setShown(activeCategory)
   }, [activeCategory])
 
   useEffect(() => {
-    localStorage.setItem(COLLAPSE_KEY, collapsed ? '1' : '0')
-  }, [collapsed])
+    localStorage.setItem(COLLAPSE_KEY, railCollapsed ? '1' : '0')
+  }, [railCollapsed])
+  useEffect(() => {
+    localStorage.setItem(FOCUS_COLLAPSE_KEY, focusCollapsed ? '1' : '0')
+  }, [focusCollapsed])
 
   const badgeFor = (item: NavItem): number => {
     switch (item.badge) {
@@ -93,6 +136,8 @@ export function CategoryRail() {
         return badges.inboundMirrorPendingCount
       case 'payments':
         return badges.pendingPaymentsCount
+      case 'tasks':
+        return badges.taskCount
       case 'calls':
         return calls.canViewCalls ? calls.count : 0
       case 'intake':
@@ -111,9 +156,14 @@ export function CategoryRail() {
         ...g,
         items: g.items.filter(
           (it) =>
-            !isLoading && (!it.requires || has(it.requires)) &&
+            !isLoading &&
+            (ROUTE_ACCESS[it.to] ? hasAny(ROUTE_ACCESS[it.to]) : (!it.requires || has(it.requires))) &&
+            canViewSetting(it.to, has) &&
+            // Same rule as the Tool Shed: company settings live on Connect
+            // unless this workspace has asked for them here too.
+            (cbiLearningAccess(it.to, has) !== undefined || showCompanySettings || !isCompanySetting(it.to)) &&
             (it.feature !== 'franchise' || franchise.enabled) &&
-            isRouteVisible(it.to),
+            (cbiLearningAccess(it.to, has) !== undefined ? isEnabledRoute(it.to) : isRouteVisible(it.to)),
         ),
       }))
       .filter((g) => g.items.length > 0),
@@ -123,6 +173,10 @@ export function CategoryRail() {
 
   // A category's dot means something under it wants attention, which is the
   // only way to see that from a collapsed rail.
+  // A tech may be late: the category with Schedule in it flashes too, so a
+  // collapsed rail still shows it.
+  const categoryHasSchedule = (id: CategoryId): boolean =>
+    (visibleCategories.find((c) => c.id === id)?.groups ?? []).some((g) => g.items.some((it) => it.to === '/schedule'))
   const categoryHasBadge = (id: CategoryId): boolean =>
     (visibleCategories.find((c) => c.id === id)?.groups ?? []).some((g) =>
       g.items.some((it) => badgeFor(it) > 0),
@@ -133,10 +187,11 @@ export function CategoryRail() {
       {/* The rail */}
       <nav
         data-traditional-chrome
+        data-tour="rail-categories"
         aria-label="Sections"
         className="flex w-[68px] shrink-0 flex-col items-center gap-1 border-r border-white/10 bg-[var(--chrome-bg,#0F1A2E)] py-3"
       >
-        <Link to="/" className="mb-2 flex h-9 w-9 items-center justify-center rounded-[10px] bg-[#E8902C]" aria-label="CrewBarn home">
+        <Link to="/" data-tour="shell-brand" className="mb-2 flex h-9 w-9 items-center justify-center rounded-[10px] bg-[#E8902C]" aria-label="CrewBarn home">
           <svg viewBox="0 0 64 64" width={22} height={22} fill="none" aria-hidden="true">
             <path d="M51 27 L32 13 L13 27" stroke="#0F1A2E" strokeWidth={7} strokeLinecap="round" strokeLinejoin="round" />
             <path d="M14 27 V38 q0 8 8 8 h20" stroke="#0F1A2E" strokeWidth={7} strokeLinecap="round" strokeLinejoin="round" />
@@ -155,9 +210,11 @@ export function CategoryRail() {
                 setCollapsed(false)
               }}
               aria-current={isActive ? 'true' : undefined}
+              aria-pressed={isShown}
+              data-tour={`rail-${cat.id}`}
               className={`relative flex w-[56px] flex-col items-center gap-1 rounded-[10px] py-2 text-[10.5px] font-semibold transition-colors ${
                 isShown ? 'bg-white/15 text-white' : 'text-white/60 hover:bg-white/10 hover:text-white'
-              }`}
+              } ${lateRisks.flashing && categoryHasSchedule(cat.id) ? 'cb-strobe' : ''}`}
             >
               <RailIcon id={cat.id} />
               {cat.label}
@@ -174,7 +231,7 @@ export function CategoryRail() {
 
       {/* The panel */}
       {!collapsed && panel && (
-        <div className="flex w-[212px] shrink-0 flex-col border-r border-slate-200 bg-white">
+        <div data-tour="rail-panel" className="flex w-[212px] shrink-0 flex-col border-r border-slate-200 bg-white">
           <p className="px-4 pb-1 pt-4 text-[10.5px] font-bold uppercase tracking-[0.13em] text-slate-400">
             {panel.label}
           </p>
@@ -193,12 +250,14 @@ export function CategoryRail() {
                       key={item.to}
                       to={item.to}
                       end={item.end}
+                      data-tour={`rail-item-${item.to === '/' ? 'dashboard' : item.to.slice(1).replace(/\//g, '-')}`}
+                      title={item.to === '/schedule' && lateRisks.flashing ? `${lateRisks.unseen.length} tech${lateRisks.unseen.length === 1 ? '' : 's'} may be late` : undefined}
                       className={({ isActive }) =>
                         `flex items-center justify-between gap-2 rounded-[8px] px-2.5 py-[7px] text-[13.5px] font-medium transition-colors ${
                           isActive
                             ? 'bg-[#FDF3E4] text-[#8a5a1f]'
                             : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'
-                        }`
+                        } ${item.to === '/schedule' && lateRisks.flashing ? 'cb-strobe cb-strobe--light' : ''}`
                       }
                     >
                       <span className="truncate">{item.label}</span>
@@ -216,6 +275,7 @@ export function CategoryRail() {
           <button
             type="button"
             onClick={() => setCollapsed(true)}
+            data-tour="rail-collapse"
             className="flex items-center gap-1.5 border-t border-slate-200 px-4 py-2.5 text-[12px] font-semibold text-slate-500 hover:text-slate-800"
           >
             <svg viewBox="0 0 24 24" width={13} height={13} fill="none" aria-hidden="true">

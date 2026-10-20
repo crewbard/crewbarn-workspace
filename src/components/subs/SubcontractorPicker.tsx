@@ -139,6 +139,11 @@ export function SubcontractorPicker({
                       {s.contact_name || '(no contact)'}
                       {s.phone && <> · {s.phone}</>}
                     </div>
+                    {(s.network_status === 'none' || s.network_status === 'invited') && (
+                      <div className="text-[11px] font-medium text-amber-700">
+                        {s.network_status === 'none' ? 'Not on CrewBarn yet: invite before sending' : 'Invited: waiting on them to set up'}
+                      </div>
+                    )}
                   </button>
                 ))
               )}

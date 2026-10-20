@@ -71,7 +71,7 @@ export function FranchiseDashboardPage() {
   return (
     <div className={easy ? 'w-full min-w-0 p-3 sm:p-6 space-y-6' : 'max-w-6xl mx-auto p-6 space-y-6'}>
       {easy && <EasyPageHeading title="Franchise dashboard" description="Compare your locations, review network totals, and open a franchise for its details. Access remains limited to your existing franchise permissions." />}
-      <div className="flex items-start justify-between gap-4">
+      <div data-tour="franchise-header" className="flex items-start justify-between gap-4">
         <div className={easy ? 'hidden' : undefined}>
           <h1 className="text-3xl font-semibold text-navy-900">Franchise Dashboard</h1>
           <p className="text-sm text-slate-600 mt-1">
@@ -80,6 +80,7 @@ export function FranchiseDashboardPage() {
         </div>
         {canManage && (
           <button
+            data-tour="franchise-add"
             type="button"
             onClick={() => setAddOpen(true)}
             className="px-4 py-2 rounded-md bg-amber-500 hover:bg-amber-600 text-white text-sm font-medium transition-colors shrink-0"
@@ -96,7 +97,7 @@ export function FranchiseDashboardPage() {
       )}
 
       {/* Network totals */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+      <div data-tour="franchise-totals" className="grid grid-cols-2 md:grid-cols-4 gap-4">
         <StatCard label="Franchises" value={totals ? `${totals.active_count}/${totals.franchise_count}` : '—'} sub="active / total" loading={isLoading} />
         <StatCard label="Revenue (MTD)" value={totals ? usd(totals.revenue_mtd_cents) : '—'} sub={totals ? `${usd(totals.revenue_cents)} all-time` : ''} loading={isLoading} />
         <StatCard label="Jobs (MTD)" value={totals ? String(totals.jobs_mtd) : '—'} sub={totals ? `${totals.jobs_total} all-time` : ''} loading={isLoading} />
@@ -104,7 +105,7 @@ export function FranchiseDashboardPage() {
       </div>
 
       {/* Per-franchise cards */}
-      <div className="bg-white border border-slate-200 rounded-xl shadow-sm">
+      <div data-tour="franchise-list" className="bg-white border border-slate-200 rounded-xl shadow-sm">
         <div className="px-6 py-4 border-b border-slate-100">
           <h2 className="text-base font-semibold text-navy-900">Franchises</h2>
         </div>
@@ -227,9 +228,10 @@ function RoyaltiesSection({ canManage }: { canManage: boolean }) {
   })
 
   const stmt = royaltyQ.data?.data
+  const loadError = royaltyQ.error ?? feesQ.error
 
   return (
-    <div className="bg-white border border-slate-200 rounded-xl shadow-sm">
+    <div data-tour="franchise-royalties" className="bg-white border border-slate-200 rounded-xl shadow-sm">
       <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between gap-3 flex-wrap">
         <div>
           <h2 className="text-base font-semibold text-navy-900">Royalties</h2>
@@ -271,6 +273,17 @@ function RoyaltiesSection({ canManage }: { canManage: boolean }) {
             {save.isPending ? 'Saving…' : 'Save default'}
           </button>
           {save.isSuccess && <span className="text-xs text-emerald-600 font-medium">Saved ✓</span>}
+          {save.isError && (
+            <span role="alert" className="text-xs text-red-700">
+              Could not save.{save.error instanceof Error ? ` ${save.error.message}` : ''}
+            </span>
+          )}
+        </div>
+      )}
+
+      {loadError && (
+        <div role="alert" className="mx-6 mt-4 bg-red-50 border border-red-200 rounded-xl p-3 text-sm text-red-700">
+          Failed to load royalties.{loadError instanceof Error ? ` ${loadError.message}` : ''}
         </div>
       )}
 
@@ -315,6 +328,12 @@ function RequestAccessButton({ franchiseId }: { franchiseId: string }) {
     return <span className="text-xs text-emerald-600 font-medium px-2">Request sent ✓</span>
   }
   return (
+    <>
+    {mutation.isError && (
+      <span role="alert" className="text-xs text-red-700" title={mutation.error instanceof Error ? mutation.error.message : undefined}>
+        Request failed
+      </span>
+    )}
     <button
       type="button"
       disabled={mutation.isPending}
@@ -324,6 +343,7 @@ function RequestAccessButton({ franchiseId }: { franchiseId: string }) {
     >
       {mutation.isPending ? 'Requesting…' : 'Request access'}
     </button>
+    </>
   )
 }
 
@@ -434,10 +454,10 @@ function AddFranchiseModal({ onClose }: { onClose: () => void }) {
         ) : (
           <div className="p-6 space-y-4">
             <Field label="Franchise name" hint="Locked once created — this is the brand name the franchise operates under.">
-              <input value={form.name} onChange={onNameChange} className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-amber-500 focus:ring-1 focus:ring-amber-500 outline-none" placeholder="e.g. Key-En-Lock — Orange County" />
+              <input value={form.name} onChange={onNameChange} className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-amber-500 focus:ring-1 focus:ring-amber-500 outline-none" placeholder="e.g. Acme Services — Springfield" />
             </Field>
             <Field label="URL slug" hint="Lowercase letters, numbers, dashes.">
-              <input value={form.slug} onChange={set('slug')} className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-amber-500 focus:ring-1 focus:ring-amber-500 outline-none" placeholder="ken-orange-county" />
+              <input value={form.slug} onChange={set('slug')} className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-amber-500 focus:ring-1 focus:ring-amber-500 outline-none" placeholder="acme-springfield" />
             </Field>
             <div className="border-t border-slate-100 pt-4">
               <div className="text-xs font-semibold uppercase tracking-wide text-slate-400 mb-2">Franchise owner</div>

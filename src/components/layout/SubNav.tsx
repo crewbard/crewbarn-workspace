@@ -1,6 +1,8 @@
 ﻿import { useEffect, useState } from 'react'
 import { useLocation, NavLink } from 'react-router-dom'
 import { useId, useRef } from 'react'
+import { usePermissions } from '@/hooks/usePermissions'
+import { useModuleVisibility } from '@/hooks/useModuleVisibility'
 
 interface SubNavItem {
   to: string
@@ -10,6 +12,8 @@ interface SubNavItem {
   icon?: NavIconName
   /** Secondary surfaces, kept behind "More" so the workflow tabs stay short. */
   secondary?: boolean
+  /** Route permission(s); the tab hides when the user has none of them. */
+  anyOf?: string[]
 }
 
 /*
@@ -60,21 +64,21 @@ function NavIcon({ name }: { name: NavIconName }) {
 const SUB_NAV_BY_SECTION: Record<string, SubNavItem[]> = {
   '/jobs': [
     { to: '/jobs', label: 'All Jobs', end: true },
-    { to: '/jobs/new', label: 'New Job' },
+    { to: '/jobs/new', label: 'New Job', anyOf: ['jobs.edit'] },
     // Work you have agreed to do on a schedule is still work, and this is
     // where somebody is standing when they decide to put it on one.
-    { to: '/maintenance-contracts/new', label: 'New Service Agreement' },
+    { to: '/maintenance-contracts/new', label: 'New Service Agreement', anyOf: ['contracts.edit'] },
   ],
   '/customers': [
     { to: '/customers', label: 'All Customers', end: true },
-    { to: '/customers/new', label: 'New Customer' },
+    { to: '/customers/new', label: 'New Customer', anyOf: ['customers.edit'] },
   ],
   '/estimates': [
     { to: '/estimates', label: 'All Estimates', end: true },
-    { to: '/estimates/new', label: 'New Estimate' },
+    { to: '/estimates/new', label: 'New Estimate', anyOf: ['jobs.edit'] },
     // An estimate a customer accepts for recurring work is an agreement,
     // so the door is here too rather than only under Contracts.
-    { to: '/maintenance-contracts/new', label: 'New Service Agreement' },
+    { to: '/maintenance-contracts/new', label: 'New Service Agreement', anyOf: ['contracts.edit'] },
   ],
   /*
    * Five workflows, not eleven destinations.
@@ -92,24 +96,24 @@ const SUB_NAV_BY_SECTION: Record<string, SubNavItem[]> = {
    */
   '/accounting': [
     { to: '/accounting', label: 'Money desk', end: true, icon: 'desk' },
-    { to: '/accounting/cash-drawer', label: 'Cash register', icon: 'register' },
-    { to: '/purchase-orders', label: 'Purchase orders', icon: 'po' },
-    { to: '/accounting/payroll', label: 'Payroll', icon: 'pay' },
+    { to: '/accounting/cash-drawer', label: 'Cash register', icon: 'register', anyOf: ['invoices.view'] },
+    { to: '/purchase-orders', label: 'Purchase orders', icon: 'po', anyOf: ['inventory.view'] },
+    { to: '/accounting/payroll', label: 'Payroll', icon: 'pay', anyOf: ['revenue.view'] },
     // Promoted out of More: sales tax is money you are only holding. It was
     // never revenue, and burying it next to Sync Maps invites treating it as
     // profit until the state asks for it.
     { to: '/accounting/sales-tax', label: 'Sales tax', icon: 'salestax' },
-    { to: '/accounting/reports', label: 'Reports', icon: 'reports' },
+    { to: '/accounting/reports', label: 'Reports', icon: 'reports', anyOf: ['revenue.view'] },
 
-    { to: '/accounting/overview', label: 'Overview & charts', secondary: true },
-    { to: '/accounting/invoices', label: 'Invoices', secondary: true },
-    { to: '/accounting/customer-credits', label: 'Credits', secondary: true },
-    { to: '/accounting/expenses', label: 'Expenses', secondary: true },
-    { to: '/accounting/expenses/bills', label: 'Vendor bills', secondary: true },
-    { to: '/accounting/inventory-cost', label: 'Inventory cost', secondary: true },
-    { to: '/accounting/bank-match', label: 'Bank match', secondary: true },
-    { to: '/accounting/ledger', label: 'Ledger', secondary: true },
-    { to: '/accounting/sync-mappings', label: 'Sync maps', secondary: true },
+    { to: '/accounting/overview', label: 'Overview & charts', secondary: true, anyOf: ['invoices.view'] },
+    { to: '/accounting/invoices', label: 'Invoices', secondary: true, anyOf: ['invoices.view'] },
+    { to: '/accounting/customer-credits', label: 'Credits', secondary: true, anyOf: ['invoices.view'] },
+    { to: '/accounting/expenses', label: 'Expenses', secondary: true, anyOf: ['revenue.view'] },
+    { to: '/accounting/expenses/bills', label: 'Vendor bills', secondary: true, anyOf: ['revenue.view'] },
+    { to: '/accounting/inventory-cost', label: 'Inventory cost', secondary: true, anyOf: ['inventory.view'] },
+    { to: '/accounting/bank-match', label: 'Bank match', secondary: true, anyOf: ['revenue.view'] },
+    { to: '/accounting/ledger', label: 'Ledger', secondary: true, anyOf: ['revenue.view'] },
+    { to: '/accounting/sync-mappings', label: 'Sync maps', secondary: true, anyOf: ['revenue.view'] },
   ],
 }
 
@@ -136,6 +140,8 @@ export function SubNav() {
   const [moreOpen, setMoreOpen] = useState(false)
   const moreId = useId()
   const moreButton = useRef<HTMLButtonElement>(null)
+  const { hasAny } = usePermissions()
+  const { isRouteVisibleInWork: isRouteVisible } = useModuleVisibility()
   const section = findActiveSection(location.pathname)
 
   // Close the overflow when the route changes, or it hangs open over the page
@@ -154,7 +160,9 @@ export function SubNav() {
 
   if (!section) return null
 
-  const items = SUB_NAV_BY_SECTION[section]
+  const items = SUB_NAV_BY_SECTION[section].filter(
+    (i) => isRouteVisible(i.to) && (!i.anyOf || hasAny(i.anyOf)),
+  )
   const primary = items.filter((i) => !i.secondary)
   const secondary = items.filter((i) => i.secondary)
   // A secondary page is still the page you are on — say so rather than
@@ -170,12 +178,12 @@ export function SubNav() {
     ].join(' ')
 
   return (
-    <div data-traditional-subnav className="relative border-b border-slate-200 bg-slate-50">
+    <div data-traditional-subnav data-tour="subnav" className="relative border-b border-slate-200 bg-slate-50">
       <div className="flex h-10 items-center gap-2 px-6 text-sm">
         {primary.map((item, idx) => (
           <span key={item.to} className="flex items-center gap-2">
             {idx > 0 && <span className="text-slate-300">·</span>}
-            <NavLink to={item.to} end={item.end} className={linkClass}>
+            <NavLink to={item.to} end={item.end} data-tour={`subnav-${item.to.slice(1).replace(/\//g, '-')}`} className={linkClass}>
               {item.icon && <NavIcon name={item.icon} />}
               {item.label}
             </NavLink>
@@ -189,6 +197,7 @@ export function SubNav() {
               type="button"
               onClick={() => setMoreOpen((v) => !v)}
               ref={moreButton}
+              data-tour="subnav-more"
               aria-expanded={moreOpen}
               aria-controls={moreOpen ? moreId : undefined}
               className={[
@@ -210,7 +219,7 @@ export function SubNav() {
             className="fixed inset-0 z-10 cursor-default"
             onClick={() => setMoreOpen(false)}
           />
-          <div id={moreId} data-traditional-more className="absolute right-6 z-20 mt-1 grid w-[420px] grid-cols-2 gap-1 rounded-lg border border-slate-200 bg-white p-2 shadow-lg">
+          <div id={moreId} data-tour="subnav-more-menu" data-traditional-more className="absolute right-6 z-20 mt-1 grid w-[420px] grid-cols-2 gap-1 rounded-lg border border-slate-200 bg-white p-2 shadow-lg">
             {secondary.map((item) => (
               <NavLink
                 key={item.to}

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef } from 'react'
 import type { Account } from '@/lib/auth'
-import { getRealtimeEcho, resolveTenantId } from '@/lib/realtimeEcho'
+import { getRealtimeEcho, listenPrivate, resolveTenantId } from '@/lib/realtimeEcho'
 
 /**
  * Payments as they land, over Reverb.
@@ -42,15 +42,7 @@ export function useRealtimePayments(
     if (!echo) return
 
     const channelName = `tenant.${tenantId}.payments`
-    echo.private(channelName).listen('.payment.received', (p: PaymentReceivedEvent) => cb.current(p))
-
-    return () => {
-      try {
-        echo.leave(channelName)
-      } catch {
-        /* ignore */
-      }
-    }
+    return listenPrivate(echo, channelName, '.payment.received', (p: PaymentReceivedEvent) => cb.current(p))
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tenantId])
 }

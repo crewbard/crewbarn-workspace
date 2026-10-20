@@ -116,7 +116,9 @@ export function CustomBoard() {
         </p>
         <div data-easy-board-controls className="flex items-center gap-2">
           {/* WHICH period — each is a closed calendar period (tax-year safe). */}
-          <BoardPeriodPicker range={range} onChange={setPeriod} />
+          <span data-tour="dash-period" className="inline-flex">
+            <BoardPeriodPicker range={range} onChange={setPeriod} />
+          </span>
           {/* Day / Month / Quarter / Year */}
           <div data-tour="dash-range" className="inline-flex rounded-lg border border-slate-300 overflow-hidden">
             {(Object.keys(DASH_RANGE_LABELS) as DashRange[]).map((r) => (
@@ -127,6 +129,7 @@ export function CustomBoard() {
                   setRange(r)
                   setPeriod(null) // a 2025 key isn't valid for Month, etc.
                 }}
+                aria-pressed={range === r}
                 className={[
                   'px-3 py-1.5 text-sm font-medium transition-colors',
                   range === r
@@ -162,6 +165,9 @@ export function CustomBoard() {
           <button
             type="button"
             data-tour="dashboard-customize"
+            // aria-pressed lets the guided tour open Customize without
+            // toggling it shut again on the next step.
+            aria-pressed={customizing}
             onClick={() => setCustomizing((v) => !v)}
             className={[
               'px-3 py-1.5 text-sm font-medium rounded-lg border transition-colors',
@@ -177,11 +183,12 @@ export function CustomBoard() {
 
       {/* Add-widget tray (customize mode) */}
       {customizing && (
-        <div className="mb-5 rounded-xl border border-dashed border-slate-300 bg-slate-50 p-4">
+        <div data-tour="dash-add-block" className="mb-5 rounded-xl border border-dashed border-slate-300 bg-slate-50 p-4">
           <div className="flex items-center justify-between mb-2">
             <h2 className="text-sm font-semibold text-navy-900">Add a block</h2>
             <button
               type="button"
+              data-tour="dash-reset-board"
               onClick={reset}
               className="text-xs text-slate-500 hover:text-slate-700 underline"
             >
@@ -220,7 +227,7 @@ export function CustomBoard() {
           onDragEnd={handleDragEnd}
         >
           <SortableContext items={widgets} strategy={rectSortingStrategy}>
-            <div data-easy-widget-grid className={`grid ${sizeCfg.grid} gap-4`}>
+            <div data-easy-widget-grid data-tour="dash-board-grid" className={`grid ${sizeCfg.grid} gap-4`}>
               {widgets.map((id) => {
                 const def = WIDGET_BY_ID.get(id)
                 if (!def) return null
@@ -281,6 +288,7 @@ function SortableWidget({
             type="button"
             {...attributes}
             {...listeners}
+            data-tour="dash-block-drag"
             className="w-7 h-7 flex items-center justify-center rounded-md bg-white border border-slate-300 text-slate-500 hover:text-slate-800 cursor-grab active:cursor-grabbing shadow-sm"
             title="Drag to move"
             aria-label="Drag to move"
@@ -290,6 +298,7 @@ function SortableWidget({
           <button
             type="button"
             onClick={onRemove}
+            data-tour="dash-block-remove"
             className="w-7 h-7 flex items-center justify-center rounded-md bg-white border border-slate-300 text-slate-400 hover:text-red-600 hover:border-red-300 shadow-sm"
             title="Remove block"
             aria-label="Remove block"

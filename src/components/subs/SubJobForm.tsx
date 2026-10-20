@@ -13,11 +13,13 @@ import { useCreateWorkOrder } from '@/hooks/useWorkOrders'
 import { useCustomer } from '@/hooks/useCustomers'
 import { useJobTypes } from '@/hooks/useJobTypes'
 import { useJobStatuses } from '@/hooks/useJobStatuses'
+import { ApiError } from '@/lib/api'
 import { subOutWorkOrder } from '@/lib/subcontractors'
 import type { Customer } from '@/types/customer'
 import type { Subcontractor } from '@/types/subcontractor'
 import { useFormDrafts, newDraftId, type FormDraft } from '@/hooks/useFormDrafts'
 import { SavedDraftPanel } from '@/components/forms/SavedDraftPanel'
+import { startGuidedTour } from '@/lib/guidedTours'
 
 const SUB_STEPS = ['Customer', 'Subcontractor', 'Job basics', 'Schedule & NTE', 'Review & Create'] as const
 
@@ -46,7 +48,12 @@ type SubJobDraftState = {
  */
 export function SubJobForm({ guidedMode }: { guidedMode: boolean }) {
   const navigate = useNavigate()
-  const [, setSearchParams] = useSearchParams()
+  const [searchParams, setSearchParams] = useSearchParams()
+  // Switching to Job / Estimate keeps a preselected customer.
+  const keepCustomerParam = (): Record<string, string> => {
+    const c = searchParams.get('customer_id')
+    return c ? { customer_id: c } : {}
+  }
   const createWorkOrder = useCreateWorkOrder()
   const { data: jobTypesData } = useJobTypes({ active: true })
   const { data: jobStatusesData } = useJobStatuses({ active: true })
@@ -179,11 +186,22 @@ export function SubJobForm({ guidedMode }: { guidedMode: boolean }) {
     setServerErr(null)
     if (!validate()) return
 
-    const jobTypeId = jobTypesData?.data?.[0]?.id
-    const statusId = jobStatusesData?.data?.[0]?.id
+    // Sub jobs don't ask for a type or status: use the most-used job type
+    // (or the first), then that type's default status, else the same
+    // schedule-aware default New Job uses (Scheduled / Needs Scheduling by
+    // slug), else the status marked Initial, else the first active status.
+    const types = jobTypesData?.data ?? []
+    const statuses = jobStatusesData?.data ?? []
+    const jobType = types.find((t) => t.most_used) ?? types[0]
+    const jobTypeId = jobType?.id
+    const bySlug = (slug: string) => statuses.find((st) => st.slug === slug)?.id
+    const statusId = jobType?.default_status_id
+      || (scheduledDate ? bySlug('scheduled') : bySlug('needs-scheduling'))
+      || statuses.find((st) => st.is_initial)?.id
+      || statuses[0]?.id
     if (!jobTypeId || !statusId) {
       setServerErr(
-        'No job types or statuses found for this tenant. Open Tool Shed → Job Types / Job Statuses to add at least one of each, then come back.',
+        'You need at least one job type and one job status before you can create a sub job. Add them in Tool Shed › Job Types and Job Statuses, then come back.',
       )
       return
     }
@@ -203,33 +221,44 @@ export function SubJobForm({ guidedMode }: { guidedMode: boolean }) {
       })
 
       try {
-        await subOutWorkOrder(wo.id, {
+        const subOut = {
           subcontractor_id: sub!.id,
           sub_nte_cents: nteCents,
           sub_special_instructions: specialInstructions.trim() || null,
-        })
+        }
+        try {
+          await subOutWorkOrder(wo.id, subOut)
+        } catch (first) {
+          // The sub's documents aren't all in: say what, and send it anyway
+          // if the office says so (most of this work is urgent).
+          if (!(first instanceof ApiError && first.code === 'documents_missing') || !window.confirm(`${first.message}\n\nSend it anyway?`)) throw first
+          await subOutWorkOrder(wo.id, { ...subOut, send_anyway: true })
+        }
         // Best-effort: PDF + attachments. None of these block the
-        // navigate-to-detail; failures just print to the console.
+        // navigate-to-detail; failures are listed in one alert (same as New Job).
+        const issues: string[] = []
         if (templatePdf) {
           try {
             await uploadCreatedFormPdf(`/v1/work-orders/${wo.id}/template`, templatePdf)
           } catch (e) {
-            console.warn('Customer PDF upload failed', e)
+            issues.push(`Customer PDF failed to upload: ${(e as Error).message}`)
           }
         }
         for (const draft of attachments) {
           try {
             await uploadDraftAttachment(`/v1/work-orders/${wo.id}/attachments`, draft)
           } catch (e) {
-            console.warn('Attachment upload failed', draft.file.name, e)
+            issues.push(`Attachment "${draft.file.name}" failed to upload: ${(e as Error).message}`)
           }
+        }
+        if (issues.length > 0) {
+          alert(`Sub job created with issues — re-add on the job page:\n\n` + issues.join('\n\n'))
         }
         deleteDraft(draftId.current)
         navigate('/jobs/' + wo.id)
       } catch (subErr) {
-        const msg = (subErr as { payload?: { message?: string } })?.payload?.message
-          ?? 'Sub-out step failed. The work order was created but is not yet flagged as subbed; retry from its detail page.'
-        alert(msg)
+        const reason = subErr instanceof Error && subErr.message ? `${subErr.message}\n\n` : ''
+        alert(`${reason}The job was created but not sent to the sub. Send it from the job with Sub this out.`)
         deleteDraft(draftId.current)
         navigate('/jobs/' + wo.id)
       }
@@ -259,7 +288,7 @@ export function SubJobForm({ guidedMode }: { guidedMode: boolean }) {
   // Section blocks — composed one-per-step in Step-by-step, or into a 2-column
   // workspace in Full page (matching the Job/Estimate form).
   const customerLocationSection = (
-    <Section title="Customer & Location">
+    <Section title="Customer & Location" tour="sub-customer">
       <Field label="Customer *" error={errors.service_customer_id}>
         <CustomerPicker value={serviceCustomer} onChange={setServiceCustomer} error={errors.service_customer_id} />
       </Field>
@@ -282,22 +311,22 @@ export function SubJobForm({ guidedMode }: { guidedMode: boolean }) {
     </Section>
   )
   const pdfBlock = (
-    <div className="mb-4">
+    <div data-tour="sub-files" className="mb-4">
       <CreateFormPdfPicker file={templatePdf} onChange={setTemplatePdf} />
     </div>
   )
   const attachmentsBlock = <CreateFormAttachmentsPicker attachments={attachments} onChange={setAttachments} />
   const subcontractorSection = (
-    <Section title="Subcontractor">
+    <Section title="Subcontractor" tour="sub-picker">
       <Field label="Sub doing the work *" error={errors.subcontractor_id}>
         <SubcontractorPicker value={sub} onChange={setSub} error={errors.subcontractor_id} />
       </Field>
     </Section>
   )
   const jobBasicsSection = (
-    <Section title="Job Basics">
+    <Section title="Job Basics" tour="sub-basics">
       <Field label="Title *" error={errors.title}>
-        <input type="text" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="e.g. Replace lobby cylinder, AC condenser swap, etc." className={inputCls} />
+        <input type="text" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="e.g. Replace water heater, AC condenser swap, etc." className={inputCls} />
       </Field>
       <Field label="Scope of work *" error={errors.description}>
         <textarea value={description} onChange={(e) => setDescription(e.target.value)} rows={4} placeholder="Describe what you're authorizing the sub to do." className={inputCls} />
@@ -305,7 +334,7 @@ export function SubJobForm({ guidedMode }: { guidedMode: boolean }) {
     </Section>
   )
   const authorizationSection = (
-    <Section title="Authorization">
+    <Section title="Authorization" tour="sub-authorization">
       <Field label="Service date" error={errors.scheduled_date}>
         <input type="date" value={scheduledDate} onChange={(e) => setScheduledDate(e.target.value)} className={inputCls} />
       </Field>
@@ -314,7 +343,7 @@ export function SubJobForm({ guidedMode }: { guidedMode: boolean }) {
           <span className="text-slate-500">$</span>
           <input type="number" min="0" step="0.01" value={nteDollars} onChange={(e) => setNteDollars(e.target.value)} placeholder="350.00" className={`${inputCls} max-w-[180px]`} />
         </div>
-        <p className="text-[11px] text-slate-500 mt-1">Max payout authorized to the sub. Includes labor, materials, and taxes. They must contact you before exceeding.</p>
+        <p className="text-[11px] text-slate-500 mt-1">Max payout authorized to the sub, including labor, materials and tax. If they need to go over it, they request an increase from their portal for you to approve.</p>
       </Field>
       <Field label="Special instructions for the sub" error={errors.sub_special_instructions}>
         <textarea value={specialInstructions} onChange={(e) => setSpecialInstructions(e.target.value)} rows={3} placeholder="Site access, on-site contact, what to do if no one's there, etc." className={inputCls} />
@@ -344,21 +373,21 @@ export function SubJobForm({ guidedMode }: { guidedMode: boolean }) {
     <form onSubmit={handleSubmit} className="pb-24">
       {/* Record type — same card + segmented control as WorkOrderForm, so
           Job / Estimate / Sub share identical chrome. */}
-      <div className="mb-3 rounded-lg border border-slate-200 bg-white px-3 py-2 shadow-sm">
+      <div data-tour="sub-record-type" className="mb-3 rounded-lg border border-slate-200 bg-white px-3 py-2 shadow-sm">
         <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
           <div className="flex flex-wrap items-center gap-3">
             <span className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-400">Record type</span>
             <div className="inline-flex rounded-lg border border-slate-200 bg-slate-50 p-1">
               <button
                 type="button"
-                onClick={() => setSearchParams({})}
+                onClick={() => setSearchParams(keepCustomerParam())}
                 className="rounded-md px-3 py-1.5 text-sm font-semibold capitalize text-slate-600 transition-colors hover:bg-white hover:text-slate-900"
               >
                 Job
               </button>
               <button
                 type="button"
-                onClick={() => setSearchParams({ kind: 'estimate' })}
+                onClick={() => setSearchParams({ ...keepCustomerParam(), kind: 'estimate' })}
                 className="rounded-md px-3 py-1.5 text-sm font-semibold capitalize text-slate-600 transition-colors hover:bg-white hover:text-slate-900"
               >
                 Estimate
@@ -372,9 +401,20 @@ export function SubJobForm({ guidedMode }: { guidedMode: boolean }) {
               </button>
             </div>
           </div>
-          <span className="max-w-2xl text-xs text-slate-500 lg:text-right">
-            Sub job — outsourced to a vendor partner with an authorized NTE.
-          </span>
+          <div className="flex flex-wrap items-center gap-3 lg:justify-end">
+            <span className="max-w-2xl text-xs text-slate-500 lg:text-right">
+              Sub job — outsourced to a vendor partner with an authorized NTE.
+            </span>
+            {/* The page Help tour matches on the path (/jobs/new), which is the
+                normal job tour — so the sub job tour starts from here by id. */}
+            <button
+              type="button"
+              onClick={() => startGuidedTour('job-sub-create')}
+              className="shrink-0 rounded-md border border-slate-300 bg-white px-2.5 py-1 text-xs font-semibold text-slate-700 hover:border-amber-300 hover:bg-amber-50"
+            >
+              Help: show me how
+            </button>
+          </div>
         </div>
       </div>
 
@@ -421,6 +461,7 @@ export function SubJobForm({ guidedMode }: { guidedMode: boolean }) {
             {jobBasicsSection}
           </div>
           <div className="min-w-0 self-start xl:sticky xl:top-20">
+            <div data-tour="sub-drafts">
             <SavedDraftPanel
               drafts={otherDrafts}
               selected={selectedSavedDraft}
@@ -431,7 +472,7 @@ export function SubJobForm({ guidedMode }: { guidedMode: boolean }) {
                 setSelectedSavedDraft(null)
               }}
               onUse={resumeDraft}
-              useLabel={() => 'Create sub job from draft'}
+              useLabel={() => 'Continue this sub job draft'}
               reviewFields={(draft) => [
                 { label: 'Type', value: 'Sub job' },
                 { label: 'Customer', value: draft.data.serviceCustomer?.display_name ?? '' },
@@ -443,6 +484,7 @@ export function SubJobForm({ guidedMode }: { guidedMode: boolean }) {
                 { label: 'Special instructions', value: draft.data.specialInstructions, wide: true },
               ]}
             />
+            </div>
             {subcontractorSection}
             {authorizationSection}
           </div>
@@ -452,7 +494,7 @@ export function SubJobForm({ guidedMode }: { guidedMode: boolean }) {
       {/* Unified fixed action bar — same sticky footer as the Job/Estimate form
           (Back on the left in guided mode; Cancel + Next/Create on the right).
           The form's pb-24 reserves space so nothing hides behind it. */}
-      <div className="fixed bottom-0 left-0 right-0 z-10 flex flex-wrap items-center justify-between gap-2 border-t border-slate-200 bg-white px-3 py-3 shadow-lg sm:gap-3 sm:px-6">
+      <div data-tour="sub-save" className="fixed bottom-0 left-0 right-0 z-10 flex flex-wrap items-center justify-between gap-2 border-t border-slate-200 bg-white px-3 py-3 shadow-lg sm:gap-3 sm:px-6">
         <div>
           {guidedMode && step > 0 && (
             <button
@@ -528,9 +570,9 @@ function formatLocationLabel(loc: LocationLike): string {
 
 // Matches the Section helper in WorkOrderForm so the cards render
 // identically across the three kinds (Job / Estimate / Sub).
-function Section({ title, children }: { title: string; children: React.ReactNode }) {
+function Section({ title, tour, children }: { title: string; tour?: string; children: React.ReactNode }) {
   return (
-    <section className="bg-white border border-slate-200 rounded-lg p-6 mb-4">
+    <section data-tour={tour} className="bg-white border border-slate-200 rounded-lg p-6 mb-4">
       <h2 className="text-base font-semibold text-slate-900 mb-4">{title}</h2>
       <div className="space-y-4">{children}</div>
     </section>

@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
-import { useQueryClient } from '@tanstack/react-query'
+import { useNavigate, useSearchParams } from 'react-router-dom'
+import { useInfiniteQuery, useQueryClient } from '@tanstack/react-query'
+import { useRememberRecordList } from '@/hooks/useShortcuts'
 import { RecordPaymentModal } from '@/components/invoices/RecordPaymentModal'
 import { useTheme } from '@/hooks/useTheme'
 import { EasyPageHeading } from '@/components/easy/EasyPageHeading'
@@ -9,10 +10,11 @@ import {
   invoiceKeys,
   useInvoiceFilingSummary,
   useInvoiceStatusCounts,
-  useInvoices,
 } from '@/hooks/useInvoices'
+import { listInvoicePage } from '@/lib/invoices'
 import { WorkflowTabs, type WorkflowTab } from '@/components/lists/WorkflowTabs'
 import type { Invoice, InvoiceFilingSummaryEntry, InvoiceListParams, InvoiceStatus } from '@/types/invoice'
+import { usePermissions } from '@/hooks/usePermissions'
 
 /**
  * Invoices billing worklist (Slice 1). No standalone list existed before —
@@ -20,9 +22,14 @@ import type { Invoice, InvoiceFilingSummaryEntry, InvoiceListParams, InvoiceStat
  * DERIVED (the stored status is just draft/sent/paid/cancelled), so tabs +
  * stripe come from a computed state, not the raw status.
  *
- * The list endpoint returns a flat array (no pagination meta in the client),
- * so we fetch a generous page and filter the tabs client-side.
+ * The server does the searching and the tab: the cards are one page of the
+ * list for the open tab and search (and folder, in Files), and "Show more"
+ * fetches the next page. The tab counts and folders take the same filters,
+ * so they count exactly the cards you can page through.
  */
+
+/** Cards per page; "Show more" fetches this many again. */
+const INVOICE_PAGE_SIZE = 200
 
 type InvoiceBucket = 'all' | 'draft' | 'sent' | 'overdue' | 'paid'
 
@@ -69,18 +76,9 @@ function invoiceState(inv: Invoice): { label: string; stripe: string; pill: stri
   return { label: 'Sent', stripe: '#3b82f6', pill: 'bg-blue-100 text-blue-800' }
 }
 
-function inBucket(inv: Invoice, bucket: InvoiceBucket): boolean {
-  switch (bucket) {
-    case 'all': return true
-    case 'draft': return inv.status === 'draft'
-    case 'sent': return inv.status === 'sent'
-    case 'overdue': return inv.status === 'sent' && inv.is_overdue
-    case 'paid': return inv.status === 'paid'
-  }
-}
-
 // ---------- Next-step hint (List Workflow Slice 3) ----------
-// Read-only "what to do next". Not clickable yet (phase 2). Null when the
+// "What to do next": Send opens the invoice, Take payment opens the payment
+// window here. Null when the
 
 function invoiceServerFilters(bucket: InvoiceBucket, search: string): InvoiceListParams {
   const filters: InvoiceListParams = { q: search.trim() || undefined }
@@ -110,13 +108,16 @@ function invoiceNextStep(inv: Invoice): { label: string; tone: NextStepTone } | 
 function NextStepHint({
   inv,
   onTakePayment,
+  canTakePayment,
 }: {
   inv: Invoice
   onTakePayment: (inv: Invoice) => void
+  canTakePayment: boolean
 }) {
   const navigate = useNavigate()
   const step = invoiceNextStep(inv)
   if (!step) return null
+  if (step.label === 'Record payment' && !canTakePayment) return null
 
   // Taking payment happens HERE rather than on the detail page. It was a
   // deep-link into ?action=payment, which worked but cost a page load out and
@@ -127,6 +128,8 @@ function NextStepHint({
   return (
     <button
       type="button"
+      data-tour="invoice-card-next"
+      data-next={isPayment ? 'payment' : 'open'}
       onClick={(e) => {
         e.stopPropagation()
         if (isPayment) onTakePayment(inv)
@@ -149,6 +152,16 @@ export function InvoicesPage() {
   const easy = theme === 'easy-side' || theme === 'easy-top'
   const navigate = useNavigate()
   const queryClient = useQueryClient()
+  const { has } = usePermissions()
+  // Taking a payment changes the invoice: invoices.edit, like the detail page.
+  const canTakePayment = has('invoices.edit')
+  // Links like /accounting/invoices?open=<id> (contract billing, dashboards)
+  // land on that invoice rather than the top of the list.
+  const [searchParams] = useSearchParams()
+  const openId = searchParams.get('open')
+  useEffect(() => {
+    if (openId) navigate(`/invoices/${encodeURIComponent(openId)}`, { replace: true })
+  }, [openId, navigate])
   const [payingInvoice, setPayingInvoice] = useState<Invoice | null>(null)
   const [bucket, setBucket] = useState<InvoiceBucket>('all')
   const [search, setSearch] = useState('')
@@ -160,23 +173,43 @@ export function InvoicesPage() {
   const [selectedYear, setSelectedYear] = useState<string | null>(null)
   const [selectedMonth, setSelectedMonth] = useState<string | null>(null)
 
-  const { data, isLoading } = useInvoices({ per_page: 200 })
-  const all = useMemo(() => data ?? [], [data])
+  // The box answers as you type; the server is asked once typing pauses,
+  // rather than once per letter for the cards, the counts and the folders.
+  const [serverSearch, setServerSearch] = useState('')
+  useEffect(() => {
+    const term = search.trim()
+    const timer = window.setTimeout(() => setServerSearch(term), 250)
+    return () => window.clearTimeout(timer)
+  }, [search])
 
   const serverFilters = useMemo(
-    () => invoiceServerFilters(bucket, search),
-    [bucket, search],
+    () => invoiceServerFilters(bucket, serverSearch),
+    [bucket, serverSearch],
   )
   const filingSummary = useInvoiceFilingSummary(serverFilters, { enabled: view === 'files' })
-  const filedInvoices = useInvoices(
-    {
+  const folderIsOpen = view === 'files' && selectedYear !== null && selectedMonth !== null
+
+  // One list for both views: Cards is the open tab and search, Files adds
+  // the open folder. Paged by the server's cursor, so a company with more
+  // than one page of invoices can reach all of them with "Show more".
+  const listParams = useMemo<InvoiceListParams>(
+    () => ({
       ...serverFilters,
-      filing_year: selectedYear ? Number(selectedYear) : undefined,
-      filing_month: selectedMonth ? Number(selectedMonth) : undefined,
-      per_page: 200,
-    },
-    { enabled: view === 'files' && selectedYear !== null && selectedMonth !== null },
+      filing_year: folderIsOpen ? Number(selectedYear) : undefined,
+      filing_month: folderIsOpen ? Number(selectedMonth) : undefined,
+      per_page: INVOICE_PAGE_SIZE,
+    }),
+    [serverFilters, folderIsOpen, selectedYear, selectedMonth],
   )
+  const invoicePages = useInfiniteQuery({
+    // Under invoiceKeys.all, so every invalidation of invoices refreshes it.
+    queryKey: [...invoiceKeys.all, 'pages', listParams],
+    queryFn: ({ pageParam }) => listInvoicePage(listParams, pageParam),
+    initialPageParam: null as string | null,
+    getNextPageParam: (lastPage) => lastPage.next_cursor,
+    staleTime: 30_000,
+    enabled: view === 'cards' || folderIsOpen,
+  })
 
   // Changing the SEARCH still drops you back to the top of the cabinet: the
   // folder you were in may not contain any hits. Changing the TAB no longer
@@ -189,7 +222,7 @@ export function InvoicesPage() {
 
   // Counts follow whatever is open: all invoices, one year, or one month.
   const statusCounts = useInvoiceStatusCounts({
-    q: search.trim() || undefined,
+    q: serverSearch || undefined,
     filing_year: view === 'files' && selectedYear ? Number(selectedYear) : undefined,
     filing_month: view === 'files' && selectedMonth ? Number(selectedMonth) : undefined,
   })
@@ -198,78 +231,61 @@ export function InvoicesPage() {
     setView(nextView)
     window.localStorage.setItem('crewbarn:invoice-view', nextView)
   }
-  // Search-filtered set (independent of the active tab) — drives both the
-  // visible rows and the per-tab counts so the badges reflect the search but
-  // don't move when you switch tabs. Counts are client-side over the fetched
-  // page (per_page 200); a tenant with more open invoices than that would
-  // undercount — the same ceiling the list itself already has.
-  const searched = useMemo(() => {
-    const term = search.trim().toLowerCase()
-    if (!term) return all
-    return all.filter(
-      (inv) =>
-        inv.display_number?.toLowerCase().includes(term) ||
-        (inv.customer?.display_name ?? '').toLowerCase().includes(term),
-    )
-  }, [all, search])
 
-  const cardItems = useMemo(
-    () => searched.filter((inv) => inBucket(inv, bucket)),
-    [searched, bucket],
+  const items = useMemo(
+    () => invoicePages.data?.pages.flatMap((page) => page.data) ?? [],
+    [invoicePages.data],
   )
-  const items = view === 'files' ? filedInvoices.data ?? [] : cardItems
-  const itemsLoading = view === 'files' ? filedInvoices.isLoading : isLoading
-  const folderIsOpen = view === 'files' && selectedYear !== null && selectedMonth !== null
+  // [ and ] on an invoice step through this list, in this order.
+  useRememberRecordList('invoices', items)
+  const itemsLoading = invoicePages.isLoading
+  // A failed "Show more" keeps the cards already shown; only a failed first
+  // load (or refresh) replaces them with the error.
+  const itemsFailed = invoicePages.isError && !invoicePages.isFetchNextPageError
   const showInvoiceCards = view === 'cards' || folderIsOpen
 
-  // Server-counted. These used to be tallied in the browser over the first 200
-  // rows, so on a tenant with thousands of invoices "All" read 200 — the page
-  // size, shown as a total — and stayed there when a folder was opened. The
-  // client set is still the fallback while the count is in flight, so the tabs
-  // never flash empty.
-  const tabCounts = useMemo<Record<string, number>>(
-    () =>
-      (statusCounts.data as Record<string, number> | undefined) ?? {
-        all: searched.length,
-        draft: searched.filter((i) => inBucket(i, 'draft')).length,
-        sent: searched.filter((i) => inBucket(i, 'sent')).length,
-        overdue: searched.filter((i) => inBucket(i, 'overdue')).length,
-        paid: searched.filter((i) => inBucket(i, 'paid')).length,
-      },
-    [statusCounts.data, searched],
-  )
+  // Server-counted, with the same search and folder as the cards. These used
+  // to be tallied in the browser over the first 200 rows, so on a tenant with
+  // thousands of invoices "All" read 200 — the page size, shown as a total.
+  // While a count is in flight the badges are left off rather than guessed.
+  const tabCounts = statusCounts.data as Record<string, number> | undefined
 
   return (
-    <div className="mx-auto w-full max-w-none px-4 py-4 sm:px-6 sm:py-6 2xl:px-8">
-      {easy ? <EasyPageHeading title="Invoices" description="Follow the money from draft to payment. Review what is due, find a receipt, or open an invoice to see its full history." /> : <div className="flex items-center justify-between mb-4 sm:mb-6 gap-3">
+    <div data-focus-page="invoices" className="mx-auto w-full max-w-none px-4 py-4 sm:px-6 sm:py-6 2xl:px-8">
+      {easy ? <div data-tour="invoices-header"><EasyPageHeading title="Invoices" description="Follow the money from draft to payment. Review what is due, find a receipt, or open an invoice to see its full history." /></div> : <div data-tour="invoices-header" className="flex items-center justify-between mb-4 sm:mb-6 gap-3">
         <h1 className="text-xl sm:text-2xl font-semibold text-slate-900">Invoices</h1>
       </div>}
 
-      {/* Workflow tabs — live counts derived client-side from the fetched set. */}
-      {easy && <EasyActionCards label="Review your invoices" actions={[
+      {/* Workflow tabs — counted by the server over the same search and folder as the cards. */}
+      {easy && <div data-tour="invoices-action-cards"><EasyActionCards label="Review your invoices" actions={[
         { key: 'overdue', title: 'Past due', description: 'Review balances and follow-up options.' },
         { key: 'draft', title: 'Not sent yet', description: 'Check each draft before sending.' },
         { key: 'sent', title: 'Sent to customers', description: 'Review open invoices and payment history.' },
         { key: 'paid', title: 'Paid', description: 'Find completed payments and receipts.' },
-      ].map(action => ({ ...action, count: statusCounts.isError ? undefined : (statusCounts.data as Record<string, number> | undefined)?.[action.key], active: bucket === action.key, onClick: () => setBucket(action.key as InvoiceBucket) }))} />}
-      <WorkflowTabs
-        tabs={INVOICE_TABS.map((t) => ({ ...t, count: tabCounts[t.key] ?? 0 }))}
-        active={bucket}
-        onChange={(k) => setBucket(k as InvoiceBucket)}
-      />
+      ].map(action => ({ ...action, count: statusCounts.isError ? undefined : (statusCounts.data as Record<string, number> | undefined)?.[action.key], active: bucket === action.key, onClick: () => setBucket(action.key as InvoiceBucket) }))} /></div>}
+      <div data-tour="invoices-tabs">
+        <WorkflowTabs
+          tabs={INVOICE_TABS.map((t) => ({ ...t, count: tabCounts?.[t.key] }))}
+          active={bucket}
+          onChange={(k) => setBucket(k as InvoiceBucket)}
+        />
+      </div>
 
       {/* Search */}
-      <div data-easy-list-toolbar className="flex items-center gap-2 sm:gap-3 mb-4">
+      <div data-easy-list-toolbar data-tour="invoices-filters" className="flex items-center gap-2 sm:gap-3 mb-4">
         <input
           type="search"
+          data-tour="invoices-search"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          placeholder="Search by invoice # or customer..."
+          placeholder="Search invoices, customers, jobs, POs or line items..."
           className="flex-1 min-w-[180px] sm:max-w-md px-3 py-2 text-sm border border-slate-300 rounded-md focus:outline-none focus:ring-1 focus:ring-amber-500 focus:border-amber-500"
         />
-        <div className="ml-auto inline-flex shrink-0 overflow-hidden rounded-md border border-slate-300 bg-white">
+        <div data-tour="invoices-view" className="ml-auto inline-flex shrink-0 overflow-hidden rounded-md border border-slate-300 bg-white">
           <button
             type="button"
+            data-tour="invoices-view-cards"
+            aria-pressed={view === 'cards'}
             onClick={() => selectView('cards')}
             className={`px-4 py-2 text-sm font-semibold transition-colors ${
               view === 'cards' ? 'bg-amber-500 text-white' : 'text-slate-700 hover:bg-slate-50'
@@ -279,6 +295,8 @@ export function InvoicesPage() {
           </button>
           <button
             type="button"
+            data-tour="invoices-view-files"
+            aria-pressed={view === 'files'}
             onClick={() => selectView('files')}
             className={`border-l border-slate-300 px-4 py-2 text-sm font-semibold transition-colors ${
               view === 'files' ? 'bg-amber-500 text-white' : 'text-slate-700 hover:bg-slate-50'
@@ -290,7 +308,14 @@ export function InvoicesPage() {
       </div>
 
       {view === 'files' ? (
-        <InvoiceFilingNavigation
+        <div data-tour="invoices-files">
+        {filingSummary.isError ? (
+          // Otherwise the folders read "No invoice folders match these filters."
+          <div role="alert" className="mb-4 rounded-lg border border-rose-200 bg-rose-50 px-4 py-8 text-center text-rose-700">
+            Couldn&apos;t load invoice folders.{' '}
+            <button type="button" className="font-semibold underline" onClick={() => void filingSummary.refetch()}>Try again</button>
+          </div>
+        ) : <InvoiceFilingNavigation
           summary={filingSummary.data}
           isLoading={filingSummary.isLoading}
           selectedYear={selectedYear}
@@ -300,17 +325,25 @@ export function InvoicesPage() {
             setSelectedMonth(null)
           }}
           onSelectMonth={setSelectedMonth}
-        />
+        />}
+        </div>
       ) : null}
 
-      <div className={showInvoiceCards ? '' : 'hidden'}>
+      <div data-tour="invoices-cards" className={showInvoiceCards ? '' : 'hidden'}>
         {itemsLoading ? (
           <div className="rounded-xl border border-slate-200 bg-white px-4 py-8 text-center text-slate-500">Loading...</div>
+        ) : itemsFailed ? (
+          // Before the empty state, so a failed load never reads as "No invoices yet."
+          <div role="alert" className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-8 text-center text-rose-700">
+            Couldn&apos;t load invoices.{' '}
+            <button type="button" className="font-semibold underline" onClick={() => void invoicePages.refetch()}>Try again</button>
+          </div>
         ) : items.length === 0 ? (
-          <div className="rounded-xl border border-slate-200 bg-white px-4 py-8 text-center text-slate-500">
+          <div data-tour="invoices-empty" data-filtered={search || bucket !== 'all' ? 'yes' : 'no'} className="rounded-xl border border-slate-200 bg-white px-4 py-8 text-center text-slate-500">
             {search || bucket !== 'all' ? 'No invoices match your filters.' : 'No invoices yet.'}
           </div>
         ) : (
+          <>
           <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
             {items.map((inv) => {
               const state = invoiceState(inv)
@@ -318,6 +351,8 @@ export function InvoicesPage() {
               return (
                 <div
                   key={inv.id}
+                  data-tour="invoice-card"
+                  data-open={inv.status !== 'paid' && inv.status !== 'cancelled' && balance > 0 ? 'true' : undefined}
                   onClick={() => navigate(`/invoices/${inv.id}`)}
                   role="link"
                   tabIndex={0}
@@ -338,12 +373,12 @@ export function InvoicesPage() {
                         {inv.customer?.display_name ?? 'No customer'}
                       </div>
                     </div>
-                    <span className={`shrink-0 rounded px-2 py-0.5 text-xs font-medium ${state.pill}`}>
+                    <span data-tour="invoice-card-state" className={`shrink-0 rounded px-2 py-0.5 text-xs font-medium ${state.pill}`}>
                       {state.label}
                     </span>
                   </div>
 
-                  <div className="mt-4 grid grid-cols-2 gap-3">
+                  <div data-tour="invoice-card-money" className="mt-4 grid grid-cols-2 gap-3">
                     <div className="rounded-lg border border-slate-100 bg-slate-50 p-3">
                       <div className="text-[10px] font-semibold uppercase tracking-wide text-slate-500">Total</div>
                       <div className="mt-1 font-mono text-lg font-semibold tabular-nums text-slate-900">
@@ -363,7 +398,7 @@ export function InvoicesPage() {
                     </div>
                   </div>
 
-                  <div className="mt-4 space-y-1 text-sm text-slate-600">
+                  <div data-tour="invoice-card-meta" className="mt-4 space-y-1 text-sm text-slate-600">
                     <div>
                       <span className="font-medium text-slate-700">Job:</span>{' '}
                       {inv.work_order?.display_number ?? 'No job attached'}
@@ -383,7 +418,7 @@ export function InvoicesPage() {
                   </div>
 
                   <div className="mt-4 flex items-center justify-between border-t border-slate-100 pt-3">
-                    <NextStepHint inv={inv} onTakePayment={setPayingInvoice} />
+                    <NextStepHint inv={inv} onTakePayment={setPayingInvoice} canTakePayment={canTakePayment} />
                     <span className="text-xs font-semibold text-amber-700 opacity-0 transition-opacity group-hover:opacity-100">
                       Open invoice
                     </span>
@@ -392,6 +427,23 @@ export function InvoicesPage() {
               )
             })}
           </div>
+          {invoicePages.hasNextPage && (
+            <div className="mt-4 flex flex-col items-center gap-2">
+              {invoicePages.isFetchNextPageError && (
+                <p role="alert" className="text-sm text-rose-700">Couldn&apos;t load more invoices. Try again.</p>
+              )}
+              <button
+                type="button"
+                data-tour="invoices-show-more"
+                onClick={() => void invoicePages.fetchNextPage()}
+                disabled={invoicePages.isFetchingNextPage}
+                className="rounded-md border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-60"
+              >
+                {invoicePages.isFetchingNextPage ? 'Loading more...' : 'Show more'}
+              </button>
+            </div>
+          )}
+          </>
         )}
       </div>
 
@@ -454,7 +506,7 @@ function InvoiceFilingNavigation({
 
   return (
     <div className="mb-4 space-y-4">
-      <div className="flex gap-3 overflow-x-auto pb-1">
+      <div data-tour="invoices-years" className="flex gap-3 overflow-x-auto pb-1">
         {years.map(([year, totals]) => (
           <InvoiceFolderButton
             key={year}

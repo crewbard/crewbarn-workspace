@@ -19,7 +19,7 @@ export function HostedPlanWall({ children }: { children: ReactNode }) {
   })
   const [err, setErr] = useState<string | null>(null)
   const up = useMutation({
-    mutationFn: () => apiRequest<{ data: SubscriptionSummary }>('/v1/tenant-settings/subscription/tier', { method: 'PATCH', body: JSON.stringify({ tier: 'hosted' }) }),
+    mutationFn: () => apiRequest<{ data: SubscriptionSummary }>('/v1/tenant-settings/subscription/tier', { method: 'PATCH', body: { tier: 'hosted' } }),
     onSuccess: (r) => { qc.setQueryData(['tenant-subscription'], r); qc.invalidateQueries() },
     onError: (e) => setErr(e instanceof ApiError ? e.message : 'Something went wrong.'),
   })

@@ -176,7 +176,7 @@ export function EstimateHistoryPanel({ estimate }: { estimate: Estimate }) {
   }, [estimate, attachQ.data])
 
   return (
-    <section className="bg-white border border-slate-200 rounded-xl p-5">
+    <section data-tour="estimate-timeline" className="bg-white border border-slate-200 rounded-xl p-5">
       <h3 className="text-sm font-semibold text-slate-700 uppercase tracking-wider mb-1">
         Timeline
       </h3>

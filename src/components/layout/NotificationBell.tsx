@@ -58,7 +58,7 @@ export function NotificationBell({ compact = false }: { compact?: boolean }) {
   const size = compact ? 'w-8 h-8' : 'w-9 h-9'
 
   return (
-    <div ref={wrapRef} className={`relative ${compact ? 'ml-1' : 'ml-2'}`}>
+    <div ref={wrapRef} data-tour="topbar-bell" className={`relative ${compact ? 'ml-1' : 'ml-2'}`}>
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}

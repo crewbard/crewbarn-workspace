@@ -279,7 +279,7 @@ export function ExpenseRegisterPage() {
   return (
     <div className="min-h-screen bg-slate-100 px-4 py-4 text-slate-950 sm:px-6 sm:py-6 2xl:px-8">
       <div className="mx-auto w-full max-w-none space-y-6">
-<header data-easy-accounting-header={easy || undefined} className={easy ? 'flex min-w-0 w-full flex-col items-stretch gap-4' : 'flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between'}>
+<header data-tour="register-exp-header" data-easy-accounting-header={easy || undefined} className={easy ? 'flex min-w-0 w-full flex-col items-stretch gap-4' : 'flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between'}>
           <div className={easy ? 'min-w-0 w-full' : undefined}>
             {easy ? <EasyPageHeading title="Expense register" description="Record company spending, review receipts, and manage reimbursements. Use the filters below to find an expense." /> : <>
             <p className="text-xs font-semibold uppercase tracking-wide text-amber-700">Accounting</p>
@@ -289,25 +289,25 @@ export function ExpenseRegisterPage() {
             </p>
             </>}
           </div>
-          <a className="rounded-md border border-slate-300 bg-white px-4 py-2 font-semibold text-slate-700 shadow-sm" href="/accounting/expenses">
+          <Link className="rounded-md border border-slate-300 bg-white px-4 py-2 font-semibold text-slate-700 shadow-sm" to="/accounting/expenses">
             Back to expense workspace
-          </a>
+          </Link>
         </header>
 
-        <section className="grid gap-3 md:grid-cols-3">
+        <section data-tour="register-exp-summary" className="grid gap-3 md:grid-cols-3">
           <SummaryTile label="Expenses on this page" value={expensesQ.isError ? 'Unavailable' : expensesQ.isLoading ? '...' : dollars(subtotal + taxTotal)} />
           <SummaryTile label="Tax on this page" value={expensesQ.isError ? 'Unavailable' : expensesQ.isLoading ? '...' : dollars(taxTotal)} />
           <SummaryTile label="Reimbursable expenses on this page" value={expensesQ.isError ? 'Unavailable' : expensesQ.isLoading ? '...' : dollars(reimbursableTotal)} />
         </section>
 
-        <section className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
+        <section data-tour="register-exp-add" className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
           <h2 className="text-lg font-bold">Add expense</h2>
           <form className="mt-4 grid gap-3 lg:grid-cols-12" onSubmit={submit}>
             <label className="grid gap-1 text-sm font-semibold text-slate-700 lg:col-span-2">
               Date
               <input className="rounded-md border border-slate-300 px-3 py-2" type="date" value={form.expense_date} onChange={(e) => setForm((old) => ({ ...old, expense_date: e.target.value }))} required />
             </label>
-            <label className="grid gap-1 text-sm font-semibold text-slate-700 lg:col-span-2">
+            <label data-tour="register-exp-category" className="grid gap-1 text-sm font-semibold text-slate-700 lg:col-span-2">
               Category
               <select className="rounded-md border border-slate-300 px-3 py-2" value={form.category} onChange={(e) => setForm((old) => ({ ...old, category: e.target.value }))}>
                 {categories.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
@@ -322,7 +322,7 @@ export function ExpenseRegisterPage() {
                 ))}
               </select>
             </label>
-            <label className="grid gap-1 text-sm font-semibold text-slate-700 lg:col-span-2">
+            <label data-tour="register-exp-staff" className="grid gap-1 text-sm font-semibold text-slate-700 lg:col-span-2">
               Tech / staff
               <select className="rounded-md border border-slate-300 px-3 py-2" value={form.employee_account_id} onChange={(e) => setForm((old) => ({ ...old, employee_account_id: e.target.value }))}>
                 <option value="">Company expense</option>
@@ -333,7 +333,7 @@ export function ExpenseRegisterPage() {
             </label>
             <label className="grid gap-1 text-sm font-semibold text-slate-700 lg:col-span-2">
               Description
-              <input className="rounded-md border border-slate-300 px-3 py-2" value={form.description} onChange={(e) => setForm((old) => ({ ...old, description: e.target.value }))} placeholder="Fuel, lock hardware, tolls..." required />
+              <input className="rounded-md border border-slate-300 px-3 py-2" value={form.description} onChange={(e) => setForm((old) => ({ ...old, description: e.target.value }))} placeholder="Fuel, supplies, tolls..." required />
             </label>
             <label className="grid gap-1 text-sm font-semibold text-slate-700 lg:col-span-1">
               Amount
@@ -351,7 +351,7 @@ export function ExpenseRegisterPage() {
               Ref / PO #
               <input className="rounded-md border border-slate-300 px-3 py-2" value={form.reference_number} onChange={(e) => setForm((old) => ({ ...old, reference_number: e.target.value }))} placeholder="Receipt, check, PO" />
             </label>
-            <label className="flex items-center gap-2 rounded-md border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-700 lg:col-span-2">
+            <label data-tour="register-exp-reimburse" className="flex items-center gap-2 rounded-md border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-700 lg:col-span-2">
               <input type="checkbox" checked={form.reimbursable} onChange={(e) => setForm((old) => ({ ...old, reimbursable: e.target.checked }))} />
               Reimburse tech
             </label>
@@ -372,9 +372,9 @@ export function ExpenseRegisterPage() {
           {createExpense.error ? <p className="mt-3 text-sm font-semibold text-red-700">Could not save expense.</p> : null}
         </section>
 
-        <section className="rounded-lg border border-slate-200 bg-white shadow-sm">
-          <div data-easy-filter-grid className="grid gap-3 border-b border-slate-200 p-4 lg:grid-cols-12">
-            <input className="rounded-md border border-slate-300 px-3 py-2 lg:col-span-3" placeholder="Search description, ref, notes..." value={filters.q} onChange={(e) => { setPage(1); setFilters((old) => ({ ...old, q: e.target.value })) }} />
+        <section data-tour="register-exp-table" className="rounded-lg border border-slate-200 bg-white shadow-sm">
+          <div data-tour="register-exp-filters" data-easy-filter-grid className="grid gap-3 border-b border-slate-200 p-4 lg:grid-cols-12">
+            <input aria-label="Search expenses" className="rounded-md border border-slate-300 px-3 py-2 lg:col-span-3" placeholder="Search description, ref, notes..." value={filters.q} onChange={(e) => { setPage(1); setFilters((old) => ({ ...old, q: e.target.value })) }} />
             <input className="rounded-md border border-slate-300 px-3 py-2 lg:col-span-2" type="date" value={filters.date_from} onChange={(e) => { setPage(1); setFilters((old) => ({ ...old, date_from: e.target.value })) }} />
             <input className="rounded-md border border-slate-300 px-3 py-2 lg:col-span-2" type="date" value={filters.date_to} onChange={(e) => { setPage(1); setFilters((old) => ({ ...old, date_to: e.target.value })) }} />
             <select className="rounded-md border border-slate-300 px-3 py-2 lg:col-span-2" value={filters.category} onChange={(e) => { setPage(1); setFilters((old) => ({ ...old, category: e.target.value })) }}>
@@ -438,7 +438,12 @@ export function ExpenseRegisterPage() {
               {exportMessage}
             </div>
           ) : null}
-          <div className="overflow-x-auto">
+          {updateExpense.isError ? (
+            <div role="alert" className="mx-4 mt-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm font-semibold text-red-700">
+              {updateExpense.error instanceof Error && updateExpense.error.message ? updateExpense.error.message : 'Could not update that expense.'}
+            </div>
+          ) : null}
+          <div className="overflow-x-auto" data-tour="register-exp-rows">
             <table className="min-w-full text-left text-sm">
               <thead className="bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
                 <tr>
@@ -462,7 +467,7 @@ export function ExpenseRegisterPage() {
                     <button type="button" onClick={() => void expensesQ.refetch()} className="mt-2 rounded-md border border-red-300 px-3 py-2 font-semibold">Try again</button>
                   </td></tr>
                 ) : expenses.length === 0 ? (
-                  <tr><td className="px-4 py-8 text-center text-slate-500" colSpan={9}>No expenses in this filter.</td></tr>
+                  <tr><td data-tour="register-exp-empty" className="px-4 py-8 text-center text-slate-500" colSpan={9}>No expenses in this filter.</td></tr>
                 ) : expenses.map((expense) => (
                   <tr className="border-t border-slate-100" key={expense.id}>
                     <td className="whitespace-nowrap px-4 py-3 font-semibold">{expense.expense_date}</td>
@@ -523,7 +528,10 @@ export function ExpenseRegisterPage() {
                           <button
                             className="rounded-md border border-slate-300 bg-slate-950 px-2 py-1 text-xs font-bold text-white disabled:opacity-60"
                             disabled={updateExpense.isPending}
-                            onClick={() => updateExpense.mutate({ id: expense.id, payload: { reimbursement_status: 'reimbursed', status: 'paid' } })}
+                            onClick={() => {
+                              if (!window.confirm(`Mark ${dollars(expense.amount_cents + expense.tax_cents)} as reimbursed/paid?`)) return
+                              updateExpense.mutate({ id: expense.id, payload: { reimbursement_status: 'reimbursed', status: 'paid' } })
+                            }}
                             type="button"
                           >
                             Mark reimbursed

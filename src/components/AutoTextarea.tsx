@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react'
+import { useLayoutEffect, useRef } from 'react'
 import type { TextareaHTMLAttributes } from 'react'
 
 /**
@@ -11,19 +11,42 @@ export function AutoTextarea({
   value,
   className = '',
   minRows = 4,
+  visible = true,
   ...props
-}: TextareaHTMLAttributes<HTMLTextAreaElement> & { minRows?: number }) {
+}: TextareaHTMLAttributes<HTMLTextAreaElement> & { minRows?: number; visible?: boolean }) {
   const ref = useRef<HTMLTextAreaElement>(null)
 
   const resize = () => {
     const el = ref.current
     if (!el) return
     el.style.height = 'auto'
+    // A folded panel has no measurable scrollHeight. Keep its row-based
+    // minimum and measure again when the panel becomes visible.
+    if (!el.scrollHeight) return
     el.style.height = `${el.scrollHeight}px`
   }
 
-  // Grow on every value change — typing, and the initial value on load.
-  useEffect(resize, [value])
+  // Measure before paint, including when a previously hidden editor opens.
+  useLayoutEffect(() => {
+    if (visible) resize()
+  }, [value, visible])
+
+  // A narrower editor wraps the same text onto more lines. Re-measure when
+  // its width changes (window resizing, browser zoom, or a responsive panel).
+  useLayoutEffect(() => {
+    const el = ref.current
+    if (!el || !visible || typeof ResizeObserver === 'undefined') return
+    let width = el.getBoundingClientRect().width
+    const observer = new ResizeObserver(([entry]) => {
+      const nextWidth = entry.contentRect.width
+      if (nextWidth > 0 && nextWidth !== width) {
+        width = nextWidth
+        resize()
+      }
+    })
+    observer.observe(el)
+    return () => observer.disconnect()
+  }, [visible])
 
   return (
     <textarea
@@ -31,7 +54,7 @@ export function AutoTextarea({
       value={value}
       rows={minRows}
       onInput={resize}
-      className={className}
+      className={`${className} overflow-hidden`}
       {...props}
     />
   )

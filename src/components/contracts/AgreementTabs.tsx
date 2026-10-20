@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { Fragment, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { apiRequest } from '@/lib/api'
@@ -62,6 +62,7 @@ function visitState(v: Visit): { label: string; tone: string } {
   if (v.status === 'completed') return { label: 'Done', tone: 'bg-emerald-50 text-emerald-700' }
   if (v.status === 'skipped') return { label: 'Skipped', tone: 'bg-slate-100 text-slate-600' }
   if (v.status === 'cancelled') return { label: 'Cancelled', tone: 'bg-slate-100 text-slate-600' }
+  if (v.status === 'suggested') return { label: 'Waiting for you to confirm', tone: 'bg-sky-50 text-sky-700' }
   if (v.work_order_id) return { label: 'On the board', tone: 'bg-amber-50 text-amber-700' }
   return { label: 'Planned', tone: 'bg-slate-100 text-slate-600' }
 }
@@ -69,6 +70,9 @@ function visitState(v: Visit): { label: string; tone: string } {
 /** Events are stored as slugs; nobody reads `period_bill_failed`. */
 const EVENT_WORDS: Record<string, string> = {
   visits_planned: 'Visit dates placed',
+  visits_confirmed: 'Suggested visits were confirmed',
+  visits_skipped: 'Suggested visits were skipped',
+  visits_book_automatically: 'Set to book its own visits from now on',
   visit_booked: 'A visit went on the board as a job',
   visit_book_failed: 'A visit could not be put on the board',
   period_billed: 'An invoice was raised for a period',
@@ -192,11 +196,13 @@ export function AgreementTabs({
 
   return (
     <>
-      <div className="mt-6 flex gap-1 border-b border-slate-200">
+      <div data-tour="contract-tabs" className="mt-6 flex gap-1 border-b border-slate-200">
         {(['overview', 'visits', 'equipment', 'billing', 'history'] as AgreementTab[]).map((t) => (
           <button
             key={t}
             type="button"
+            data-tour={`contract-tab-${t}`}
+            aria-selected={tab === t}
             onClick={() => onTab(t)}
             className={`-mb-px border-b-2 px-3 py-2 text-sm font-semibold capitalize transition-colors ${
               tab === t
@@ -211,7 +217,7 @@ export function AgreementTabs({
 
       {tab === 'overview' && (
         <div className="mt-4 grid gap-4 lg:grid-cols-2">
-          <section className="rounded-xl border border-slate-200 bg-white p-4">
+          <section data-tour="contract-overview-coming" className="rounded-xl border border-slate-200 bg-white p-4">
             <h3 className="text-sm font-bold text-navy-900">Coming up</h3>
             <p className="mt-0.5 text-xs text-slate-500">
               A visit goes on the board as a job 14 days before it is due.
@@ -224,7 +230,7 @@ export function AgreementTabs({
             )}
             <ul className="mt-2 divide-y divide-slate-100">
               {rows
-                .filter((v) => v.status === 'planned' || v.status === 'scheduled')
+                .filter((v) => v.status === 'planned' || v.status === 'scheduled' || v.status === 'suggested')
                 .slice(0, 5)
                 .map((v) => {
                   const state = visitState(v)
@@ -256,7 +262,7 @@ export function AgreementTabs({
             )}
           </section>
 
-          <section className="rounded-xl border border-slate-200 bg-white p-4">
+          <section data-tour="contract-overview-money" className="rounded-xl border border-slate-200 bg-white p-4">
             <h3 className="text-sm font-bold text-navy-900">Money</h3>
             <p className="mt-0.5 text-xs text-slate-500">
               The fee covers the visits — they are never invoiced one by one.
@@ -301,7 +307,7 @@ export function AgreementTabs({
       )}
 
       {tab === 'visits' && (
-        <section className="mt-4 overflow-x-auto rounded-xl border border-slate-200 bg-white">
+        <section data-tour="contract-visits" className="mt-4 overflow-x-auto rounded-xl border border-slate-200 bg-white">
           {visits.isPending && <p className="p-4 text-sm text-slate-500">Loading…</p>}
           {!visits.isPending && rows.length === 0 && (
             <p className="p-6 text-center text-sm text-slate-500">
@@ -324,7 +330,8 @@ export function AgreementTabs({
                 {rows.map((v) => {
                   const state = visitState(v)
                   return (
-                    <tr key={v.id}>
+                    <Fragment key={v.id}>
+                    <tr>
                       <td className="whitespace-nowrap px-4 py-2.5 font-medium text-navy-800">{day(v.due_on)}</td>
                       <td className="px-4 py-2.5 text-slate-700">{serviceNames[v.service_id] ?? '—'}</td>
                       <td className="px-4 py-2.5 text-slate-600">
@@ -364,18 +371,20 @@ export function AgreementTabs({
                         )}
                       </td>
                     </tr>
+                    {/* Right under the visit that was clicked. */}
+                    {openVisit === v.id && (
+                      <tr>
+                        <td colSpan={6} className="bg-slate-50/70 px-4 py-3">
+                          <VisitItems
+                            loading={visitItems.isPending}
+                            items={visitItems.data?.data.items ?? []}
+                          />
+                        </td>
+                      </tr>
+                    )}
+                    </Fragment>
                   )
                 })}
-                {openVisit && (
-                  <tr>
-                    <td colSpan={6} className="bg-slate-50/70 px-4 py-3">
-                      <VisitItems
-                        loading={visitItems.isPending}
-                        items={visitItems.data?.data.items ?? []}
-                      />
-                    </td>
-                  </tr>
-                )}
               </tbody>
             </table>
           )}
@@ -383,12 +392,12 @@ export function AgreementTabs({
       )}
 
       {tab === 'equipment' && (
-        <section className="mt-4 overflow-x-auto rounded-xl border border-slate-200 bg-white">
+        <section data-tour="contract-equipment" className="mt-4 overflow-x-auto rounded-xl border border-slate-200 bg-white">
           {equipment.isPending && <p className="p-4 text-sm text-slate-500">Loading…</p>}
           {!equipment.isPending && (equipment.data?.data.length ?? 0) === 0 && (
             <p className="p-6 text-center text-sm text-slate-500">
-              No equipment is attached to this agreement yet. Add it to a service to have it
-              covered, scheduled and reported on.
+              No equipment is attached to this agreement yet. Equipment is picked for each service
+              when the agreement is set up (What&apos;s covered → What this covers).
             </p>
           )}
           {(equipment.data?.data.length ?? 0) > 0 && (
@@ -468,7 +477,7 @@ export function AgreementTabs({
       )}
 
       {tab === 'billing' && (
-        <section className="mt-4 overflow-x-auto rounded-xl border border-slate-200 bg-white">
+        <section data-tour="contract-billing" className="mt-4 overflow-x-auto rounded-xl border border-slate-200 bg-white">
           {billings.isPending && <p className="p-4 text-sm text-slate-500">Loading…</p>}
           {!billings.isPending && bills.length === 0 && (
             <p className="p-6 text-center text-sm text-slate-500">
@@ -523,7 +532,7 @@ export function AgreementTabs({
                     <td className="px-4 py-2.5">
                       {b.invoice_id ? (
                         <Link
-                          to={`/accounting/invoices?open=${b.invoice_id}`}
+                          to={`/invoices/${b.invoice_id}`}
                           className="text-sm font-semibold text-amber-700 hover:underline"
                         >
                           {b.invoice_number ?? 'Open'}
@@ -541,7 +550,7 @@ export function AgreementTabs({
       )}
 
       {tab === 'history' && (
-        <section className="mt-4 rounded-xl border border-slate-200 bg-white p-4">
+        <section data-tour="contract-history" className="mt-4 rounded-xl border border-slate-200 bg-white p-4">
           {history.isPending && <p className="text-sm text-slate-500">Loading…</p>}
           {!history.isPending && (history.data?.data.length ?? 0) === 0 && (
             <p className="py-6 text-center text-sm text-slate-500">Nothing has happened yet.</p>

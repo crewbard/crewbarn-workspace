@@ -5,6 +5,7 @@ import {
   useCloudflareDomain,
   useCloudflareStorageReady,
 } from '@/components/onboarding/steps/ConnectCloudflare'
+import { GoogleMapsKeyGuide, crewbarnMapReferrers } from '@/components/onboarding/GoogleMapsKeyGuide'
 
 /**
  * Where your photos and maps come from.
@@ -47,6 +48,9 @@ export function DataOwnershipStep({ complete, onMarkStep, onboarding, saving }: 
   const [ownershipError, setOwnershipError] = useState<string | null>(null)
 
   const byoOnly = Boolean(onboarding.beta_agreement?.byo_only)
+  // A key already saved stays unless a new one is pasted. Asking for it on
+  // every save is how a wrong paste replaced a working key.
+  const mapsKeySaved = Boolean(onboarding.google_maps_key_saved)
   // Cloudflare may already have made the bucket and written the keys, in
   // which case asking for them again is asking somebody to copy out values
   // CrewBarn put there itself.
@@ -78,16 +82,9 @@ export function DataOwnershipStep({ complete, onMarkStep, onboarding, saving }: 
    * everywhere they are wanted, with a Google error nobody would trace back
    * to a setup screen.
    */
-  const here = typeof window === 'undefined' ? '' : window.location.origin
-  const crewbarnReferrers = Array.from(
-    new Set([
-      'https://app.crewbarn.com/*',
-      // A self-hosted workspace on its own domain, or a preview host.
-      ...(here && !here.includes('connect.crewbarn.com') && !here.includes('app.crewbarn.com')
-        ? [`${here}/*`]
-        : []),
-    ]),
-  )
+  // The work app, any CrewBarn subdomain, the shop TV board (crewbarn.tv),
+  // and this copy when it runs on its own domain. Shared with Storage & maps.
+  const crewbarnReferrers = crewbarnMapReferrers()
   const normalizedMapsDomain = normalizeDomainForReferrer(mapsDomain)
   const customerDomainReferrers = normalizedMapsDomain
     ? [`https://${normalizedMapsDomain}/*`, `https://*.${normalizedMapsDomain}/*`]
@@ -122,7 +119,7 @@ export function DataOwnershipStep({ complete, onMarkStep, onboarding, saving }: 
               : null
     const missing =
       missingStorage ??
-      (!googleMapsKey.trim()
+      (!googleMapsKey.trim() && !mapsKeySaved
         ? 'The Google Maps key is still empty. Without it, addresses will not turn into map pins.'
         : null)
     if (missing) {
@@ -153,7 +150,8 @@ export function DataOwnershipStep({ complete, onMarkStep, onboarding, saving }: 
       storage_provider: 'cloudflare_r2',
       maps_mode: 'byo',
       ...storage,
-      google_maps_api_key: googleMapsKey.trim(),
+      // Left out when blank, so the saved key stays.
+      ...(googleMapsKey.trim() ? { google_maps_api_key: googleMapsKey.trim() } : {}),
     })
   }
 
@@ -166,8 +164,9 @@ export function DataOwnershipStep({ complete, onMarkStep, onboarding, saving }: 
         </p>
       )}
 
-      <div className="space-y-2">
+      <div className="space-y-2" data-guide="storage-choice" data-guide-mode={ownershipMode} data-tour="onboarding-maps-choice">
         <Choice
+          tour="onboarding-maps-own"
           picked={ownershipMode === 'byo'}
           onPick={() => setOwnershipMode('byo')}
           disabled={saving}
@@ -176,6 +175,7 @@ export function DataOwnershipStep({ complete, onMarkStep, onboarding, saving }: 
         />
         {!byoOnly && (
           <Choice
+            tour="onboarding-maps-managed"
             picked={ownershipMode === 'crewbarn_managed'}
             onPick={() => setOwnershipMode('crewbarn_managed')}
             disabled={saving}
@@ -193,7 +193,7 @@ export function DataOwnershipStep({ complete, onMarkStep, onboarding, saving }: 
       )}
 
       {ownershipMode === 'crewbarn_managed' ? (
-        <div className="rounded-xl border border-slate-200 bg-white p-5">
+        <div className="rounded-xl border border-slate-200 bg-white p-5" data-tour="onboarding-maps-managed-note">
           <p className="text-[15px] font-bold text-navy-900">Nothing to set up</p>
           <p className="mt-1 text-sm leading-relaxed text-slate-600">
             CrewBarn will keep your photos and run the maps. You will see what it is costing before anything is
@@ -204,6 +204,7 @@ export function DataOwnershipStep({ complete, onMarkStep, onboarding, saving }: 
         <div className="space-y-6">
           <Guide
             n={1}
+            tour="onboarding-storage-guide"
             title="Somewhere to keep photos"
             where="cloudflare.com"
             steps={[
@@ -211,10 +212,12 @@ export function DataOwnershipStep({ complete, onMarkStep, onboarding, saving }: 
               'Connect it below. CrewBarn makes the bucket and fills in the keys.',
             ]}
           >
-            <ConnectCloudflare onProvisioned={() => setOwnershipError(null)} />
+            <div data-tour="onboarding-cloudflare-connect">
+              <ConnectCloudflare onProvisioned={() => setOwnershipError(null)} />
+            </div>
 
             {!storageDone && (
-              <details className="mt-4">
+              <details className="mt-4" data-tour="onboarding-storage-manual">
                 <summary className="cursor-pointer text-sm font-semibold text-slate-600 hover:text-navy-900">
                   Or type the values in yourself
                 </summary>
@@ -258,27 +261,31 @@ export function DataOwnershipStep({ complete, onMarkStep, onboarding, saving }: 
 
           <Guide
             n={2}
+            tour="onboarding-maps-guide"
             title="Maps and address lookup"
             where="console.cloud.google.com"
-            steps={[
-              'Create or pick a project, and turn billing on. Google gives a monthly free allowance that most shops stay inside.',
-              'Enable three things: Maps JavaScript API, Places API (New) and Geocoding API.',
-              'Create an API key, then restrict it — by website, using the addresses below, and to those three APIs only.',
-              'Paste the key here.',
-            ]}
           >
-            <p className="text-sm leading-relaxed text-slate-600">
+            <GoogleMapsKeyGuide
+              where="onboarding"
+              referrers={[...crewbarnReferrers, ...customerDomainReferrers]}
+            />
+            <p className="mt-5 text-sm leading-relaxed text-slate-600">
               Restricting the key by website is what stops anyone else using it and running up your bill. Copy every
               one of these into Google exactly as it is — a missing one means maps stop working in that place.
             </p>
-            <div className="mt-3 space-y-3">
-              {crewbarnReferrers.map((value) => (
-                <CopyValueBox key={value} label="CrewBarn" value={value} />
-              ))}
+            <div className="mt-3 space-y-3" data-guide="maps-block">
+              <div className="space-y-3" data-tour="onboarding-maps-referrers">
+                {crewbarnReferrers.map((value) => (
+                  <CopyValueBox key={value} label={value.includes('crewbarn.tv') ? 'CrewBarn shop TV' : 'CrewBarn'} value={value} />
+                ))}
+              </div>
               <Field
+                tour="onboarding-maps-domain"
                 label="Your own website address"
                 hint={
-                  knownDomain && mapsDomain === knownDomain
+                  mapsDomain.includes('@')
+                    ? 'That looks like an email address. Put just your website here, like example.com.'
+                    : knownDomain && mapsDomain === knownDomain
                     ? `Filled in from the Cloudflare account you connected. Change it if your customers use a different address.`
                     : 'Only the domain — example.com. Leave it blank if you have not got one yet.'
                 }
@@ -298,8 +305,11 @@ export function DataOwnershipStep({ complete, onMarkStep, onboarding, saving }: 
                 </p>
               )}
               <Field
+                tour="onboarding-maps-key"
                 label="Google Maps key"
-                hint="Stored encrypted. Nobody else can see it."
+                hint={mapsKeySaved
+                  ? 'A key is saved. Leave this blank to keep it, or paste a new one to replace it.'
+                  : 'Stored encrypted. Nobody else can see it.'}
                 value={googleMapsKey}
                 onChange={setGoogleMapsKey}
                 secret
@@ -320,6 +330,8 @@ export function DataOwnershipStep({ complete, onMarkStep, onboarding, saving }: 
         <button
           type="button"
           onClick={saveDataOwnership}
+          data-guide="step-save"
+          data-tour="onboarding-maps-save"
           disabled={saving}
           className="rounded-lg bg-amber-500 px-5 py-3 text-base font-bold text-white hover:bg-amber-600 disabled:bg-slate-200 disabled:text-slate-500"
         >
@@ -331,12 +343,14 @@ export function DataOwnershipStep({ complete, onMarkStep, onboarding, saving }: 
 }
 
 function Choice({
+  tour,
   picked,
   onPick,
   disabled,
   label,
   detail,
 }: {
+  tour?: string
   picked: boolean
   onPick: () => void
   disabled?: boolean
@@ -347,6 +361,7 @@ function Choice({
     <button
       type="button"
       role="radio"
+      data-tour={tour}
       aria-checked={picked}
       onClick={onPick}
       disabled={disabled}
@@ -373,19 +388,21 @@ function Choice({
 /** One job on somebody else's website: the clicks first, then the boxes. */
 function Guide({
   n,
+  tour,
   title,
   where,
   steps,
   children,
 }: {
   n: number
+  tour?: string
   title: string
   where: string
-  steps: string[]
+  steps?: string[]
   children: React.ReactNode
 }) {
   return (
-    <section className="rounded-xl border border-slate-200 bg-white p-5">
+    <section className="rounded-xl border border-slate-200 bg-white p-5" data-tour={tour}>
       <div className="flex items-center gap-3">
         <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-navy-900 text-sm font-bold text-white">
           {n}
@@ -393,20 +410,21 @@ function Guide({
         <h3 className="text-[15px] font-bold text-navy-900">{title}</h3>
         <span className="ml-auto font-mono text-xs text-slate-400">{where}</span>
       </div>
-      <ol className="mt-4 space-y-2">
+      {steps && steps.length > 0 && <ol className="mt-4 space-y-2">
         {steps.map((s, i) => (
           <li key={s} className="flex gap-2.5 text-sm leading-relaxed text-slate-700">
             <span className="font-semibold tabular-nums text-slate-400">{i + 1}.</span>
             <span>{s}</span>
           </li>
         ))}
-      </ol>
+      </ol>}
       <div className="mt-5 border-t border-slate-100 pt-5">{children}</div>
     </section>
   )
 }
 
 function Field({
+  tour,
   label,
   hint,
   value,
@@ -415,6 +433,7 @@ function Field({
   secret,
   mono,
 }: {
+  tour?: string
   label: string
   hint: string
   value: string
@@ -424,7 +443,7 @@ function Field({
   mono?: boolean
 }) {
   return (
-    <label className="block">
+    <label className="block" data-tour={tour}>
       <span className="text-sm font-bold text-navy-900">{label}</span>
       <span className="mt-0.5 block text-[13px] leading-snug text-slate-500">{hint}</span>
       <input
@@ -444,6 +463,9 @@ function Field({
 }
 
 function normalizeDomainForReferrer(value: string): string {
+  // A browser's autofill can drop an email address in here. That is never a
+  // website, so it gives no lines to copy rather than a broken one.
+  if (value.includes('@')) return ''
   return value
     .trim()
     .replace(/^https?:\/\//i, '')

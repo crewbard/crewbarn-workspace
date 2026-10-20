@@ -13,10 +13,15 @@ import { API_URL, getActingTenant, getStoredToken } from '@/lib/api'
  * Usage in a hook:
  *   const echo = getRealtimeEcho(account)
  *   if (!echo) return
- *   echo.private(name).listen('.event', cb)
- *   return () => { try { echo.leave(name) } catch {} }   // leave, do NOT disconnect
+ *   return listenPrivate(echo, name, '.event', cb)   // the cleanup it returns
  *
- * The connection persists for the session; hooks only add/remove channels.
+ * Always go through listenPrivate, never echo.private(name).listen() plus
+ * echo.leave(name). Several screens listen on the same channel (the app-wide
+ * message toasts, the Messages page and the dashboard all use the comms
+ * channel), and echo.leave() drops the channel with every listener on it, so
+ * one screen closing would silently stop the others until a reload.
+ *
+ * The connection persists for the sign-in; hooks only add/remove listeners.
  */
 
 type WindowWithPusher = Window & { Pusher?: typeof Pusher }
@@ -39,6 +44,11 @@ export function resolveTenantId(account: Account | null): string | null {
 
 let shared: Echo<'reverb'> | null = null
 let sharedTenant: string | null = null
+// The sign-in the shared connection was authorised with. Joining a private
+// channel sends this token, and signing out is an in-app navigation (no
+// reload), so without it a sign-in in the same tab would keep using the dead
+// token and every channel would quietly fail to join.
+let sharedToken: string | null = null
 
 export function getRealtimeEcho(account: Account | null): Echo<'reverb'> | null {
   const tenantId = resolveTenantId(account)
@@ -52,9 +62,12 @@ export function getRealtimeEcho(account: Account | null): Echo<'reverb'> | null 
   if (!token || !appKey) return null
 
   const key = tenantId ?? 'platform'
-  if (shared && sharedTenant === key) return shared
+  if (shared && sharedTenant === key && sharedToken === token) return shared
 
-  // Tenant changed (platform admin switching) — tear the old one down first.
+  // Different company (a platform admin switching) or a different sign-in
+  // (signed out and back in without a reload): tear the old one down first.
+  // Listener counts live with each connection (see listenPrivate), so the
+  // new one starts from zero.
   if (shared) {
     try {
       shared.disconnect()
@@ -63,6 +76,7 @@ export function getRealtimeEcho(account: Account | null): Echo<'reverb'> | null 
     }
     shared = null
     sharedTenant = null
+    sharedToken = null
   }
 
   const scheme = import.meta.env.VITE_REVERB_SCHEME || window.location.protocol.replace(':', '')
@@ -88,7 +102,80 @@ export function getRealtimeEcho(account: Account | null): Echo<'reverb'> | null 
     enabledTransports: ['ws', 'wss'],
     authEndpoint: `${API_URL}/broadcasting/auth`,
     auth: { headers: authHeaders },
+    authorizer: (channel: { name: string }) => ({
+      authorize: (socketId, callback) => {
+        void fetch(`${API_URL}/broadcasting/auth`, {
+          method: 'POST', headers: { ...authHeaders, 'Content-Type': 'application/json', Accept: 'application/json' },
+          body: JSON.stringify({ socket_id: socketId, channel_name: channel.name }),
+        }).then(async (response) => {
+          if (!response.ok) throw new Error('Realtime authorization failed')
+          callback(null, await response.json())
+        }).catch((error: Error) => callback(error, null))
+      },
+    }),
   })
   sharedTenant = key
+  sharedToken = token
   return shared
+}
+
+/**
+ * How many listeners each channel has, per connection. Kept per connection
+ * (not one global count) so a rebuilt connection starts from zero, and a late
+ * cleanup from a screen that subscribed on the old connection can't knock the
+ * count on the new one.
+ */
+const listenerCounts = new WeakMap<Echo<'reverb'>, Map<string, number>>()
+
+/**
+ * Listen for one event on a private channel, and get back the cleanup.
+ *
+ * The cleanup removes only this callback. It leaves the channel (stops the
+ * server sending it) only when no one else on this connection is still
+ * listening to it; leaving straight away would cut off every other screen on
+ * the same channel.
+ *
+ * `event` is passed to listen and stopListening exactly as given, so a custom
+ * `broadcastAs` name keeps its leading dot (e.g. '.comms.message') for both.
+ * The cleanup is safe to call twice; the second call does nothing.
+ */
+export function listenPrivate<T = unknown>(
+  echo: Echo<'reverb'>,
+  channelName: string,
+  event: string,
+  callback: (payload: T) => void,
+): () => void {
+  let counts = listenerCounts.get(echo)
+  if (!counts) {
+    counts = new Map()
+    listenerCounts.set(echo, counts)
+  }
+
+  // Keep this exact channel object: while anyone is listening it is never
+  // left, so it is the one the callback is bound to at cleanup time.
+  const channel = echo.private(channelName)
+  channel.listen(event, callback)
+  counts.set(channelName, (counts.get(channelName) ?? 0) + 1)
+
+  let stopped = false
+  return () => {
+    if (stopped) return
+    stopped = true
+    try {
+      channel.stopListening(event, callback)
+    } catch {
+      /* already gone */
+    }
+    const remaining = (counts.get(channelName) ?? 1) - 1
+    if (remaining > 0) {
+      counts.set(channelName, remaining)
+      return
+    }
+    counts.delete(channelName)
+    try {
+      echo.leave(channelName)
+    } catch {
+      /* already gone */
+    }
+  }
 }

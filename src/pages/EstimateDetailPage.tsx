@@ -17,16 +17,21 @@ import { AttachmentsPanel } from '@/components/attachments/AttachmentsPanel'
 import { EstimateHistoryPanel } from '@/components/estimates/EstimateHistoryPanel'
 import { EntityActivityPanel } from '@/components/EntityActivityPanel'
 import { MessagesDrawer } from '@/components/comms/MessagesDrawer'
+import { useRecordShortcuts } from '@/hooks/useShortcuts'
 import { EmailComposerModal } from '@/components/comms/EmailComposerModal'
 import { SmsComposerModal } from '@/components/comms/SmsComposerModal'
 import { CustomerLocationStrip } from '@/components/CustomerLocationStrip'
 import { usePermissions } from '@/hooks/usePermissions'
 import { useCustomer } from '@/hooks/useCustomers'
-import { useTheme } from '@/hooks/useTheme'
-import { EasyActionCards } from '@/components/easy/EasyActionCards'
+import { EstimateDetailOverview, EstimateProgress } from '@/components/estimates/EstimateDetailOverview'
 import { PartsOrders } from '@/components/estimates/PartsOrders'
+import { useTheme } from '@/hooks/useTheme'
+import { JobTasksCard } from '@/components/jobTasks/JobTasksCard'
 
-type Tab = 'overview' | 'line-items' | 'edit' | 'crew-cam' | 'documents' | 'history' | 'activity'
+// Same portal base the rest of the app uses (see PublicScanPage).
+const PORTAL_URL = import.meta.env.VITE_PORTAL_URL || 'https://portal.crewbarn.com'
+
+type Tab = 'overview' | 'options' | 'line-items' | 'job-tasks' | 'edit' | 'crew-cam' | 'documents' | 'history' | 'activity'
 
 const STATUS_PALETTE: Record<string, { bg: string; text: string }> = {
   draft: { bg: 'bg-slate-100', text: 'text-slate-700' },
@@ -37,10 +42,11 @@ const STATUS_PALETTE: Record<string, { bg: string; text: string }> = {
   expired: { bg: 'bg-amber-100', text: 'text-amber-800' },
 }
 
-export function EstimateDetailPage() {
+export function EstimateDetailPage({ recordId }: { recordId?: string } = {}) {
   const { theme } = useTheme()
-  const easy = theme === 'easy-side' || theme === 'easy-top'
-  const { id } = useParams<{ id: string }>()
+  const focus = theme === 'focus'
+  const { id: routeId } = useParams<{ id: string }>()
+  const id = recordId ?? routeId
   const navigate = useNavigate()
   const estimateQuery = useEstimate(id)
   const deleteEstimate = useDeleteEstimate()
@@ -49,6 +55,9 @@ export function EstimateDetailPage() {
   const rejectEstimate = useRejectEstimate()
   const supersedeEstimate = useSupersedeEstimate()
   const { has } = usePermissions()
+  // Writes on an estimate (send, approve, re-quote, convert, delete, edit)
+  // need jobs.edit — the same key the create route uses.
+  const canEdit = has('jobs.edit')
   // Estimates have no thread of their own — they ride the customer's. Fetch the
   // full customer (the estimate carries only a thin one) for the Messages drawer.
   const customerQuery = useCustomer(estimateQuery.data?.customer?.id)
@@ -58,18 +67,31 @@ export function EstimateDetailPage() {
   const [tab, setTab] = useState<Tab>('overview')
   const [showConvertModal, setShowConvertModal] = useState(false)
   const [agreementOpen, setAgreementOpen] = useState(false)
+  // Good / better / best: which option the customer took, asked on approve.
+  const [pickTierOpen, setPickTierOpen] = useState(false)
 
   // Deep-link from the Estimates list next-step chip (?action=convert) →
   // auto-open the convert modal (it still confirms before creating the job).
   // Clear the param so a refresh/back doesn't re-trigger it.
   const [searchParams, setSearchParams] = useSearchParams()
   useEffect(() => {
-    if (searchParams.get('action') === 'convert') {
-      setShowConvertModal(true)
-      searchParams.delete('action')
-      setSearchParams(searchParams, { replace: true })
-    }
-  }, [searchParams, setSearchParams])
+    if (recordId) return
+    if (searchParams.get('action') !== 'convert') return
+    const timeout = window.setTimeout(() => {
+      if (canEdit) setShowConvertModal(true)
+      const next = new URLSearchParams(searchParams)
+      next.delete('action')
+      setSearchParams(next, { replace: true })
+    }, 0)
+    return () => window.clearTimeout(timeout)
+  }, [recordId, searchParams, setSearchParams, canEdit])
+
+  // Keyboard shortcuts on this estimate (not when it's shown inside another page):
+  // E opens Edit details, M the customer's messages.
+  useRecordShortcuts({
+    edit: canEdit && estimateQuery.data ? () => setTab('edit') : undefined,
+    messages: estimateQuery.data?.customer && customerQuery.data ? () => setMessagesOpen(true) : undefined,
+  }, !recordId)
 
   if (estimateQuery.isLoading) {
     return <div className="max-w-screen-2xl mx-auto px-3 sm:px-6 py-4 sm:py-8 text-slate-500">Loading...</div>
@@ -98,11 +120,15 @@ export function EstimateDetailPage() {
     .filter((contact) => Boolean(contact.phone))
     .sort((a, b) => contactRank(b) - contactRank(a))[0]
   const estimatePortalUrl =
-    `https://portal.crewbarn.com/providers/${est.tenant_id}/estimates/${est.id}`
-  const estimateMessage =
-    `Your estimate ${est.estimate_number} for ${est.money.total_formatted} is ready to review.`
+    `${PORTAL_URL}/providers/${est.tenant_id}/estimates/${est.id}`
+  const tiers = est.options ?? []
+  const chosenTier = tiers.find((o) => o.id === est.chosen_option_id) ?? null
+  const lowestTier = tiers.length > 0 ? Math.min(...tiers.map((o) => o.money.total_cents)) : null
+  const estimateMessage = tiers.length > 0 && !chosenTier && lowestTier !== null
+    ? `Your estimate ${est.estimate_number} is ready to review: ${tiers.length} options from $${(lowestTier / 100).toFixed(2)}.`
+    : `Your estimate ${est.estimate_number} for ${est.money.total_formatted} is ready to review.`
   const canDeliverEstimate =
-    !['superseded', 'expired'].includes(est.status) && (est.status !== 'draft' || est.can_send)
+    canEdit && !['superseded', 'expired'].includes(est.status) && (est.status !== 'draft' || est.can_send)
 
   async function handleDeliverySent() {
     if (!id || est.status !== 'draft') return
@@ -119,14 +145,19 @@ export function EstimateDetailPage() {
   }
 
 
-  async function handleApprove() {
+  async function handleApprove(optionId?: string) {
     if (!id) return
-    if (!confirm('Mark this estimate as approved?')) return
+    if (tiers.length > 0 && !optionId) {
+      setPickTierOpen(true)
+      return
+    }
+    if (!optionId && !confirm('Mark this estimate as approved?')) return
     try {
-      await approveEstimate.mutateAsync(id)
+      await approveEstimate.mutateAsync({ id, optionId })
+      setPickTierOpen(false)
     } catch (err) {
-      const errObj = err as { details?: { reason?: string } }
-      alert(`Could not approve: ${errObj?.details?.reason ?? String(err)}`)
+      const errObj = err as { details?: { reason?: string }; message?: string }
+      alert(`Could not approve: ${errObj?.details?.reason ?? errObj?.message ?? String(err)}`)
     }
   }
 
@@ -175,294 +206,192 @@ export function EstimateDetailPage() {
     supersedeEstimate.isPending
 
   return (
-    <div className="max-w-screen-2xl mx-auto px-3 sm:px-6 py-4 sm:py-8">
-      {/* Header — stacks on mobile so the action button row gets its
-          own line below the title block (otherwise the buttons get
-          squashed against the right edge). */}
-      <div className={easy ? 'mb-6 overflow-hidden rounded-2xl border border-slate-200 bg-white' : 'flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3 sm:gap-4 mb-4 sm:mb-6'}>
-        <div className={easy ? 'min-w-0 bg-emerald-950 p-5 sm:p-7' : 'min-w-0'}>
-          <Link to="/estimates" className={`text-sm hover:underline ${easy ? 'text-emerald-200' : 'text-amber-700'}`}>
-            &larr; Back to Estimates
-          </Link>
-          <div className="flex items-baseline gap-2 sm:gap-3 mt-2 flex-wrap">
-            <span className={`font-mono text-sm ${easy ? 'text-emerald-200' : 'text-slate-500'}`}>{est.estimate_number}</span>
-            <h1 className={easy ? 'break-words text-3xl font-semibold tracking-tight text-white' : 'text-xl sm:text-2xl font-bold text-navy-900 break-words'}>
-              {est.customer?.display_name ?? 'Customer'}
-            </h1>
-          </div>
-          <div className="flex items-center gap-2 mt-2 text-sm flex-wrap">
-            <span
-              className={`inline-block px-2 py-0.5 text-xs font-medium rounded capitalize ${palette.bg} ${palette.text}`}
-            >
-              {est.status}
-            </span>
-            {est.customer?.vip && (
-              <span className="text-xs bg-amber-100 text-amber-800 px-1.5 py-0.5 rounded">
-                VIP customer
-              </span>
-            )}
-          </div>
-        </div>
-
-        {/* Lifecycle action buttons - driven by server-side can_* predicates */}
-        <div className={`flex items-center gap-2 flex-wrap ${easy ? 'p-4 sm:px-6' : ''}`}>
-          {has('contracts.edit') && has('contracts.view') && has('jobs.edit') && <button type="button" className="rounded-md border px-3 py-1.5 text-sm" onClick={() => setAgreementOpen(true)}>Service agreement</button>}
-          {est.customer && (
-            <button
-              type="button"
-              onClick={() => setMessagesOpen(true)}
-              disabled={!customerQuery.data}
-              className="px-3 py-1.5 text-sm border border-slate-300 text-slate-700 hover:bg-slate-50 rounded-md whitespace-nowrap disabled:opacity-50"
-              title="View / send texts + emails for this customer"
-            >
-              💬 Messages
-            </button>
-          )}
-          {est.customer && canDeliverEstimate && (
-            <>
-              <button
-                type="button"
-                onClick={() => setEmailEstimateOpen(true)}
-                disabled={isMutating || !customerQuery.data}
-                className="px-3 py-1.5 text-sm font-medium bg-amber-500 hover:bg-amber-600 text-white rounded-md disabled:opacity-50"
-                title="Review the recipient and message before sending"
-              >
-                Email estimate
-              </button>
-              <button
-                type="button"
-                onClick={() => setSmsEstimateOpen(true)}
-                disabled={isMutating || !customerQuery.data}
-                className="px-3 py-1.5 text-sm font-medium border border-amber-600 text-amber-700 hover:bg-amber-50 rounded-md disabled:opacity-50"
-                title="Review the recipient and text before sending"
-              >
-                Text estimate
-              </button>
-            </>
-          )}
-          {est.can_approve && (
-            <button
-              type="button"
-              onClick={handleApprove}
-              disabled={isMutating}
-              className="px-3 py-1.5 text-sm font-medium bg-emerald-600 hover:bg-emerald-700 text-white rounded-md disabled:opacity-50"
-            >
-              Mark Approved
-            </button>
-          )}
-          {est.can_reject && (
-            <button
-              type="button"
-              onClick={handleReject}
-              disabled={isMutating}
-              className="px-3 py-1.5 text-sm font-medium border border-red-600 text-red-700 hover:bg-red-50 rounded-md disabled:opacity-50"
-            >
-              Mark Rejected
-            </button>
-          )}
-          {(['sent', 'approved', 'rejected'] as const).includes(est.status as 'sent' | 'approved' | 'rejected') && (
-            <button
-              type="button"
-              onClick={handleRequote}
-              disabled={isMutating}
-              className="px-3 py-1.5 text-sm font-medium border border-amber-600 text-amber-700 hover:bg-amber-50 rounded-md disabled:opacity-50"
-            >
-              Re-quote
-            </button>
-          )}
-          {est.status === 'approved' && !est.converted_to_work_order_id && (
-            <button
-              type="button"
-              onClick={() => setShowConvertModal(true)}
-              disabled={isMutating}
-              className="px-3 py-1.5 text-sm font-medium bg-emerald-600 hover:bg-emerald-700 text-white rounded-md disabled:opacity-50"
-            >
-              Convert to Job
-            </button>
-          )}
-          <button
-            type="button"
-            onClick={handleDelete}
-            disabled={isMutating}
-            className="px-3 py-1.5 text-sm text-red-700 hover:bg-red-50 rounded-md disabled:opacity-50"
-          >
-            Delete
-          </button>
-        </div>
+    <div data-focus-record="estimate" className="max-w-screen-2xl mx-auto px-3 sm:px-6 py-4 sm:py-8">
+      <div className="mb-3 text-sm">
+        <Link to="/estimates" className="font-medium text-amber-700 hover:underline">← Back to Estimates</Link>
       </div>
+      {/* Not overflow-hidden: that clipped the More actions menu to a sliver
+          under its button. The header rounds its own top corners instead
+          (15px inside the card's 1px border). */}
+      <section className="relative z-10 mb-4 rounded-2xl border border-slate-200 bg-white shadow-sm" aria-label="Estimate record">
+        <div data-tour="estimate-header" data-status={est.status} data-scope={est.approval_scope === 'partial' ? 'partial' : 'all'} data-tiers={tiers.length > 0 ? 'yes' : 'no'} data-job={est.converted_to_work_order_id ? 'yes' : 'no'} className={`grid gap-5 rounded-t-[15px] p-5 sm:p-6 lg:grid-cols-[minmax(0,1fr)_auto] ${focus ? 'bg-white text-slate-900' : 'text-white'}`} style={focus ? undefined : { backgroundColor: 'var(--chrome-bg)' }}>
+          <div className="min-w-0">
+            <div className={`text-xs font-bold uppercase tracking-widest ${focus ? 'text-slate-500' : 'text-amber-200'}`}>Estimate {est.estimate_number}</div>
+            <div className="mt-2 flex flex-wrap items-center gap-3">
+              <h1 className="break-words text-2xl font-semibold tracking-tight sm:text-3xl">{est.title || est.customer?.display_name || 'Estimate'}</h1>
+              <span className={`inline-flex rounded-full px-2.5 py-1 text-xs font-semibold capitalize ${palette.bg} ${palette.text}`}>{est.status}</span>
+              {est.customer?.vip && <span className="rounded bg-amber-100 px-2 py-1 text-xs font-semibold text-amber-900">VIP customer</span>}
+            </div>
+            <p className={`mt-2 text-sm ${focus ? 'text-slate-600' : 'text-white/75'}`}>{[est.customer?.display_name, est.service_location?.nickname].filter(Boolean).join(' · ') || 'Customer and location not set'}</p>
+            {chosenTier && <p className={`mt-1 text-xs ${focus ? 'text-slate-500' : 'text-white/70'}`}>{est.chosen_option_id ? 'Chosen option' : 'Previewing option'}: {chosenTier.name}</p>}
+          </div>
+          <div className={`border-t pt-4 lg:min-w-52 lg:border-l lg:border-t-0 lg:py-2 lg:pl-6 lg:text-right ${focus ? 'border-slate-200' : 'border-white/20'}`}>
+            <div className={`text-[11px] font-bold uppercase tracking-widest ${focus ? 'text-slate-500' : 'text-white/65'}`}>{tiers.length && !chosenTier ? 'Options from' : est.status === 'approved' && est.approval_scope !== 'partial' ? 'Approved estimate' : 'Estimate total'}</div>
+            <div className="mt-1 text-3xl font-bold tabular-nums">{tiers.length && !chosenTier && lowestTier !== null ? new Intl.NumberFormat(undefined, { style: 'currency', currency: 'USD' }).format(lowestTier / 100) : est.money.total_formatted}</div>
+            <p className={`mt-1 text-xs ${focus ? 'text-slate-500' : 'text-white/70'}`}>{est.converted_to_work_order ? 'Linked to a job' : est.status === 'approved' ? 'Ready for the next step' : est.status === 'sent' ? 'Waiting for customer decision' : 'Quote in progress'}</p>
+          </div>
+        </div>
+        <div data-tour="estimate-actions" className="flex flex-wrap items-center gap-2 p-3 sm:px-5">
+          {canEdit && est.status === 'approved' && !est.converted_to_work_order_id && <button type="button" data-tour="estimate-convert" onClick={() => setShowConvertModal(true)} disabled={isMutating} className="rounded-md bg-amber-600 px-3 py-2 text-sm font-semibold text-white hover:bg-amber-700 disabled:opacity-50">Convert to job →</button>}
+          {est.converted_to_work_order && <Link to={`/jobs/${est.converted_to_work_order.id}`} className="rounded-md bg-amber-600 px-3 py-2 text-sm font-semibold text-white hover:bg-amber-700">Open linked job →</Link>}
+          {est.customer && canDeliverEstimate && <>
+            <button type="button" data-tour="estimate-email" onClick={() => setEmailEstimateOpen(true)} disabled={isMutating || !customerQuery.data} className="rounded-md border border-slate-300 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50">Email estimate</button>
+            <button type="button" data-tour="estimate-text" onClick={() => setSmsEstimateOpen(true)} disabled={isMutating || !customerQuery.data} className="rounded-md border border-slate-300 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50">Text estimate</button>
+          </>}
+          {canEdit && est.can_approve && <button type="button" data-tour="estimate-approve" onClick={() => void handleApprove()} disabled={isMutating} className="rounded-md border border-amber-500 px-3 py-2 text-sm font-semibold text-amber-700 hover:bg-amber-50 disabled:opacity-50">Mark approved</button>}
+          {est.customer && <button type="button" data-tour="estimate-messages" onClick={() => setMessagesOpen(true)} disabled={!customerQuery.data} className="rounded-md border border-slate-300 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50">Messages</button>}
+          <span className="hidden flex-1 sm:block" />
+          {has('contracts.edit') && has('contracts.view') && canEdit && <button type="button" data-tour="estimate-agreement-builder" onClick={() => setAgreementOpen(true)} className="rounded-md border border-slate-300 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">Service agreement</button>}
+          {(canEdit && (est.can_reject || ['sent', 'approved', 'rejected'].includes(est.status))) && <details data-tour="estimate-more-actions" className="relative">
+            <summary data-tour="estimate-more-actions-toggle" className="cursor-pointer list-none rounded-md border border-slate-300 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">More actions ···</summary>
+            <div className="absolute right-0 z-20 mt-1 min-w-44 rounded-lg border border-slate-200 bg-white p-1 shadow-xl">
+              {est.can_reject && <button type="button" data-tour="estimate-reject" onClick={handleReject} disabled={isMutating} className="block w-full rounded px-3 py-2 text-left text-sm text-red-700 hover:bg-red-50 disabled:opacity-50">Mark rejected</button>}
+              {['sent', 'approved', 'rejected'].includes(est.status) && <button type="button" data-tour="estimate-requote" onClick={handleRequote} disabled={isMutating} className="block w-full rounded px-3 py-2 text-left text-sm text-amber-700 hover:bg-amber-50 disabled:opacity-50">Re-quote</button>}
+              <button type="button" onClick={() => setTab('edit')} className="block w-full rounded px-3 py-2 text-left text-sm text-slate-700 hover:bg-slate-50">Edit details</button>
+              <button type="button" data-tour="estimate-delete" onClick={handleDelete} disabled={isMutating} className="block w-full rounded px-3 py-2 text-left text-sm text-red-700 hover:bg-red-50 disabled:opacity-50">Delete estimate</button>
+            </div>
+          </details>}
+          {canEdit && !['sent', 'approved', 'rejected'].includes(est.status) && <button type="button" data-tour="estimate-delete" onClick={handleDelete} disabled={isMutating} className="rounded-md px-3 py-2 text-sm font-medium text-red-700 hover:bg-red-50 disabled:opacity-50">Delete</button>}
+        </div>
+      </section>
 
-      {/* Tabs — scroll rather than wrap at narrow widths, same as the job page
-          and the cash drawer. Fewer tabs here, but the failure is identical:
-          flex compresses them and multi-word labels break mid-label. */}
-      {!easy && <div className="border-b border-slate-200 mb-6 overflow-x-auto">
-        <nav className="flex gap-6 min-w-max">
-          <TabButton active={tab === 'overview'} onClick={() => setTab('overview')}>
-            Overview
-          </TabButton>
-          <TabButton active={tab === 'line-items'} onClick={() => setTab('line-items')}>
-            Line Items
-          </TabButton>
-          <TabButton active={tab === 'edit'} onClick={() => setTab('edit')}>
-            Edit
-          </TabButton>
-          <TabButton active={tab === 'crew-cam'} onClick={() => setTab('crew-cam')}>
-            BarnCam
-          </TabButton>
-          <TabButton active={tab === 'documents'} onClick={() => setTab('documents')}>
-            Documents
-          </TabButton>
-          <TabButton active={tab === 'history'} onClick={() => setTab('history')}>
-            History
-          </TabButton>
-          {has('settings.view') && (
-            <TabButton active={tab === 'activity'} onClick={() => setTab('activity')}>
-              Activity
-            </TabButton>
-          )}
+      <div data-tour="estimate-tabs" className="mb-4 overflow-x-auto rounded-xl border border-slate-200 bg-white p-1.5 shadow-sm">
+        <nav className="flex min-w-max gap-1" aria-label="Estimate sections">
+          <TabButton tour="estimate-tab-overview" active={tab === 'overview'} onClick={() => setTab('overview')}>Overview</TabButton>
+          {focus && <TabButton tour="estimate-tab-options" active={tab === 'options'} onClick={() => setTab('options')}>Options{tiers.length > 0 ? ` (${tiers.length})` : ''}</TabButton>}
+          <TabButton tour="estimate-tab-line-items" active={tab === 'line-items'} onClick={() => setTab('line-items')}>Work & pricing</TabButton>
+          <TabButton tour="estimate-tab-job-tasks" active={tab === 'job-tasks'} onClick={() => setTab('job-tasks')}>Job tasks</TabButton>
+          <TabButton tour="estimate-tab-edit" active={tab === 'edit'} onClick={() => setTab('edit')}>Edit details</TabButton>
+          <TabButton tour="estimate-barncam" active={tab === 'crew-cam'} onClick={() => setTab('crew-cam')}>BarnCam</TabButton>
+          <TabButton tour="estimate-documents" active={tab === 'documents'} onClick={() => setTab('documents')}>Documents</TabButton>
+          <TabButton tour="estimate-history" active={tab === 'history'} onClick={() => setTab('history')}>History</TabButton>
+          {has('settings.view') && <TabButton tour="estimate-tab-activity" active={tab === 'activity'} onClick={() => setTab('activity')}>Activity</TabButton>}
         </nav>
-      </div>}
+      </div>
 
       {/* Persistent customer + location strip — same component used on
           WorkOrderDetailPage. Customer name links to /customers/{id}. */}
-      <CustomerLocationStrip
-        customer={est.customer ?? null}
-        location={est.service_location ?? null}
-      />
+      <div data-tour="estimate-customer-strip">
+        <CustomerLocationStrip
+          customer={est.customer ?? null}
+          location={est.service_location ?? null}
+        />
+      </div>
+
+      <EstimateProgress estimate={est} />
 
       {/* Content */}
-      {easy && <EasyActionCards label="Review before your next step" actions={[
-        { key: 'overview', title: 'Check the details', description: 'Review the customer, location and totals.', active: tab === 'overview', onClick: () => setTab('overview') },
-        { key: 'line-items', title: 'Review the work', description: 'Check services, quantities and pricing.', active: tab === 'line-items', onClick: () => setTab('line-items') },
-        { key: 'edit', title: 'Edit details', description: 'Update the estimate using the existing form.', active: tab === 'edit', onClick: () => setTab('edit') },
-        { key: 'crew-cam', title: 'BarnCam', description: 'Review photos and field media.', active: tab === 'crew-cam', onClick: () => setTab('crew-cam') },
-        { key: 'documents', title: 'Check documents', description: 'Review supporting files.', active: tab === 'documents', onClick: () => setTab('documents') },
-        { key: 'history', title: 'See what happened', description: 'Review the estimate history before following up.', active: tab === 'history', onClick: () => setTab('history') },
-        ...(has('settings.view') ? [{ key: 'activity', title: 'Activity', description: 'Review recorded changes.', active: tab === 'activity', onClick: () => setTab('activity') }] : []),
-      ]} />}
-      {tab === 'overview' && (
-        <div className="space-y-6">
-          <Card title="Customer & Location">
-            <Row label="Customer">
-              {est.customer ? (
-                <Link
-                  to={`/customers/${est.customer.id}`}
-                  className="text-amber-700 hover:underline font-medium"
-                  title="Open customer account"
-                >
-                  {est.customer.display_name}
-                </Link>
-              ) : (
-                '—'
-              )}
-              {est.customer?.vip && (
-                <span className="ml-2 text-xs bg-amber-100 text-amber-800 px-1.5 py-0.5 rounded">
-                  VIP
-                </span>
-              )}
-            </Row>
-            <Row label="Service Location">
-              {est.service_location ? (
-                <>
-                  {est.service_location.nickname && <strong>{est.service_location.nickname}</strong>}
-                  <div className="text-slate-600">
-                    {[
-                      est.service_location.street_address,
-                      est.service_location.apt_unit,
-                      est.service_location.city,
-                      est.service_location.state,
-                      est.service_location.postal_code,
-                    ]
-                      .filter(Boolean)
-                      .join(', ')}
-                  </div>
-                </>
-              ) : (
-                <span className="text-slate-400 italic">Not set</span>
-              )}
-            </Row>
-            {est.created_by && (
-              <Row label="Created By">{est.created_by.full_name || est.created_by.email}</Row>
-            )}
-          </Card>
+      {focus && tab === 'overview' && tiers.length > 1 && <section data-tour="estimate-option-strip" aria-label="Estimate options" className="mb-4 rounded-xl border border-slate-200 bg-white p-3 shadow-sm">
+        <div className="mb-2 flex flex-wrap items-center justify-between gap-2 px-1">
+          <h2 className="text-sm font-semibold text-slate-900">Available options</h2>
+          <button type="button" onClick={() => setTab('options')} className="text-sm font-semibold text-amber-700 hover:underline">Compare all options →</button>
+        </div>
+        <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
+          {tiers.map((option) => <div key={option.id} className={`min-w-0 rounded-lg border px-3 py-2 ${est.chosen_option_id === option.id ? 'border-emerald-500 bg-emerald-50' : 'border-slate-200 bg-slate-50'}`}>
+            <div className="flex min-w-0 items-center justify-between gap-2"><span className="truncate text-sm font-semibold text-slate-900">{option.name}</span>{option.is_recommended && <span className="shrink-0 text-[10px] font-semibold text-amber-800">Recommended</span>}</div>
+            <strong className="mt-1 block text-base tabular-nums text-slate-900">{option.money.total_formatted}</strong>
+          </div>)}
+        </div>
+      </section>}
+      {tab === 'overview' && <EstimateDetailOverview
+        estimate={est}
+        focus={focus}
+        canEdit={canEdit}
+        canDeliver={canDeliverEstimate && Boolean(customerQuery.data)}
+        onTab={setTab}
+        onConvert={() => setShowConvertModal(true)}
+        onApprove={() => { void handleApprove() }}
+        onSend={() => setEmailEstimateOpen(true)}
+        onRequote={() => { void handleRequote() }}
+        onMessages={() => setMessagesOpen(true)}
+      />}
 
-          <Card title="Money">
-            <Row label="Subtotal">{est.money.subtotal_formatted}</Row>
-            <Row label="Tax">{est.money.tax_formatted}</Row>
-            {/* Its own line rather than a silently zeroed tax, so it's visible
-                that the exemption was applied and what it was worth. */}
-            {(est.money.tax_exempt_adjustment_cents ?? 0) > 0 && (
-              <Row label="Tax exempt">
-                <span className="text-emerald-700">
-                  &minus;{est.money.tax_exempt_adjustment_formatted}
-                </span>
-              </Row>
-            )}
-            <Row label="Total">
-              <strong>{est.money.total_formatted}</strong>
-            </Row>
-          </Card>
+      {focus && tab === 'options' && <section data-tour="estimate-options-comparison" className="space-y-4">
+        <div className="flex flex-wrap items-start justify-between gap-4 rounded-xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
+          <div>
+            <h2 className="text-lg font-semibold text-slate-900">{tiers.length > 1 ? 'Compare the solutions' : 'Estimate option'}</h2>
+            <p className="mt-1 max-w-2xl text-sm text-slate-600">{tiers.length > 1 ? 'Each option shares this customer and site, but has its own work and price. Only the customer-approved option moves into the job.' : 'This estimate has one solution. You can still review its scope and pricing before sending or converting it.'}</p>
+          </div>
+          <button type="button" onClick={() => setTab('line-items')} className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-800 hover:bg-slate-50">Open work & pricing →</button>
+        </div>
+        <div className="grid items-stretch gap-3 lg:grid-cols-2 2xl:grid-cols-4">
+          {tiers.length > 0 ? tiers.map((option) => {
+            const optionLines = (est.line_items ?? []).filter((line) => line.estimate_option_id === option.id)
+            const sharedLines = (est.line_items ?? []).filter((line) => !line.estimate_option_id)
+            const chosen = est.chosen_option_id === option.id
+            return <article key={option.id} className={`min-w-0 rounded-xl border bg-white p-5 shadow-sm ${chosen ? 'border-emerald-500 ring-1 ring-emerald-500' : 'border-slate-200'}`}>
+              <div className="flex flex-wrap items-start justify-between gap-2">
+                <h3 className="text-base font-semibold text-slate-900">{option.name}</h3>
+                <div className="flex flex-wrap gap-1">
+                  {chosen && <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-[11px] font-semibold text-emerald-900">Chosen</span>}
+                  {option.is_recommended && <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-semibold text-amber-900">Recommended</span>}
+                </div>
+              </div>
+              <p className="mt-4 text-2xl font-bold tabular-nums text-slate-900">{option.money.total_formatted}</p>
+              {option.highlights && <p className="mt-3 whitespace-pre-wrap text-sm leading-relaxed text-slate-700">{option.highlights}</p>}
+              <p className="mt-4 border-t border-slate-100 pt-3 text-xs text-slate-500">{optionLines.length} option-specific {optionLines.length === 1 ? 'line' : 'lines'}{sharedLines.length > 0 ? ` · ${sharedLines.length} shared across options` : ''}</p>
+            </article>
+          }) : <article className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+            <h3 className="text-base font-semibold text-slate-900">Single solution</h3>
+            <p className="mt-4 text-2xl font-bold tabular-nums text-slate-900">{est.money.total_formatted}</p>
+            <p className="mt-3 text-sm text-slate-600">{est.description || est.customer_notes || 'Review the work and price in the detailed editor.'}</p>
+            <p className="mt-4 border-t border-slate-100 pt-3 text-xs text-slate-500">{est.line_items?.length ?? 0} {(est.line_items?.length ?? 0) === 1 ? 'line item' : 'line items'}</p>
+          </article>}
+        </div>
+        {tiers.length > 0 && <p className="text-sm text-slate-600">To add or edit options, open Work & pricing. To record a customer decision, use Mark approved above; the approval dialog asks which option they chose.</p>}
+      </section>}
 
-          {(est.customer_notes || est.internal_notes || est.terms) && (
-            <Card title="Notes & Terms">
-              {est.customer_notes && (
-                <Row label="Customer Notes">
-                  <span className="whitespace-pre-wrap">{est.customer_notes}</span>
-                </Row>
-              )}
-              {est.internal_notes && (
-                <Row label="Internal Notes">
-                  <span className="whitespace-pre-wrap">{est.internal_notes}</span>
-                </Row>
-              )}
-              {est.terms && (
-                <Row label="Terms">
-                  <span className="whitespace-pre-wrap">{est.terms}</span>
-                </Row>
-              )}
-            </Card>
-          )}
-
-          <Card title="Lifecycle">
-            <Row label="Created">
-              {est.created_at ? new Date(est.created_at).toLocaleString() : '—'}
-            </Row>
-            {est.sent_at && (
-              <Row label="Sent">{new Date(est.sent_at).toLocaleString()}</Row>
-            )}
-            {est.approved_at && (
-              <Row label="Approved">{new Date(est.approved_at).toLocaleString()}</Row>
-            )}
-            {est.rejected_at && (
-              <Row label="Rejected">{new Date(est.rejected_at).toLocaleString()}</Row>
-            )}
-            {est.expires_at && (
-              <Row label="Expires">{new Date(est.expires_at).toLocaleDateString()}</Row>
-            )}
-            {est.superseded_estimate && (
-              <Row label="Replaces">
-                <Link
-                  to={`/estimates/${est.superseded_estimate.id}`}
-                  className="text-amber-700 hover:underline"
+      {pickTierOpen && (
+        <div
+          className="fixed inset-0 z-50 flex items-end justify-center bg-slate-900/60 px-0 sm:items-center sm:px-4"
+          onClick={() => setPickTierOpen(false)}
+        >
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="pick-tier-title"
+            onClick={(e) => e.stopPropagation()}
+            className="w-full rounded-t-2xl bg-white shadow-xl sm:max-w-md sm:rounded-2xl"
+          >
+            <div className="border-b border-slate-200 px-5 py-3">
+              <h2 id="pick-tier-title" className="text-base font-semibold text-slate-900">Which option did the customer choose?</h2>
+              <p className="mt-0.5 text-xs text-slate-500">The other options' work is declined, so the job and invoice carry only this one.</p>
+            </div>
+            <div className="space-y-2 p-5">
+              {tiers.map((o) => (
+                <button
+                  key={o.id}
+                  type="button"
+                  disabled={approveEstimate.isPending}
+                  onClick={() => handleApprove(o.id)}
+                  className="flex w-full items-center justify-between gap-3 rounded-lg border border-slate-200 px-4 py-3 text-left hover:border-emerald-500 hover:bg-emerald-50 disabled:opacity-50"
                 >
-                  {est.superseded_estimate.estimate_number}
-                </Link>
-              </Row>
-            )}
-            {est.converted_to_work_order && (
-              <Row label="Converted to">
-                <Link
-                  to={`/jobs/${est.converted_to_work_order!.id}`}
-                  className="text-amber-700 hover:underline"
-                >
-                  Job {est.converted_to_work_order!.display_number}
-                </Link>
-              </Row>
-            )}
-          </Card>
+                  <span>
+                    <span className="block font-semibold text-slate-900">
+                      {o.name}
+                      {o.is_recommended && <span className="ml-1.5 text-[11px] font-semibold text-amber-700">Recommended</span>}
+                    </span>
+                    {o.highlights && <span className="block text-xs text-slate-500">{o.highlights}</span>}
+                  </span>
+                  <span className="shrink-0 font-semibold tabular-nums text-slate-900">{o.money.total_formatted}</span>
+                </button>
+              ))}
+            </div>
+            <div className="flex justify-end border-t border-slate-200 px-5 py-3">
+              <button
+                type="button"
+                onClick={() => setPickTierOpen(false)}
+                className="px-3 py-1.5 text-sm font-semibold text-slate-600 hover:text-slate-900"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
         </div>
       )}
 
       {tab === 'line-items' && (
+        <div data-tour="estimate-line-items">
         <Card title="Line Items">
           <PartsOrders estimate={{ id: est.id, number: est.estimate_number, title: est.title ?? null, status: est.status }} />
           <EstimateLineItemEditorLive
@@ -471,47 +400,61 @@ export function EstimateDetailPage() {
               id: a.id,
               name: a.name,
             }))}
+            disabled={!canEdit}
           />
         </Card>
+        </div>
       )}
 
-      {tab === 'edit' && <EstimateEditForm estimate={est} />}
+      {tab === 'job-tasks' && <JobTasksCard parent={{ kind: 'estimate', id: est.id }} />}
+      {tab === 'edit' && <EstimateEditForm estimate={est} readOnly={!canEdit} />}
 
       {tab === 'crew-cam' && (
+        <div data-tour="estimate-barncam-panel">
         <BarnCamPanel
           basePath={`/v1/estimates/${est.id}`}
           cacheKey={['est-attachments', est.id]}
         />
+        </div>
       )}
 
       {tab === 'documents' && (
+        <div data-tour="estimate-documents-panel">
         <AttachmentsPanel
           basePath={`/v1/estimates/${est.id}`}
           cacheKey={['est-attachments', est.id]}
           mode="documents"
         />
+        </div>
       )}
 
       {tab === 'history' && <EstimateHistoryPanel estimate={est} />}
 
       {tab === 'activity' && has('settings.view') && (
-        <EntityActivityPanel entityId={est.id} noun="estimate" />
+        <div data-tour="estimate-activity-panel"><EntityActivityPanel entityId={est.id} noun="estimate" /></div>
       )}
 
-      {showConvertModal && (
+      {showConvertModal && canEdit && (
+        // The window is fixed on screen; tutorials point inside it through this wrapper.
+        <div data-tour="estimate-convert-modal">
         <ConvertEstimateToJobModal
           isOpen
           estimate={est}
           onClose={() => setShowConvertModal(false)}
         />
+        </div>
       )}
       {agreementOpen && <AgreementBuilderModal estimateId={est.id} canSaveTemplates={has('templates.edit')} onClose={() => setAgreementOpen(false)} />}
 
       {emailEstimateOpen && (
+      <div data-tour="estimate-email-composer">
       <EmailComposerModal
         isOpen={emailEstimateOpen}
         onClose={() => setEmailEstimateOpen(false)}
         customerId={est.customer_id}
+        estimateId={est.id}
+        locationId={est.customer_service_location_id ?? null}
+        topic="estimate"
         defaultEmail={emailContact?.email ?? customerQuery.data?.email}
         defaultSubject={`Estimate ${est.estimate_number} is ready`}
         defaultBody={`${estimateMessage}
@@ -520,23 +463,28 @@ Review and respond:
 ${estimatePortalUrl}`}
         onSent={() => void handleDeliverySent()}
       />
+      </div>
       )}
 
       {smsEstimateOpen && (
+      <div data-tour="estimate-sms-composer">
       <SmsComposerModal
         isOpen={smsEstimateOpen}
         onClose={() => setSmsEstimateOpen(false)}
         customerId={est.customer_id}
+        estimateId={est.id}
+        locationId={est.customer_service_location_id ?? null}
         defaultPhone={phoneContact?.phone}
         defaultBody={`${estimateMessage} Review and respond: ${estimatePortalUrl}`}
         onSent={() => void handleDeliverySent()}
       />
+      </div>
       )}
 
       <MessagesDrawer
         open={messagesOpen}
         onClose={() => setMessagesOpen(false)}
-        context={customerQuery.data ? { kind: 'customer', customer: customerQuery.data } : null}
+        context={customerQuery.data ? { kind: 'customer', customer: customerQuery.data, estimateId: est.id, locationId: est.customer_service_location_id ?? null } : null}
         title={`Messages · ${est.customer?.display_name ?? 'Customer'}`}
       />
     </div>
@@ -547,19 +495,23 @@ function TabButton({
   active,
   onClick,
   children,
+  tour,
 }: {
   active: boolean
   onClick: () => void
   children: React.ReactNode
+  tour?: string
 }) {
   return (
     <button
       type="button"
+      data-tour={tour}
+      aria-pressed={active}
       onClick={onClick}
-      className={`pb-3 -mb-px text-sm font-medium border-b-2 ${
+      className={`min-h-10 whitespace-nowrap rounded-lg border px-3 py-2 text-sm font-semibold ${
         active
-          ? 'border-amber-600 text-amber-700'
-          : 'border-transparent text-slate-600 hover:text-slate-900'
+          ? 'border-amber-200 bg-amber-50 text-amber-900'
+          : 'border-transparent text-slate-600 hover:border-slate-200 hover:bg-slate-50 hover:text-slate-900'
       }`}
     >
       {children}
@@ -567,9 +519,9 @@ function TabButton({
   )
 }
 
-function Card({ title, children }: { title: string; children: React.ReactNode }) {
+function Card({ title, children, tour }: { title: string; children: React.ReactNode; tour?: string }) {
   return (
-    <section className="bg-white border border-slate-200 rounded-xl shadow-sm hover:shadow transition-shadow p-6">
+    <section data-tour={tour} className="bg-white border border-slate-200 rounded-xl shadow-sm hover:shadow transition-shadow p-6">
       <h2 className="text-base font-semibold text-navy-900 pb-3 mb-2 border-b border-slate-100">
         {title}
       </h2>
@@ -578,13 +530,3 @@ function Card({ title, children }: { title: string; children: React.ReactNode })
   )
 }
 
-function Row({ label, children }: { label: string; children: React.ReactNode }) {
-  return (
-    <div className="grid grid-cols-1 sm:grid-cols-3 gap-1 sm:gap-4 py-3 first:pt-2">
-      <div className="text-slate-500 text-xs sm:text-sm sm:text-slate-600 uppercase tracking-wide sm:normal-case sm:tracking-normal font-medium sm:font-normal">
-        {label}
-      </div>
-      <div className="sm:col-span-2 text-slate-900">{children}</div>
-    </div>
-  )
-}

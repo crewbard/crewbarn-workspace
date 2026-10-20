@@ -84,7 +84,7 @@ export function WorkOrderDrivesPanel({ workOrderId }: { workOrderId: string }) {
   }
 
   return (
-    <section className="bg-slate-50 border border-slate-200 rounded-lg p-4">
+    <section data-tour="job-drives-panel" className="bg-slate-50 border border-slate-200 rounded-lg p-4">
       <div className="text-xs font-semibold text-slate-600 uppercase tracking-wider mb-2">
         Drive history (GPS)
       </div>

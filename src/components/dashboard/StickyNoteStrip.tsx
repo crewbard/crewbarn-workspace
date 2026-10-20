@@ -35,7 +35,7 @@ export function StickyNoteStrip() {
 
   return (
     <>
-      <section className="isolate overflow-visible rounded-xl border border-slate-200 bg-white shadow-sm">
+      <section data-tour="dash-sticky-notes" className="isolate overflow-visible rounded-xl border border-slate-200 bg-white shadow-sm">
         <header className="flex items-center gap-2 border-b border-slate-200 px-4 py-3">
           <h2 className="text-sm font-bold text-navy-900">Sticky notes</h2>
           <span className="text-xs text-slate-400">Team to-dos pinned to Today&apos;s Ops</span>
@@ -44,6 +44,7 @@ export function StickyNoteStrip() {
           </span>
           <button
             type="button"
+            data-tour="dash-sticky-add"
             onClick={() => setShowForm(true)}
             className="rounded-md border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50"
           >
@@ -68,6 +69,8 @@ export function StickyNoteStrip() {
                 onPreviewEnd={() => setPreview(null)}
                 onDismiss={() => {
                   if (preview?.note.id === n.id) setPreview(null)
+                  // Done archives the note for the whole team, so ask first.
+                  if (!window.confirm('Mark this note done? It comes off the board for everyone.')) return
                   del.mutate(n.id)
                 }}
               />
@@ -284,7 +287,7 @@ function StickyNoteModal({ onClose }: { onClose: () => void }) {
       })
       onClose()
     } catch {
-      setSaveError('Could not save — make sure the backend is deployed and migrated.')
+      setSaveError('Could not save the note. Please try again.')
     }
   }
 
@@ -298,7 +301,7 @@ function StickyNoteModal({ onClose }: { onClose: () => void }) {
   return (
     <>
       <div className="fixed inset-0 z-40 bg-black/30" onClick={onClose} />
-      <div className="fixed z-50 left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 bg-white rounded-xl shadow-xl p-5 w-[22rem]">
+      <div data-tour="dash-sticky-form" className="fixed z-50 left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 bg-white rounded-xl shadow-xl p-5 w-[22rem]">
         <h3 className="text-sm font-semibold text-slate-900 mb-3">📌 Team sticky note</h3>
 
         {/* Message */}
@@ -337,7 +340,7 @@ function StickyNoteModal({ onClose }: { onClose: () => void }) {
         </div>
 
         {/* Crew targeting */}
-        <div className="mt-3">
+        <div data-tour="dash-sticky-show-to" className="mt-3">
           <div className="text-[11px] font-semibold text-slate-500 uppercase tracking-wide mb-1.5">
             Show to
           </div>
@@ -402,6 +405,7 @@ function StickyNoteModal({ onClose }: { onClose: () => void }) {
         <div className="flex gap-2 mt-4">
           <button
             type="button"
+            data-tour="dash-sticky-cancel"
             onClick={onClose}
             className="flex-1 rounded-lg border border-slate-200 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
           >
@@ -409,6 +413,7 @@ function StickyNoteModal({ onClose }: { onClose: () => void }) {
           </button>
           <button
             type="button"
+            data-tour="dash-sticky-save"
             onClick={() => void handleSave()}
             disabled={!content.trim() || create.isPending}
             className="flex-1 rounded-lg bg-amber-500 py-2 text-sm font-semibold text-white hover:bg-amber-600 disabled:opacity-50"

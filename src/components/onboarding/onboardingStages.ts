@@ -83,7 +83,7 @@ export function buildOnboardingStages(onboarding: OnboardingStatus): OnboardingS
       secondaryPath: '/tool-shed/brand',
       complete: stepComplete(steps, 'company_profile'),
       locked: betaLocked,
-      bullets: ['Name, phone, email and address', 'Your logo and your colour', 'Used on everything a customer gets'],
+      bullets: ['Name, phone, email and address', 'Your logo and your color', 'Used on everything a customer gets'],
     },
     {
       key: 'trade_seed',
@@ -168,16 +168,16 @@ export function buildOnboardingStages(onboarding: OnboardingStatus): OnboardingS
     {
       key: 'automations',
       eyebrow: 'Step 10',
-      title: 'Let CrewBarn do the chasing',
-      summary: 'Reminders and nudges, set to start gently.',
+      title: 'Quick settings',
+      summary: 'Yes or no: what CrewBarn does for you.',
       detail:
-        'Reminding a customer the day before, nudging a tech on a job that has gone quiet, chasing an invoice nobody has paid. They start gentle, and you can switch any of them off.',
-      primaryLabel: 'Automation hub',
+        'Reminding a customer the day before, texting back a call you missed, chasing an invoice nobody has paid, checking techs in when they arrive. Answer yes or no to each; change any of them later.',
+      primaryLabel: 'Automations',
       primaryPath: '/tool-shed/automations',
       complete: stepComplete(steps, 'automations') || (counts.automation_rules ?? 0) > 0,
       locked: betaLocked,
       optional: true,
-      bullets: ['Reminders to customers', 'Nudges to your techs', 'Switch any of them off'],
+      bullets: ['Reminders and follow-ups', 'Your team on autopilot', 'Change any answer later'],
     },
     {
       key: 'launch_review',

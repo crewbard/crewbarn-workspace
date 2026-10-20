@@ -7,6 +7,7 @@ import { ApiError } from '@/lib/api'
 import { formatQty } from '@/lib/unitsOfMeasure'
 import { useTheme } from '@/hooks/useTheme'
 import { EasyActionCards } from '@/components/easy/EasyActionCards'
+import { PERM, usePermissions } from '@/hooks/usePermissions'
 import type {
   InventoryReconciliation,
   InventoryReconciliationStatus,
@@ -26,8 +27,9 @@ import type {
  * originating movement already floored stock at 0 when the negative
  * happened. This page records WHY for the audit trail.
  */
-export function InventoryReconciliationsPage() {
+export function InventoryReconciliationsPage({ embedded = false }: { embedded?: boolean } = {}) {
   const { theme } = useTheme()
+  const canEdit = usePermissions().has(PERM.INVENTORY_EDIT)
   const easy = theme === 'easy-side' || theme === 'easy-top'
   const [status, setStatus] = useState<InventoryReconciliationStatus>('pending')
   const query = useInventoryReconciliations({ status, per_page: 100 })
@@ -36,23 +38,29 @@ export function InventoryReconciliationsPage() {
 
   return (
     <div className="max-w-6xl mx-auto p-6 space-y-6">
-      <div>
-        <h1 className="text-3xl font-semibold text-slate-900">Reconciliations</h1>
+      <div data-tour="recon-header">
+        {embedded ? (
+          <h2 className="text-xl font-semibold text-slate-900">Reconciliation</h2>
+        ) : (
+          <h1 className="text-3xl font-semibold text-slate-900">Reconciliations</h1>
+        )}
         <p className="text-sm text-slate-600 mt-1">
-          Stock shortfalls flagged when outgoing movements went below zero.
-          Resolve each with the explanation that fits — receive (we had it,
-          just didn't log it) or write-off (we lost it). Resolution is
-          documentary; stock is already adjusted.
+          Parts used on jobs that weren't on record land here. Say what
+          happened to each: Retroactive receive if you had it but never
+          logged it coming in, or Write off if it's gone. Stock was already
+          set to zero; this only records why.
         </p>
       </div>
 
+      <div data-tour="recon-status">
       {easy ? <EasyActionCards label="Review stock shortfalls" actions={[
         { key: 'pending', title: 'Needs an explanation', description: 'Review shortfalls still waiting for reconciliation.' },
         { key: 'resolved_received', title: 'Receive recorded', description: 'Review shortfalls resolved as unrecorded receipts.' },
         { key: 'resolved_writeoff', title: 'Write-off recorded', description: 'Review shortfalls resolved as losses.' },
+        { key: 'resolved_other', title: 'Other explanation', description: 'Review shortfalls resolved another way.' },
       ].map(action => ({ ...action, active: status === action.key, onClick: () => setStatus(action.key as InventoryReconciliationStatus) }))} /> : <div className="flex items-center gap-3">
         <span className="text-xs font-medium text-slate-700 uppercase tracking-wide">Status</span>
-        {(['pending', 'resolved_received', 'resolved_writeoff'] as const).map((s) => (
+        {(['pending', 'resolved_received', 'resolved_writeoff', 'resolved_other'] as const).map((s) => (
           <button
             key={s}
             type="button"
@@ -68,6 +76,7 @@ export function InventoryReconciliationsPage() {
           </button>
         ))}
       </div>}
+      </div>
 
       {query.isError && <div role="alert" className="rounded-xl border border-amber-300 bg-amber-50 p-4 text-sm text-amber-900">
         Reconciliations could not be loaded. The queue may be incomplete.
@@ -80,18 +89,21 @@ export function InventoryReconciliationsPage() {
       )}
 
       {!query.isLoading && !query.isError && rows.length === 0 && (
-        <div className="bg-white border border-slate-200 rounded-xl shadow-sm p-12 text-center">
-          <p className="text-sm text-slate-600">
-            {status === 'pending'
-              ? '✓ No pending reconciliations. All shortfalls are resolved.'
-              : 'No reconciliations in this state.'}
-          </p>
+        <div data-tour="recon-empty" data-status={status} className="bg-white border border-slate-200 rounded-xl shadow-sm p-12 text-center">
+          {status === 'pending' ? (
+            <div className="mx-auto max-w-md space-y-2 text-sm text-slate-600">
+              <p className="font-medium text-slate-900">✓ Nothing waiting.</p>
+              <p>When a job uses a part that wasn't on record, so the count would go below zero, it lands here for you to explain.</p>
+            </div>
+          ) : (
+            <p className="text-sm text-slate-600">Nothing has been explained this way yet.</p>
+          )}
         </div>
       )}
 
       {rows.length > 0 && (
-        <div className={`bg-white border border-slate-200 rounded-xl shadow-sm ${easy ? 'overflow-x-auto' : 'overflow-hidden'}`}>
-          <table className={`w-full text-sm ${easy ? 'min-w-[720px]' : ''}`}>
+        <div data-tour="recon-table" className="bg-white border border-slate-200 rounded-xl shadow-sm overflow-x-auto">
+          <table className="w-full text-sm min-w-[720px]">
             <thead className="bg-slate-50 text-xs uppercase tracking-wide text-slate-500 border-b border-slate-200">
               <tr>
                 <th className="text-left px-4 py-3 font-medium">When</th>
@@ -104,7 +116,7 @@ export function InventoryReconciliationsPage() {
             </thead>
             <tbody className="divide-y divide-slate-100">
               {rows.map((r) => (
-                <ReconciliationRow key={r.id} r={r} />
+                <ReconciliationRow key={r.id} r={r} canEdit={canEdit} />
               ))}
             </tbody>
           </table>
@@ -133,7 +145,7 @@ function formatMoney(cents: number): string {
   return `$${(cents / 100).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
 }
 
-function ReconciliationRow({ r }: { r: InventoryReconciliation }) {
+function ReconciliationRow({ r, canEdit }: { r: InventoryReconciliation; canEdit: boolean }) {
   const [resolving, setResolving] = useState<ReconciliationResolveAction | null>(null)
   const resolveMutation = useResolveInventoryReconciliation()
 
@@ -216,7 +228,9 @@ function ReconciliationRow({ r }: { r: InventoryReconciliation }) {
         {triggerRef && <span className="ml-1 text-slate-400">({triggerRef})</span>}
       </td>
       <td className="px-4 py-3">
-        {isPending ? (
+        {isPending && !canEdit ? (
+          <span className="text-xs text-slate-500" title="You need Edit inventory to resolve shortfalls.">Pending · view only</span>
+        ) : isPending ? (
           <div className="flex items-center gap-2">
             {r.is_write_in && (
               <button
@@ -251,6 +265,9 @@ function ReconciliationRow({ r }: { r: InventoryReconciliation }) {
         ) : (
           <div className="text-xs">
             <div className="text-slate-700 font-medium">{labelForStatus(r.status)}</div>
+            {r.resolution.resolved_at && (
+              <div className="text-slate-400">{new Date(r.resolution.resolved_at).toLocaleString()}</div>
+            )}
             {r.resolution.notes && (
               <div className="text-slate-500 mt-0.5 italic truncate max-w-xs" title={r.resolution.notes}>
                 "{r.resolution.notes}"

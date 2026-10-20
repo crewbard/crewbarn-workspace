@@ -2,70 +2,88 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { IconBook2, IconSearch } from '@tabler/icons-react'
-import { apiRequest } from '@/lib/api'
 import { usePermissions, PERM } from '@/hooks/usePermissions'
-import type { ReferenceCard } from '@/lib/referenceCards'
 import { formatSize } from '@/lib/referenceCardDocuments'
 import type { EstimateContext } from '@/lib/catalogOrders'
+import type { PickedPart } from '@/lib/catalogOrders'
 import { OpenDocument } from '@/components/magazine/OpenDocument'
+import { useShortcutLabel } from '@/hooks/useShortcuts'
+import { shortcutHostActive } from '@/lib/shortcutBus'
+import { onConnect } from '@/lib/workspaceScope'
 import {
   CATALOG_SHORTCUT_LABEL,
-  catalogsIn,
+  CATALOGS_KEY,
   isCatalogShortcut,
   lastCatalogPage,
+  loadCatalogs,
   matchCatalogs,
   onOpenCatalogs,
   recentCatalogIds,
   type Catalog,
 } from '@/lib/catalogs'
 
-const CARDS_KEY = ['reference-cards']
-const loadCards = () => apiRequest<{ cards: ReferenceCard[] }>('/v1/reference-cards')
-
 /**
  * Catalogues, from anywhere: Alt C, or the book in the header.
  *
- * Every PDF on every reference card, the ones used last at the top, each
+ * Every book in the catalog library, the ones used last at the top, each
  * opening at the page it was left on. Type to narrow; Enter opens the
  * first. Mounted once per shell -- the work app's top bar and Connect's
  * header -- and anything else can open it with openCatalogs().
  */
+/** The catalogs key as this person has it: their own in the work app, Alt C on Connect. */
+function useCatalogKeyLabel(): string | null {
+  const own = useShortcutLabel('catalogs')
+  return onConnect() ? CATALOG_SHORTCUT_LABEL : own
+}
+
 export function CatalogLauncher({ tone = 'chrome' }: { tone?: 'chrome' | 'light' }) {
   const { has } = usePermissions()
   const allowed = has(PERM.CATALOG_VIEW)
+  const keyLabel = useCatalogKeyLabel()
   const qc = useQueryClient()
 
   const [open, setOpen] = useState(false)
   const [reading, setReading] = useState<{ catalog: Catalog; page?: number } | null>(null)
   // Opened from an estimate: everything opened from here orders for it, until closed.
   const [estimate, setEstimate] = useState<EstimateContext | undefined>(undefined)
+  const [docked, setDocked] = useState(false)
+  const [linePicker, setLinePicker] = useState<((part: PickedPart) => Promise<string | void> | string | void) | null>(null)
 
-  const cards = useQuery({
-    queryKey: CARDS_KEY,
-    queryFn: loadCards,
+  useEffect(() => {
+    if (docked && reading) document.body.dataset.focusCatalogDock = 'true'
+    else delete document.body.dataset.focusCatalogDock
+    return () => { delete document.body.dataset.focusCatalogDock }
+  }, [docked, reading])
+
+  const list = useQuery({
+    queryKey: CATALOGS_KEY,
+    queryFn: loadCatalogs,
     enabled: allowed && open,
     staleTime: 60_000,
   })
-  const catalogs = useMemo(() => catalogsIn(cards.data?.cards ?? []), [cards.data])
+  const catalogs = useMemo(() => list.data?.catalogs ?? [], [list.data])
 
   useEffect(() => {
     if (!allowed) return
     const onKey = (e: KeyboardEvent) => {
-      if (!isCatalogShortcut(e)) return
+      // In the work app the keyboard shortcuts own this key (it may have been moved or turned off).
+      if (shortcutHostActive() || !isCatalogShortcut(e)) return
       e.preventDefault()
       setOpen((was) => !was)
     }
     window.addEventListener('keydown', onKey)
     // One catalogue asked for by id opens straight away; gone since, the list does.
-    const stop = onOpenCatalogs(({ documentId, page, estimate: forEstimate }) => {
+    const stop = onOpenCatalogs(({ documentId, page, estimate: forEstimate, docked: shouldDock, onPickLine }) => {
       setEstimate(forEstimate)
+      setDocked(Boolean(shouldDock && window.matchMedia('(min-width: 1280px)').matches))
+      setLinePicker(() => onPickLine ?? null)
       if (!documentId) {
         setOpen(true)
         return
       }
-      qc.fetchQuery({ queryKey: CARDS_KEY, queryFn: loadCards, staleTime: 60_000 })
+      qc.fetchQuery({ queryKey: CATALOGS_KEY, queryFn: loadCatalogs, staleTime: 60_000 })
         .then((data) => {
-          const catalog = catalogsIn(data.cards).find((c) => c.document.id === documentId)
+          const catalog = data.catalogs.find((c) => c.id === documentId)
           setOpen(!catalog)
           if (catalog) setReading({ catalog, page })
         })
@@ -84,9 +102,10 @@ export function CatalogLauncher({ tone = 'chrome' }: { tone?: 'chrome' | 'light'
       <button
         type="button"
         onClick={() => setOpen(true)}
-        title={`Catalogs (${CATALOG_SHORTCUT_LABEL})`}
+        title={keyLabel ? `Catalogs (${keyLabel})` : 'Catalogs'}
         aria-label="Catalogs"
         aria-keyshortcuts="Alt+C"
+        data-tour="catalogs-launch"
         className={
           tone === 'chrome'
             ? 'flex h-9 w-9 items-center justify-center rounded-md text-white/70 transition-colors hover:bg-white/10 hover:text-white'
@@ -101,8 +120,8 @@ export function CatalogLauncher({ tone = 'chrome' }: { tone?: 'chrome' | 'light'
         <Picker
           catalogs={catalogs}
           estimate={estimate}
-          loading={cards.isPending}
-          failed={cards.isError}
+          loading={list.isPending}
+          failed={list.isError}
           canUpload={has(PERM.CATALOG_EDIT)}
           onPick={(catalog) => {
             setOpen(false)
@@ -111,24 +130,33 @@ export function CatalogLauncher({ tone = 'chrome' }: { tone?: 'chrome' | 'light'
           onClose={() => {
             setOpen(false)
             // Nothing open for the estimate any more: Alt C is the shop's catalogues again.
-            if (!reading) setEstimate(undefined)
+            if (!reading) {
+              setEstimate(undefined)
+              setDocked(false)
+              setLinePicker(null)
+            }
           }}
         />
       )}
 
       {reading && (
         <OpenDocument
-          key={reading.catalog.document.id}
-          cardId={reading.catalog.card.id}
-          document={reading.catalog.document}
-          canEdit={has(PERM.CATALOG_EDIT) && reading.catalog.card.mine && reading.catalog.card.status !== 'approved'}
+          key={`${reading.catalog.id}:${reading.page ?? ''}`}
+          document={reading.catalog}
+          docked={docked}
+          canEdit={has(PERM.CATALOG_EDIT) && reading.catalog.editable}
           initialPage={reading.page}
           estimate={estimate}
+          onPickLine={linePicker ?? undefined}
           onClose={() => {
             setReading(null)
             setEstimate(undefined)
+            setDocked(false)
+            setLinePicker(null)
+            // Its "last opened" and page count changed.
+            void qc.invalidateQueries({ queryKey: CATALOGS_KEY })
           }}
-          onTabsSaved={() => void qc.invalidateQueries({ queryKey: ['reference-cards'] })}
+          onTabsSaved={() => void qc.invalidateQueries({ queryKey: CATALOGS_KEY })}
         />
       )}
     </>
@@ -168,8 +196,8 @@ function Picker({
     const found = matchCatalogs(catalogs, query)
     if (query.trim()) return { recent: [] as Catalog[], rest: found }
     const ids = recentCatalogIds()
-    const recent = ids.flatMap((id) => found.filter((c) => c.document.id === id))
-    return { recent, rest: found.filter((c) => !ids.includes(c.document.id)) }
+    const recent = ids.flatMap((id) => found.filter((c) => c.id === id))
+    return { recent, rest: found.filter((c) => !ids.includes(c.id)) }
   }, [catalogs, query])
   const rows = [...recent, ...rest]
 
@@ -193,10 +221,10 @@ function Picker({
   }
 
   const row = (catalog: Catalog, index: number) => {
-    const page = lastCatalogPage(catalog.document.id)
-    const tabs = catalog.document.tabs.length
+    const page = lastCatalogPage(catalog.id)
+    const tabs = catalog.tabs.length
     return (
-      <li key={catalog.document.id}>
+      <li key={catalog.id}>
         <button
           type="button"
           onClick={() => onPick(catalog)}
@@ -211,12 +239,12 @@ function Picker({
             <IconBook2 size={14} stroke={1.75} />
           </span>
           <span className="min-w-0 flex-1">
-            <span className="block truncate text-sm text-navy-900">{catalog.document.title}</span>
+            <span className="block truncate text-sm text-navy-900">{catalog.title}</span>
             <span className="block truncate text-xs text-slate-500">
               {[
-                catalog.card.title !== catalog.document.title ? catalog.card.title : null,
+                catalog.vendor,
                 tabs > 0 ? `${tabs} ${tabs === 1 ? 'tab' : 'tabs'}` : null,
-                formatSize(catalog.document.size_bytes),
+                formatSize(catalog.size_bytes),
               ].filter(Boolean).join(' · ')}
             </span>
           </span>
@@ -249,9 +277,7 @@ function Picker({
             aria-label="Find a catalog"
             className="flex-1 bg-transparent py-3.5 text-sm placeholder:text-slate-400 focus:outline-none"
           />
-          <kbd className="shrink-0 rounded border border-slate-200 px-1.5 py-0.5 font-mono text-[11px] text-slate-400">
-            {CATALOG_SHORTCUT_LABEL}
-          </kbd>
+          <CatalogKey />
         </div>
 
         {estimate && (
@@ -265,7 +291,7 @@ function Picker({
           {failed && <p className="px-4 py-6 text-center text-sm text-slate-500">The catalogs could not be loaded. Try again in a moment.</p>}
           {!loading && !failed && catalogs.length === 0 && (
             <p className="px-4 py-6 text-center text-sm text-slate-500">
-              No catalogs yet. A PDF added to a reference card shows up here.
+              No catalogs yet. Add a PDF catalog in the catalog library and it shows up here.
             </p>
           )}
           {!loading && catalogs.length > 0 && rows.length === 0 && (
@@ -289,15 +315,26 @@ function Picker({
         </div>
 
         <div className="flex flex-wrap items-center gap-x-4 gap-y-1 border-t border-slate-100 bg-slate-50 px-4 py-2 text-[11px] text-slate-500">
+          <Link to="/catalogs" onClick={onClose} data-tour="catalogs-launch-library" className="font-medium text-sky-700 hover:underline">Catalog library</Link>
           <Link to="/catalog/products" onClick={onClose} className="font-medium text-sky-700 hover:underline">Products</Link>
           <Link to="/catalog/services" onClick={onClose} className="font-medium text-sky-700 hover:underline">Services</Link>
           {canUpload && (
-            <Link to="/reference-cards" onClick={onClose} className="font-medium text-sky-700 hover:underline">Add a catalog</Link>
+            <Link to="/catalogs?add=1" onClick={onClose} className="font-medium text-sky-700 hover:underline">Add a catalog</Link>
           )}
           <span className="grow" />
           <span className="text-slate-400">↑↓ to move · ↵ to open · Esc to close</span>
         </div>
       </div>
     </div>
+  )
+}
+
+function CatalogKey() {
+  const label = useCatalogKeyLabel()
+  if (!label) return null
+  return (
+    <kbd className="shrink-0 rounded border border-slate-200 px-1.5 py-0.5 font-mono text-[11px] text-slate-400">
+      {label}
+    </kbd>
   )
 }

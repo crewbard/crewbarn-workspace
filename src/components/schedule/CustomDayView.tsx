@@ -17,6 +17,7 @@ import {
 // (which only appears once a drag starts) is detected on drop.
 const MEASURING = { droppable: { strategy: MeasuringStrategy.Always } }
 import { format } from 'date-fns'
+import { scheduleEventId } from '@/lib/schedule'
 import type { ScheduleCardDensity, ScheduleTimeOffBlock, ScheduleWorkOrder } from '@/types/schedule'
 import { matteStatusBorder, matteStatusFill, matteStatusTextColor, statusAccentColor } from '@/lib/statusColor'
 import { StatusIcon } from '@/lib/statusIcons'
@@ -37,8 +38,21 @@ import { EventContextMenu } from './EventContextMenu'
 import { EventHoverPreview } from './EventHoverPreview'
 import { CalendarTaskChips } from './CalendarTaskChips'
 import type { Task } from '@/lib/tasks'
+import { SUB_LANE_PREFIX, subLaneId, SUB_STATE_CLASS } from '@/lib/subLane'
 
 const UNASSIGNED_RESOURCE_ID = '__unassigned__'
+
+/** A job sent to a sub sits in the sub company's lane; any other, its tech's (or Unassigned). */
+function laneOf(e: ScheduleWorkOrder): string {
+  return e.sub ? subLaneId(e.sub) : e.lead_tech?.id ?? UNASSIGNED_RESOURCE_ID
+}
+
+interface DayLane {
+  id: string
+  title: string
+  /** A sub company's lane: its jobs move only in time, nothing is dropped in. */
+  sub?: boolean
+}
 
 /**
  * Day view with tech swim-lanes. One column per tech, plus an "Unassigned"
@@ -70,6 +84,8 @@ export interface CustomDayViewProps {
   onChangeStatus?: (id: string, statusId: string) => void
   onReassign?: (id: string, techAccountId: string | null) => void
   onChangeTime?: (id: string, startIso: string, endIso: string) => void
+  /** Right-click → Convert to job… on estimate cards. */
+  onConvertEstimate?: (estimateId: string) => void
   /** Drag a card onto the unschedule strip → remove from the calendar. */
   onUnschedule?: (id: string) => void
   /** Sidebar overlay element to portal the unschedule drop target into. */
@@ -92,6 +108,7 @@ export function CustomDayView({
   isLate,
   onChangeStatus,
   onReassign,
+  onConvertEstimate,
   onChangeTime,
   onUnschedule,
   unscheduleDropContainer,
@@ -143,7 +160,7 @@ export function CustomDayView({
     [events, date],
   )
 
-  const activeWo = activeId ? dayEvents.find((e) => e.id === activeId) ?? null : null
+  const activeWo = activeId ? dayEvents.find((e) => scheduleEventId(e) === activeId) ?? null : null
 
   const dayTimeOffBlocks = useMemo(
     () => timeOffBlocks.filter((block) => timeOffCoversDate(block, date)),
@@ -159,10 +176,12 @@ export function CustomDayView({
   // Group by lead tech for swim-lane columns. Always include "Unassigned"
   // so dispatcher has a target column for drag-out reassignment.
   const resources = useMemo(() => {
-    const map = new Map<string, { id: string; title: string }>()
+    const map = new Map<string, DayLane>()
     for (const e of dayEvents) {
       const t = e.lead_tech
-      if (t?.id) {
+      if (e.sub) {
+        map.set(subLaneId(e.sub), { id: subLaneId(e.sub), title: e.sub.name, sub: true })
+      } else if (t?.id) {
         map.set(t.id, { id: t.id, title: t.name || t.email || 'Tech' })
       } else {
         map.set(UNASSIGNED_RESOURCE_ID, { id: UNASSIGNED_RESOURCE_ID, title: 'Unassigned' })
@@ -187,11 +206,9 @@ export function CustomDayView({
     if (!map.has(UNASSIGNED_RESOURCE_ID)) {
       map.set(UNASSIGNED_RESOURCE_ID, { id: UNASSIGNED_RESOURCE_ID, title: 'Unassigned' })
     }
-    return Array.from(map.values()).sort((a, b) => {
-      if (a.id === UNASSIGNED_RESOURCE_ID) return 1
-      if (b.id === UNASSIGNED_RESOURCE_ID) return -1
-      return a.title.localeCompare(b.title)
-    })
+    // Techs, then sub companies, then Unassigned last.
+    const rank = (r: DayLane) => (r.id === UNASSIGNED_RESOURCE_ID ? 2 : r.sub ? 1 : 0)
+    return Array.from(map.values()).sort((a, b) => rank(a) - rank(b) || a.title.localeCompare(b.title))
   }, [dayEvents, dayTasks, dayTimeOffBlocks])
 
   const timeOffByResource = useMemo(() => {
@@ -208,7 +225,7 @@ export function CustomDayView({
   const eventsByResource = useMemo(() => {
     const map = new Map<string, ScheduleWorkOrder[]>()
     for (const e of dayEvents) {
-      const key = e.lead_tech?.id ?? UNASSIGNED_RESOURCE_ID
+      const key = laneOf(e)
       const arr = map.get(key) ?? []
       arr.push(e)
       map.set(key, arr)
@@ -241,7 +258,7 @@ export function CustomDayView({
       return
     }
 
-    const wo = dayEvents.find((w) => w.id === eventId)
+    const wo = dayEvents.find((w) => scheduleEventId(w) === eventId)
     if (!wo || !wo.scheduled_start_time) return
 
     const startMs = (e.active.data.current as { startMs?: number } | undefined)?.startMs
@@ -255,24 +272,28 @@ export function CustomDayView({
     const overResourceId = (e.over?.data?.current as { resourceId?: string } | undefined)?.resourceId
     let newTechId: string | null | undefined = undefined
     if (overResourceId) {
+      // A sub's job moves only in time (its tech is the sub's to choose), and
+      // no job is dropped onto a sub here -- that's "Sub this out" on the job.
+      if (overResourceId !== laneOf(wo) && (wo.sub || overResourceId.startsWith(SUB_LANE_PREFIX))) return
       // Compute new time from the day + the snapped Y.
       const initialY = (e.active.data.current as { initialY?: number } | undefined)?.initialY ?? 0
       const newY = Math.max(0, Math.min((SLOTS_PER_DAY - 1) * slotPx, initialY + yDelta))
       newStart = yToTime(date, newY, slotPx)
       // Tech reassignment if dropping into a different lane.
       const currentTechId = wo.lead_tech?.id ?? UNASSIGNED_RESOURCE_ID
-      if (overResourceId !== currentTechId) {
+      if (!wo.sub && overResourceId !== currentTechId) {
         newTechId = overResourceId === UNASSIGNED_RESOURCE_ID ? null : overResourceId
       }
     }
 
     const newEnd = new Date(newStart.getTime() + durationMs)
-    onReschedule(wo.id, newStart.toISOString(), newEnd.toISOString(), newTechId)
+    onReschedule(scheduleEventId(wo), newStart.toISOString(), newEnd.toISOString(), newTechId)
   }
 
   // Native-DnD drop of an unscheduled sidebar job → schedule at the cursor's
   // time on this date and assign the lane's tech.
   function handleNativeDrop(id: string, resourceId: string, y: number) {
+    if (resourceId.startsWith(SUB_LANE_PREFIX)) return
     const clampedY = Math.max(0, Math.min((SLOTS_PER_DAY - 1) * slotPx, y))
     const start = yToTime(date, clampedY, slotPx)
     const end = new Date(start.getTime() + 60 * 60000)
@@ -303,8 +324,13 @@ export function CustomDayView({
             onClose={() => setContextMenu(null)}
             onChangeStatus={(statusId) => onChangeStatus?.(contextMenu.wo.id, statusId)}
             onReassign={(techId) => onReassign?.(contextMenu.wo.id, techId)}
-            onChangeTime={onChangeTime ? (s, e) => onChangeTime(contextMenu.wo.id, s, e) : undefined}
+            onChangeTime={onChangeTime ? (s, e) => onChangeTime(scheduleEventId(contextMenu.wo), s, e) : undefined}
             onOpenDetail={() => onSelectEvent?.(contextMenu.wo)}
+            onConvertToJob={
+              contextMenu.wo.kind === 'estimate' && onConvertEstimate
+                ? () => onConvertEstimate(contextMenu.wo.id)
+                : undefined
+            }
           />
         )}
         {hoverPreview && !contextMenu && (
@@ -476,7 +502,7 @@ function ConflictMonitor({
       const activeId = String(e.active.id)
       const lane = eventsByResource.get(resourceId) ?? []
       const conflict = lane.some((ev) => {
-        if (ev.id === activeId || !ev.scheduled_start_time) return false
+        if (scheduleEventId(ev) === activeId || !ev.scheduled_start_time) return false
         const es = new Date(ev.scheduled_start_time).getTime()
         const ee = ev.scheduled_end_time
           ? new Date(ev.scheduled_end_time).getTime()
@@ -547,7 +573,7 @@ function TechColumn({
   date,
   cardDensity,
 }: {
-  resource: { id: string; title: string }
+  resource: DayLane
   events: ScheduleWorkOrder[]
   tasks: Task[]
   timeOffBlocks: ScheduleTimeOffBlock[]
@@ -586,11 +612,13 @@ function TechColumn({
   return (
     <div className="border-r border-slate-200 flex flex-col">
       <div
+        data-tour={`schedule-day-lane-${isUnassigned ? 'unassigned' : resource.sub ? 'sub' : 'tech'}`}
         className={`h-14 border-b border-slate-200 px-2 py-1 flex flex-col justify-center sticky top-0 z-10 ${
-          isUnassigned ? 'bg-slate-100 text-slate-500 italic' : 'bg-white text-slate-800'
+          isUnassigned ? 'bg-slate-100 text-slate-500 italic' : resource.sub ? 'bg-amber-50 text-slate-800' : 'bg-white text-slate-800'
         }`}
       >
         <div className="text-[12px] font-semibold truncate">{resource.title}</div>
+        {resource.sub && <div className="text-[10px] font-semibold uppercase tracking-wide text-amber-700">Sub company</div>}
         {timeOffBlocks.length > 0 && (
           <div className="text-[10px] font-semibold text-sky-700 not-italic truncate">Staff off</div>
         )}
@@ -631,7 +659,7 @@ function TechColumn({
         }}
         onDrop={(e) => {
           const id = e.dataTransfer.getData('text/plain')
-          if (!id) return
+          if (!id || resource.sub) return
           setNativeDropY(null)
           e.preventDefault()
           e.stopPropagation()
@@ -709,13 +737,13 @@ function TechColumn({
 
         {events.map((wo) => (
           <DraggableDayEvent
-            key={wo.id}
+            key={scheduleEventId(wo)}
             wo={wo}
             onSelectEvent={onSelectEvent}
             color={colorFor(wo)}
             textColor={textColorFor(colorFor(wo))}
             late={isLate(wo)}
-            layout={layouts.get(wo.id)}
+            layout={layouts.get(scheduleEventId(wo))}
             onContextMenu={onContextMenu}
             onHoverStart={onHoverStart}
             onHoverEnd={onHoverEnd}
@@ -792,7 +820,7 @@ function formatTimeOffRange(block: ScheduleTimeOffBlock): string {
 
 function CurrentTimeLine({ top }: { top: number }) {
   return (
-    <div className="pointer-events-none absolute left-0 right-0 z-20" style={{ top }}>
+    <div data-tour="schedule-now-line" className="pointer-events-none absolute left-0 right-0 z-20" style={{ top }}>
       <div className="border-t-2 border-red-500" />
       <span className="absolute -top-2 left-1 rounded-full bg-red-500 px-1.5 py-0.5 text-[9px] font-bold text-white shadow">
         Now
@@ -831,7 +859,7 @@ function buildRouteAlerts(events: ScheduleWorkOrder[], slotPx: number): Array<{ 
     if (gapMin <= 0) continue
     const miles = distanceMiles(a, b)
     const driveMin = Math.ceil(miles * 2.2)
-    if (driveMin > gapMin) out.push({ key: `${current.id}-${next.id}`, top: timeToY(currentEnd, slotPx) + 2, miles: Math.round(miles), gapMin })
+    if (driveMin > gapMin) out.push({ key: `${scheduleEventId(current)}-${scheduleEventId(next)}`, top: timeToY(currentEnd, slotPx) + 2, miles: Math.round(miles), gapMin })
   }
   return out
 }
@@ -885,7 +913,7 @@ function DraggableDayEvent({
   const height = durationToHeight(start, end, slotPx)
 
   const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
-    id: wo.id,
+    id: scheduleEventId(wo),
     data: {
       startMs: start.getTime(),
       durationMs: end.getTime() - start.getTime(),
@@ -920,6 +948,7 @@ function DraggableDayEvent({
   return (
     <div
       ref={setNodeRef}
+      data-tour="schedule-event"
       {...listeners}
       {...attributes}
       onClick={(e) => {
@@ -974,6 +1003,12 @@ function DraggableDayEvent({
     >
       <div className="font-semibold truncate">{customer}</div>
       <div className="text-[11px] opacity-90">{timeLabel}</div>
+      {wo.sub && (
+        <div className="mt-0.5 flex items-center gap-1 truncate text-[10px]">
+          <span className={`rounded px-1 font-semibold ${SUB_STATE_CLASS[wo.sub.state]}`}>{wo.sub.label}</span>
+          {wo.sub.tech_name && <span className="truncate opacity-80">{wo.sub.tech_name}</span>}
+        </div>
+      )}
       {showLocation && (
         <div className="text-[10px] opacity-75 truncate">📍 {wo.service_location?.nickname}</div>
       )}

@@ -1,3 +1,4 @@
+import { scheduleEventId } from '@/lib/schedule'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import {
   DndContext,
@@ -19,6 +20,7 @@ import {
 const MEASURING = { droppable: { strategy: MeasuringStrategy.Always } }
 import { addDays, endOfMonth, format, startOfMonth, startOfWeek } from 'date-fns'
 import type { ScheduleCardDensity, ScheduleTimeOffBlock, ScheduleWorkOrder } from '@/types/schedule'
+import { subLine } from '@/lib/subLane'
 import { matteStatusBorder, matteStatusFill, matteStatusTextColor, statusAccentColor } from '@/lib/statusColor'
 import { isSameDay } from './calendarUtils'
 import { EventBadges } from './EventBadges'
@@ -56,6 +58,8 @@ export interface CustomMonthViewProps {
   onChangeStatus?: (id: string, statusId: string) => void
   onReassign?: (id: string, techAccountId: string | null) => void
   onChangeTime?: (id: string, startIso: string, endIso: string) => void
+  /** Right-click → Convert to job… on estimate cards. */
+  onConvertEstimate?: (estimateId: string) => void
   /** Click a day header to jump to Day view for that date. */
   onJumpToDay?: (d: Date) => void
   /** Drag a card onto the "unschedule" strip → remove it from the calendar
@@ -82,6 +86,7 @@ export function CustomMonthView({
   isLate,
   onChangeStatus,
   onReassign,
+  onConvertEstimate,
   onChangeTime,
   onJumpToDay,
   onUnschedule,
@@ -172,7 +177,7 @@ export function CustomMonthView({
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
   )
 
-  const activeWo = activeId ? events.find((w) => w.id === activeId) ?? null : null
+  const activeWo = activeId ? events.find((w) => scheduleEventId(w) === activeId) ?? null : null
 
   function handleDragStart(e: DragStartEvent) {
     justDraggedRef.current = true
@@ -200,7 +205,7 @@ export function CustomMonthView({
       return
     }
 
-    const wo = events.find((w) => w.id === eventId)
+    const wo = events.find((w) => scheduleEventId(w) === eventId)
     if (!wo || !wo.scheduled_start_time) return
 
     const overDayKey = (e.over?.data?.current as { dayKey?: string } | undefined)?.dayKey
@@ -219,7 +224,7 @@ export function CustomMonthView({
     const durationMs = oldEnd.getTime() - oldStart.getTime()
     const newEnd = new Date(newStart.getTime() + durationMs)
 
-    onReschedule(wo.id, newStart.toISOString(), newEnd.toISOString())
+    onReschedule(scheduleEventId(wo), newStart.toISOString(), newEnd.toISOString())
   }
 
   const dayNames = useMemo(() => {
@@ -259,8 +264,13 @@ export function CustomMonthView({
             onClose={() => setContextMenu(null)}
             onChangeStatus={(statusId) => onChangeStatus?.(contextMenu.wo.id, statusId)}
             onReassign={(techId) => onReassign?.(contextMenu.wo.id, techId)}
-            onChangeTime={onChangeTime ? (s, e) => onChangeTime(contextMenu.wo.id, s, e) : undefined}
+            onChangeTime={onChangeTime ? (s, e) => onChangeTime(scheduleEventId(contextMenu.wo), s, e) : undefined}
             onOpenDetail={() => onSelectEvent?.(contextMenu.wo)}
+            onConvertToJob={
+              contextMenu.wo.kind === 'estimate' && onConvertEstimate
+                ? () => onConvertEstimate(contextMenu.wo.id)
+                : undefined
+            }
           />
         )}
         {hoverPreview && !contextMenu && (
@@ -427,6 +437,7 @@ function DayCell({
           type="button"
           onClick={() => onJumpToDay?.(day)}
           title="Jump to Day view"
+          data-tour={`schedule-month-${today ? 'today' : 'day'}`}
           className={`text-[11px] font-semibold rounded px-1.5 py-0.5 ${
             today
               ? 'bg-amber-500 text-white'
@@ -448,12 +459,12 @@ function DayCell({
       <div className="space-y-1">
         {events.map((wo) => (
           <DraggableMonthBar
-            key={wo.id}
+            key={scheduleEventId(wo)}
             wo={wo}
             color={colorFor(wo)}
             textColor={textColorFor(colorFor(wo))}
             late={isLate(wo)}
-            dimmed={activeId === wo.id}
+            dimmed={activeId === scheduleEventId(wo)}
             justDraggedRef={justDraggedRef}
             onSelectEvent={onSelectEvent}
             onContextMenu={onContextMenu}
@@ -561,7 +572,7 @@ function DraggableMonthBar({
 }) {
   const hoverTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
-  const { attributes, listeners, setNodeRef, isDragging } = useDraggable({ id: wo.id })
+  const { attributes, listeners, setNodeRef, isDragging } = useDraggable({ id: scheduleEventId(wo) })
 
   useEffect(() => () => {
     if (hoverTimerRef.current) clearTimeout(hoverTimerRef.current)
@@ -570,6 +581,7 @@ function DraggableMonthBar({
   return (
     <div
       ref={setNodeRef}
+      data-tour="schedule-event"
       {...listeners}
       {...attributes}
       onClick={(e) => {
@@ -632,7 +644,7 @@ function MonthBarContent({
   const fmt = (d: Date) =>
     d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }).toLowerCase()
   const timeRange = end ? `${fmt(start)} - ${fmt(end)}` : fmt(start)
-  const techName = wo.lead_tech?.name ?? null
+  const techName = wo.sub ? subLine(wo.sub) : wo.lead_tech?.name ?? null
   const showTech = cardDensity !== 'compact' && techName
   const showBadges = cardDensity === 'detailed'
   const statusName = wo.status?.name

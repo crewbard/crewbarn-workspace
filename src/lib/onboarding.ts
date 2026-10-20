@@ -55,10 +55,12 @@ export async function seedOnboardingCompanyAssets(
 
 export async function seedOnboardingInventoryStock(
   items: SeedOnboardingInventoryStockInput[],
+  /** PO-only override (lib/poOverride.ts), when the shop already requires POs. */
+  override: { override_reason?: string } = {},
 ): Promise<SeedOnboardingInventoryStockResponse> {
   return apiRequest<SeedOnboardingInventoryStockResponse>('/v1/onboarding/inventory-stock', {
     method: 'POST',
-    body: { items },
+    body: { items, ...override },
   })
 }
 

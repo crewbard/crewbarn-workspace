@@ -1,7 +1,7 @@
 import { useState, type ReactNode } from 'react'
 import { Link } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
-import { apiRequest } from '@/lib/api'
+import { ApiError, apiRequest } from '@/lib/api'
 import { useEstimates } from '@/hooks/useEstimates'
 import { useWarranties } from '@/hooks/useWarranties'
 import { useInvoices } from '@/hooks/useInvoices'
@@ -9,9 +9,11 @@ import { useDashboardSummary } from '@/hooks/useDashboardSummary'
 import { listConversations, type CommsConversation } from '@/lib/comms'
 import { MiniBarChart, DualBarChart, DualLineChart, StackedBarChart } from './MiniBarChart'
 import { Gauge } from './Gauge'
+import { LoadFailed } from './LoadFailed'
 import { TechMiniMap, type TechMarker } from './TechMiniMap'
 import { bucketByRange, bucketGrouped, type DashRange } from '@/lib/dashboardTime'
 import { TeamMessagesWidget } from './TeamMessagesWidget'
+import { CustomerMixCard } from '@/components/dashboard/CustomerMixCard'
 
 /** Distinct, repeatable color palette for per-tech / per-method segments. */
 const SEGMENT_PALETTE = [
@@ -190,10 +192,7 @@ const DASH_PERIOD_LABEL: Record<DashRange, string> = {
 function CashCollectedWidget({ range }: { range: DashRange }) {
   const q = useQuery({
     queryKey: ['dash', 'payments-received'],
-    queryFn: () =>
-      apiRequest<{ data: PaymentRow[] }>('/v1/payments?status=received&per_page=500').catch(
-        () => ({ data: [] as PaymentRow[] }),
-      ),
+    queryFn: () => apiRequest<{ data: PaymentRow[] }>('/v1/payments?status=received&per_page=500'),
     staleTime: 60_000,
   })
   const [mode, setMode] = useState<CashBreakdown>(() => {
@@ -232,6 +231,8 @@ function CashCollectedWidget({ range }: { range: DashRange }) {
     <WidgetCard title="Cash collected" to="/accounting/cash-drawer" toLabel="Cash drawer →" accent="emerald" fill>
       {q.isLoading ? (
         <Loading rows={3} />
+      ) : q.isError ? (
+        <LoadFailed error={q.error} what="payments" onRetry={() => void q.refetch()} />
       ) : (
         <>
           <div className="flex items-baseline justify-between gap-3 mb-1 flex-wrap shrink-0">
@@ -285,7 +286,10 @@ function MoneyInOutWidget({ range }: { range: DashRange }) {
   }))
   return (
     <WidgetCard title="Money in / out" to="/accounting" toLabel="Money →" accent="emerald" fill>
-      {q.isLoading || !d ? (
+      {q.isError ? (
+        // Was a skeleton forever on a failed load.
+        <LoadFailed error={q.error} what="money in and out" onRetry={() => void q.refetch()} />
+      ) : q.isLoading || !d ? (
         <Loading rows={3} />
       ) : (
         <>
@@ -352,6 +356,8 @@ function OutstandingBalanceWidget() {
     <WidgetCard title="Outstanding balance" to="/accounting" toLabel="Money →" accent="amber" fill>
       {data.isLoading ? (
         <Loading rows={3} />
+      ) : data.isError ? (
+        <LoadFailed error={data.error} what="open invoices" onRetry={() => void data.refetch()} />
       ) : (
         <>
           <div className="shrink-0">
@@ -425,10 +431,7 @@ function ReceivablesWidget({ range }: { range: DashRange }) {
   const inv = useInvoices({ per_page: 500 })
   const pay = useQuery({
     queryKey: ['dash', 'payments-received'],
-    queryFn: () =>
-      apiRequest<{ data: PaymentRow[] }>('/v1/payments?status=received&per_page=500').catch(
-        () => ({ data: [] as PaymentRow[] }),
-      ),
+    queryFn: () => apiRequest<{ data: PaymentRow[] }>('/v1/payments?status=received&per_page=500'),
     staleTime: 60_000,
     enabled: view === 'expected',
   })
@@ -454,6 +457,18 @@ function ReceivablesWidget({ range }: { range: DashRange }) {
         data={terms.map((t) => ({ label: t.term, cents: t.cents }))}
         colorAt={(i) => colorFor(terms[i].term)}
         fill
+      />
+    )
+  } else if (pay.isError || inv.isError) {
+    // vs Collected needs both; a failed half would chart as nothing collected.
+    body = (
+      <LoadFailed
+        error={pay.error ?? inv.error}
+        what="payments and invoices"
+        onRetry={() => {
+          if (pay.isError) void pay.refetch()
+          if (inv.isError) void inv.refetch()
+        }}
       />
     )
   } else {
@@ -484,6 +499,8 @@ function ReceivablesWidget({ range }: { range: DashRange }) {
     <WidgetCard title="Receivables (Net 30)" to="/accounting" toLabel="Money →" accent="amber" fill>
       {rx.isLoading ? (
         <Loading rows={3} />
+      ) : rx.isError ? (
+        <LoadFailed error={rx.error} what="receivables" onRetry={() => void rx.refetch()} />
       ) : (
         <>
           <div className="flex items-baseline justify-between gap-3 mb-1 flex-wrap shrink-0">
@@ -534,6 +551,8 @@ function RevenueGaugeWidget({ range }: { range: DashRange }) {
     <WidgetCard title="Revenue" to="/accounting" toLabel="Money →" accent="sky" fill>
       {loading ? (
         <Loading rows={3} />
+      ) : s.isError ? (
+        <LoadFailed error={s.error} what="revenue" onRetry={() => void s.refetch()} />
       ) : (
         <>
           <div className="flex-1 min-h-0 flex items-end justify-center">
@@ -577,6 +596,8 @@ function AvgRevenuePerJobWidget({ range }: { range: DashRange }) {
     <WidgetCard title="Avg revenue / job" to="/jobs" toLabel="Jobs →" accent="emerald">
       {q.isLoading ? (
         <Loading rows={2} />
+      ) : q.isError ? (
+        <LoadFailed error={q.error} what="revenue per job" onRetry={() => void q.refetch()} />
       ) : (
         <div className="flex h-full flex-col">
           <div className="text-3xl font-bold text-navy-900 text-center">{fmtUsd(d.avg_cents)}</div>
@@ -620,13 +641,21 @@ function CompanyMetricsWidget({ range }: { range: DashRange }) {
     { label: `Net (${pl})`, value: fmtUsd(curr.net_cents), tone: curr.net_cents >= 0 ? 'text-emerald-700' : 'text-red-700' },
     { label: 'Outstanding', value: fmtUsd(outstanding), tone: 'text-amber-700' },
     { label: 'Open invoices', value: String(openCount) },
-    { label: 'Accepted est.', value: fmtUsd(acceptedTotal) },
+    {
+      label: 'Accepted est.',
+      // Its own load: a failure must not read as $0 (a 403 shows a dash).
+      value: approved.isError
+        ? approved.error instanceof ApiError && approved.error.status === 403 ? '—' : 'Unavailable'
+        : fmtUsd(acceptedTotal),
+    },
   ]
 
   return (
     <WidgetCard title="Company metrics" accent="slate">
       {dash.isLoading ? (
         <Loading rows={3} />
+      ) : dash.isError ? (
+        <LoadFailed error={dash.error} what="company metrics" onRetry={() => void dash.refetch()} />
       ) : (
         <div className="grid grid-cols-1 xl:grid-cols-[minmax(420px,0.9fr)_minmax(520px,1.7fr)] gap-3 flex-1 min-h-0">
           <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-2 gap-2 content-start">
@@ -679,6 +708,8 @@ function EstimatesAcceptedWidget() {
     <WidgetCard title="Estimates accepted — ready to schedule" to="/estimates?status=approved" accent="emerald">
       {q.isLoading ? (
         <Loading />
+      ) : q.isError ? (
+        <LoadFailed error={q.error} what="accepted estimates" onRetry={() => void q.refetch()} />
       ) : rows.length === 0 ? (
         <Empty>Nothing to convert right now.</Empty>
       ) : (
@@ -709,6 +740,8 @@ function EstimatesWaitingWidget() {
     <WidgetCard title="Estimates waiting for approval" to="/estimates?status=sent" accent="slate">
       {q.isLoading ? (
         <Loading />
+      ) : q.isError ? (
+        <LoadFailed error={q.error} what="sent estimates" onRetry={() => void q.refetch()} />
       ) : rows.length === 0 ? (
         <Empty>Every sent estimate has been actioned.</Empty>
       ) : (
@@ -735,8 +768,7 @@ function EstimatesWaitingWidget() {
 function UnansweredMessagesWidget() {
   const q = useQuery({
     queryKey: ['dash', 'unanswered-messages'],
-    queryFn: () =>
-      listConversations({ unread: true }).catch(() => [] as CommsConversation[]),
+    queryFn: () => listConversations({ unread: true }),
     staleTime: 30_000,
     refetchInterval: 60_000,
   })
@@ -747,6 +779,8 @@ function UnansweredMessagesWidget() {
     <WidgetCard title="Unanswered messages" to="/communications" toLabel="Inbox →" accent="sky">
       {q.isLoading ? (
         <Loading />
+      ) : q.isError ? (
+        <LoadFailed error={q.error} what="messages" onRetry={() => void q.refetch()} />
       ) : unanswered.length === 0 ? (
         <Empty>Inbox is clear — no one's waiting on a reply.</Empty>
       ) : (
@@ -783,10 +817,7 @@ interface Position {
 function TechsLiveWidget() {
   const q = useQuery({
     queryKey: ['dash', 'tech-positions'],
-    queryFn: () =>
-      apiRequest<{ data: { positions: Position[] } }>('/v1/dispatch/positions').catch(
-        () => ({ data: { positions: [] as Position[] } }),
-      ),
+    queryFn: () => apiRequest<{ data: { positions: Position[] } }>('/v1/dispatch/positions'),
     staleTime: 15_000,
     refetchInterval: 30_000,
   })
@@ -807,6 +838,8 @@ function TechsLiveWidget() {
     <WidgetCard title="Techs on the map" to="/dispatch" toLabel="Open full map →" accent="sky">
       {q.isLoading ? (
         <Loading rows={2} />
+      ) : q.isError ? (
+        <LoadFailed error={q.error} what="where the techs are" onRetry={() => void q.refetch()} />
       ) : (
         <div className="flex flex-col h-full gap-2">
           <div className="text-xs text-slate-500">
@@ -833,10 +866,7 @@ interface TurnoverRow {
 function PendingTurnoverWidget() {
   const q = useQuery({
     queryKey: ['dash', 'pending-turnover'],
-    queryFn: () =>
-      apiRequest<{ data: TurnoverRow[] }>('/v1/payments?status=pending_turnover').catch(
-        () => ({ data: [] as TurnoverRow[] }),
-      ),
+    queryFn: () => apiRequest<{ data: TurnoverRow[] }>('/v1/payments?status=pending_turnover'),
     staleTime: 30_000,
     refetchInterval: 60_000,
   })
@@ -846,6 +876,8 @@ function PendingTurnoverWidget() {
     <WidgetCard title="Cash to turn in (from techs)" to="/accounting/cash-drawer" toLabel="Confirm →" accent="amber">
       {q.isLoading ? (
         <Loading />
+      ) : q.isError ? (
+        <LoadFailed error={q.error} what="cash waiting to be turned in" onRetry={() => void q.refetch()} />
       ) : rows.length === 0 ? (
         <Empty>No field collections waiting to be turned in.</Empty>
       ) : (
@@ -894,7 +926,10 @@ function NeedsAttentionWidget() {
   const s = q.data?.data
   return (
     <WidgetCard title="Needs attention" to="/jobs" accent="rose">
-      {q.isLoading || !s ? (
+      {q.isError ? (
+        // Was a skeleton forever on a failed load.
+        <LoadFailed error={q.error} what="jobs that need attention" onRetry={() => void q.refetch()} />
+      ) : q.isLoading || !s ? (
         <Loading rows={3} />
       ) : (
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-2">
@@ -956,6 +991,8 @@ function InspectionsDueWidget() {
     <WidgetCard title="Inspections due (30 days)" accent="amber">
       {q.isLoading ? (
         <Loading />
+      ) : q.isError ? (
+        <LoadFailed error={q.error} what="inspections" onRetry={() => void q.refetch()} />
       ) : rows.length === 0 ? (
         <Empty>No inspections due in the next month.</Empty>
       ) : (
@@ -981,12 +1018,14 @@ function InspectionsDueWidget() {
 // ---------- Warranties expiring ----------
 
 function WarrantiesWidget() {
-  const { data, isLoading } = useWarranties({ expiring_within: 30, per_page: 25 })
-  const rows = data ?? []
+  const q = useWarranties({ expiring_within: 30, per_page: 25 })
+  const rows = q.data ?? []
   return (
     <WidgetCard title="Warranties expiring (30 days)" to="/warranties?status=active" accent="amber">
-      {isLoading ? (
+      {q.isLoading ? (
         <Loading />
+      ) : q.isError ? (
+        <LoadFailed error={q.error} what="warranties" onRetry={() => void q.refetch()} />
       ) : rows.length === 0 ? (
         <Empty>No warranties expiring this month.</Empty>
       ) : (
@@ -1045,6 +1084,7 @@ export const DASHBOARD_WIDGETS: DashboardWidgetDef[] = [
   { id: 'company-metrics', title: 'Company metrics', description: 'Headline numbers: collected, spent, net, outstanding.', span: 2, Component: ({ range }) => <CompanyMetricsWidget range={range} /> },
   { id: 'revenue-gauge', title: 'Revenue', description: 'Collection gauge — collected vs outstanding.', span: 1, Component: ({ range }) => <RevenueGaugeWidget range={range} /> },
   { id: 'avg-job-revenue', title: 'Avg revenue / job', description: 'Average revenue per completed job over the window.', span: 1, Component: ({ range }) => <AvgRevenuePerJobWidget range={range} /> },
+  { id: 'customer-mix', title: 'New vs returning customers', description: 'New customers, and jobs from new vs returning customers, by day, week, month or year.', span: 2, Component: () => <CustomerMixCard /> },
   { id: 'money-flow', title: 'Money in / out', description: 'Cash in (payments) vs out (sub payouts + POs) over time.', span: 2, Component: ({ range }) => <MoneyInOutWidget range={range} /> },
   { id: 'cash-collected', title: 'Cash collected', description: 'Payments received over time (Day/Month/Year).', span: 2, Component: ({ range }) => <CashCollectedWidget range={range} /> },
   { id: 'outstanding-balance', title: 'Outstanding balance', description: 'Open invoice balance, current vs overdue.', span: 1, Component: () => <OutstandingBalanceWidget /> },
@@ -1066,6 +1106,7 @@ export const DEFAULT_WIDGET_IDS: string[] = [
   'company-metrics',
   'revenue-gauge',
   'avg-job-revenue',
+  'customer-mix',
   'money-flow',
   'receivables',
   'outstanding-balance',

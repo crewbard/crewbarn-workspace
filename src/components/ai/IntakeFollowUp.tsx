@@ -35,7 +35,7 @@ export function IntakeFollowUp({ draft }: { draft: AiIntakeDraft }) {
     setCopyState('')
   }
   return <details className="my-4 rounded-xl border border-amber-200 bg-white p-4">
-    <summary className="cursor-pointer font-bold text-navy-900">Ask for missing details · human-reviewed draft</summary>
+    <summary data-tour="intake-follow-up-open" className="cursor-pointer font-bold text-navy-900">Ask for missing details · human-reviewed draft</summary>
     <p className="mt-2 text-sm text-slate-600">Check the conversation first, then select only what is still missing. These are templates, not AI-generated conclusions. Nothing is sent, booked or learned here.</p>
     <div className="mt-3 grid gap-2 sm:grid-cols-2">{questions.map(([key, label]) => <label key={key} className="flex items-center gap-2 rounded-lg border border-slate-200 p-3 text-sm"><input type="checkbox" checked={selected.includes(key)} onChange={e => setSelected(current => e.target.checked ? [...current, key] : current.filter(item => item !== key))} />{label}</label>)}</div>
     <button type="button" disabled={!selected.length} onClick={build} className="mt-3 rounded-lg bg-amber-500 px-4 py-2 text-sm font-bold disabled:opacity-40">Prepare wording</button>

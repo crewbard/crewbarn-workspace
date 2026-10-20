@@ -21,11 +21,14 @@ import { createPortal } from 'react-dom'
  * the server is handing out now. The build hash is the version — nothing extra
  * to emit, bump, or keep in sync.
  *
- * What the user sees: once, a centred card — what changed (from the deployed
- * /whats-new.json), why a reload is needed, Reload now / Close for now. Closing
- * leaves a small pill at the bottom so they can reload when they're done with
- * whatever they were in the middle of. The pill never goes away on its own:
- * a stale tab eventually breaks, and the pill is the way out.
+ * What the user sees: when the deploy brought release notes this browser has
+ * not seen, once, a centred card — what changed (from the deployed
+ * /whats-new.json), why a reload is needed, Reload now / Close for now.
+ * Closing leaves a small pill at the bottom so they can reload when they're
+ * done with whatever they were in the middle of. A deploy with nothing new to
+ * announce goes straight to the pill: no card repeating notes they already
+ * read. The pill never goes away on its own: a stale tab eventually breaks,
+ * and the pill is the way out.
  */
 
 const CHECK_INTERVAL_MS = 5 * 60 * 1000
@@ -95,10 +98,10 @@ const clean = (xs: unknown): string[] =>
  * this browser saw; a browser that has never seen the card gets just the
  * newest release. Versions sort as strings (YYYY-MM-DD + letter).
  */
-async function deployedWhatsNew(): Promise<{ items: string[]; latest: string; catchUp: boolean }> {
+async function deployedWhatsNew(): Promise<{ items: string[]; latest: string }> {
   try {
     const res = await fetch(`/whats-new.json?_v=${Date.now()}`, { cache: 'no-store' })
-    if (!res.ok) return { items: [], latest: '', catchUp: false }
+    if (!res.ok) return { items: [], latest: '' }
     const data = (await res.json()) as WhatsNew
     const releases: Release[] = Array.isArray(data.releases)
       ? data.releases.map((r) => ({ version: String(r?.version ?? ''), items: clean(r?.items) })).filter((r) => r.version)
@@ -112,23 +115,15 @@ async function deployedWhatsNew(): Promise<{ items: string[]; latest: string; ca
 
     /*
      * Not every deploy carries release notes — a docs change, a fix with
-     * nothing worth announcing, a rebuild. The build hash moves, this card
-     * appears, and with nothing newer than the last version this browser
-     * saw it appeared EMPTY: "Reload to get the new changes", and then no
-     * changes. From the outside that is indistinguishable from the notes
-     * never being written.
-     *
-     * So when there is nothing newer, fall back to the most recent notes
-     * and say that is what they are. A card that repeats itself is a great
-     * deal better than one that asks you to reload for changes it will not
-     * name.
+     * nothing worth announcing, a rebuild, work still switched off. Then
+     * there is nothing newer than what this browser saw, and nothing comes
+     * back: the banner shows only the Reload pill. (It used to repeat the
+     * latest notes as "Most recent changes", so every quiet deploy put the
+     * same card back in front of everyone.)
      */
-    const catchUp = fresh.length === 0
-    const shown = catchUp ? releases.slice(0, 1) : fresh
-
-    return { items: shown.flatMap((r) => r.items).slice(0, 40), latest, catchUp }
+    return { items: fresh.flatMap((r) => r.items).slice(0, 40), latest }
   } catch {
-    return { items: [], latest: '', catchUp: false }
+    return { items: [], latest: '' }
   }
 }
 
@@ -144,7 +139,6 @@ function reloadNow() {
 export function BuildUpdateBanner() {
   const [stale, setStale] = useState(false)
   const [items, setItems] = useState<string[]>([])
-  const [catchUp, setCatchUp] = useState(false)
   const [latest, setLatest] = useState('')
   // 'card' once; 'pill' after Close for now.
   const [mode, setMode] = useState<'card' | 'pill'>('card')
@@ -168,9 +162,12 @@ export function BuildUpdateBanner() {
         return
       }
       const notes = await deployedWhatsNew()
+      // Nothing new to announce: just the pill. Unless this tab is already
+      // breaking (a retired file), when the card says to reload now.
+      const breaking = reason === 'retired-chunk' || reason === 'retired-asset'
       setItems(notes.items)
-      setCatchUp(notes.catchUp)
       setLatest(notes.latest)
+      setMode(notes.items.length > 0 || breaking ? 'card' : 'pill')
       setStale(true)
     },
     [stale],
@@ -315,9 +312,7 @@ export function BuildUpdateBanner() {
 
         {items.length > 0 && (
           <div className="min-h-0 overflow-y-auto px-5 py-4">
-            <div className="text-[11px] font-bold uppercase tracking-wider text-slate-500">
-              {catchUp ? 'Most recent changes' : "What's new"}
-            </div>
+            <div className="text-[11px] font-bold uppercase tracking-wider text-slate-500">What's new</div>
             <ul className="mt-2 space-y-1.5">
               {items.map((it, i) => (
                 <li key={i} className="flex gap-2 text-sm text-slate-700">

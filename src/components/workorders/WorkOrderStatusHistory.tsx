@@ -174,7 +174,7 @@ export function WorkOrderStatusHistory({
   ].sort((a, b) => b.at - a.at)
 
   return (
-    <section className="bg-white border border-slate-200 rounded-xl shadow-sm p-5">
+    <section data-tour="job-status-history" className="bg-white border border-slate-200 rounded-xl shadow-sm p-5">
       <div className="flex items-baseline justify-between mb-3">
         <h2 className="text-sm font-semibold text-navy-900 uppercase tracking-wider">
           Status history

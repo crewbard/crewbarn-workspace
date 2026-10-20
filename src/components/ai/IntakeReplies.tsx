@@ -9,7 +9,7 @@ export function IntakeReplies({ draft }: { draft: AiIntakeDraft }) {
   const [open, setOpen] = useState(false)
   const thread = draft.comms_message?.conversation_id
   const replies = useQuery({ queryKey: ['intake-replies', draft.id], enabled: open && Boolean(thread), refetchInterval: open ? 30_000 : false, queryFn: () => apiRequest<{ data: Reply[]; has_more: boolean }>(`/v1/ai/intake/drafts/${encodeURIComponent(draft.id)}/replies`) })
-  return <details className="my-4 rounded-xl border border-slate-200 bg-white p-4" onToggle={event => setOpen(event.currentTarget.open)}>
+  return <details data-tour="intake-replies" className="my-4 rounded-xl border border-slate-200 bg-white p-4" onToggle={event => setOpen(event.currentTarget.open)}>
     <summary className="cursor-pointer font-bold text-navy-900">Review newer customer messages</summary>
     <p className="mt-2 text-sm text-slate-600">Inbound messages received after the original intake message, newest first. They may concern another request. Opening this panel does not mark messages read, approve work, or change any job.</p>
     {!thread && <p className="mt-3 text-sm">No linked source conversation. Match the customer and conversation before using a reply.</p>}

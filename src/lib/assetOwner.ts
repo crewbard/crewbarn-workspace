@@ -1,3 +1,4 @@
+import { installDeviceTransport, isApiUrl, storeSession, clearSession, type BoundSession } from './deviceProof'
 
 /**
  * Signing in as the owner of the thing you just scanned.
@@ -19,6 +20,17 @@
 const API_BASE = import.meta.env.VITE_API_URL || 'https://api.crewbarn.com'
 
 const TOKEN_KEY = 'crewbarn_asset_owner_token'
+let transport: typeof fetch | undefined
+/** This credential namespace never borrows the dashboard's identity or tenant. */
+export function ownerFetch(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
+  const request = new Request(input, init)
+  if (!isApiUrl(request.url, API_BASE)) throw new Error('That address cannot be opened with this sign-in.')
+  transport ??= installDeviceTransport(API_BASE, TOKEN_KEY, token => {
+    if (getOwnerToken() === token) clearOwnerToken()
+  }, false)
+  return transport(request)
+}
+
 
 export interface OwnerIdentity {
   id: string
@@ -37,21 +49,13 @@ export function getOwnerToken(): string | null {
   }
 }
 
-export function setOwnerToken(token: string): void {
-  try {
-    localStorage.setItem(TOKEN_KEY, token)
-  } catch {
-    // As above: not being able to remember it is not a reason to fail.
-  }
+export function setOwnerToken(token: string, session?: BoundSession): void {
+  // The existing card stores the same response token a second time.
+  if (session === undefined && getOwnerToken() === token) return
+  storeSession(TOKEN_KEY, token, session)
 }
 
-export function clearOwnerToken(): void {
-  try {
-    localStorage.removeItem(TOKEN_KEY)
-  } catch {
-    // Nothing to do.
-  }
-}
+export function clearOwnerToken(): void { clearSession(TOKEN_KEY) }
 
 /**
  * The same `/v1/portal/auth/login` the customer portal uses.
@@ -64,15 +68,16 @@ export async function signInAsOwner(
   email: string,
   password: string,
 ): Promise<{ token: string; identity: OwnerIdentity }> {
-  const res = await fetch(`${API_BASE}/v1/portal/auth/login`, {
+  const res = await ownerFetch(`${API_BASE}/v1/portal/auth/login`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
     body: JSON.stringify({ email, password }),
   })
 
-  const body = (await res.json().catch(() => ({}))) as {
+  const body = (await res.json().catch(() => ({}))) as BoundSession & {
     token?: string
-    data?: { token?: string; customer?: OwnerIdentity }
+    customer?: OwnerIdentity
+    data?: BoundSession & { token?: string; customer?: OwnerIdentity }
     message?: string
   }
 
@@ -83,26 +88,27 @@ export async function signInAsOwner(
   const token = body.token ?? body.data?.token
 
   if (!token) {
-    throw new Error('Signed in, but no session came back. Try again.')
+    throw new Error('Sign-in did not finish. Please try again.')
   }
 
+  setOwnerToken(token, body.token ? body : body.data)
   return {
     token,
-    identity: body.data?.customer ?? { id: '', email, first_name: null, last_name: null },
+    identity: body.customer ?? body.data?.customer ?? { id: '', email, first_name: null, last_name: null },
   }
 }
 
 /** Who is signed in on this origin, or null. */
 export async function fetchOwnerIdentity(token: string): Promise<OwnerIdentity | null> {
   try {
-    const res = await fetch(`${API_BASE}/v1/portal/auth/me`, {
+    const res = await ownerFetch(`${API_BASE}/v1/portal/auth/me`, {
       headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' },
     })
 
     if (!res.ok) {
-      // An expired or revoked session. Forget it rather than keep
-      // sending a token that will never work again.
-      clearOwnerToken()
+      // Only a matching expired or revoked session forgets this credential.
+      // A 5xx or other hiccup keeps it, so a brief outage doesn't sign the owner out.
+      if (res.status === 401 && getOwnerToken() === token) clearOwnerToken()
       return null
     }
 

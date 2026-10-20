@@ -1,7 +1,9 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { TerminalWaitPanel } from '@/components/TerminalWaitPanel'
+import { GoDaddyLinkOverlay } from '@/components/GoDaddyLinkOverlay'
 import { apiRequest, type ApiError } from '@/lib/api'
+import { linkSaleToInvoice, saleLabel, type GoDaddySale } from '@/lib/godaddyLink'
 
 /**
  * Receive a customer payment that can cover multiple invoices in one
@@ -162,7 +164,17 @@ export function ReceivePaymentModal({
   useEffect(() => {
     if (!terminalId && terminals.length > 0) setTerminalId(terminals[0].id)
   }, [terminals, terminalId])
-  const visibleMethodOptions = methodOptions.filter((m) => m.value !== 'godaddy_terminal' || terminals.length > 0)
+  // Which processor the company connected. "Card via Stripe" charges through
+  // its own Stripe only; with none it isn't offered (never CrewBarn's own).
+  const fieldConfigQ = useQuery({
+    queryKey: ['payments-field-config'],
+    queryFn: () => apiRequest<{ data: { processor: 'stripe' | 'godaddy' | null } }>('/v1/payments/field-config'),
+    staleTime: 60_000,
+  })
+  const stripeConnected = fieldConfigQ.data?.data.processor === 'stripe'
+  const visibleMethodOptions = methodOptions.filter(
+    (m) => (m.value !== 'godaddy_terminal' || terminals.length > 0) && (m.value !== 'portal_stripe' || stripeConnected),
+  )
 
   // Once pushed, the modal becomes the waiting screen.
   const [waiting, setWaiting] = useState<{ paymentId: string; terminalName: string; amountCents: number } | null>(null)
@@ -181,6 +193,13 @@ export function ReceivePaymentModal({
 
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
+
+  // GoDaddy → Link payment (docs/GODADDY-LINK-PAYMENT-PLAN.md). The overlay
+  // is open for one invoice; a picked sale pays that invoice only, its tip
+  // comes from GoDaddy, and nothing becomes credit.
+  const [linkFor, setLinkFor] = useState<string | null>(null)
+  const [linked, setLinked] = useState<{ sale: GoDaddySale; invoiceId: string } | null>(null)
+  const [linkedExisting, setLinkedExisting] = useState<string | null>(null)
 
   // Seed allocation defaults once invoices arrive.
   //
@@ -231,6 +250,37 @@ export function ReceivePaymentModal({
   function setAllocFor(id: string, cents: number) {
     setAllocs((prev) => ({ ...prev, [id]: Math.max(0, cents) }))
   }
+
+  const tickedInvoiceIds = Object.entries(allocs).filter(([, c]) => c > 0).map(([id]) => id)
+
+  function applyLinkedSale(sale: GoDaddySale, invoiceId: string) {
+    setLinked({ sale, invoiceId })
+    setLinkFor(null)
+    setAllocs(Object.fromEntries(Object.keys(allocs).map((id) => [id, id === invoiceId ? sale.applies_cents : 0])))
+    setTipDollars(sale.tip_cents > 0 ? (sale.tip_cents / 100).toFixed(2) : '')
+    setTipTechId(sale.tech_account_id ?? '')
+    setCreditDollars('')
+    setReference(saleLabel(sale))
+  }
+
+  function unlinkSale() {
+    setLinked(null)
+    setReference('')
+    setTipDollars('')
+  }
+
+  const linkNew = useMutation({
+    mutationFn: () =>
+      linkSaleToInvoice(linked!.invoiceId, linked!.sale.id, tipCents > 0 ? tipTechId || null : null, notes.trim() || null),
+    onSuccess: (res) => {
+      qc.invalidateQueries({ queryKey: ['invoices'] })
+      qc.invalidateQueries({ queryKey: ['customer-outstanding-invoices', customerId] })
+      qc.invalidateQueries({ queryKey: ['payments'] })
+      qc.invalidateQueries({ queryKey: ['godaddy-sales'] })
+      onCreated?.(res.id)
+      onClose()
+    },
+  })
 
   const create = useMutation({
     mutationFn: () =>
@@ -340,7 +390,9 @@ export function ReceivePaymentModal({
       // Card-via-Stripe takes a different path — staged payment +
       // hosted card form in a new tab. All other methods record
       // immediately (cash, check, manual card, already-charged card).
-      if (method === 'portal_stripe') {
+      if (linked) {
+        await linkNew.mutateAsync()
+      } else if (method === 'portal_stripe') {
         await stripeCheckout.mutateAsync()
       } else if (method === 'godaddy_terminal') {
         if (!terminalId) throw new Error('Pick a terminal.')
@@ -365,6 +417,7 @@ export function ReceivePaymentModal({
     >
       <div
         onClick={(e) => e.stopPropagation()}
+        data-tour="receive-payment"
         className="bg-white rounded-2xl shadow-xl max-w-3xl w-full max-h-[92vh] flex flex-col"
       >
         {waiting ? (
@@ -387,7 +440,7 @@ export function ReceivePaymentModal({
           />
         ) : (
         <>
-        <div className="flex items-center justify-between gap-3 border-b border-slate-200 px-5 py-3">
+        <div data-tour="receive-payment-head" className="flex items-center justify-between gap-3 border-b border-slate-200 px-5 py-3">
           <div>
             <h2 className="text-base font-semibold text-slate-900">Receive payment</h2>
             <div className="text-xs text-slate-500">{customerName}</div>
@@ -402,6 +455,21 @@ export function ReceivePaymentModal({
           </button>
         </div>
 
+        {linkFor && (
+          <GoDaddyLinkOverlay
+            invoiceId={linkFor}
+            onPick={(sale) => applyLinkedSale(sale, linkFor)}
+            onLinkedExisting={(payment, sale) => {
+              setLinkFor(null)
+              setLinkedExisting(
+                `Linked ${payment.receipt_number ?? 'the payment already recorded'} to the GoDaddy sale ${saleLabel(sale)}. Nothing new was recorded; close this window.`,
+              )
+              qc.invalidateQueries({ queryKey: ['invoices'] })
+              qc.invalidateQueries({ queryKey: ['customer-outstanding-invoices', customerId] })
+            }}
+            onClose={() => setLinkFor(null)}
+          />
+        )}
         <div className="flex-1 overflow-y-auto px-5 py-4 space-y-5">
           {isNetAccount && (
             <div className="text-xs bg-sky-50 border border-sky-200 text-sky-900 rounded px-3 py-2">
@@ -417,12 +485,26 @@ export function ReceivePaymentModal({
           )}
 
           {/* Invoice picker */}
-          <section>
+          <section data-tour="receive-payment-invoices">
             <h3 className="text-xs uppercase tracking-wide font-semibold text-slate-700 mb-2">
               Apply payment to
             </h3>
             {invoicesQ.isLoading ? (
               <div className="text-xs text-slate-500">Loading invoices…</div>
+            ) : invoicesQ.isError ? (
+              <div className="bg-red-50 border border-red-200 rounded p-4 text-sm text-red-900 space-y-2">
+                <div className="font-semibold">Couldn&apos;t load this customer&apos;s open invoices</div>
+                <div className="text-xs">
+                  Recording now could put the payment on account as a credit instead of against the invoice it pays.
+                </div>
+                <button
+                  type="button"
+                  onClick={() => invoicesQ.refetch()}
+                  className="text-xs font-semibold text-red-800 hover:underline"
+                >
+                  Try again
+                </button>
+              </div>
             ) : invoices.length === 0 ? (
               <div className="bg-sky-50 border border-sky-200 rounded p-4 text-sm text-sky-900 space-y-2">
                 {/* "No invoices yet" was said to people looking straight
@@ -478,6 +560,7 @@ export function ReceivePaymentModal({
                                 onChange={(e) =>
                                   setAllocFor(inv.id, e.target.checked ? inv.amount_due_cents : 0)
                                 }
+                                disabled={!!linked}
                                 className="rounded border-slate-300"
                               />
                               <span className="font-mono text-xs text-slate-600">
@@ -510,7 +593,7 @@ export function ReceivePaymentModal({
                                     Math.round(parseFloat(e.target.value || '0') * 100),
                                   )
                                 }
-                                disabled={!checked}
+                                disabled={!checked || !!linked}
                                 className="w-24 text-right border border-slate-300 rounded px-2 py-1 text-sm tabular-nums disabled:bg-slate-50"
                               />
                             </div>
@@ -534,7 +617,7 @@ export function ReceivePaymentModal({
 
           {/* Tip + credit */}
           <section className="grid grid-cols-1 md:grid-cols-2 gap-3">
-            <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 space-y-2">
+            <div data-tour="receive-payment-tip" className="bg-amber-50 border border-amber-200 rounded-lg p-3 space-y-2">
               <div className="flex items-center justify-between">
                 <div className="text-xs uppercase tracking-wide font-semibold text-amber-900">
                   Tip <span className="font-normal lowercase">(goes to a tech)</span>
@@ -548,7 +631,9 @@ export function ReceivePaymentModal({
                     value={tipDollars}
                     onChange={(e) => setTipDollars(e.target.value)}
                     placeholder="0.00"
-                    className="w-24 text-right border border-amber-300 bg-white rounded px-2 py-1 text-sm tabular-nums"
+                    disabled={!!linked}
+                    title={linked ? 'The tip the customer added on the card, from GoDaddy.' : undefined}
+                    className="w-24 text-right border border-amber-300 bg-white rounded px-2 py-1 text-sm tabular-nums disabled:bg-amber-50"
                   />
                 </div>
               </div>
@@ -568,7 +653,7 @@ export function ReceivePaymentModal({
               )}
             </div>
 
-            <div className="bg-sky-50 border border-sky-200 rounded-lg p-3 space-y-2">
+            <div data-tour="receive-payment-credit" className="bg-sky-50 border border-sky-200 rounded-lg p-3 space-y-2">
               <div className="flex items-center justify-between">
                 <div className="text-xs uppercase tracking-wide font-semibold text-sky-900">
                   Customer credit <span className="font-normal lowercase">(overpayment)</span>
@@ -582,7 +667,9 @@ export function ReceivePaymentModal({
                     value={creditDollars}
                     onChange={(e) => setCreditDollars(e.target.value)}
                     placeholder="0.00"
-                    className="w-24 text-right border border-sky-300 bg-white rounded px-2 py-1 text-sm tabular-nums"
+                    disabled={!!linked}
+                    title={linked ? 'A linked GoDaddy sale only pays its invoice; it never turns into credit.' : undefined}
+                    className="w-24 text-right border border-sky-300 bg-white rounded px-2 py-1 text-sm tabular-nums disabled:bg-sky-50"
                   />
                 </div>
               </div>
@@ -621,11 +708,14 @@ export function ReceivePaymentModal({
               </div>
             )}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <label className="block">
+              <label className="block" data-tour="receive-payment-method">
                 <span className="block text-xs font-semibold text-slate-700 mb-1">Method</span>
                 <select
                   value={method}
-                  onChange={(e) => setMethod(e.target.value)}
+                  onChange={(e) => {
+                    setMethod(e.target.value)
+                    if (linked) unlinkSale()
+                  }}
                   className="w-full px-3 py-2 text-sm border border-slate-300 rounded-md"
                 >
                   {visibleMethodOptions.map((m) => (
@@ -635,23 +725,58 @@ export function ReceivePaymentModal({
                   ))}
                 </select>
               </label>
-              <label className="block">
+              <label className="block" data-tour="receive-payment-reference">
                 <span className="block text-xs font-semibold text-slate-700 mb-1">
                   {method === 'check' ? 'Check number' : 'Reference'}{' '}
                   <span className="text-slate-400 font-normal">{method === 'check' ? '(required)' : '(optional)'}</span>
                 </span>
-                <input
-                  type="text"
-                  value={reference}
-                  onChange={(e) => setReference(e.target.value)}
-                  placeholder={
-                    method === 'check' ? 'Check #' : method.startsWith('card') ? 'Last 4 / charge ID' : 'Transaction ID'
-                  }
-                  className="w-full px-3 py-2 text-sm border border-slate-300 rounded-md"
-                />
+                {linked ? (
+                  <div className="flex items-center justify-between gap-2 px-3 py-2 text-sm border border-emerald-300 bg-emerald-50 rounded-md">
+                    <span className="text-emerald-900">
+                      <strong>Linked</strong> · {saleLabel(linked.sale)}
+                      {linked.sale.occurred_at ? ` · ${new Date(linked.sale.occurred_at).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}` : ''}
+                    </span>
+                    <button type="button" onClick={unlinkSale} className="text-xs font-semibold text-emerald-900 underline">
+                      Unlink
+                    </button>
+                  </div>
+                ) : (
+                  <div className="flex gap-2">
+                    <input
+                      type="text"
+                      value={reference}
+                      onChange={(e) => setReference(e.target.value)}
+                      placeholder={
+                        method === 'check' ? 'Check #' : method.startsWith('card') ? 'Last 4 / charge ID' : 'Transaction ID'
+                      }
+                      className="w-full px-3 py-2 text-sm border border-slate-300 rounded-md"
+                    />
+                    {method === 'godaddy' && (
+                      <button
+                        type="button"
+                        onClick={() => setLinkFor(tickedInvoiceIds[0] ?? null)}
+                        disabled={tickedInvoiceIds.length !== 1}
+                        title={tickedInvoiceIds.length !== 1 ? 'Tick just the one invoice this GoDaddy sale paid.' : 'Pick the GoDaddy sale this payment was.'}
+                        className="shrink-0 px-3 py-2 text-xs font-semibold rounded-md border border-slate-300 hover:bg-slate-50 disabled:opacity-50"
+                      >
+                        Link payment
+                      </button>
+                    )}
+                  </div>
+                )}
               </label>
             </div>
-            <label className="block">
+            {method === 'godaddy' && !linked && (
+              <p className="text-xs bg-amber-50 border border-amber-200 text-amber-900 rounded px-3 py-2">
+                {tickedInvoiceIds.length === 1
+                  ? 'Not linked to a GoDaddy sale. Link it so the same money isn\'t counted twice, or save it as is if GoDaddy hasn\'t sent the sale yet.'
+                  : 'To link a GoDaddy sale, tick just the one invoice it paid.'}
+              </p>
+            )}
+            {linkedExisting && (
+              <p className="text-xs bg-emerald-50 border border-emerald-200 text-emerald-900 rounded px-3 py-2">{linkedExisting}</p>
+            )}
+            <label className="block" data-tour="receive-payment-notes">
               <span className="block text-xs font-semibold text-slate-700 mb-1">
                 Notes <span className="text-slate-400 font-normal">(optional)</span>
               </span>
@@ -665,7 +790,7 @@ export function ReceivePaymentModal({
           </section>
 
           {/* Totals strip */}
-          <section className="bg-slate-50 border border-slate-200 rounded-lg px-4 py-3 text-sm">
+          <section data-tour="receive-payment-total" className="bg-slate-50 border border-slate-200 rounded-lg px-4 py-3 text-sm">
             <div className="flex justify-between text-slate-600">
               <span>Allocations</span>
               <span className="font-mono">${dollars(allocSum)}</span>
@@ -692,6 +817,7 @@ export function ReceivePaymentModal({
         <div className="flex items-center justify-end gap-2 border-t border-slate-200 px-5 py-3">
           <button
             type="button"
+            data-tour="receive-payment-cancel"
             onClick={onClose}
             disabled={busy}
             className="px-3 py-2 text-sm text-slate-600 hover:bg-slate-100 rounded-md"
@@ -700,8 +826,9 @@ export function ReceivePaymentModal({
           </button>
           <button
             type="button"
+            data-tour="receive-payment-record"
             onClick={submit}
-            disabled={busy || totalCents <= 0}
+            disabled={busy || totalCents <= 0 || invoicesQ.isError}
             className="px-4 py-2 text-sm font-semibold bg-emerald-600 hover:bg-emerald-700 text-white rounded-md disabled:opacity-50"
           >
             {busy

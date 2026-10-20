@@ -43,7 +43,12 @@ export type SuggestedTab = { label: string; page: number; color?: TabColor | nul
 
 export type TabSource = 'bookmarks' | 'edges' | 'contents' | 'headings'
 
-export type Suggestion = { source: TabSource; tabs: SuggestedTab[] }
+export type Suggestion = {
+  source: TabSource
+  tabs: SuggestedTab[]
+  /** Sections the contents page names that could not be found in the book: the shop turns to them and adds the tab. */
+  missing?: string[]
+}
 
 /** More than a printed catalogue ever has; past this they stop being tabs. */
 export const MAX_TABS = 24
@@ -154,6 +159,18 @@ export function runningLines(pages: PageLines[]): Set<string> {
 
   const often = Math.max(2, Math.ceil(pages.length * 0.5))
   return new Set([...seen].filter(([, n]) => n >= often).map(([key]) => key))
+}
+
+/**
+ * Not a heading: "SEE", "See Ilco/", "see page 12", "Cont'd" -- pointers and
+ * scraps that happen to be printed big.
+ */
+function crossReference(text: string): boolean {
+  const t = text.replace(/\s+/g, ' ').trim()
+  return /^see\b/i.test(t)
+    || /[/\\]$/.test(t)
+    || /\bcont(?:'|inued|')?d?\.?$/i.test(t)
+    || /^[A-Z]{1,4}$/.test(t)
 }
 
 function median(values: number[]): number {
@@ -522,6 +539,130 @@ export function placeContents(
   return inPageOrder(tabs).slice(0, MAX_TABS)
 }
 
+
+// ------------------------------------------------------- section contents
+
+/**
+ * A contents page that lists sections rather than pages: "VEHICLE KEYS ...
+ * SECTION 1", "LOOK-ALIKE CYLINDERS ... SECTION 4B", or "Section 3: Mortise
+ * Locks". Key, hardware and parts catalogues do this, and every section's
+ * own pages then say which section they are in.
+ */
+export type SectionContents = {
+  page: number
+  entries: Array<{ label: string; code: string; top: number }>
+}
+
+const SECTION_WORD = '(?:section|sect\\.?|sec\\.?|part|chapter|tab)'
+const SECTION_CODE = '(\\d{1,2}[A-Za-z]?|[A-Za-z])'
+
+/** "VEHICLE KEYS SECTION 1" -> Vehicle Keys, "1"; "Section 4A - Originals" -> Originals, "4A". */
+export function parseSectionEntry(text: string): { label: string; code: string } | null {
+  const t = text.replace(/\s+/g, ' ').trim()
+  let label = ''
+  let code = ''
+  const after = t.match(new RegExp(`^(.*?[A-Za-z]{2}.*?)\\s*(?:[.·…_|]\\s?)*\\s${SECTION_WORD}\\s+${SECTION_CODE}$`, 'i'))
+  if (after) {
+    label = after[1]
+    code = after[2]
+  } else {
+    const before = t.match(new RegExp(`^${SECTION_WORD}\\s+${SECTION_CODE}\\b[\\s:.·|–—-]*(.*[A-Za-z]{2}.*)$`, 'i'))
+    if (!before) return null
+    code = before[1]
+    label = before[2].replace(/\s*(?:[.·…_]\s?){3,}.*$/, '')
+  }
+  const cleaned = shortLabel(tidyLabel(label.replace(/[\s:|–—-]+$/, '').replace(/^[\s:|–—-]+/, '')))
+  if (!headingLike(cleaned) || isContentsTitle(cleaned)) return null
+  return { label: cleaned, code: code.toUpperCase() }
+}
+
+/** The first page in the first few that names three or more sections this way. */
+export function findSectionContents(pages: PageLines[]): SectionContents | null {
+  for (const page of pages.slice(0, 8)) {
+    const seen = new Set<string>()
+    const entries: SectionContents['entries'] = []
+    for (const line of page.lines) {
+      // A two-column contents page: each column on its own.
+      for (const text of line.segments && line.segments.length > 1 ? [line.text, ...line.segments] : [line.text]) {
+        const entry = parseSectionEntry(text)
+        if (entry && !seen.has(entry.code)) {
+          seen.add(entry.code)
+          entries.push({ ...entry, top: line.top })
+          break
+        }
+      }
+    }
+    if (entries.length >= 3) return { page: page.page, entries }
+  }
+  return null
+}
+
+/**
+ * Where each section starts.
+ *
+ * A contents row that is a link says exactly. Otherwise each section's own
+ * pages say which section they are: "SECTION 4A" in the header or footer,
+ * or a folio like "4A-12". Failing those, the first page headed with the
+ * section's name. Sections run in order, so each is looked for after the
+ * one before; one that can't be found is reported, not guessed.
+ */
+export function placeSections(
+  contents: SectionContents,
+  pages: PageLines[],
+  pageCount: number,
+  links: ContentsLink[] = [],
+  colors: Array<TabColor | null> = [],
+): { tabs: SuggestedTab[]; missing: string[] } {
+  const linked = (top: number) =>
+    links.find((l) => l.page && top >= l.top - 0.015 && top <= l.top + l.height + 0.015)?.page
+
+  const after = pages.filter((p) => p.page !== contents.page)
+  const short = (page: PageLines) => page.lines.flatMap((l) => (l.segments && l.segments.length > 1 ? [l.text, ...l.segments] : [l.text])).map((t) => t.replace(/\s+/g, ' ').trim()).filter((t) => t.length <= 48)
+
+  const marks = (code: string) => {
+    const c = code.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+    const named = new RegExp(`(^|\\s)${SECTION_WORD}\\s+${c}(?![A-Za-z0-9])`, 'i')
+    const folio = new RegExp(`^${c}\\s?[-–.]\\s?\\d{1,3}$`, 'i')
+    return (page: PageLines) => short(page).some((t) => named.test(t) || folio.test(t))
+  }
+  const headed = (label: string) => {
+    const needle = normalise(label)
+    return (page: PageLines) => needle.length >= 3 && short(page).some((t) => {
+      const n = normalise(t)
+      return n === needle || (n.startsWith(`${needle} `) && n.length <= needle.length + 14)
+    })
+  }
+
+  const tabs: SuggestedTab[] = []
+  const missing: string[] = []
+  let from = contents.page + 1
+
+  contents.entries.forEach((entry, i) => {
+    const color = colors[i] ?? null
+    let page = linked(entry.top)
+    if (!page) {
+      const tests = [marks(entry.code), headed(entry.label)]
+      for (const test of tests) {
+        page = after.find((p) => p.page >= from && test(p))?.page
+        if (page) break
+      }
+      // Out of order in the book: anywhere after the contents page will do.
+      if (!page) for (const test of tests) {
+        page = after.find((p) => p.page > contents.page && test(p))?.page
+        if (page) break
+      }
+    }
+    if (page && page >= 1 && page <= pageCount) {
+      tabs.push({ label: entry.label, page, color })
+      from = Math.max(from, page)
+    } else {
+      missing.push(entry.label)
+    }
+  })
+
+  return { tabs: inPageOrder(tabs).slice(0, MAX_TABS), missing }
+}
+
 // ----------------------------------------------------------------- headings
 
 /**
@@ -542,7 +683,7 @@ export function headingTabs(pages: PageLines[], running = runningLines(pages)): 
     const lines = page.lines
       .filter((l) => !running.has(normalise(l.text)))
       .flatMap((l) => (l.segments ?? [l.text]).map((text) => ({ ...l, text })))
-      .filter((l) => headingLike(l.text) && l.text.trim().length >= 3 && !running.has(normalise(l.text)))
+      .filter((l) => headingLike(l.text) && l.text.trim().length >= 3 && !running.has(normalise(l.text)) && !crossReference(l.text))
     if (lines.length === 0) return []
 
     // A heading stands clear of the body text: a size or more above it.
@@ -665,10 +806,12 @@ export function edgeTabs(pages: Array<{ page: number; labels: string[] }>): Sugg
  * Every source of tabs this PDF has, best first. The viewer uses the first;
  * the tab editor offers them all, so a wrong guess is one click to change.
  *
- * Bookmarks first, unless they are file names, or a handful against a
- * book that names far more. Then the tabs printed at the page edges, which
- * are the book's own; then its contents page; then its headings. Two tabs
- * or none: one tab on a book is not a way through it.
+ * The book's own table of contents first -- it is how the publisher divided
+ * the book, and what the shop already thumbs through on paper. Sections by
+ * name ("SECTION 4A") when the contents page lists them that way, else by
+ * page number. Then bookmarks (unless they are file names), then the tabs
+ * printed at the page edges, then headings. Two tabs or none: one tab on a
+ * book is not a way through it.
  */
 export function suggestTabs(
   bookmarks: SuggestedTab[],
@@ -676,29 +819,48 @@ export function suggestTabs(
   pageCount: number,
   contentsLinks: (page: number) => ContentsLink[] = () => [],
   edges: Array<{ page: number; labels: string[] }> = [],
+  sectionColors: Array<TabColor | null> = [],
 ): Suggestion[] {
   if (pageCount < 2) return []
 
   const found: Suggestion[] = []
 
-  const contents = findContents(pages, pageCount)
+  // The book's own table of contents comes first: sections by name ...
+  const sections = findSectionContents(pages)
+  const bySection = sections ? placeSections(sections, pages, pageCount, contentsLinks(sections.page), sectionColors) : null
+  // ... or by page number.
+  const contents = bySection && bySection.tabs.length >= 2 ? null : findContents(pages, pageCount)
   const fromContents = contents ? placeContents(contents, pages, pageCount, contentsLinks(contents.page)) : []
   const fromEdges = edgeTabs(edges)
   const fromHeadings = headingTabs(pages)
   const marks = bookmarks.slice(0, MAX_TABS)
 
   const usableMarks = marks.length >= 2 && !bookmarksAreFileNames(marks)
-  const thin = marks.length <= 3 && Math.max(fromContents.length, fromEdges.length) >= marks.length * 2
 
-  if (usableMarks && !thin) found.push({ source: 'bookmarks', tabs: marks })
-  if (fromEdges.length >= 3) found.push({ source: 'edges', tabs: fromEdges })
+  if (bySection && bySection.tabs.length >= 2) {
+    found.push({ source: 'contents', tabs: bySection.tabs, ...(bySection.missing.length ? { missing: bySection.missing } : {}) })
+  }
   if (fromContents.length >= 2) found.push({ source: 'contents', tabs: fromContents })
-  if (usableMarks && thin) found.push({ source: 'bookmarks', tabs: marks })
+  if (usableMarks) found.push({ source: 'bookmarks', tabs: marks })
+  if (fromEdges.length >= 3) found.push({ source: 'edges', tabs: fromEdges })
   if (fromHeadings.length >= 2) found.push({ source: 'headings', tabs: fromHeadings })
   // File-name bookmarks last: offered, never chosen for you.
   if (marks.length >= 2 && !usableMarks) found.push({ source: 'bookmarks', tabs: marks })
 
-  return found
+  return found.map((s) => ({ ...s, tabs: varyColors(s.tabs) }))
+}
+
+/**
+ * Tabs you can tell apart. When the book gave no colours, or gave them all
+ * the same one (a one-column contents page, plain bookmarks), each tab gets
+ * the next colour in turn, like the coloured edges of a paper catalog.
+ * Books whose contents printed real section colours keep them.
+ */
+export function varyColors(tabs: SuggestedTab[]): SuggestedTab[] {
+  if (tabs.length < 2) return tabs
+  const distinct = new Set(tabs.map((t) => t.color).filter(Boolean))
+  if (distinct.size >= Math.min(3, tabs.length)) return tabs
+  return tabs.map((t, i) => ({ ...t, color: SECTION_COLORS[i % SECTION_COLORS.length] }))
 }
 
 /**

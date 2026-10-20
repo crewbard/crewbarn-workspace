@@ -303,13 +303,13 @@ export function ContactEditorModal({
               <input type="email" className={inputCls} value={draft.email} onChange={(e) => patch({ email: e.target.value })} placeholder="jane@example.com" />
             </Labeled>
             <Labeled label="Phone">
-              <input className={inputCls} value={draft.phone} onChange={(e) => patch({ phone: formatPhoneInput(e.target.value) })} inputMode="tel" placeholder="(321) 555-0100" />
+              <input className={inputCls} value={draft.phone} onChange={(e) => patch({ phone: formatPhoneInput(e.target.value) })} inputMode="tel" placeholder="(555) 555-0123" />
             </Labeled>
             <Labeled label="Email alt">
               <input type="email" className={inputCls} value={draft.email_alt} onChange={(e) => patch({ email_alt: e.target.value })} placeholder="alt@example.com" />
             </Labeled>
             <Labeled label="Phone alt">
-              <input className={inputCls} value={draft.phone_alt} onChange={(e) => patch({ phone_alt: formatPhoneInput(e.target.value) })} inputMode="tel" placeholder="(321) 555-0101" />
+              <input className={inputCls} value={draft.phone_alt} onChange={(e) => patch({ phone_alt: formatPhoneInput(e.target.value) })} inputMode="tel" placeholder="(555) 555-0124" />
             </Labeled>
           </div>
 

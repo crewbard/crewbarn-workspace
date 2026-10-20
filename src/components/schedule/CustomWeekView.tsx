@@ -17,7 +17,9 @@ import {
 // (which only appears once a drag starts) is detected on drop.
 const MEASURING = { droppable: { strategy: MeasuringStrategy.Always } }
 import { format } from 'date-fns'
+import { scheduleEventId } from '@/lib/schedule'
 import type { ScheduleCardDensity, ScheduleTimeOffBlock, ScheduleWorkOrder } from '@/types/schedule'
+import { subLine } from '@/lib/subLane'
 import { matteStatusBorder, matteStatusFill, matteStatusTextColor, statusAccentColor } from '@/lib/statusColor'
 import { StatusIcon } from '@/lib/statusIcons'
 import {
@@ -114,7 +116,7 @@ export function CustomWeekView({
   // DragOverlay — that floats above the overflow-auto scroll container so the
   // card isn't clipped at the calendar's left edge while dragging to the sidebar.
   const [activeId, setActiveId] = useState<string | null>(null)
-  const activeWo = activeId ? events.find((e) => e.id === activeId) ?? null : null
+  const activeWo = activeId ? events.find((e) => scheduleEventId(e) === activeId) ?? null : null
 
   // Is the drag pointer inside the "To Schedule" sidebar drop container?
   // Direct rect test — reliable where @dnd-kit collision is not (portaled,
@@ -207,7 +209,7 @@ export function CustomWeekView({
       return
     }
 
-    const wo = events.find((w) => w.id === eventId)
+    const wo = events.find((w) => scheduleEventId(w) === eventId)
     if (!wo || !wo.scheduled_start_time) return
 
     const startMs = (e.active.data.current as { startMs?: number } | undefined)?.startMs
@@ -227,7 +229,7 @@ export function CustomWeekView({
     }
 
     const newEnd = new Date(newStart.getTime() + durationMs)
-    onReschedule(wo.id, newStart.toISOString(), newEnd.toISOString())
+    onReschedule(scheduleEventId(wo), newStart.toISOString(), newEnd.toISOString())
   }
 
   // Native-DnD drop of an unscheduled sidebar job → schedule it at the day +
@@ -261,7 +263,7 @@ export function CustomWeekView({
             onClose={() => setContextMenu(null)}
             onChangeStatus={(statusId) => onChangeStatus?.(contextMenu.wo.id, statusId)}
             onReassign={(techId) => onReassign?.(contextMenu.wo.id, techId)}
-            onChangeTime={onChangeTime ? (s, e) => onChangeTime(contextMenu.wo.id, s, e) : undefined}
+            onChangeTime={onChangeTime ? (s, e) => onChangeTime(scheduleEventId(contextMenu.wo), s, e) : undefined}
             onOpenDetail={() => onSelectEvent?.(contextMenu.wo)}
             onConvertToJob={
               contextMenu.wo.kind === 'estimate' && onConvertEstimate
@@ -525,13 +527,13 @@ function DayColumn({
         {/* Events */}
         {events.map((wo) => (
           <DraggableEvent
-            key={wo.id}
+            key={scheduleEventId(wo)}
             wo={wo}
             onSelectEvent={onSelectEvent}
             color={colorFor(wo)}
             textColor={textColorFor(colorFor(wo))}
             late={isLate(wo)}
-            layout={layouts.get(wo.id)}
+            layout={layouts.get(scheduleEventId(wo))}
             onContextMenu={onContextMenu}
             onHoverStart={onHoverStart}
             onHoverEnd={onHoverEnd}
@@ -613,7 +615,7 @@ function TimeOffChips({ blocks }: { blocks: ScheduleTimeOffBlock[] }) {
 
 function CurrentTimeLine({ top }: { top: number }) {
   return (
-    <div className="pointer-events-none absolute left-0 right-0 z-20" style={{ top }}>
+    <div data-tour="schedule-now-line" className="pointer-events-none absolute left-0 right-0 z-20" style={{ top }}>
       <div className="border-t-2 border-red-500" />
       <span className="absolute -top-2 left-1 rounded-full bg-red-500 px-1.5 py-0.5 text-[9px] font-bold text-white shadow">
         Now
@@ -667,7 +669,7 @@ function DraggableEvent({
   const height = durationToHeight(start, end, slotPx)
 
   const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
-    id: wo.id,
+    id: scheduleEventId(wo),
     data: {
       startMs: start.getTime(),
       durationMs: end.getTime() - start.getTime(),
@@ -676,7 +678,7 @@ function DraggableEvent({
   })
 
   const customer = wo.customer?.name ?? '—'
-  const tech = wo.lead_tech?.name?.split(' ')[0] ?? ''
+  const tech = wo.sub ? subLine(wo.sub) : wo.lead_tech?.name?.split(' ')[0] ?? ''
   // Tech is physically on site right now (On Site status or open visit) →
   // breathe a green↔amber ring. Authoritative server flag; on_site_at is the
   // sticky first-arrival stamp (set for any in_progress status), not "now".
@@ -702,6 +704,7 @@ function DraggableEvent({
   return (
     <div
       ref={setNodeRef}
+      data-tour="schedule-event"
       {...listeners}
       {...attributes}
       onClick={(e) => {

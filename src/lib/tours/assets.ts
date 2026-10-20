@@ -1,0 +1,351 @@
+import type { GuidedTour } from '@/lib/guidedTours'
+
+/**
+ * Help tours for owner 08: assets, labels, the public scan / verify /
+ * report pages, Company Files, Templates & Forms and Data Encryption.
+ * Steps whose target isn't on screen are skipped by the tour engine.
+ */
+export const ASSET_TOURS: GuidedTour[] = [
+  {
+    id: 'assets',
+    title: 'Customer equipment',
+    description: 'Every piece of equipment you look after at a customer site, with its sticker, photos, documents and service history.',
+    route: /^\/assets\/?$/,
+    roadmap: [
+      { title: 'Asset types first', detail: 'Set up the kinds of equipment you track on Asset Types. You can’t add an asset until one exists.' },
+      { title: 'Customer and location', detail: 'Every asset belongs to one saved service location for a customer.' },
+      { title: 'Add and group', detail: 'Add items one at a time, or build a whole building at once, then sort them into buildings, floors or rooms.' },
+      { title: 'Print stickers', detail: 'Each sticker opens the item’s public page in any phone camera.' },
+      { title: 'Work in the field', detail: 'Scan a sticker, open the asset and log work. Quotes, jobs, parts and notes build up its history.' },
+    ],
+    use: {
+      say: 'Hover an item and use the estimate button to start an estimate already filled in for that customer, location and item. On a job, the Customer assets tab shows the equipment at that location, and finished inspections and work build up each item’s history.',
+      go: [{ label: 'Go to Jobs', to: '/jobs' }, { label: 'Go to Estimates', to: '/estimates' }],
+    },
+    steps: [
+      { selector: '[data-tour="assets-header"]', title: 'Your equipment register', say: 'This is where every piece of customer equipment lives. Its history stays with it from year to year. Scan asset opens your camera and jumps straight to the item.' },
+      { selector: '[data-tour="assets-no-types"]', title: 'Start with asset types', say: 'Before you add equipment, tell CrewBarn what kinds you track. The link takes you to Asset Types.', optional: 'Only shows when no asset types exist' },
+      { selector: '[data-tour="assets-new"]', title: 'Add one item', say: 'The wizard walks you through customer, location, group, then the details. If any of those don’t exist yet you can create them on the way.', optional: 'Needs asset edit access' },
+      { selector: '[data-tour="assets-filters"]', title: 'Find what you need', say: 'Search by name, code or serial number, or narrow it to one type. Pick a service location to filter by its groups or to manage them. Once a filter is on, the tree becomes a flat table.' },
+      { selector: '[data-tour="assets-list"]', click: '[data-tour="assets-view-tree"]', title: 'Location, group, item', say: 'With no filters you see a tree: location, then groups, then each item. Hover a row for quick actions like printing stickers, a placard for a whole area, or starting an estimate.' },
+      { selector: '[data-tour="assets-plan-bar"]', title: 'On a service plan?', say: 'Opening an item shows whether a service plan covers it, with a link to the plan. Build service agreement starts an agreement from this item, and offers the other equipment at the same property too.', optional: 'Open an asset to see this' },
+      { selector: '[data-tour="assets-edit"]', title: 'Everything about one item', say: 'Opening an item shows the basics at the top, inspection and privacy settings in the middle, then the report packet, sticker, photos, documents and history.', optional: 'Open an asset to see this' },
+    ],
+  },
+  {
+    id: 'company-assets',
+    title: 'Company assets',
+    description: 'Your own tools, vehicles, devices and software: who has them, what they can do, and what they cost.',
+    route: /^\/company-assets\/?$/,
+    roadmap: [
+      { title: 'Staff and trucks first', detail: 'Add your team and inventory locations so gear can be assigned to them.' },
+      { title: 'Add your gear', detail: 'Enter each tool or vehicle, tag what it can do, and add its costs.' },
+      { title: 'Smarter dispatch', detail: 'Dispatch and AI read the capability tags to match work to the right person.' },
+      { title: 'Real costs', detail: 'Payments, depreciation, insurance, maintenance and fuel feed your company cost model.' },
+    ],
+    use: {
+      say: 'The monthly costs you enter here, like payments, insurance and fuel, are added into your Cost model under Tool Shed.',
+      go: [{ label: 'Open Cost model', to: '/tool-shed/cost-model' }],
+    },
+    steps: [
+      { selector: '[data-tour="company-assets-header"]', title: 'Your own gear', say: 'This page is for your own equipment, not the customer’s. Add it here and dispatch knows who carries what.' },
+      { selector: '[data-tour="company-assets-add"]', title: 'Add an item', say: 'Add a tool, vehicle, device or piece of software. Only the name is required.', optional: 'Needs asset edit access' },
+      { selector: '[data-tour="company-assets-filters"]', title: 'Search and filter', say: 'Search by tool, model, serial, tag or capability, or narrow by category and status.' },
+      { selector: '[data-tour="company-assets-table"]', title: 'Who has what', say: 'Each row shows the item, its status, who has it and what it can do. Open one to see or change the details.' },
+    ],
+  },
+  {
+    id: 'asset-types',
+    title: 'Asset types',
+    description: 'The kinds of equipment you track, each with its own fields and inspection cadence.',
+    route: /^\/asset-types\/?$/,
+    roadmap: [
+      { title: 'Define the kinds', detail: 'Start here before adding any asset.' },
+      { title: 'Add fields', detail: 'Give each type the extra fields your techs fill in, like a tank size or a rating.' },
+      { title: 'Set a cadence', detail: 'New assets of that type pick up its default inspection cadence when they’re created.' },
+    ],
+    use: {
+      say: 'Every type you set up here is what you pick from when you add an item on Customer equipment, and its fields are what that form asks for.',
+      go: [{ label: 'Open Customer equipment', to: '/assets' }],
+    },
+    steps: [
+      { selector: '[data-tour="asset-types-header"]', title: 'Categories of equipment', say: 'Types are the kinds of things you look after. Each one decides which extra fields an asset asks for.' },
+      { selector: '[data-tour="asset-types-table"]', title: 'All your types', say: 'Every type, its fields at a glance, its default cadence and whether it’s active. Inactive types drop out of the asset forms.' },
+      { selector: '[data-tour="asset-types-form"]', title: 'Name, icon, cadence, fields', say: 'Name it, pick an icon and a default cadence, then add the fields your techs need. Required fields must be filled before an asset saves.', optional: 'Open or create a type to see this' },
+      { selector: '[data-tour="asset-types-header"]', title: 'Cadence changes', say: 'A type’s cadence is copied onto an asset when it’s created, so changing it later won’t touch assets you already have.' },
+    ],
+  },
+  {
+    id: 'asset-access-requests',
+    title: 'Asset access requests',
+    description: 'Review people who scanned a secured item and asked to see it.',
+    route: /^\/asset-access-requests\/?$/,
+    roadmap: [
+      { title: 'Secure an asset', detail: 'Mark the asset as secured on the Assets page.' },
+      { title: 'Someone asks', detail: 'An inspector or contractor scans it, sees it’s private, and requests access.' },
+      { title: 'You decide', detail: 'Approve the single item or the whole tree here, or deny it.' },
+      { title: 'They unlock it', detail: 'CrewBarn texts and emails a 24-hour code that unlocks the details on the scan page.' },
+    ],
+    use: {
+      say: 'Items are made private on Customer equipment: open the item and turn on secured in its privacy settings. A secured item is what sends people here when they scan it.',
+      go: [{ label: 'Open Customer equipment', to: '/assets' }],
+    },
+    steps: [
+      { selector: '[data-tour="access-requests-header"]', title: 'Who wants in', say: 'This is everyone who asked to see a locked item. The number on the right is how many are still waiting on you.' },
+      { selector: '[data-tour="access-requests-steps"]', title: 'Three steps', say: 'Check who’s asking, choose how much they get, then send the code.' },
+      { selector: '[data-tour="access-requests-tabs"]', title: 'Pending, approved, denied', say: 'Pending is your to-do list. Approved shows when each code was issued, when it expires and whether it was used.' },
+      { selector: '[data-tour="access-requests-list"]', title: 'Each request', say: 'Each card shows what they scanned, who they are and why. Open the scan page to see exactly what they’re looking at, then approve the item, the full tree, or deny.' },
+    ],
+  },
+  {
+    id: 'asset-labels',
+    title: 'Print an asset sticker',
+    description: 'Print the QR sticker for one asset on a label printer, a sticker sheet or plain paper.',
+    route: /^\/assets\/[^/]+\/labels\/?$/,
+    roadmap: [
+      { title: 'A code', detail: 'The asset needs a code. Leave the field blank and CrewBarn makes one.' },
+      { title: 'Pick the media', detail: 'Choose what you’re printing on, how many, and the spacing.' },
+      { title: 'Print', detail: 'Print, send to a Bluetooth printer, or download an image.' },
+      { title: 'Stick it on', detail: 'Any phone camera that scans it opens the item’s public page.' },
+    ],
+    use: {
+      say: 'Once it’s stuck on, Scan asset on Customer equipment reads it and jumps straight to the item. To print straight to a label printer on this computer without the print window, set it up on Label Printer.',
+      go: [{ label: 'Open Customer equipment', to: '/assets' }, { label: 'Set up Label Printer', to: '/tool-shed/label-printer' }],
+    },
+    steps: [
+      { selector: '[data-tour="labels-studio"]', title: 'Your sticker', say: 'This is the sticker for one asset. Its QR opens the item’s public scan page in any phone camera, and the in-app scanner reads it too.' },
+      { selector: '[data-tour="labels-stock"]', title: 'What are you printing on?', say: 'Pick a label printer, a sticker sheet or plain paper, then the size.', optional: 'Size picker' },
+      { selector: '[data-tour="labels-copies"]', title: 'How many', say: 'Choose how many copies of this sticker you want.', optional: 'Copies' },
+      { selector: '[data-tour="labels-print"]', title: 'Print it', say: 'Print, send it to a Bluetooth label printer, or download an image of it.', optional: 'Print buttons' },
+    ],
+  },
+  {
+    id: 'asset-batch-labels',
+    title: 'Print stickers for a group',
+    description: 'Print stickers for every asset under a location or group in one run.',
+    route: /^\/assets\/labels\/?$/,
+    roadmap: [
+      { title: 'Build the tree', detail: 'Add the location’s groups and assets on the Assets page.' },
+      { title: 'Print all', detail: 'Hover a location or group and click Print all.' },
+      { title: 'Choose and print', detail: 'Pick your media and copies here, then print.' },
+    ],
+    use: {
+      say: 'Once they’re stuck on, Scan asset on Customer equipment reads any of them and jumps straight to the item. To print straight to a label printer on this computer without the print window, set it up on Label Printer.',
+      go: [{ label: 'Open Customer equipment', to: '/assets' }, { label: 'Set up Label Printer', to: '/tool-shed/label-printer' }],
+    },
+    steps: [
+      { selector: '[data-tour="batch-labels-missing"]', title: 'Anything missing', say: 'If anything on the list has since been deleted, it’s counted here and skipped.', optional: 'Only shows when some items weren’t found' },
+      { selector: '[data-tour="batch-labels-studio"]', title: 'Every item at once', say: 'It works like a single sticker, just with every item in the group. Each sticker opens its own public page.' },
+      { selector: '[data-tour="labels-stock"]', title: 'What are you printing on?', say: 'Pick a label printer, a sticker sheet or plain paper, then the size.', optional: 'Size picker' },
+      { selector: '[data-tour="labels-print"]', title: 'Print or download', say: 'Print them all, send them to a Bluetooth printer, or download one image per sticker.', optional: 'Print buttons' },
+    ],
+  },
+  {
+    id: 'asset-group-placard',
+    title: 'Print an area placard',
+    description: 'One large QR for a whole building or area. Scanning it lists every item there.',
+    route: /^\/asset-groups\/[^/]+\/labels\/?$/,
+    roadmap: [
+      { title: 'Create the group', detail: 'Build the group on the Assets page with Manage groups or the builder.' },
+      { title: 'Open the placard', detail: 'The first visit gives the group its own code.' },
+      { title: 'Put it up', detail: 'Print it for the lobby or entry. Anyone who scans it lands on the area’s public page.' },
+    ],
+    use: {
+      say: 'The placard lists whatever is in the group, so add, move or remove items in that group on Customer equipment and the scan page follows. To print straight to a label printer on this computer, set it up on Label Printer.',
+      go: [{ label: 'Open Customer equipment', to: '/assets' }, { label: 'Set up Label Printer', to: '/tool-shed/label-printer' }],
+    },
+    steps: [
+      { selector: '[data-tour="placard-studio"]', title: 'A sign for the wall', say: 'This is the sign for the wall: big, with a large QR, meant to be scanned from a few feet away.' },
+      { selector: '[data-tour="labels-stock"]', title: 'Paper or label', say: 'Plain paper prints through your browser. Other sizes build a PDF.', optional: 'Size picker' },
+      { selector: '[data-tour="labels-copies"]', title: 'How many', say: 'Print one for each entrance if you need to.', optional: 'Copies' },
+      { selector: '[data-tour="labels-print"]', title: 'Print it', say: 'Print it, send it to a Bluetooth printer, or download an image.', optional: 'Print buttons' },
+    ],
+  },
+  {
+    id: 'public-scan',
+    title: 'What a scan shows',
+    description: 'The page anyone sees after scanning a CrewBarn sticker or placard.',
+    route: /^\/scan\/[^/]+(\/[^/]+)?\/?$/,
+    roadmap: [
+      { title: 'Scan', detail: 'An inspector, tenant or owner scans a sticker and lands here.' },
+      { title: 'Open items', detail: 'Open items show their status, servicer and history straight away.' },
+      { title: 'Private items', detail: 'Secured items ask the owner to sign in, or for an access code.' },
+      { title: 'Unlock', detail: 'An approved code unlocks the secured details for a limited time.' },
+    ],
+    use: {
+      say: 'What this page shows comes from the item on Customer equipment, including whether it’s secured. When someone asks to see a secured item, their request lands on Asset Access Requests for you to approve or deny.',
+      go: [{ label: 'Open Customer equipment', to: '/assets' }, { label: 'Review access requests', to: '/asset-access-requests' }],
+    },
+    steps: [
+      { selector: '[data-tour="scan-owner-bar"]', title: 'Signed in as the owner', say: 'If the building owner signed in on this phone, this bar says so, with a way to sign out.', optional: 'Only when an owner is signed in' },
+      { selector: '[data-tour="scan-compliance"]', title: 'Is it in date?', say: 'The first thing you see is whether this item is in date, when it was last inspected and when it’s next due.', optional: 'Open items' },
+      { selector: '[data-tour="scan-servicer"]', title: 'Who services it', say: 'The company that looks after it, their license number, and a button to call them.', optional: 'Open items' },
+      { selector: '[data-tour="scan-history"]', title: 'Service history', say: 'Every visit, grouped by day and tech, with what they did.', optional: 'Open items' },
+      { selector: '[data-tour="scan-tree"]', title: 'Everything in the area', say: 'On a building, every item is listed here. Tap one to see its public record without scanning it.', optional: 'Locations and groups' },
+      { selector: '[data-tour="scan-secured"]', title: 'Private items', say: 'If this is your building, sign in with your portal login. Everyone else enters a code from the owner or asks for one.', optional: 'Secured items' },
+    ],
+  },
+  {
+    id: 'public-verify',
+    title: 'Check a record',
+    description: 'Confirm a finalized inspection record is genuine.',
+    route: /^\/verify\/[^/]+\/?$/,
+    roadmap: [
+      { title: 'Inspection finalized', detail: 'A tech finalizes an inspection on a job.' },
+      { title: 'Record number', detail: 'The paper or PDF report carries a record number.' },
+      { title: 'Check it', detail: 'Type the number here, or follow the link, to check it against CrewBarn directly.' },
+    ],
+    use: {
+      say: 'Records come from inspections a tech finalizes on a job’s Inspection tab. The item’s full history and report packet are on Customer equipment.',
+      go: [{ label: 'Go to Jobs', to: '/jobs' }, { label: 'Open Customer equipment', to: '/assets' }],
+    },
+    steps: [
+      { selector: '[data-tour="verify-result"]', title: 'The answer', say: 'Green means CrewBarn holds this record. It doesn’t rely on whatever tag you scanned.' },
+      { selector: '[data-tour="verify-details"]', title: 'What it says', say: 'Which record, when it was signed, the result, the asset, and who serviced it with their license and phone.', optional: 'Verified records' },
+      { selector: '[data-tour="verify-open-record"]', title: 'See the full record', say: 'Open the asset’s public page for its full history.', optional: 'Only when the asset has a code' },
+      { selector: '[data-tour="verify-result"]', title: 'Only finalized records', say: 'Inspections still in progress won’t verify yet. If a number doesn’t match, treat that paperwork as unverified.' },
+    ],
+  },
+  {
+    id: 'public-report',
+    title: 'Reading a service report',
+    description: 'A plain-language inspection report for one item or a whole building.',
+    route: /^\/r\/[^/]+\/[^/]+\/?$/,
+    roadmap: [
+      { title: 'Inspection done', detail: 'A completed inspection gets a report number.' },
+      { title: 'Read it', detail: 'Open the link to see the verdict, what needs fixing and everything checked.' },
+      { title: 'Print or verify', detail: 'Print it, or check it’s genuine on the verify page.' },
+    ],
+    use: {
+      say: 'Reports come from inspections finalized on a job’s Inspection tab. Each item’s report packet and history are on Customer equipment.',
+      go: [{ label: 'Go to Jobs', to: '/jobs' }, { label: 'Open Customer equipment', to: '/assets' }],
+    },
+    steps: [
+      { selector: '[data-tour="report-header"]', title: 'Who did the work', say: 'The company’s name, license and phone number are at the top.' },
+      { selector: '[data-tour="report-verdict"]', title: 'The verdict', say: 'The headline says in plain words how it went.' },
+      { selector: '[data-tour="report-tallies"]', title: 'The numbers', say: 'How many checks passed, what needs fixing and any safety issues, at a glance.' },
+      { selector: '[data-tour="report-fixes"]', title: 'What needs fixing', say: 'Findings, most urgent first, with what to do about each.', optional: 'Only when something needs fixing' },
+      { selector: '[data-tour="report-detail"]', title: 'The detail', say: 'Everything that was checked, or for a building, each item with a link to its own report.', optional: 'Detail section' },
+      { selector: '[data-tour="report-verify"]', title: 'Is it genuine?', say: 'Use Verify this report to check it against CrewBarn, or print it.' },
+    ],
+  },
+  {
+    id: 'company-files',
+    title: 'Company Files',
+    description: 'An encrypted vault for your business’s own sensitive records, with an unlock code and a full audit trail.',
+    route: /^\/tool-shed\/company-files\/?$/,
+    roadmap: [
+      { title: 'Set up once', detail: 'An owner or admin runs setup and stores the recovery key somewhere safe.' },
+      { title: 'Your own key (optional)', detail: 'Data Encryption can keep the keys in your own cloud account.' },
+      { title: 'Unlock', detail: 'Get a code by text or email, then type it in.' },
+      { title: 'Add and review', detail: 'Upload files or write secure notes. Every open and change is in the audit log.' },
+    ],
+    use: {
+      say: 'To keep the keys to these files in your own AWS or Google Cloud account, go to Data Encryption. For a customer’s private paperwork, use Secure Files under Files on that customer’s account instead.',
+      go: [{ label: 'Open Data Encryption', to: '/tool-shed/encryption' }, { label: 'Go to Customers', to: '/customers' }],
+    },
+    steps: [
+      { selector: '[data-tour="company-files-header"]', title: 'Your company’s safe', say: 'This is your company’s own safe. The pill on the right shows whether it’s locked or unlocked right now.' },
+      { selector: '[data-tour="company-files-setup"]', title: 'Setup', say: 'Setup creates your encryption keys and a one-time recovery key. Write that key down somewhere safe.', optional: 'Only before setup' },
+      { selector: '[data-tour="company-files-recovery"]', title: 'Recovery key', say: 'Owners and admins can rotate the recovery key or use it to recover access.', optional: 'Owners and admins' },
+      { selector: '[data-tour="company-files-export"]', title: 'Take your files with you', say: 'Export every company and customer secure file as one encrypted zip. It opens with 7-Zip using a password shown to you once, and is kept for a day.', optional: 'Owners and admins' },
+      { selector: '[data-tour="company-files-unlock"]', title: 'Unlock', say: 'Choose text or email, get a code, then type it in.', optional: 'While locked' },
+      { selector: '[data-tour="company-files-add"]', title: 'Add files and notes', say: 'Upload files or write an encrypted note.', optional: 'While unlocked, with upload or create access' },
+      { selector: '[data-tour="company-files-list"]', title: 'Your files', say: 'View or download a file while unlocked. Audit shows everyone who opened or changed it.' },
+    ],
+  },
+  {
+    id: 'templates',
+    title: 'Templates & Forms',
+    description: 'Every email, text and printable document CrewBarn sends, prints or gets signed.',
+    route: /^\/custom-documents\/?$/,
+    roadmap: [
+      { title: 'Starter pack', detail: 'Add the CrewBarn starter pack so every moment has something to send.' },
+      { title: 'See the journey', detail: 'The Journey view shows what goes out at each step and where you have gaps or copies.' },
+      { title: 'Edit or build', detail: 'Edit any template, write one with CBI, or make a printable form.' },
+      { title: 'Workflow defaults', detail: 'Defaults are what estimates, invoices, reminders and receipts send automatically.' },
+    ],
+    use: {
+      say: 'To give one customer something different, open their account, go to Files, then Templates, and pick a template and a text for each kind of document; anything left on Use tenant default gets yours. Job statuses picks the email or text each stage sends the customer, and Reminders and Automations pick from these templates too.',
+      go: [{ label: 'Go to Customers', to: '/customers' }, { label: 'Open Job statuses', to: '/tool-shed/job-statuses' }, { label: 'Open Reminders', to: '/tool-shed/automations/reminders' }],
+    },
+    steps: [
+      { selector: '[data-tour="templates-header"], [data-tour="templates-easy-header"]', title: 'Everything you send', say: 'Everything CrewBarn sends, prints or gets signed is here, in the order your jobs happen.' },
+      { selector: '[data-tour="templates-tutorial"]', title: 'The full tutorial', say: 'Take the tutorial plays a short film, then walks you through making and editing a template right on this page, one step at a time.' },
+      { selector: '[data-tour="templates-views"]', title: 'Four views', say: 'Journey shows what the customer gets at each moment. List gives one row per template. Job stages and By channel are for managing them in bulk; text templates live under By channel.' },
+      { selector: '[data-tour="templates-new"]', title: 'Make a new one', say: 'Pick the moment, pick how it goes out, then start from CBI, CrewBarn’s version, a copy, or blank.', optional: 'Needs template edit access' },
+      { selector: '[data-tour="templates-banners"]', title: 'Copies and starters', say: 'If you have extra copies of a template, a banner offers to clean them up. Archived copies aren’t deleted.', optional: 'Skip' },
+      { selector: '[data-tour="templates-moment-preview"]', title: 'One customer, their own version', say: 'Your default is what most customers get. When one customer needs something different, like their own invoice or work order layout, open their account, go to Files, then Templates, and pick it there. Everyone else keeps your default.', optional: 'Skip' },
+      { selector: '[data-tour="templates-make-form"]', title: 'Make a form', say: 'Build a branded printable form from a familiar starter, without typing merge tags.', optional: 'Journey view, with edit access' },
+    ],
+  },
+  {
+    id: 'form-builder',
+    title: 'Make a form',
+    description: 'Build a branded printable document from a starter and a list of fields.',
+    route: /^\/custom-documents\/new-form\/?$/,
+    roadmap: [
+      { title: 'Pick a starter', detail: 'Start from a form you know: invoice, work order, inspection and more.' },
+      { title: 'Fields and style', detail: 'Tap the fields you want, pick a colour and a look, and name it.' },
+      { title: 'Build it', detail: 'Build it saves a document template and opens it in the editor.' },
+    ],
+    use: {
+      say: 'Your new form is used for its kind of document: set it as the workflow default in the editor, or give it to one customer on their account under Files, then Templates. Signable forms, like contracts and work orders, can be added to a job for signing from its Agreements tab.',
+      go: [{ label: 'Go to Customers', to: '/customers' }, { label: 'Go to Jobs', to: '/jobs' }],
+    },
+    steps: [
+      { selector: '[data-tour="form-builder-header"]', title: 'No merge tags needed', say: 'You choose fields by name here. Cancel takes you back to Templates & Forms.' },
+      { selector: '[data-tour="form-builder-starter"]', title: 'Start from a form you know', say: 'Pick the one closest to what you need. You can change everything after.' },
+      { selector: '[data-tour="form-builder-fields"]', title: 'Choose what goes on it', say: 'Tap fields to add or remove them.' },
+      { selector: '[data-tour="form-builder-style"]', title: 'Colour and name', say: 'Pick a colour and a look. The name is just for you; the heading is what customers see.' },
+      { selector: '[data-tour="form-builder-build"]', title: 'Build it', say: 'Build it creates the template and opens it in the editor for fine-tuning.' },
+      { selector: '[data-tour="form-builder-preview"]', title: 'Live preview', say: 'See it with sample data, or switch to field names to see what goes where.' },
+    ],
+  },
+  {
+    id: 'template-editor',
+    title: 'Template editor',
+    description: 'Edit one email or document template: its text, design, merge tags and workflow default.',
+    route: /^\/custom-documents\/(email|document)\/[^/]+\/?$/,
+    roadmap: [
+      { title: 'Open it', detail: 'Arrive from Templates & Forms, or from a CBI or copy draft.' },
+      { title: 'Write it', detail: 'Edit visually or as HTML, and insert tags, blocks and signature slots.' },
+      { title: 'Save it', detail: 'Preview with a real job, set it as the workflow default, and save. Leaving the editor also saves your edits, unless you discard them.' },
+    ],
+    use: {
+      say: 'Email templates are what Job statuses sends at each stage, and what Reminders and Automations send; in Messages, the Template button drops one into your reply. To use this one for just one customer, open their account, go to Files, then Templates.',
+      go: [{ label: 'Open Job statuses', to: '/tool-shed/job-statuses' }, { label: 'Open Automations', to: '/tool-shed/automations' }, { label: 'Go to Customers', to: '/customers' }],
+    },
+    steps: [
+      { selector: '[data-tour="tpl-editor-crumb"]', title: 'Back to the library', say: 'This takes you back to Templates & Forms. Any edits you made are saved on the way out.' },
+      { selector: '[data-tour="tpl-editor-header"]', title: 'Name, preview, save', say: 'Name it for yourself, then preview it with a real job, save it, or grab a PDF. Changed your mind? Discard changes puts it back to the last saved version, so nothing is saved when you leave.' },
+      { selector: '[data-tour="tpl-editor-workflow"]', title: 'Workflow default', say: 'Shows whether CrewBarn uses this one automatically, and any recommended tags it’s missing. A customer can still be given a different one on their account, under Files, then Templates.' },
+      { selector: '[data-tour="tpl-editor-body"]', title: 'Write it here', say: 'Visual mode is what the customer sees. HTML mode is for pasting your own layout.' },
+      { selector: '[data-tour="tpl-editor-sidebar"]', title: 'Blocks, tags and design', say: 'Insert layout blocks and merge tags, ask CBI to rewrite, see the history, or change the design and default settings.' },
+    ],
+  },
+  {
+    id: 'data-encryption',
+    title: 'Data Encryption',
+    description: 'Keep the key to your secure files in your own AWS or Google Cloud account.',
+    route: /^\/tool-shed\/encryption\/?$/,
+    roadmap: [
+      { title: 'Secure files first', detail: 'Set up Secure Files or Company Files so the keys exist.' },
+      { title: 'Create a key', detail: 'Create a key in your cloud account and give CrewBarn access to it.' },
+      { title: 'Turn it on', detail: 'Paste the key, accept the agreement and enable. CrewBarn checks the key first.' },
+      { title: 'Know the risk', detail: 'If the key is lost or revoked, nobody can read that data, including CrewBarn.' },
+    ],
+    use: {
+      say: 'Your key protects the files in Company Files and the Secure Files on each customer’s account, under Files.',
+      go: [{ label: 'Open Company Files', to: '/tool-shed/company-files' }, { label: 'Go to Customers', to: '/customers' }],
+    },
+    steps: [
+      { selector: '[data-tour="byok-header"]', title: 'Your own key', say: 'This puts the key to your secure files in your own cloud account. Read the warning carefully before you switch it on.' },
+      { selector: '[data-tour="byok-status"]', title: 'It’s on', say: 'Shows which key is in use. Turning it off moves your files back to CrewBarn-managed keys, and only works while your key still grants access.', optional: 'When it’s on' },
+      { selector: '[data-tour="byok-warning"]', title: 'Read this first', say: 'If you lose this key, the data is gone for good. CrewBarn has no back door.', optional: 'When it’s off' },
+      { selector: '[data-tour="byok-provider"]', title: 'Which cloud', say: 'Pick Google Cloud or AWS.', optional: 'When it’s off' },
+      { selector: '[data-tour="byok-steps"]', title: 'Set up the key', say: 'Follow these steps in your cloud console and copy CrewBarn’s account into the key’s permissions.', optional: 'When it’s off' },
+      { selector: '[data-tour="byok-enable"]', title: 'Agree and enable', say: 'Read the agreement, paste your key, tick the box and enable. CrewBarn tests the key before switching anything on.', optional: 'When it’s off' },
+    ],
+  },
+]

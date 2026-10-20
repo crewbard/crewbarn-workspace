@@ -1,5 +1,9 @@
 ﻿import { useState, useMemo, useEffect } from "react"
+import { IconLayoutGrid, IconList } from "@tabler/icons-react"
+import { Link, useSearchParams } from "react-router-dom"
 import {
+  useCatalogAttention,
+  useCatalogItem,
   useCatalogItems,
   useCreateCatalogItem,
   useUploadCatalogItemImage,
@@ -17,27 +21,48 @@ import { ApiError } from "@/lib/api"
 import { PendingImagePicker } from "@/components/images/PendingImagePicker"
 import { CategoryTiles } from "@/components/catalog/CategoryTiles"
 import { StockWhereOverlay } from "@/components/catalog/StockWhereOverlay"
+import { CatalogAttention } from "@/components/catalog/CatalogAttention"
+import { ProductGrid } from "@/components/catalog/ProductGrid"
+import { PriceText, ProductThumb, StockText } from "@/components/catalog/productBits"
+import { BulkPriceBar } from "@/components/catalog/BulkPriceBar"
+import { UndoToast } from "@/components/ui/UndoToast"
+import { useUndoToast } from "@/hooks/useUndoToast"
+import { CATALOG_VIEW_KEY, filterParams, readCatalogView, type CatalogFilter, type CatalogView } from "@/lib/catalogProducts"
 import { CatalogItemImageUploader } from "@/components/CatalogItemImageUploader"
 import { InlineCreateProductCategoryModal } from "@/components/InlineCreateProductCategoryModal"
 import { UnitOfMeasurePicker } from "@/components/UnitOfMeasurePicker"
 import { isCountableUnit, formatQty } from "@/lib/unitsOfMeasure"
 import { PERM, usePermissions } from "@/hooks/usePermissions"
+import { AddToCartButton } from "@/components/parts/AddToCartButton"
+import { WhoSellsThis } from "@/components/parts/WhoSellsThis"
+import { OpenOrders, RecentMovements, StockByPlace } from "@/components/catalog/ProductOverlaySections"
 import { useInventorySettings } from "@/hooks/useInventorySettings"
+import { FitsSection, FitsEditor, DraftBadge, useFitsDraft } from "@/components/fitment/FitsSection"
+import { FitsFilterBar } from "@/components/fitment/FitsFilterBar"
+import { FitmentNotice, FitmentProfilePanel } from "@/components/fitment/FitmentProfilePanel"
 import type { CatalogItem, CatalogItemInput } from "@/types/catalogItem"
 import type { ProductCatalogCategory } from "@/types/productCatalogCategory"
 import type { TaxClass } from "@/types/taxClass"
+import {
+  PRODUCT_NAME_PLACEHOLDER,
+  PRODUCT_SHORT_DESC_PLACEHOLDER,
+  PRODUCT_LONG_DESC_LABEL,
+  PRODUCT_LONG_DESC_PLACEHOLDER,
+} from "@/components/catalog/catalogPlaceholders"
 
 // ---------- Page ----------
 
 export function ProductCatalogPage() {
   const [search, setSearch] = useState("")
   const [debouncedSearch, setDebouncedSearch] = useState("")
-  // viewing: read-only details overlay (every signed-in user can open this).
-  // editing: full edit form (gated by canEdit — admins / platform admins only).
-  // Only one of {viewing, editing, creating} is non-null at a time.
+  // viewing: the product overlay (CatalogItemOverlay: details for everyone,
+  // Edit inside it for catalog.edit). Only one of {viewing, creating} at a time.
   const [viewing, setViewing] = useState<CatalogItem | null>(null)
-  const [editing, setEditing] = useState<CatalogItem | null>(null)
   const [creating, setCreating] = useState(false)
+  // Products ticked for the bulk price bar (list view, catalog.edit only).
+  const [picked, setPicked] = useState<string[]>([])
+  const [priceToast, setPriceToast] = useUndoToast()
+  const savePrice = useUpdateCatalogItem()
 
   // The RBAC check the previous comment here promised once roles shipped. They
   // have, so this is it: gating on is_platform_admin meant no tenant could edit
@@ -48,6 +73,21 @@ export function ProductCatalogPage() {
   const { data: invSettings } = useInventorySettings()
   const showSnUi = !!invSettings?.inventory_show_sn_tracking
 
+  // ?item=<id> opens that product's details. Products have no page of their
+  // own, so QR labels and links land here.
+  const [searchParams, setSearchParams] = useSearchParams()
+  const linkedItemId = searchParams.get("item") ?? undefined
+  const linkedItem = useCatalogItem(linkedItemId)
+  useEffect(() => {
+    if (linkedItem.data) {
+      setViewing(linkedItem.data)
+      const next = new URLSearchParams(searchParams)
+      next.delete("item")
+      setSearchParams(next, { replace: true })
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [linkedItem.data])
+
   useEffect(() => {
     const t = setTimeout(() => setDebouncedSearch(search.trim()), 300)
     return () => clearTimeout(t)
@@ -57,66 +97,61 @@ export function ProductCatalogPage() {
   // than opening a different screen, so the search box and the row actions stay
   // exactly where they were.
   const [category, setCategory] = useState<ProductCatalogCategory | null>(null)
+  // Quick filter (All, Low, Out, No price, ...). Filtered on the server.
+  const [filter, setFilter] = useState<CatalogFilter>("all")
+  // Fits filter ({subject: 'vehicle', make: 'Ford', model: 'F-150', years: '2016'}).
+  const [fits, setFits] = useState<Record<string, string>>({})
+  // Product catalog → Fitment (the company's fitment fields). ?fitment=1 opens it.
+  const [showFitment, setShowFitment] = useState(() => searchParams.get("fitment") === "1")
+  // The page number belongs to one search/category/filter; changing any of
+  // them starts again at page 1 (no effect needed).
+  const pageKey = `${debouncedSearch}|${category?.id ?? ""}|${filter}|${JSON.stringify(fits)}`
+  const [paging, setPaging] = useState({ key: pageKey, page: 1 })
+  const page = paging.key === pageKey ? paging.page : 1
+  const setPage = (next: (p: number) => number) => setPaging({ key: pageKey, page: next(page) })
+  // List or grid, remembered on this device like the Bins view.
+  const [view, setViewState] = useState<CatalogView>(() => readCatalogView(localStorage.getItem(CATALOG_VIEW_KEY)))
+  const setView = (v: CatalogView) => { setViewState(v); localStorage.setItem(CATALOG_VIEW_KEY, v) }
   // Which item's "where is it" overlay is open.
   const [whereItem, setWhereItem] = useState<{ id: string; name: string; unit: string } | null>(null)
+  const showWhere = (item: CatalogItem) => setWhereItem({ id: item.id, name: item.name, unit: item.unit_label || "each" })
 
+  // Each product's on-hand total (inventory.current_stock) and its top places
+  // (stock_summary, ?with_stock=1) come with the list. The page used to add up
+  // one page of stock rows itself, and anything past row 200 read "0 each".
   const { data, isLoading, isError, error } = useCatalogItems({
     type: "product",
     q: debouncedSearch || undefined,
     product_category_id: category?.id,
     per_page: 50,
+    page,
+    with_stock: 1,
+    ...filterParams(filter),
+    fits: fits.subject ? fits : undefined,
   })
+  const { data: attention } = useCatalogAttention(category?.id)
 
   const items = data?.data ?? []
   const meta = data?.meta
 
-  // Stock + location info — always fetched so the catalog list can show
-  // techs where to find a part. Per-item show_stock_in_catalog still gates
-  // whether numbers display in each row; the tenant-wide toggle is no longer
-  // used to hide the column itself (kept on the model for now in case we need
-  // a "really hide everything" master override later).
-  const stockQuery = useStockLevels({ has_stock: false, per_page: 500 })
-  // Aggregate per-placement (location + bin) so the table can show the
-  // full path a tech needs to walk to: "Main Melbourne / Shelf 1-B (8)".
-  type ItemStock = { qty: number; byPlacement: Map<string, { label: string; qty: number }> }
-  const stockByItem = useMemo(() => {
-    const m = new Map<string, ItemStock>()
-    for (const sl of stockQuery.data?.data ?? []) {
-      const entry = m.get(sl.catalog_item_id) ?? { qty: 0, byPlacement: new Map() }
-      entry.qty += sl.quantities.qty_on_hand
-      // path_label already includes the location name as its first segment,
-      // so use it as-is. Only fall back to manual concat when path_label
-      // is missing (no bin or bin without computed path).
-      let label: string
-      if (sl.bin?.path_label) {
-        label = sl.bin.path_label
-      } else if (sl.bin?.name || sl.bin?.bin_code) {
-        label = `${sl.location?.name ?? '—'} / ${sl.bin?.name || sl.bin?.bin_code}`
-      } else {
-        label = sl.location?.name ?? '—'
-      }
-      const key = `${sl.location_id}|${sl.bin_id ?? ''}`
-      const existing = entry.byPlacement.get(key)
-      entry.byPlacement.set(key, {
-        label,
-        qty: (existing?.qty ?? 0) + sl.quantities.qty_on_hand,
-      })
-      m.set(sl.catalog_item_id, entry)
-    }
-    return m
-  }, [stockQuery.data])
+  const pickCategory = (c: ProductCatalogCategory | null, f: CatalogFilter = "all") => {
+    setCategory(c)
+    setFilter(f)
+  }
 
   return (
-    <div className="max-w-7xl mx-auto p-6 space-y-6">
+    <div data-bins-ui="" className="max-w-7xl mx-auto p-6 space-y-6">
       <PageHeader
         search={search}
         onSearchChange={setSearch}
         onNew={() => setCreating(true)}
         canEdit={canEdit}
+        view={view}
+        onView={setView}
       />
 
       {isError && (
-        <div className="bg-white border border-red-200 rounded-xl shadow-sm p-6">
+        <div className="bg-[var(--bins-surface)] border border-red-200 rounded-xl shadow-sm p-6">
           <p className="text-sm text-red-700">
             Failed to load catalog items.
             {error instanceof Error ? ` ${error.message}` : ""}
@@ -124,50 +159,115 @@ export function ProductCatalogPage() {
         </div>
       )}
 
-      {isLoading && (
-        <div className="bg-white border border-slate-200 rounded-xl shadow-sm p-6 animate-pulse">
-          <div className="h-5 w-40 bg-slate-200 rounded mb-6" />
-          <div className="space-y-3">
-            <div className="h-12 bg-slate-100 rounded" />
-            <div className="h-12 bg-slate-100 rounded" />
-            <div className="h-12 bg-slate-100 rounded" />
-          </div>
-        </div>
-      )}
+      <FitmentNotice onReview={() => setShowFitment(true)} />
 
-      <CategoryTiles onPick={setCategory} />
+      <div data-tour="prod-category-tiles"><CategoryTiles onPick={pickCategory} /></div>
 
       {category && (
-        <div className="flex items-center gap-3 text-sm">
-          <span className="text-slate-600">
-            Showing <strong className="text-slate-900">{category.name}</strong>
+        <div data-tour="prod-category-showing" className="flex items-center gap-3 text-sm">
+          <span className="text-[var(--bins-text-2)]">
+            Showing <strong className="text-[var(--bins-text)]">{category.name}</strong>
           </span>
           <button
             type="button"
-            onClick={() => setCategory(null)}
-            className="text-amber-700 hover:underline"
+            onClick={() => pickCategory(null, filter)}
+            className="text-[var(--bins-accent-ink)] hover:underline"
           >
             Show all products
           </button>
         </div>
       )}
 
+      <CatalogAttention counts={attention} filter={filter} onFilter={setFilter} />
+
+      <FitsFilterBar value={fits} onChange={setFits} onOpenProfile={() => setShowFitment(true)} />
+
+      {isLoading && (
+        <div className="bg-[var(--bins-surface)] border border-[var(--bins-border)] rounded-xl shadow-sm p-6 animate-pulse">
+          <div className="h-5 w-40 bg-[var(--bins-soft)] rounded mb-6" />
+          <div className="space-y-3">
+            <div className="h-12 bg-[var(--bins-softer)] rounded" />
+            <div className="h-12 bg-[var(--bins-softer)] rounded" />
+            <div className="h-12 bg-[var(--bins-softer)] rounded" />
+          </div>
+        </div>
+      )}
+
       {!isLoading && !isError && (
         <>
-          <ItemsTable
-            items={items}
-            onView={setViewing}
-            stockByItem={stockByItem}
-            showSnUi={showSnUi}
-            onShowWhere={(id, name, unit) => setWhereItem({ id, name, unit })}
-          />
-          {meta && (
-            <div className="text-xs text-slate-500 text-right">
-              Showing {items.length} of {meta.total} products
-              {debouncedSearch ? ` matching "${debouncedSearch}"` : ""}
+          {items.length === 0 ? (
+            <div data-tour="prod-empty" className="bg-[var(--bins-surface)] border border-[var(--bins-border)] rounded-xl shadow-sm p-12 text-center space-y-2">
+              <p className="text-sm text-[var(--bins-text-2)]">
+                {filter !== "all" || debouncedSearch || category || fits.subject
+                  ? "No products match."
+                  : "No products in the catalog."}
+              </p>
+              {(filter !== "all" || debouncedSearch || fits.subject) && (
+                <button
+                  type="button"
+                  onClick={() => { setFilter("all"); setSearch(""); setFits({}) }}
+                  className="text-sm font-medium text-[var(--bins-accent-ink)] hover:underline"
+                >
+                  Clear filters
+                </button>
+              )}
+            </div>
+          ) : view === "grid" ? (
+            <ProductGrid items={items} onView={setViewing} onShowWhere={showWhere} />
+          ) : (
+            <ItemsTable
+              items={items}
+              onView={setViewing}
+              showSnUi={showSnUi}
+              onShowWhere={showWhere}
+              canEdit={canEdit}
+              picked={picked}
+              onPick={(id, on) => setPicked((cur) => on ? (cur.includes(id) ? cur : [...cur, id]) : cur.filter((x) => x !== id))}
+              onPickPage={(ids, on) => setPicked((cur) => on
+                ? [...new Set([...cur, ...ids])]
+                : cur.filter((x) => !ids.includes(x)))}
+              onSavePrice={(id, cents) => savePrice.mutateAsync({ id, input: { customer_cost_cents: cents } }).then(() => undefined)}
+            />
+          )}
+          {canEdit && picked.length > 0 && (
+            <BulkPriceBar picked={picked} onClear={() => setPicked([])} onToast={setPriceToast} />
+          )}
+          <UndoToast toast={priceToast} tour="prod-price-toast" />
+          {meta && meta.total > 0 && (
+            <div data-tour="prod-count" className="flex items-center justify-end gap-3 text-xs text-[var(--bins-muted)]">
+              <span>
+                Showing {(meta.current_page - 1) * meta.per_page + 1}–{(meta.current_page - 1) * meta.per_page + items.length} of {meta.total} products
+                {debouncedSearch ? ` matching "${debouncedSearch}"` : ""}
+              </span>
+              {meta.last_page > 1 && (
+                <span className="flex gap-1">
+                  <button type="button" disabled={page <= 1} onClick={() => setPage((p) => p - 1)}
+                    className="rounded-md border border-[var(--bins-border)] px-2 py-1 text-[var(--bins-text-2)] hover:bg-[var(--bins-soft)] disabled:opacity-60 disabled:cursor-not-allowed">
+                    Previous
+                  </button>
+                  <button type="button" disabled={page >= meta.last_page} onClick={() => setPage((p) => p + 1)}
+                    className="rounded-md border border-[var(--bins-border)] px-2 py-1 text-[var(--bins-text-2)] hover:bg-[var(--bins-soft)] disabled:opacity-60 disabled:cursor-not-allowed">
+                    Next
+                  </button>
+                </span>
+              )}
             </div>
           )}
         </>
+      )}
+
+      {showFitment && (
+        <FitmentProfilePanel
+          canEdit={canEdit}
+          onClose={() => {
+            setShowFitment(false)
+            if (searchParams.get("fitment")) {
+              const next = new URLSearchParams(searchParams)
+              next.delete("fitment")
+              setSearchParams(next, { replace: true })
+            }
+          }}
+        />
       )}
 
       {whereItem && (
@@ -180,18 +280,8 @@ export function ProductCatalogPage() {
       )}
 
       {creating && <CreateModal onClose={() => setCreating(false)} />}
-      {viewing && (
-        <ProductViewModal
-          item={viewing}
-          canEdit={canEdit}
-          onClose={() => setViewing(null)}
-          onEdit={() => {
-            setEditing(viewing)
-            setViewing(null)
-          }}
-        />
-      )}
-      {editing && <EditModal item={editing} onClose={() => setEditing(null)} />}
+      {/* The same product overlay Order parts opens (view, Edit opens the edit form). */}
+      {viewing && <CatalogItemOverlay id={viewing.id} initial={viewing} onClose={() => setViewing(null)} />}
     </div>
   )
 }
@@ -201,53 +291,75 @@ function PageHeader({
   onSearchChange,
   onNew,
   canEdit,
+  view,
+  onView,
 }: {
   search: string
   onSearchChange: (s: string) => void
   onNew: () => void
   canEdit: boolean
+  view: CatalogView
+  onView: (v: CatalogView) => void
 }) {
   // "/" from anywhere on the page jumps here.
   const searchBox = useSearchShortcut<HTMLInputElement>()
+  const viewBtn = (v: CatalogView, label: string, Icon: typeof IconList) => (
+    <button
+      type="button"
+      data-view={v}
+      aria-pressed={view === v}
+      onClick={() => onView(v)}
+      className={`inline-flex items-center gap-1.5 px-3 py-2 text-sm font-medium ${view === v ? 'bg-[var(--bins-accent-soft)] text-[var(--bins-accent-ink)]' : 'bg-[var(--bins-surface)] text-[var(--bins-text-2)] hover:bg-[var(--bins-soft)]'}`}
+    >
+      <Icon size={16} stroke={1.75} aria-hidden /> {label}
+    </button>
+  )
 
   return (
     <div className="space-y-4">
-      <div className="flex items-start justify-between gap-6">
+      <div data-tour="prod-header" className="flex items-start justify-between gap-6">
         <div>
-          <h1 className="text-3xl font-semibold text-slate-900">Product Catalog</h1>
-          <p className="text-sm text-slate-600 mt-1">
-            Physical products you sell or use - keys, locks, hardware. Stock levels are managed in Inventory.
+          <h1 className="text-3xl font-semibold text-[var(--bins-text)]">Product Catalog</h1>
+          <p className="text-sm text-[var(--bins-muted)] mt-1">
+            Physical products you sell or use: parts, equipment, materials. Stock levels are managed in Inventory.
           </p>
         </div>
         {canEdit && (
           <button
             type="button"
             onClick={onNew}
-            className="text-sm px-4 py-2 bg-amber-500 hover:bg-amber-600 text-white rounded-md font-medium transition-colors flex-shrink-0"
+            data-tour="prod-new"
+            className="text-sm px-4 py-2 bg-[var(--bins-accent)] hover:bg-[var(--bins-accent-strong)] text-white rounded-md font-medium transition-colors flex-shrink-0"
           >
             + New Product
           </button>
         )}
       </div>
-      <div className="relative">
-        <input
-          ref={searchBox}
-          onKeyDown={leaveOnEscape}
-          type="search"
-          value={search}
-          onChange={(e) => onSearchChange(e.target.value)}
-          placeholder="Search products by name, SKU, or part number..."
-          aria-keyshortcuts="/"
-          className="peer w-full text-sm pl-4 pr-10 py-2.5 border border-slate-200 rounded-md focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500"
-        />
-        {/* The key, where the eye already is. Gone once you are in the box. */}
-        <kbd
-          aria-hidden
-          title="Press / to search"
-          className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 rounded border border-slate-300 bg-slate-50 px-1.5 font-mono text-[11px] leading-5 text-slate-500 peer-focus:hidden"
-        >
-          /
-        </kbd>
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+        <div data-tour="prod-search" className="relative flex-1">
+          <input
+            ref={searchBox}
+            onKeyDown={leaveOnEscape}
+            type="search"
+            value={search}
+            onChange={(e) => onSearchChange(e.target.value)}
+            placeholder="Search products by name, SKU, or part number..."
+            aria-keyshortcuts="/"
+            className="peer w-full text-sm pl-4 pr-10 py-2.5 border border-[var(--bins-border)] bg-[var(--bins-surface)] text-[var(--bins-text)] rounded-md focus:outline-none focus:border-[var(--bins-accent)] focus:ring-1 focus:ring-[var(--bins-accent)]"
+          />
+          {/* The key, where the eye already is. Gone once you are in the box. */}
+          <kbd
+            aria-hidden
+            title="Press / to search"
+            className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 rounded border border-[var(--bins-border)] bg-[var(--bins-soft)] px-1.5 font-mono text-[11px] leading-5 text-[var(--bins-muted)] peer-focus:hidden"
+          >
+            /
+          </kbd>
+        </div>
+        <div data-tour="prod-view" role="group" aria-label="View" className="flex self-end overflow-hidden rounded-md border border-[var(--bins-border)] divide-x divide-[var(--bins-border)] flex-shrink-0 sm:self-auto">
+          {viewBtn('list', 'List', IconList)}
+          {viewBtn('grid', 'Grid', IconLayoutGrid)}
+        </div>
       </div>
     </div>
   )
@@ -258,34 +370,48 @@ function PageHeader({
 function ItemsTable({
   items,
   onView,
-  stockByItem,
   showSnUi,
   onShowWhere,
+  canEdit = false,
+  picked = [],
+  onPick,
+  onPickPage,
+  onSavePrice,
 }: {
   items: CatalogItem[]
   onView: (item: CatalogItem) => void
-  stockByItem: Map<string, { qty: number; byPlacement: Map<string, { label: string; qty: number }> }>
-  onShowWhere: (id: string, name: string, unit: string) => void
+  onShowWhere: (item: CatalogItem) => void
   showSnUi: boolean
+  canEdit?: boolean
+  picked?: string[]
+  onPick?: (id: string, on: boolean) => void
+  onPickPage?: (ids: string[], on: boolean) => void
+  onSavePrice?: (id: string, cents: number) => Promise<void>
 }) {
-  if (items.length === 0) {
-    return (
-      <div className="bg-white border border-slate-200 rounded-xl shadow-sm p-12 text-center">
-        <p className="text-sm text-slate-600">No products in the catalog.</p>
-      </div>
-    )
-  }
+  const pageIds = items.map((i) => i.id)
+  const allOn = pageIds.length > 0 && pageIds.every((id) => picked.includes(id))
   return (
-    <div className="bg-white border border-slate-200 rounded-xl shadow-sm overflow-x-auto">
+    <div data-tour="prod-table" className="bg-[var(--bins-surface)] border border-[var(--bins-border)] rounded-xl shadow-sm overflow-x-auto">
       <table className="w-full text-sm min-w-[760px]">
-        <thead className="bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
+        <thead className="bg-[var(--bins-soft)] text-xs uppercase tracking-wide text-[var(--bins-muted)]">
           <tr>
-            <th className="px-4 py-3 w-14"></th>
+            {canEdit && (
+              <th className="px-3 py-3 w-10">
+                <input
+                  type="checkbox"
+                  aria-label="Pick every product on this page"
+                  data-tour="prod-pick-all"
+                  checked={allOn}
+                  onChange={(e) => onPickPage?.(pageIds, e.target.checked)}
+                />
+              </th>
+            )}
+            <th className="px-4 py-3 w-14"><span className="sr-only">Photo</span></th>
             <th className="text-left px-6 py-3 font-medium">Name / SKU</th>
             <th className="text-left px-6 py-3 font-medium">Category</th>
             <th className="text-right px-6 py-3 font-medium">Price</th>
             <th className="text-left px-6 py-3 font-medium">Tax</th>
-            <th className="text-right px-6 py-3 font-medium" title="Total qty_on_hand and where it's stored">
+            <th data-tour="prod-col-stock" className="text-right px-6 py-3 font-medium" title="Total on hand across every bin, and where it's kept">
               Stock
             </th>
             {showSnUi && (
@@ -294,89 +420,60 @@ function ItemsTable({
             <th className="text-center px-6 py-3 font-medium">Active</th>
           </tr>
         </thead>
-        <tbody className="divide-y divide-slate-100">
+        <tbody className="divide-y divide-[var(--bins-border-soft)]">
           {items.map((item) => (
             <tr
               key={item.id}
-              className="hover:bg-slate-50 cursor-pointer"
+              data-tour="prod-row"
+              className="hover:bg-[var(--bins-soft)] cursor-pointer"
               onClick={() => onView(item)}
             >
-              <td className="px-4 py-3 w-14">
-                {item.images.thumb_url || item.images.medium_url ? (
-                  <img
-                    src={item.images.thumb_url ?? item.images.medium_url ?? ''}
-                    alt=""
-                    className="w-10 h-10 rounded object-cover border border-slate-200 bg-slate-50"
+              {canEdit && (
+                <td className="px-3 py-3 w-10" onClick={(e) => e.stopPropagation()}>
+                  <input
+                    type="checkbox"
+                    aria-label={`Pick ${item.name}`}
+                    data-tour="prod-pick"
+                    checked={picked.includes(item.id)}
+                    onChange={(e) => onPick?.(item.id, e.target.checked)}
                   />
-                ) : (
-                  <div className="w-10 h-10 rounded bg-slate-100 border border-slate-200 flex items-center justify-center text-slate-300 text-base">
-                    📷
-                  </div>
-                )}
+                </td>
+              )}
+              <td className="px-4 py-3 w-14">
+                <ProductThumb item={item} />
               </td>
               <td className="px-6 py-4">
-                <div className="font-medium text-slate-900">{item.name}</div>
+                <div className="font-medium text-[var(--bins-text)]">{item.name}</div>
                 {item.sku && (
-                  <div className="text-xs text-slate-500 font-mono">{item.sku}</div>
+                  <div className="text-xs text-[var(--bins-muted)] font-mono">{item.sku}</div>
                 )}
               </td>
-              <td className="px-6 py-4 text-slate-700 text-xs">
+              <td className="px-6 py-4 text-[var(--bins-text-2)] text-xs">
                 {item.product_category?.name || "-"}
               </td>
-              <td className="px-6 py-4 text-right font-mono font-medium text-slate-900">
-                {item.pricing.customer_cost_formatted}
+              <td className="px-6 py-4 text-right" onClick={(e) => canEdit && e.stopPropagation()}>
+                <PriceText
+                  item={item}
+                  onSave={canEdit && onSavePrice ? (cents) => onSavePrice(item.id, cents) : undefined}
+                />
               </td>
-              <td className="px-6 py-4 text-slate-700">
+              <td className="px-6 py-4 text-[var(--bins-text-2)]">
                 {item.tax_class ? (
                   <span className="text-xs">
                     {item.tax_class.name}
-                    <span className="text-slate-400 ml-1">
+                    <span className="text-[var(--bins-muted)] ml-1">
                       ({Number(item.tax_class.rate_pct).toFixed(2)}%)
                     </span>
                   </span>
                 ) : (
-                  <span className="text-xs text-slate-400">No tax</span>
+                  <span className="text-xs text-[var(--bins-muted)]">No tax</span>
                 )}
               </td>
               <td className="px-6 py-4 text-right tabular-nums align-top">
-                {/* Stock shows on every STOCKED product now — no per-item opt-in.
-                    Non-stocked products (services-as-products, the Write In
+                {/* Stocked products show the server's total and where it is;
+                    non-stocked ones (services-as-products, the Write In
                     bucket) have no count, so they show a dash. */}
-                {item.is_stocked_item ? (() => {
-                  const entry = stockByItem.get(item.id)
-                  const qty = entry?.qty ?? 0
-                  const threshold = item.inventory.reorder_threshold
-                  const low = threshold != null && threshold > 0 && qty <= threshold
-                  const placements = entry ? Array.from(entry.byPlacement.values()) : []
-                  placements.sort((a, b) => b.qty - a.qty)
-                  const top = placements.slice(0, 2)
-                  const moreCount = placements.length - top.length
-                  return (
-                    <div className="flex flex-col items-end gap-0.5">
-                      <button
-                        type="button"
-                        onClick={() => onShowWhere(item.id, item.name, item.unit_label || 'each')}
-                        className={`text-sm underline decoration-dotted underline-offset-2 hover:decoration-solid ${low ? 'text-red-700 font-semibold' : 'text-slate-700'}`}
-                        title={low ? `At or below reorder threshold (${threshold}) — click to see where` : 'Click to see where these are'}
-                      >
-                        {formatQty(qty, item.unit_label)}
-                      </button>
-                      {top.length > 0 && (
-                        <span
-                          className="text-[11px] text-slate-500 leading-tight text-right"
-                          title={placements.map((p) => `${p.label}: ${p.qty}`).join('\n')}
-                        >
-                          📍 {top.map((p) => p.label).join(', ')}
-                          {moreCount > 0 && ` +${moreCount}`}
-                        </span>
-                      )}
-                    </div>
-                  )
-                })() : (
-                  <span className="text-xs text-slate-300" title="Not a stocked item.">
-                    —
-                  </span>
-                )}
+                <StockText item={item} onShowWhere={onShowWhere} />
               </td>
               {showSnUi && (
                 <td className="px-6 py-4 text-center">
@@ -385,7 +482,7 @@ function ItemsTable({
                       SN
                     </span>
                   ) : (
-                    <span className="text-xs text-slate-300">-</span>
+                    <span className="text-xs text-[var(--bins-muted)]">-</span>
                   )}
                 </td>
               )}
@@ -396,7 +493,7 @@ function ItemsTable({
                       Active
                     </span>
                   ) : (
-                    <span className="inline-flex items-center px-2 py-0.5 text-xs bg-slate-100 text-slate-500 rounded">
+                    <span className="inline-flex items-center px-2 py-0.5 text-xs bg-[var(--bins-soft)] text-[var(--bins-muted)] rounded">
                       Inactive
                     </span>
                   )}
@@ -405,8 +502,8 @@ function ItemsTable({
                     target="_blank"
                     rel="noreferrer"
                     onClick={(e) => e.stopPropagation()}
-                    title="Print QR label"
-                    className="text-xs text-amber-700 hover:text-amber-900 hover:underline whitespace-nowrap"
+                    title="Print QR labels"
+                    className="text-xs text-[var(--bins-accent-ink)] hover:underline whitespace-nowrap"
                   >
                     Print QR
                   </a>
@@ -595,10 +692,9 @@ function CreateModal({ onClose }: { onClose: () => void }) {
   const [pendingImage, setPendingImage] = useState<File | null>(null)
   const [imageError, setImageError] = useState<string | null>(null)
 
-  // SKU is required for products
+  // A blank SKU is generated on save (formStateToInput), same as quick-create.
   const canSave =
     form.name.trim().length > 0 &&
-    form.sku.trim().length > 0 &&
     !createMutation.isPending &&
     !uploadImage.isPending
 
@@ -634,7 +730,7 @@ function CreateModal({ onClose }: { onClose: () => void }) {
       : null
 
   return (
-    <ModalShell title="New Product" onClose={onClose}>
+    <ModalShell title="New Product" onClose={onClose} tour="prod-form">
       <ProductForm
         form={form}
         onChange={setForm}
@@ -655,6 +751,7 @@ function CreateModal({ onClose }: { onClose: () => void }) {
         <button
           type="button"
           onClick={onClose}
+          data-tour="prod-cancel"
           className="text-sm px-4 py-2 text-slate-600 hover:text-slate-900"
         >
           Cancel
@@ -662,6 +759,7 @@ function CreateModal({ onClose }: { onClose: () => void }) {
         <button
           type="button"
           onClick={handleSave}
+          data-tour="prod-save"
           disabled={!canSave}
           className="text-sm px-4 py-2 rounded-md bg-amber-500 hover:bg-amber-600 disabled:bg-slate-300 disabled:cursor-not-allowed text-white font-medium transition-colors"
         >
@@ -680,15 +778,30 @@ export function EditModal({ item, onClose }: { item: CatalogItem; onClose: () =>
 
   const updateMutation = useUpdateCatalogItem()
   const deleteMutation = useDeleteCatalogItem()
+  // What it fits, saved with the rest of the form.
+  const fitsDraft = useFitsDraft(item.id)
+  const showFits = item.type === "product" && fitsDraft.on
 
-  const dirty = JSON.stringify(form) !== JSON.stringify(initial)
+  const formDirty = JSON.stringify(form) !== JSON.stringify(initial)
+  const dirty = formDirty || fitsDraft.dirty
   const canSave =
     form.name.trim().length > 0 &&
-    form.sku.trim().length > 0 &&
     dirty &&
-    !updateMutation.isPending
+    !updateMutation.isPending &&
+    !fitsDraft.saving
 
-  const handleSave = () => {
+  const handleSave = async () => {
+    if (fitsDraft.dirty) {
+      try {
+        await fitsDraft.save()
+      } catch {
+        return // shown under Fits
+      }
+    }
+    if (!formDirty) {
+      onClose()
+      return
+    }
     updateMutation.mutate(
       { id: item.id, input: formStateToInput(form) },
       { onSuccess: () => onClose() }
@@ -708,8 +821,26 @@ export function EditModal({ item, onClose }: { item: CatalogItem; onClose: () =>
       : null
 
   return (
-    <ModalShell title={`Edit: ${item.name}`} onClose={onClose}>
+    <ModalShell title={`Edit: ${item.name}`} onClose={onClose} tour="prod-form">
       <ProductForm form={form} onChange={setForm} existingItem={item} />
+      {showFits && fitsDraft.profile && (
+        <div data-bins-ui="" data-tour="prod-f-fits" className="px-6 pb-4">
+          <div className="mb-2 flex items-center gap-2">
+            <span className="text-sm font-medium text-[var(--bins-text)]">Fits</span>
+            {fitsDraft.profile.status === "draft" && <DraftBadge />}
+          </div>
+          <FitsEditor
+            subjects={fitsDraft.profile.profile.subjects}
+            value={fitsDraft.drafts}
+            onChange={fitsDraft.setDrafts}
+            defaultSubject={fitsDraft.defaultSubject}
+            errors={fitsDraft.errors}
+          />
+          {fitsDraft.error && Object.keys(fitsDraft.errors).length === 0 && (
+            <p className="mt-2 text-xs text-[var(--color-danger)]">{fitsDraft.error instanceof Error ? fitsDraft.error.message : "Could not save the fits."}</p>
+          )}
+        </div>
+      )}
       {serverError && (
         <div className="px-6 pb-2">
           <ErrorBanner message={serverError} />
@@ -719,6 +850,7 @@ export function EditModal({ item, onClose }: { item: CatalogItem; onClose: () =>
         <button
           type="button"
           onClick={handleDelete}
+          data-tour="prod-delete"
           disabled={deleteMutation.isPending}
           className="text-sm px-3 py-2 text-red-600 hover:text-red-800 disabled:opacity-50 mr-auto"
         >
@@ -727,6 +859,7 @@ export function EditModal({ item, onClose }: { item: CatalogItem; onClose: () =>
         <button
           type="button"
           onClick={onClose}
+          data-tour="prod-cancel"
           className="text-sm px-4 py-2 text-slate-600 hover:text-slate-900"
         >
           Cancel
@@ -734,6 +867,7 @@ export function EditModal({ item, onClose }: { item: CatalogItem; onClose: () =>
         <button
           type="button"
           onClick={handleSave}
+          data-tour="prod-save"
           disabled={!canSave}
           className="text-sm px-4 py-2 rounded-md bg-amber-500 hover:bg-amber-600 disabled:bg-slate-300 disabled:cursor-not-allowed text-white font-medium transition-colors"
         >
@@ -781,22 +915,22 @@ function ProductForm({
 
   return (
     <div className="p-6 space-y-4">
-      <Field label="Name" required>
+      <Field label="Name" required tour="prod-f-name">
         <input
           type="text"
           value={form.name}
           onChange={(e) => set("name", e.target.value)}
-          placeholder="e.g. Schlage Primus cylinder"
+          placeholder={PRODUCT_NAME_PLACEHOLDER}
           className="w-full text-sm px-3 py-2 border border-slate-200 rounded focus:outline-none focus:border-amber-500"
           autoFocus
         />
       </Field>
 
       <div className="grid grid-cols-3 gap-4">
-        <div>
+        <div data-tour="prod-f-sku">
           <div className="flex items-center justify-between mb-1">
             <label className="block text-xs font-medium text-slate-700 uppercase tracking-wide">
-              SKU <span className="text-red-500 ml-1">*</span>
+              SKU
             </label>
             <button
               type="button"
@@ -816,7 +950,7 @@ function ProductForm({
             className="w-full text-sm px-3 py-2 border border-slate-200 rounded focus:outline-none focus:border-amber-500 font-mono"
           />
         </div>
-        <Field label="Part source">
+        <Field label="Part source" tour="prod-f-source">
           <select
             value={form.part_source}
             onChange={(e) => set("part_source", e.target.value as PartSource | "")}
@@ -834,7 +968,7 @@ function ProductForm({
         />
       </div>
 
-      <div className="grid grid-cols-2 gap-4">
+      <div className="grid grid-cols-2 gap-4" data-tour="prod-f-codes">
         <Field label="Barcode">
           <input
             type="text"
@@ -855,7 +989,7 @@ function ProductForm({
         </Field>
       </div>
 
-      <Field label="Customer description (long — optional, for product catalog detail pages)">
+      <Field label="Customer description (long — optional, for product catalog detail pages)" tour="prod-f-description">
         <textarea
           value={form.description}
           onChange={(e) => set("description", e.target.value)}
@@ -865,18 +999,18 @@ function ProductForm({
         />
       </Field>
 
-      <Field label="Short description (customer-facing — invoices, sticker, max 100 chars)">
+      <Field label="Short description (customer-facing — invoices, sticker, max 100 chars)" tour="prod-f-short">
         <input
           type="text"
           value={form.short_description}
           onChange={(e) => set("short_description", e.target.value)}
           maxLength={100}
-          placeholder='e.g. "Schlage L9080 Mortise Lock"'
+          placeholder={PRODUCT_SHORT_DESC_PLACEHOLDER}
           className="w-full text-sm px-3 py-2 border border-slate-200 rounded focus:outline-none focus:border-amber-500"
         />
       </Field>
 
-      <Field label="Default bin (where this lives by default)">
+      <Field label="Default bin (where this lives by default)" tour="prod-f-bin">
         <select
           value={form.default_bin_id}
           onChange={(e) => set("default_bin_id", e.target.value)}
@@ -891,17 +1025,17 @@ function ProductForm({
         </select>
       </Field>
 
-      <Field label="Long description (internal — searchable: vehicle fitment, FCC IDs, crossover part #s, alt names)">
+      <Field label={PRODUCT_LONG_DESC_LABEL} tour="prod-f-internal">
         <textarea
           value={form.internal_description}
           onChange={(e) => set("internal_description", e.target.value)}
-          placeholder='e.g. "2021 Ford F150 / FCC ID M3N-A2C31243800 / Schlage L9080 / L-9080 / 9080-PD"'
+          placeholder={PRODUCT_LONG_DESC_PLACEHOLDER}
           rows={3}
           className="w-full text-sm px-3 py-2 border border-slate-200 rounded focus:outline-none focus:border-amber-500 resize-y"
         />
       </Field>
 
-      <Field label="Manager notes (internal)">
+      <Field label="Manager notes (internal)" tour="prod-f-notes">
         <textarea
           value={form.internal_notes}
           onChange={(e) => set("internal_notes", e.target.value)}
@@ -911,7 +1045,7 @@ function ProductForm({
         />
       </Field>
 
-      <div className="grid grid-cols-3 gap-4">
+      <div className="grid grid-cols-3 gap-4" data-tour="prod-f-unit">
         <Field label="Unit of measure">
           <UnitOfMeasurePicker
             value={form.unit_label}
@@ -945,7 +1079,7 @@ function ProductForm({
         </Field>
       </div>
 
-      <div className="border-t border-slate-100 pt-4">
+      <div className="border-t border-slate-100 pt-4" data-tour="prod-f-pricing">
         <h3 className="text-xs font-medium text-slate-700 uppercase tracking-wide mb-3">
           Pricing
         </h3>
@@ -962,7 +1096,7 @@ function ProductForm({
               onChange={(v) => set("owner_cost_dollars", v)}
             />
           </Field>
-          <Field label="Tax class">
+          <Field label="Tax class" tour="prod-f-tax">
             <select
               value={form.tax_class_id}
               onChange={(e) => set("tax_class_id", e.target.value)}
@@ -979,7 +1113,7 @@ function ProductForm({
         </div>
       </div>
 
-      <div className="border-t border-slate-100 pt-4">
+      <div className="border-t border-slate-100 pt-4" data-tour="prod-f-reorder">
         <h3 className="text-xs font-medium text-slate-700 uppercase tracking-wide mb-3">
           Stock & Reordering
         </h3>
@@ -991,7 +1125,7 @@ function ProductForm({
               step="1"
               value={form.reorder_threshold}
               onChange={(e) => set("reorder_threshold", e.target.value)}
-              placeholder="Alert when on-hand drops below"
+              placeholder="Low stock when on hand is at or below this"
               className="w-full text-sm px-3 py-2 border border-slate-200 rounded focus:outline-none focus:border-amber-500 font-mono"
             />
           </Field>
@@ -1009,7 +1143,7 @@ function ProductForm({
         </div>
       </div>
 
-      <div className="border-t border-slate-100 pt-4">
+      <div className="border-t border-slate-100 pt-4" data-tour="prod-f-supplier">
         <h3 className="text-xs font-medium text-slate-700 uppercase tracking-wide mb-3">
           Supplier
         </h3>
@@ -1035,7 +1169,7 @@ function ProductForm({
         </div>
       </div>
 
-      <div className="border-t border-slate-100 pt-4">
+      <div className="border-t border-slate-100 pt-4" data-tour="prod-f-warranty">
         <h3 className="text-xs font-medium text-slate-700 uppercase tracking-wide mb-3">
           Warranty defaults (days)
         </h3>
@@ -1081,7 +1215,7 @@ function ProductForm({
             instead it extends the warranties of OTHER items on the same
             invoice (filtered by kind). Use case: "1-year extended labor
             warranty — $99". */}
-        <div className="mt-4 pt-4 border-t border-slate-100">
+        <div className="mt-4 pt-4 border-t border-slate-100" data-tour="prod-f-extension">
           <label className="inline-flex items-center gap-2 cursor-pointer">
             <input
               type="checkbox"
@@ -1128,7 +1262,7 @@ function ProductForm({
         </div>
       </div>
 
-      <div className="border-t border-slate-100 pt-4">
+      <div className="border-t border-slate-100 pt-4" data-tour="prod-f-stocked">
         <h3 className="text-xs font-medium text-slate-700 uppercase tracking-wide mb-3">
           Catalog Visibility
         </h3>
@@ -1152,7 +1286,7 @@ function ProductForm({
       </div>
 
       {showSnUi && (
-      <div className="border-t border-slate-100 pt-4">
+      <div className="border-t border-slate-100 pt-4" data-tour="prod-f-sn">
         <h3 className="text-xs font-medium text-slate-700 uppercase tracking-wide mb-3">
           Serial Number Tracking
         </h3>
@@ -1194,11 +1328,13 @@ function ProductForm({
         </div>
       </div>
       )}
-      {existingItem ? (
-        <CatalogItemImageUploader item={existingItem} />
-      ) : onPendingImageChange ? (
-        <PendingImagePicker value={pendingImage} onChange={onPendingImageChange} />
-      ) : null}
+      <div data-tour="prod-f-image">
+        {existingItem ? (
+          <CatalogItemImageUploader item={existingItem} />
+        ) : onPendingImageChange ? (
+          <PendingImagePicker value={pendingImage} onChange={onPendingImageChange} />
+        ) : null}
+      </div>
     </div>
   )
 }
@@ -1222,7 +1358,7 @@ function CategoryFieldWithAdd({
   }
 
   return (
-    <div>
+    <div data-tour="prod-f-category">
       <div className="flex items-baseline justify-between mb-1">
         <label className="text-xs font-medium text-slate-700 uppercase tracking-wide">
           Category
@@ -1291,10 +1427,13 @@ function ModalShell({
   title,
   children,
   onClose,
+  tour,
 }: {
   title: string
   children: React.ReactNode
   onClose: () => void
+  /** data-tour id for guided tours */
+  tour?: string
 }) {
   return (
     <div
@@ -1304,7 +1443,7 @@ function ModalShell({
         if (e.target === e.currentTarget) onClose()
       }}
     >
-      <div className="bg-white rounded-xl shadow-xl max-w-3xl w-full max-h-[90vh] overflow-hidden flex flex-col">
+      <div data-tour={tour} className="bg-white rounded-xl shadow-xl max-w-3xl w-full max-h-[90vh] overflow-hidden flex flex-col">
         <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between">
           <h2 className="text-lg font-semibold text-slate-900">{title}</h2>
           <button
@@ -1333,14 +1472,17 @@ function ModalFooter({ children }: { children: React.ReactNode }) {
 function Field({
   label,
   required,
+  tour,
   children,
 }: {
   label: string
   required?: boolean
+  /** data-tour id for guided tours */
+  tour?: string
   children: React.ReactNode
 }) {
   return (
-    <div>
+    <div data-tour={tour}>
       <label className="block text-xs font-medium text-slate-700 mb-1 uppercase tracking-wide">
         {label}
         {required && <span className="text-red-500 ml-1">*</span>}
@@ -1365,7 +1507,35 @@ function ErrorBanner({ message }: { message: string }) {
  * non-admin users can only see this and never reach the edit form. Admins see
  * an "Edit" button at the bottom that flips into the existing edit modal.
  */
-function ProductViewModal({
+/** A product's details. Also opened over the bin catalog in Inventory. */
+/**
+ * One catalog item as an overlay on top of whatever page opened it: the
+ * product view, and Edit from there opens the same edit form. Used by Order
+ * parts so the cart and the choices stay where they are.
+ */
+export function CatalogItemOverlay({ id, initial, onClose }: {
+  id: string
+  /** The list's copy, shown at once while the full product loads (Product catalog). */
+  initial?: CatalogItem
+  onClose: () => void
+}) {
+  const { has } = usePermissions()
+  const item = useCatalogItem(id)
+  const [editing, setEditing] = useState<CatalogItem | null>(null)
+  const shown = item.data ?? initial
+  if (editing) return <EditModal item={editing} onClose={() => { setEditing(null); onClose() }} />
+  if (!shown) return null
+  return (
+    <ProductViewModal
+      item={shown}
+      canEdit={has(PERM.CATALOG_EDIT)}
+      onClose={onClose}
+      onEdit={() => setEditing(shown)}
+    />
+  )
+}
+
+export function ProductViewModal({
   item,
   canEdit,
   onClose,
@@ -1385,6 +1555,10 @@ function ProductViewModal({
 
   const { data: invSettings } = useInventorySettings()
   const showSnUi = !!invSettings?.inventory_show_sn_tracking
+  // Orders and movements are inventory screens; someone with the catalog only doesn't see them.
+  const { has } = usePermissions()
+  const seesInventory = has(PERM.INVENTORY_VIEW)
+  const canStockIn = has(PERM.INVENTORY_EDIT)
 
   // Pull this item's stock placements so we can show on-hand here.
   const stockLevelsQuery = useStockLevels({ catalog_item_id: item.id, per_page: 100 })
@@ -1398,9 +1572,9 @@ function ProductViewModal({
   const hasOwnerCost = item.pricing.owner_cost_cents > 0
 
   return (
-    <ModalShell title={item.name} onClose={onClose}>
+    <ModalShell title={item.name} onClose={onClose} tour="prod-view">
       <div className="px-6 py-5 space-y-5">
-        <div className="flex gap-5">
+        <div className="flex gap-5" data-tour="prod-view-top">
           <div className="flex-shrink-0">
             {previewUrl ? (
               <img
@@ -1446,10 +1620,37 @@ function ProductViewModal({
             <div className="text-2xl font-semibold text-amber-700 mt-2">
               {item.pricing.customer_cost_formatted}
             </div>
+            <div data-bins-ui data-tour="prod-view-actions" className="flex flex-wrap items-center gap-2 pt-2">
+              <AddToCartButton
+                tour="prod-add-to-cart"
+                source="item"
+                label="Order more"
+                part={{ catalog_item_id: item.id, label: item.name, part_number: item.inventory.supplier_sku ?? item.sku ?? undefined }}
+              />
+              <a
+                href={`/catalog-items/${item.id}/labels`}
+                target="_blank"
+                rel="noreferrer"
+                data-tour="prod-view-labels"
+                className="rounded-md border border-[var(--bins-border)] px-3 py-1.5 text-sm font-medium text-[var(--bins-text-2)] hover:bg-[var(--bins-soft)]"
+              >
+                Print labels
+              </a>
+              {canStockIn && (
+                <Link
+                  to="/inventory?tab=bins&stockin=po"
+                  data-tour="prod-view-stock-from-po"
+                  title="Receive it from a purchase order into a bin (Inventory > Bins)"
+                  className="rounded-md border border-[var(--bins-border)] px-3 py-1.5 text-sm font-medium text-[var(--bins-text-2)] hover:bg-[var(--bins-soft)]"
+                >
+                  Add stock from PO
+                </Link>
+              )}
+            </div>
           </div>
         </div>
 
-        <div className="border-t border-slate-100 pt-4">
+        <div className="border-t border-slate-100 pt-4" data-tour="prod-view-stock">
           <div className="flex items-baseline justify-between">
             <div className="text-xs font-medium text-slate-500 uppercase tracking-wide">
               In stock
@@ -1483,24 +1684,33 @@ function ProductViewModal({
               </span>
             )}
           </div>
-          {placements.length > 0 && (
-            <ul className="mt-2 text-sm text-slate-700 space-y-0.5">
-              {placements.map((sl) => (
-                <li key={sl.id} className="flex justify-between">
-                  <span className="truncate">
-                    📍 {sl.bin?.path_label ?? sl.location?.name ?? '—'}
-                  </span>
-                  <span className="tabular-nums font-medium">{formatQty(sl.quantities.qty_on_hand, item.unit_label)}</span>
-                </li>
-              ))}
-            </ul>
-          )}
+          {/* By place: shops first, then vans, each bin on its own line. */}
+          <StockByPlace placements={placements} unit={item.unit_label} />
           {!stockLevelsQuery.isLoading && placements.length === 0 && (
             <p className="text-sm text-slate-500 italic mt-1">
               No stock recorded anywhere yet.
             </p>
           )}
         </div>
+
+        {seesInventory && (
+          <div className="border-t border-[var(--bins-border-soft)] pt-4 grid gap-5 md:grid-cols-2">
+            <OpenOrders itemId={item.id} unit={item.unit_label} />
+            <RecentMovements itemId={item.id} unit={item.unit_label} />
+          </div>
+        )}
+
+        {/* Suppliers and their part numbers. "Order more" sits with the actions at the top. */}
+        <div className="border-t border-slate-100 pt-4 space-y-3" data-tour="prod-view-sellers">
+          <WhoSellsThis catalogItemId={item.id} tour="prod-who-sells" />
+        </div>
+
+        {/* What it fits (a vehicle, a lock, a unit…), in the company's fitment fields. */}
+        {item.type === "product" && (
+          <div className="border-t border-[var(--bins-border-soft)] pt-4">
+            <FitsSection itemId={item.id} canEdit={canEdit} />
+          </div>
+        )}
 
         {item.short_description && (
           <ViewBlock label="Description">
@@ -1509,7 +1719,7 @@ function ProductViewModal({
         )}
 
         {item.internal_description && (
-          <ViewBlock label="Internal notes (vehicle fitment / FCC IDs / crossover part #s)">
+          <ViewBlock label="Internal notes (model numbers, fitment, crossover part #s)">
             <p className="text-sm text-slate-700 whitespace-pre-wrap">{item.internal_description}</p>
           </ViewBlock>
         )}
@@ -1530,6 +1740,7 @@ function ProductViewModal({
         <button
           type="button"
           onClick={onClose}
+          data-tour="prod-view-close"
           className="text-sm px-4 py-2 text-slate-600 hover:text-slate-900"
         >
           Close
@@ -1537,6 +1748,7 @@ function ProductViewModal({
         {canEdit && (
           <button
             type="button"
+            data-tour="prod-view-edit"
             onClick={onEdit}
             className="text-sm px-4 py-2 rounded-md bg-amber-500 hover:bg-amber-600 text-white font-medium transition-colors"
           >

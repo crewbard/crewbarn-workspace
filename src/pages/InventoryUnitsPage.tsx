@@ -20,6 +20,9 @@ import type {
 import type { InventoryBin } from '@/types/inventoryBin'
 import { useTheme } from '@/hooks/useTheme'
 import { EasyActionCards } from '@/components/easy/EasyActionCards'
+import { Modal } from '@/components/ui/Modal'
+import { PERM, usePermissions } from '@/hooks/usePermissions'
+import { useInventorySettings } from '@/hooks/useInventorySettings'
 
 /**
  * Inventory Units page — list of every SN-tracked physical instance,
@@ -41,9 +44,12 @@ const STATUSES: InventoryUnitStatus[] = [
   'damaged',
 ]
 
-export function InventoryUnitsPage() {
+export function InventoryUnitsPage({ embedded = false }: { embedded?: boolean } = {}) {
   const { theme } = useTheme()
+  const canEdit = usePermissions().has(PERM.INVENTORY_EDIT)
   const easy = theme === 'easy-side' || theme === 'easy-top'
+  // The empty state says whether serial numbers are switched on, and who can switch them on.
+  const { data: invSettings } = useInventorySettings()
   const [serial, setSerial] = useState('')
   const [debouncedSerial, setDebouncedSerial] = useState('')
   const [status, setStatus] = useState<InventoryUnitStatus | ''>('')
@@ -63,6 +69,7 @@ export function InventoryUnitsPage() {
     per_page: 200,
   })
   const items = (itemsData?.data ?? []).filter((it) => it.sn_tracking.enabled)
+  const itemNames = new Map((itemsData?.data ?? []).map((it) => [it.id, { name: it.name, sku: it.sku }]))
 
   const query = useInventoryUnits({
     q: debouncedSerial || undefined,
@@ -90,23 +97,27 @@ export function InventoryUnitsPage() {
 
   return (
     <div className="max-w-7xl mx-auto p-6 space-y-6">
-      <div>
-        <h1 className="text-3xl font-semibold text-slate-900">Inventory Units</h1>
+      <div data-tour="units-header">
+        {embedded ? (
+          <h2 className="text-xl font-semibold text-slate-900">Units</h2>
+        ) : (
+          <h1 className="text-3xl font-semibold text-slate-900">Inventory Units</h1>
+        )}
         <p className="text-sm text-slate-600 mt-1">
-          SN-tracked physical instances. Each unit has its own serial,
-          status, and location. Stock counts for SN items are derived from
-          the count of <span className="font-mono">available</span> units.
+          Items you track by serial number. Each unit has its own serial,
+          status and place. For these items, On hand is the number of units
+          that are Available.
         </p>
       </div>
 
       {/* Filters */}
-      {easy && <EasyActionCards label="Find serialized equipment" actions={[
+      {easy && <div data-tour="units-quick-filters"><EasyActionCards label="Find serialized equipment" actions={[
         { key: 'available', title: 'Available', description: 'Find units available in stock.' },
         { key: 'reserved', title: 'Reserved', description: 'Review units already set aside.' },
         { key: 'installed', title: 'Installed', description: 'Find units recorded as installed.' },
         { key: 'damaged', title: 'Damaged', description: 'Review units flagged as damaged.' },
-      ].map(action => ({ ...action, active: status === action.key, onClick: () => setStatus(status === action.key ? '' : action.key as InventoryUnitStatus) }))} />}
-      <div className="bg-white border border-slate-200 rounded-xl shadow-sm p-4">
+      ].map(action => ({ ...action, active: status === action.key, onClick: () => setStatus(status === action.key ? '' : action.key as InventoryUnitStatus) }))} /></div>}
+      <div data-tour="units-filters" className="bg-white border border-slate-200 rounded-xl shadow-sm p-4">
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
           <div>
             <label className="block text-xs font-medium text-slate-700 mb-1 uppercase tracking-wide">Serial</label>
@@ -114,7 +125,7 @@ export function InventoryUnitsPage() {
               type="search"
               value={serial}
               onChange={(e) => setSerial(e.target.value)}
-              placeholder="Partial SN match…"
+              placeholder="Part of a serial number…"
               className="w-full text-sm px-3 py-2 border border-slate-200 rounded focus:outline-none focus:border-amber-500"
             />
           </div>
@@ -138,7 +149,7 @@ export function InventoryUnitsPage() {
               onChange={(e) => setItemId(e.target.value)}
               className="w-full text-sm px-3 py-2 border border-slate-200 rounded focus:outline-none focus:border-amber-500 bg-white"
             >
-              <option value="">All SN-tracked items</option>
+              <option value="">All items with serial numbers</option>
               {items.map((it) => (
                 <option key={it.id} value={it.id}>{it.name}</option>
               ))}
@@ -173,7 +184,7 @@ export function InventoryUnitsPage() {
 
       {/* Status summary chips (from current page only) */}
       {units.length > 0 && (
-        <div className="flex flex-wrap gap-2 text-xs">
+        <div data-tour="units-status-chips" className="flex flex-wrap gap-2 text-xs">
           {STATUSES.map((s) => {
             const n = counts[s] ?? 0
             if (n === 0) return null
@@ -196,16 +207,48 @@ export function InventoryUnitsPage() {
         </div>
       )}
 
-      {!query.isLoading && units.length === 0 && (
-        <div className="bg-white border border-slate-200 rounded-xl shadow-sm p-12 text-center">
-          <p className="text-sm text-slate-600">
-            No SN units{hasFilters ? ' matching the current filters' : ' yet — they get minted when SN-tracked products are received'}.
-          </p>
+      {!query.isLoading && query.isError && units.length === 0 && (
+        <div role="alert" className="bg-red-50 border border-red-200 rounded-xl p-6 text-center text-sm text-red-800">
+          Couldn't load the units.
+          <button
+            type="button"
+            disabled={query.isFetching}
+            onClick={() => void query.refetch()}
+            className="ml-2 font-semibold underline disabled:opacity-50"
+          >
+            Try again
+          </button>
+        </div>
+      )}
+
+      {!query.isLoading && !query.isError && units.length === 0 && (
+        <div data-tour="units-empty" data-filtered={hasFilters ? 'yes' : 'no'} className="bg-white border border-slate-200 rounded-xl shadow-sm p-12 text-center">
+          {hasFilters ? (
+            <p className="text-sm text-slate-600">
+              No units match these filters.{' '}
+              <button type="button" onClick={clearFilters} className="font-medium underline">Clear filters</button>
+            </p>
+          ) : invSettings && !invSettings.inventory_show_sn_tracking ? (
+            <div data-sn="off" className="mx-auto max-w-md space-y-2 text-sm text-slate-600">
+              <p className="font-medium text-slate-900">Serial numbers are turned off.</p>
+              <p>A unit is one item with its own serial number. Turn on serial numbers to track items one by one.</p>
+              {invSettings.can_change ? (
+                <Link to="/inventory?tab=settings" data-tour="units-turn-on-sn" className="inline-block font-semibold text-amber-700 underline">Turn on serial numbers in Settings</Link>
+              ) : (
+                <p>Ask {(invSettings.ask ?? []).map((a) => a.name).join(' or ') || 'an owner or admin'} to turn them on in Inventory › Settings.</p>
+              )}
+            </div>
+          ) : (
+            <div className="mx-auto max-w-md space-y-2 text-sm text-slate-600">
+              <p className="font-medium text-slate-900">No units yet.</p>
+              <p>A unit is one item with its own serial number. Units appear here when you receive a product that tracks serial numbers (on a purchase order or with + Stock in), one for each serial.</p>
+            </div>
+          )}
         </div>
       )}
 
       {units.length > 0 && (
-        <div className="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden">
+        <div data-tour="units-table" className="bg-white border border-slate-200 rounded-xl shadow-sm overflow-x-auto">
           <table className="w-full text-sm">
             <thead className="bg-slate-50 text-xs uppercase tracking-wide text-slate-500 border-b border-slate-200">
               <tr>
@@ -220,7 +263,7 @@ export function InventoryUnitsPage() {
             </thead>
             <tbody className="divide-y divide-slate-100">
               {units.map((u) => (
-                <UnitRow key={u.id} u={u} />
+                <UnitRow key={u.id} u={u} canEdit={canEdit} item={itemNames.get(u.catalog_item_id)} />
               ))}
             </tbody>
           </table>
@@ -244,8 +287,26 @@ const STATUS_BADGES: Record<InventoryUnitStatus, string> = {
   damaged: 'bg-red-50 text-red-700',
 }
 
-function UnitRow({ u }: { u: InventoryUnit }) {
+const STATUS_ACTION_LABEL: Partial<Record<InventoryUnitStatus, string>> = {
+  damaged: 'Mark as damaged',
+  lost: 'Mark as lost',
+  available: 'Restore to available',
+}
+
+function UnitRow({
+  u,
+  canEdit,
+  item,
+}: {
+  u: InventoryUnit
+  canEdit: boolean
+  item?: { name: string; sku: string | null }
+}) {
   const update = useUpdateInventoryUnit()
+  // Status change waiting for a confirm + reason (accountability: no
+  // one-click damaged/lost/restore without a written why).
+  const [pendingStatus, setPendingStatus] = useState<InventoryUnitStatus | null>(null)
+  const [reason, setReason] = useState('')
   const queryClient = useQueryClient()
   const [showBinPicker, setShowBinPicker] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -263,10 +324,21 @@ function UnitRow({ u }: { u: InventoryUnit }) {
   // an explicit reversal flow. Keep them read-only here.
   const isLocked = isInstalled || isSold
 
-  async function changeStatus(next: InventoryUnitStatus) {
+  function askStatus(next: InventoryUnitStatus) {
+    setReason('')
+    setPendingStatus(next)
+  }
+
+  async function changeStatus(next: InventoryUnitStatus, why: string) {
     setError(null)
+    // The unit PATCH has no reason field and writes no movement, so the
+    // reason is recorded on the unit's notes (newest first), with the date.
+    const stamp = new Date().toLocaleDateString()
+    const line = `${stamp} · marked ${next}: ${why}`
+    const notes = u.notes ? `${line}\n${u.notes}` : line
     try {
-      await update.mutateAsync({ id: u.id, input: { status: next } })
+      await update.mutateAsync({ id: u.id, input: { status: next, notes } })
+      setPendingStatus(null)
     } catch (err) {
       setError(err instanceof ApiError ? err.message : err instanceof Error ? err.message : String(err))
     }
@@ -309,7 +381,14 @@ function UnitRow({ u }: { u: InventoryUnit }) {
       <tr className="hover:bg-slate-50">
         <td className="px-4 py-3 font-mono text-xs text-slate-800">{u.serial_number}</td>
         <td className="px-4 py-3 text-slate-800">
-          <span className="text-[11px] font-mono text-slate-400 mr-1">{u.catalog_item_id}</span>
+          {item ? (
+            <>
+              <span>{item.name}</span>
+              {item.sku && <span className="block text-[11px] font-mono text-slate-400">{item.sku}</span>}
+            </>
+          ) : (
+            <span className="text-[11px] font-mono text-slate-400 mr-1">{u.catalog_item_id}</span>
+          )}
         </td>
         <td className="px-4 py-3 text-xs text-slate-700">📍 {where}</td>
         <td className="px-4 py-3">
@@ -330,6 +409,8 @@ function UnitRow({ u }: { u: InventoryUnit }) {
             <span className="text-xs text-slate-400" title={`Status '${u.status}' is end-of-life — reverse via the original install / sale flow.`}>
               locked
             </span>
+          ) : !canEdit ? (
+            <span className="text-xs text-slate-400" title="You need Edit inventory to change units.">view only</span>
           ) : (
             <div className="flex items-center justify-end gap-1.5">
               <button
@@ -344,7 +425,7 @@ function UnitRow({ u }: { u: InventoryUnit }) {
               {u.status !== 'damaged' && (
                 <button
                   type="button"
-                  onClick={() => changeStatus('damaged')}
+                  onClick={() => askStatus('damaged')}
                   disabled={update.isPending}
                   className="text-xs px-2 py-1 text-red-700 border border-red-200 rounded hover:bg-red-50"
                 >
@@ -354,7 +435,7 @@ function UnitRow({ u }: { u: InventoryUnit }) {
               {u.status !== 'lost' && (
                 <button
                   type="button"
-                  onClick={() => changeStatus('lost')}
+                  onClick={() => askStatus('lost')}
                   disabled={update.isPending}
                   className="text-xs px-2 py-1 text-red-700 border border-red-200 rounded hover:bg-red-50"
                 >
@@ -364,7 +445,7 @@ function UnitRow({ u }: { u: InventoryUnit }) {
               {u.status !== 'available' && (
                 <button
                   type="button"
-                  onClick={() => changeStatus('available')}
+                  onClick={() => askStatus('available')}
                   disabled={update.isPending}
                   className="text-xs px-2 py-1 text-emerald-700 border border-emerald-200 rounded hover:bg-emerald-50"
                   title="Restore to available stock"
@@ -382,6 +463,55 @@ function UnitRow({ u }: { u: InventoryUnit }) {
             {error}
           </td>
         </tr>
+      )}
+      {pendingStatus && (
+        <Modal
+          isOpen={true}
+          onClose={() => setPendingStatus(null)}
+          title={STATUS_ACTION_LABEL[pendingStatus] ?? `Mark as ${pendingStatus}`}
+          subtitle={`Serial ${u.serial_number}`}
+          size="sm"
+          disableBackdropClose
+        >
+          <div className="p-5 space-y-3">
+            <p className="text-sm text-slate-700">
+              {pendingStatus === 'available'
+                ? 'This puts the unit back into available stock, so it counts toward on hand again.'
+                : `This takes the unit out of available stock and marks it ${pendingStatus}.`}{' '}
+              The reason is saved in the unit's notes.
+            </p>
+            <label className="block text-xs font-medium text-slate-700">
+              Reason <span className="text-red-600">*</span>
+              <textarea
+                value={reason}
+                onChange={(e) => setReason(e.target.value)}
+                rows={3}
+                maxLength={500}
+                autoFocus
+                placeholder={pendingStatus === 'available' ? 'e.g. Found it on the shelf' : 'e.g. Dropped during install'}
+                className="mt-1 w-full text-sm px-3 py-2 border border-slate-200 rounded focus:outline-none focus:border-amber-500"
+              />
+            </label>
+            {error && <p className="text-xs text-red-700">{error}</p>}
+            <div className="flex justify-end gap-2 pt-1">
+              <button
+                type="button"
+                onClick={() => setPendingStatus(null)}
+                className="text-sm px-3 py-1.5 border border-slate-300 rounded hover:bg-slate-50"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => changeStatus(pendingStatus, reason.trim())}
+                disabled={!reason.trim() || update.isPending}
+                className="text-sm px-3 py-1.5 rounded bg-amber-600 text-white hover:bg-amber-700 disabled:opacity-50"
+              >
+                {update.isPending ? 'Saving…' : 'Confirm'}
+              </button>
+            </div>
+          </div>
+        </Modal>
       )}
       {showBinPicker && (
         <BinTreePicker
@@ -432,7 +562,7 @@ function InstallContext({ u }: { u: InventoryUnit }) {
 
   const woLink = inst.work_order ? (
     <Link
-      to={`/work-orders/${inst.work_order.id}`}
+      to={`/jobs/${inst.work_order.id}`}
       className="text-amber-700 hover:underline"
     >
       WO #{inst.work_order.work_order_number ?? '—'}

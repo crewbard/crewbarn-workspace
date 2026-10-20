@@ -3,7 +3,8 @@ import { useQuery } from '@tanstack/react-query'
 import { apiRequest } from '@/lib/api'
 import { useParams, useSearchParams } from 'react-router-dom'
 import { QRCodeCanvas } from 'qrcode.react'
-import { useInventoryBin, useBinContents } from '@/hooks/useInventoryBins'
+import { useInventoryBin, useBinContents, useAllInventoryBins } from '@/hooks/useInventoryBins'
+import { readBinLabelPick } from '@/lib/binLabelPick'
 import type { InventoryBin } from '@/types/inventoryBin'
 import {
   THERMAL_SIZES,
@@ -16,7 +17,8 @@ import { LabelStudio } from '@/components/labels/LabelStudio'
 import type { LabelFaceData } from '@/components/labels/LabelFace'
 import { printLabelPdf, type PdfLabel } from '@/lib/pdfLabels'
 import { downloadLabelPng } from '@/lib/pngLabels'
-import { printLabelsViaBluetooth } from '@/lib/escposBluetooth'
+import { printLabelsViaBluetooth } from '@/lib/bluetoothPrint'
+import { pickSelected } from '@/lib/labelSelection'
 
 /**
  * Print-friendly QR sticker sheet for an inventory bin.
@@ -25,6 +27,7 @@ import { printLabelsViaBluetooth } from '@/lib/escposBluetooth'
  *      ?include=this | descendants | leaves   (default: this)
  *      ?size=regular | mini                   (default: regular)
  *      ?noprint=1                              (skip auto-print)
+ *      ?pick=<key>                             (the bins ticked on the Bins tree)
  *
  * - "this": one sticker for the bin you opened from
  * - "descendants": this bin + every bin underneath
@@ -51,16 +54,27 @@ export function BinLabelsPage() {
   const gap = Math.max(0, Math.min(0.5, Number(search.get('gap')) || 0))
   const isMini = !isThermal && sizeMode === 'mini'
   const copies = Math.max(1, Math.min(50, Number(search.get('copies')) || 1))
-  const includeItems = search.get('items') === '1'
+  // Pick mode: the bins ticked in the Bins tree, in tree order. The ids sit in
+  // localStorage under this key (a few hundred ids would overflow the URL).
+  const pickKey = search.get('pick')
+  const pickedIds = useMemo(() => (pickKey ? readBinLabelPick(pickKey) : null), [pickKey])
+  const pickMode = pickedIds !== null
+  const allBinsQuery = useAllInventoryBins({})
+  const includeItems = !pickMode && search.get('items') === '1'
 
   const binQuery = useInventoryBin(id)
   // Fetch bin contents whenever we need the descendant subtree OR the
   // stock items in the bin (so the items toggle pulls them in).
-  const wantSubtree = includeMode !== 'this'
-  const wantContents = wantSubtree || includeItems
-  const contentsQuery = useBinContents(wantContents ? id : undefined)
+  // Always fetched: the "Also label the items stored here" switch has to know
+  // whether anything is stored here BEFORE it is switched on, or it never
+  // appears from the plain Labels link.
+  const contentsQuery = useBinContents(id)
 
   const bins: InventoryBin[] = useMemo(() => {
+    if (pickedIds) {
+      const byId = new Map((allBinsQuery.data?.data ?? []).map((b) => [b.id, b]))
+      return pickedIds.map((pid) => byId.get(pid)).filter((b): b is InventoryBin => !!b)
+    }
     if (!binQuery.data) return []
     if (includeMode === 'this') return [binQuery.data]
     const all = contentsQuery.data?.bins ?? []
@@ -73,7 +87,7 @@ export function BinLabelsPage() {
       }
     }
     return all.filter((b) => !childByParent.has(b.id))
-  }, [binQuery.data, contentsQuery.data, includeMode])
+  }, [binQuery.data, contentsQuery.data, includeMode, pickedIds, allBinsQuery.data])
 
   /**
    * The individual tracked units in these bins.
@@ -160,6 +174,15 @@ export function BinLabelsPage() {
   const descendantCount = bins.length
   const leafCount = bins.filter((b) => !bins.some((other) => other.parent_bin_id === b.id)).length
   const itemCount = Array.from(itemsByBin.values()).reduce((n, list) => n + list.length, 0)
+  // Distinct products stocked in the visible bins — known without the switch.
+  const storedProductCount = useMemo(() => {
+    const visible = new Set(bins.map((b) => b.id))
+    const seen = new Set<string>()
+    for (const sl of contentsQuery.data?.stock_levels ?? []) {
+      if (sl.bin_id && sl.catalog_item && visible.has(sl.bin_id)) seen.add(`${sl.bin_id}|${sl.catalog_item.id}`)
+    }
+    return seen.size
+  }, [contentsQuery.data, bins])
 
   function buildBinLabels(): PdfLabel[] {
     const out: PdfLabel[] = []
@@ -213,9 +236,10 @@ export function BinLabelsPage() {
       .replace(/^-|-$/g, '')
   }
 
-  async function handlePrint() {
+  // `selected` is the labels ticked on the Print labels screen, in order.
+  async function handlePrint(selected?: number[]) {
     await printLabelPdf({
-      labels: buildBinLabels(),
+      labels: pickSelected(buildBinLabels(), selected),
       thermalSize: thermal,
       copies,
       multiUp,
@@ -224,22 +248,24 @@ export function BinLabelsPage() {
     })
   }
 
-  async function handleDownloadPng() {
+  async function handleDownloadPng(selected?: number[]) {
     // PNG export is single-label by design (multi-PNG would need a zip
     // and is rarely useful — users tend to upload one image per print
     // job in their printer software).
     if (!rootBin) return
+    const first = pickSelected(buildBinLabels(), selected)[0]
+    if (!first) return
     await downloadLabelPng({
-      label: buildBinLabels()[0],
+      label: first,
       thermalSize: thermal,
       filename: `${baseFilename()}-${thermal}.png`,
     })
   }
 
-  async function handleBluetoothPrint() {
+  async function handleBluetoothPrint(selected?: number[]) {
     try {
       await printLabelsViaBluetooth({
-        labels: buildBinLabels(),
+        labels: pickSelected(buildBinLabels(), selected),
         thermalSize: thermal,
         copies,
       })
@@ -255,7 +281,7 @@ export function BinLabelsPage() {
     setSearch(np, { replace: true })
   }
 
-  if (binQuery.isLoading) {
+  if (binQuery.isLoading || (pickMode && allBinsQuery.isLoading)) {
     return <Centered>Loading bin…</Centered>
   }
   if (!binQuery.data) {
@@ -263,13 +289,15 @@ export function BinLabelsPage() {
   }
 
   const rootBin = binQuery.data
+  const kindWord = (rootBin.kind || 'bin').toLowerCase()
 
   return (
     <div className="bg-white min-h-screen">
       <style>{thermalPrintCss(thermal, multiUp)}</style>
 
       <LabelStudio
-        backTo={{ href: `/inventory-bins/${rootBin.id}`, label: rootBin.name || rootBin.bin_code || 'the bin' }}
+        // Bins have no page of their own; go back to the Bins tab.
+        backTo={{ href: '/inventory?tab=bins', label: 'Bins' }}
         faces={faces}
         size={thermal}
         onSize={(next) => setParam('thermal', next === 'sheet' ? null : next)}
@@ -277,19 +305,21 @@ export function BinLabelsPage() {
         onCopies={(n) => setParam('copies', String(n))}
         gap={gap}
         onGap={(g) => setParam('gap', g === 0 ? null : String(g))}
-        scope={{
+        scope={pickMode ? undefined : {
           value: includeMode,
           onChange: (next) => setParam('include', next === 'this' ? null : next),
           options: [
-            { value: 'this', title: 'Just this shelf', help: `One label for ${rootBin.name || rootBin.bin_code || 'this bin'}`, count: 1 },
-            { value: 'descendants', title: 'This shelf and everything inside', help: 'Every bin under it gets its own label', count: descendantCount },
-            { value: 'leaves', title: 'Only the bins', help: 'Skip the rack and shelf labels', count: leafCount },
+            { value: 'this', title: `Just this ${kindWord}`, help: `One label for ${rootBin.name || rootBin.bin_code || 'this bin'}`, count: 1 },
+            { value: 'descendants', title: `This ${kindWord} and everything inside`, help: 'Every bin under it gets its own label', count: descendantCount },
+            { value: 'leaves', title: 'Only the bins', help: 'Skip the labels for the containers that hold other bins', count: leafCount },
           ],
         }}
         extra={
-          itemCount > 0
+          !pickMode && (itemCount > 0 || storedProductCount > 0)
             ? {
-                label: `Also label the ${itemCount} item${itemCount === 1 ? '' : 's'} stored here`,
+                label: includeItems && itemCount > 0
+                  ? `Also label the ${itemCount} item${itemCount === 1 ? '' : 's'} stored here`
+                  : `Also label what's stored here (${storedProductCount} product${storedProductCount === 1 ? '' : 's'})`,
                 on: includeItems,
                 onChange: (on) => setParam('items', on ? '1' : null),
               }

@@ -96,9 +96,9 @@ export function DownloadPage() {
                 <code>www.yourcompany.com</code>.
               </li>
               <li>
-                Here, under{' '}
+                In CrewBarn, open Tool Shed ›{' '}
                 <Link to="/tool-shed/self-hosted" className="font-semibold text-amber-700 hover:underline">
-                  Self-hosted domains
+                  Self-hosted Console
                 </Link>
                 , activate that domain and copy the token (shown once).
               </li>

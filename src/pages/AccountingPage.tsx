@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
-import { apiRequest } from '@/lib/api'
+import { ApiError, apiRequest } from '@/lib/api'
 import { useInvoices } from '@/hooks/useInvoices'
 import { MiniBarChart, DualBarChart } from '@/components/dashboard/MiniBarChart'
 import { PeriodPicker } from '@/components/dashboard/PeriodPicker'
@@ -141,6 +141,23 @@ function isoDate(d: Date): string {
 
 function balanceOf(inv: Invoice): number {
   return inv.money?.balance_due_cents ?? 0
+}
+
+type LoadState = { isLoading: boolean; isError: boolean; error: unknown }
+
+/**
+ * A failed load, not counting a 403: the ledger figures need revenue.view,
+ * which some people on this page don't have, so those stay quiet as before.
+ */
+function loadFailed(q: LoadState): boolean {
+  return q.isError && !(q.error instanceof ApiError && q.error.status === 403)
+}
+
+/** '...' while loading and 'Unavailable' on a failed load, never a made-up $0. */
+function figure<T extends string | number>(q: LoadState, value: () => T): T | string {
+  if (loadFailed(q)) return 'Unavailable'
+  if (q.isLoading) return '...'
+  return value()
 }
 
 export function AccountingPage() {
@@ -313,6 +330,15 @@ export function AccountingPage() {
   })
 
   const invoicesQ = useInvoices({ per_page: 500 })
+  const failedQueries = [
+    cashflowQ, receivablesQ, pendingQ, receivedQ, salesTaxQ, customerCreditsQ,
+    trialBalanceQ, incomeStatementQ, balanceSheetQ, contractor1099Q, invoicesQ,
+  ].filter(loadFailed)
+  const retryFailed = () => {
+    for (const q of failedQueries) void q.refetch()
+  }
+  // The to-do list below is built from these; without them "caught up" is a guess.
+  const attentionFailed = [invoicesQ, pendingQ, contractor1099Q].some(loadFailed)
   const invoices = invoicesQ.data ?? []
   const cashflow = cashflowQ.data?.data
   const receivables = receivablesQ.data?.data
@@ -371,7 +397,7 @@ export function AccountingPage() {
   ], [draftInvoices, invoices, openInvoices, overdueInvoices, overdueTotal])
 
   return (
-    <div data-tour="accounting-root" className="mx-auto w-full max-w-none space-y-6 px-4 py-4 sm:px-6 sm:py-6 2xl:px-8">
+    <div data-tour="accounting-root" data-focus-page="accounting" className="mx-auto w-full max-w-none space-y-6 px-4 py-4 sm:px-6 sm:py-6 2xl:px-8">
       {easy && <EasyPageHeading title="Money & accounting" description="Review the period, then choose the work: collect customer money, manage costs, review team pay, or close the books." />}
       <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
         <div>
@@ -380,7 +406,7 @@ export function AccountingPage() {
             Money dashboard for receivables, collections, taxes, payroll, and margin review.
           </p>
         </div>
-        <div className="flex flex-wrap items-center gap-2">
+        <div data-tour="accounting-period" className="flex flex-wrap items-center gap-2">
           {/* WHICH period — closed years/quarters open as fixed, final units. */}
           <PeriodPicker
             periods={cashflowQ.data?.data.periods ?? []}
@@ -414,22 +440,28 @@ export function AccountingPage() {
           >
             {showGrids ? 'Hide grids' : 'Show grids'}
           </button>
-          <Link className="rounded-md bg-slate-900 px-3 py-2 text-sm font-semibold text-white hover:bg-slate-800" to="/reports?layout=browser&report=invoice-register">
+          <Link className="rounded-md bg-slate-900 px-3 py-2 text-sm font-semibold text-white hover:bg-slate-800" to="/accounting/reports/browse?layout=browser&report=invoice-register">
             Export reports
           </Link>
         </div>
       </div>
 
       <main className="space-y-5">
-        <section className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-5">
-          <MetricCard label={`Money in (${PERIOD_LABEL[range]})`} value={cashflowQ.isLoading ? '...' : money(cashflow?.current?.in_cents ?? cashflow?.totals.in_cents ?? 0)} tone="green" />
-          <MetricCard label={`Money out (${PERIOD_LABEL[range]})`} value={cashflowQ.isLoading ? '...' : money(cashflow?.current?.out_cents ?? cashflow?.totals.out_cents ?? 0)} tone="red" />
-          <MetricCard label={`Net cash (${PERIOD_LABEL[range]})`} value={cashflowQ.isLoading ? '...' : money(cashflow?.current?.net_cents ?? cashflow?.totals.net_cents ?? 0)} tone={(cashflow?.current?.net_cents ?? cashflow?.totals.net_cents ?? 0) >= 0 ? 'green' : 'red'} />
-          <MetricCard label="Open A/R" value={receivablesQ.isLoading ? '...' : money(receivables?.total_open_cents ?? 0)} tone="amber" />
-          <MetricCard label="Overdue" value={invoicesQ.isLoading ? '...' : money(overdueTotal)} tone={overdueTotal > 0 ? 'red' : 'green'} />
+        {failedQueries.length > 0 && (
+          <div role="alert" className="rounded-xl border border-amber-300 bg-amber-50 p-4 text-sm text-amber-900">
+            Some figures couldn&apos;t be loaded, so totals and to-dos on this page may be incomplete.
+            <button type="button" className="ml-2 font-semibold underline" onClick={retryFailed}>Try again</button>
+          </div>
+        )}
+        <section data-tour="accounting-metrics" className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-5">
+          <MetricCard label={`Money in (${PERIOD_LABEL[range]})`} value={figure(cashflowQ, () => money(cashflow?.current?.in_cents ?? cashflow?.totals.in_cents ?? 0))} tone={loadFailed(cashflowQ) ? 'amber' : 'green'} />
+          <MetricCard label={`Money out (${PERIOD_LABEL[range]})`} value={figure(cashflowQ, () => money(cashflow?.current?.out_cents ?? cashflow?.totals.out_cents ?? 0))} tone={loadFailed(cashflowQ) ? 'amber' : 'red'} />
+          <MetricCard label={`Net cash (${PERIOD_LABEL[range]})`} value={figure(cashflowQ, () => money(cashflow?.current?.net_cents ?? cashflow?.totals.net_cents ?? 0))} tone={loadFailed(cashflowQ) ? 'amber' : (cashflow?.current?.net_cents ?? cashflow?.totals.net_cents ?? 0) >= 0 ? 'green' : 'red'} />
+          <MetricCard label="Open A/R" value={figure(receivablesQ, () => money(receivables?.total_open_cents ?? 0))} tone="amber" />
+          <MetricCard label="Overdue" value={figure(invoicesQ, () => money(overdueTotal))} tone={loadFailed(invoicesQ) ? 'amber' : overdueTotal > 0 ? 'red' : 'green'} />
         </section>
 
-        <section className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+        <section data-tour="accounting-attention" data-count={attentionCount} className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
           <div className="flex items-center justify-between gap-4 border-b border-slate-200 px-5 py-4">
             <div className="flex items-center gap-3">
               <span aria-hidden>⚡</span>
@@ -451,15 +483,20 @@ export function AccountingPage() {
               <AccountingAttentionRow icon="📨" tone="amber" title="Send draft invoices" detail={`${draftInvoices.length} invoices have not been sent`} amount={money(draftInvoices.reduce((sum, inv) => sum + (inv.money?.total_cents ?? 0), 0))} action="Review drafts" to="/accounting/invoices?filter=draft" />
             )}
             {(contractor1099Q.data?.data.totals.missing_w9_count ?? 0) > 0 && (
-              <AccountingAttentionRow icon="📋" tone="red" title="Collect missing W-9" detail={`${contractor1099Q.data?.data.totals.missing_w9_count ?? 0} contractors need tax documents`} amount={money(contractor1099Q.data?.data.totals.review_cents ?? 0)} action="Open 1099 report" to="/reports?layout=browser&report=contractor-1099" />
+              <AccountingAttentionRow icon="📋" tone="red" title="Collect missing W-9" detail={`${contractor1099Q.data?.data.totals.missing_w9_count ?? 0} contractors need tax documents`} amount={money(contractor1099Q.data?.data.totals.review_cents ?? 0)} action="Open 1099 report" to="/accounting/reports/browse?layout=browser&report=contractor-1099" />
             )}
-            {overdueInvoices.length === 0 && pendingPayments.length === 0 && draftInvoices.length === 0 && (contractor1099Q.data?.data.totals.missing_w9_count ?? 0) === 0 && (
+            {attentionFailed ? (
+              <div className="px-5 py-8 text-center text-sm font-medium text-amber-800">
+                Couldn&apos;t check everything that needs attention.
+                <button type="button" className="ml-2 font-semibold underline" onClick={retryFailed}>Try again</button>
+              </div>
+            ) : overdueInvoices.length === 0 && pendingPayments.length === 0 && draftInvoices.length === 0 && (contractor1099Q.data?.data.totals.missing_w9_count ?? 0) === 0 && (
               <div className="px-5 py-8 text-center text-sm font-medium text-emerald-700">Everything is caught up for this view.</div>
             )}
           </div>
         </section>
 
-        <section>
+        <section data-tour="accounting-workflows">
           {easy ? <EasyActionCards label="What do you need to do?" actions={[
             { key: 'collect', title: 'Collect customer money', description: 'Invoices, cash drawer, and customer credits.' },
             { key: 'spend', title: 'Manage business costs', description: 'Bills, expenses, and purchasing.' },
@@ -467,14 +504,14 @@ export function AccountingPage() {
             { key: 'close', title: 'Close the books', description: 'Reconciliation, statements, and reports.' },
           ].map(action => ({ ...action, active: workflowTab === action.key, onClick: () => setWorkflowTab(action.key as WorkflowTab) }))} /> : <div className="mb-4 flex gap-1 overflow-x-auto border-b border-slate-200">
             <AccountingWorkflowTab active={workflowTab === 'collect'} onClick={() => setWorkflowTab('collect')}>📥 Collect</AccountingWorkflowTab>
-            <AccountingWorkflowTab active={workflowTab === 'spend'} onClick={() => setWorkflowTab('spend')}>📤 Spend</AccountingWorkflowTab>
+            <AccountingWorkflowTab tour="accounting-tab-spend" active={workflowTab === 'spend'} onClick={() => setWorkflowTab('spend')}>📤 Spend</AccountingWorkflowTab>
             <AccountingWorkflowTab active={workflowTab === 'pay'} onClick={() => setWorkflowTab('pay')}>👥 Team pay</AccountingWorkflowTab>
-            <AccountingWorkflowTab active={workflowTab === 'close'} onClick={() => setWorkflowTab('close')}>📚 Close the books</AccountingWorkflowTab>
+            <AccountingWorkflowTab tour="accounting-tab-close" active={workflowTab === 'close'} onClick={() => setWorkflowTab('close')}>📚 Close the books</AccountingWorkflowTab>
           </div>}
           <div className="grid gap-4">
             {workflowTab === 'collect' && <AccountingWorkflowCard title="Collect" icon="📥" description="Invoice, collect, and apply customer money.">
               <AccountingToolLink to="/accounting/invoices" label="Invoices & A/R" detail={`${openInvoices.length} open · ${overdueInvoices.length} overdue`} />
-              <AccountingToolLink to="/accounting/cash-drawer" label="Cash drawer" detail={`${pendingPayments.length} pending turnover`} />
+              <AccountingToolLink to="/accounting/cash-drawer" label="Cash register" detail={`${pendingPayments.length} pending turnover`} />
               <AccountingToolLink to="/accounting/customer-credits" label="Customer credits" detail={`${customerCredits?.totals.credit_count ?? 0} open credits`} />
             </AccountingWorkflowCard>}
             {workflowTab === 'spend' && <AccountingWorkflowCard title="Spend" icon="📤" description="Capture, approve, and pay business costs.">
@@ -487,11 +524,11 @@ export function AccountingPage() {
             {workflowTab === 'pay' && <AccountingWorkflowCard title="Team pay" icon="👥" description="Pay the team and keep tax records ready.">
               <AccountingToolLink to="/accounting/payroll" label="Payroll & reimbursements" detail="Runs, payments, PTO, closeout" />
               <AccountingToolLink to="/accounting/payroll/profiles" label="Payroll profiles" detail="Rates, commission, and leave" />
-              <AccountingToolLink to="/reports?layout=browser&report=tech-performance" label="Tech performance" detail="Revenue, cost, and margin" />
-              <AccountingToolLink to="/reports?layout=browser&report=contractor-1099" label="1099 tracking" detail={`${contractor1099Q.data?.data.totals.missing_w9_count ?? 0} missing W-9`} />
+              <AccountingToolLink to="/accounting/reports/browse?layout=browser&report=tech-performance" label="Tech performance" detail="Revenue, cost, and margin" />
+              <AccountingToolLink to="/accounting/reports/browse?layout=browser&report=contractor-1099" label="1099 tracking" detail={`${contractor1099Q.data?.data.totals.missing_w9_count ?? 0} missing W-9`} />
             </AccountingWorkflowCard>}
             {workflowTab === 'close' && <AccountingWorkflowCard title="Close the books" icon="📚" description="Reconcile, review statements, and file.">
-              <AccountingToolLink to="/accounting/card-processor" label="Card processor" detail="GoDaddy transactions, matched to invoices" />
+              <AccountingToolLink to="/accounting/card-processor" label="Card processor" detail="Card transactions, matched to invoices" />
               <AccountingToolLink to="/accounting/bank-match/review" label="Bank matching" detail="Import, match, split, and ignore" />
               <AccountingToolLink to="/accounting/bank-match" label="Bank reconciliation" detail="Close statement periods" />
               <AccountingToolLink to="/accounting/ledger" label="General ledger" detail={trialBalance?.totals.is_balanced ? 'Trial balance is balanced' : 'Trial balance needs review'} />
@@ -500,9 +537,9 @@ export function AccountingPage() {
             </AccountingWorkflowCard>}
           </div>
         </section>
-        <section className="grid grid-cols-1 gap-4 xl:grid-cols-12">
+        <section data-tour="accounting-charts" className="grid grid-cols-1 gap-4 xl:grid-cols-12">
           <DashboardLinkPanel
-            to="/reports?layout=browser&report=revenue-breakdown"
+            to="/accounting/reports/browse?layout=browser&report=revenue-breakdown"
             title="Cash flow"
             subtitle="Money collected compared with payouts and purchase orders."
             className="xl:col-span-7"
@@ -533,46 +570,48 @@ export function AccountingPage() {
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <StatementMiniStat
                 label="Net income"
-                value={incomeStatementQ.isLoading ? '...' : money(incomeStatement?.totals.net_income_cents ?? 0)}
-                tone={(incomeStatement?.totals.net_income_cents ?? 0) < 0 ? 'red' : 'green'}
+                value={figure(incomeStatementQ, () => money(incomeStatement?.totals.net_income_cents ?? 0))}
+                tone={loadFailed(incomeStatementQ) ? 'amber' : (incomeStatement?.totals.net_income_cents ?? 0) < 0 ? 'red' : 'green'}
               />
               <StatementMiniStat
                 label="Trial balance"
-                value={trialBalanceQ.isLoading ? '...' : trialBalance?.totals.is_balanced ? 'Balanced' : 'Review'}
+                value={figure(trialBalanceQ, () => (trialBalance?.totals.is_balanced ? 'Balanced' : 'Review'))}
                 helper={
                   trialBalance
                     ? `${exactMoney(trialBalance.totals.debit_cents)} debit / ${exactMoney(trialBalance.totals.credit_cents)} credit`
                     : 'As-of ledger check'
                 }
-                tone={trialBalance?.totals.is_balanced === false ? 'red' : 'green'}
+                tone={loadFailed(trialBalanceQ) ? 'amber' : trialBalance?.totals.is_balanced === false ? 'red' : 'green'}
               />
               <StatementMiniStat
                 label="Assets"
-                value={balanceSheetQ.isLoading ? '...' : money(balanceSheet?.totals.assets_cents ?? 0)}
+                value={figure(balanceSheetQ, () => money(balanceSheet?.totals.assets_cents ?? 0))}
                 helper="Balance sheet"
                 tone="blue"
               />
               <StatementMiniStat
                 label="Balance sheet"
-                value={balanceSheetQ.isLoading ? '...' : balanceSheet?.totals.is_balanced ? 'Balanced' : 'Review'}
+                value={figure(balanceSheetQ, () => (balanceSheet?.totals.is_balanced ? 'Balanced' : 'Review'))}
                 helper={
                   balanceSheet
                     ? `${exactMoney(balanceSheet.totals.liabilities_and_equity_cents)} liabilities + equity`
                     : 'As-of statement check'
                 }
-                tone={balanceSheet?.totals.is_balanced === false ? 'red' : 'green'}
+                tone={loadFailed(balanceSheetQ) ? 'amber' : balanceSheet?.totals.is_balanced === false ? 'red' : 'green'}
               />
             </div>
           </DashboardLinkPanel>
         </section>
 
-        <section className="grid grid-cols-1 gap-4 lg:grid-cols-2 xl:grid-cols-4">
+        <section data-tour="accounting-panels" className="grid grid-cols-1 gap-4 lg:grid-cols-2 xl:grid-cols-4">
           <DashboardLinkPanel to="/accounting/cash-drawer" title="Cash drawer" subtitle="Field collections waiting for office review." actionLabel="Review drawer">
             <div className="rounded-lg border border-amber-200 bg-amber-50 p-4">
               <div className="text-xs font-semibold uppercase tracking-wide text-amber-800">Pending turnover</div>
-              <div className="mt-1 text-3xl font-bold text-slate-900">{exactMoney(pendingTotal)}</div>
+              <div className="mt-1 text-3xl font-bold text-slate-900">{figure(pendingQ, () => exactMoney(pendingTotal))}</div>
               <div className="mt-1 text-sm text-amber-800">
-                {pendingPayments.length} payment{pendingPayments.length === 1 ? '' : 's'} waiting
+                {loadFailed(pendingQ)
+                  ? "Couldn't load field collections"
+                  : `${pendingPayments.length} payment${pendingPayments.length === 1 ? '' : 's'} waiting`}
               </div>
             </div>
           </DashboardLinkPanel>
@@ -591,15 +630,15 @@ export function AccountingPage() {
 
           <DashboardLinkPanel to="/accounting/invoices" title="Invoice status" subtitle="Work that needs billing attention." actionLabel="Review invoices">
             <div className="grid grid-cols-2 gap-3">
-              <MiniStat label="Open invoices" value={openInvoices.length} helper={money(openInvoices.reduce((sum, inv) => sum + balanceOf(inv), 0))} />
-              <MiniStat label="Overdue invoices" value={overdueInvoices.length} helper={money(overdueTotal)} danger={overdueInvoices.length > 0} />
-              <MiniStat label="Draft invoices" value={draftInvoices.length} helper="Not sent yet" />
-              <MiniStat label="Tax last month" value={money(salesTaxQ.data?.data.totals.tax_collected_cents ?? 0)} helper={lastMonth.label} />
+              <MiniStat label="Open invoices" value={figure(invoicesQ, () => openInvoices.length)} helper={money(openInvoices.reduce((sum, inv) => sum + balanceOf(inv), 0))} />
+              <MiniStat label="Overdue invoices" value={figure(invoicesQ, () => overdueInvoices.length)} helper={money(overdueTotal)} danger={overdueInvoices.length > 0} />
+              <MiniStat label="Draft invoices" value={figure(invoicesQ, () => draftInvoices.length)} helper="Not sent yet" />
+              <MiniStat label="Tax last month" value={figure(salesTaxQ, () => money(salesTaxQ.data?.data.totals.tax_collected_cents ?? 0))} helper={lastMonth.label} />
             </div>
           </DashboardLinkPanel>
         </section>
 
-        <section className="grid grid-cols-1 gap-4 xl:grid-cols-3">
+        <section data-tour="accounting-panels-2" className="grid grid-cols-1 gap-4 xl:grid-cols-3">
           <DashboardLinkPanel
             to="/accounting/customer-credits"
             title="Customer credits"
@@ -607,8 +646,8 @@ export function AccountingPage() {
             actionLabel="Review credits"
           >
             <div className="grid grid-cols-2 gap-3">
-              <MiniStat label="Open credits" value={customerCreditsQ.isLoading ? '...' : customerCredits?.totals.credit_count ?? 0} helper={money(customerCredits?.totals.balance_cents ?? 0)} />
-              <MiniStat label="Applied" value={customerCreditsQ.isLoading ? '...' : money(customerCredits?.totals.applied_cents ?? 0)} helper="Used on invoices" />
+              <MiniStat label="Open credits" value={figure(customerCreditsQ, () => customerCredits?.totals.credit_count ?? 0)} helper={money(customerCredits?.totals.balance_cents ?? 0)} />
+              <MiniStat label="Applied" value={figure(customerCreditsQ, () => money(customerCredits?.totals.applied_cents ?? 0))} helper="Used on invoices" />
             </div>
           </DashboardLinkPanel>
 
@@ -619,13 +658,13 @@ export function AccountingPage() {
             actionLabel="Review tax"
           >
             <div className="grid grid-cols-2 gap-3">
-              <MiniStat label="Collected" value={salesTaxQ.isLoading ? '...' : money(salesTaxQ.data?.data.totals.tax_collected_cents ?? 0)} helper={lastMonth.label} />
+              <MiniStat label="Collected" value={figure(salesTaxQ, () => money(salesTaxQ.data?.data.totals.tax_collected_cents ?? 0))} helper={lastMonth.label} />
               <MiniStat label="Export" value="PDF / Spreadsheet" helper="Report browser" />
             </div>
           </DashboardLinkPanel>
 
           <DashboardLinkPanel
-            to="/reports?layout=browser&report=contractor-1099"
+            to="/accounting/reports/browse?layout=browser&report=contractor-1099"
             title="Subcontractors & 1099"
             subtitle={`${contractor1099Year} paid subcontractor review.`}
             actionLabel="Open 1099 report"
@@ -633,18 +672,18 @@ export function AccountingPage() {
             <div className="grid grid-cols-2 gap-3">
               <MiniStat
                 label="Needs 1099"
-                value={contractor1099Q.isLoading ? '...' : contractor1099Q.data?.data.totals.review_count ?? 0}
+                value={figure(contractor1099Q, () => contractor1099Q.data?.data.totals.review_count ?? 0)}
                 helper={money(contractor1099Q.data?.data.totals.review_cents ?? 0)}
               />
               <MiniStat
                 label="Missing W-9"
-                value={contractor1099Q.isLoading ? '...' : contractor1099Q.data?.data.totals.missing_w9_count ?? 0}
+                value={figure(contractor1099Q, () => contractor1099Q.data?.data.totals.missing_w9_count ?? 0)}
                 helper="Before filing"
                 danger={(contractor1099Q.data?.data.totals.missing_w9_count ?? 0) > 0}
               />
               <MiniStat
                 label="Contractors"
-                value={contractor1099Q.isLoading ? '...' : contractor1099Q.data?.data.totals.contractor_count ?? 0}
+                value={figure(contractor1099Q, () => contractor1099Q.data?.data.totals.contractor_count ?? 0)}
                 helper={money(contractor1099Q.data?.data.totals.paid_cents ?? 0)}
               />
               <MiniStat
@@ -657,7 +696,7 @@ export function AccountingPage() {
         </section>
 
         {showGrids && (
-          <section className="grid grid-cols-1 gap-4 xl:grid-cols-2 2xl:grid-cols-4">
+          <section data-tour="accounting-grids" className="grid grid-cols-1 gap-4 xl:grid-cols-2 2xl:grid-cols-4">
             <GridPanel title="Cashflow grid">
               <thead>
                 <tr className="border-b border-slate-200 text-left">
@@ -757,11 +796,12 @@ function AccountingAttentionRow({ icon, tone, title, detail, amount, action, to 
   )
 }
 
-function AccountingWorkflowTab({ active, onClick, children }: { active: boolean; onClick: () => void; children: React.ReactNode }) {
+function AccountingWorkflowTab({ tour, active, onClick, children }: { tour?: string; active: boolean; onClick: () => void; children: React.ReactNode }) {
   return (
     <button
       type="button"
       onClick={onClick}
+      data-tour={tour}
       aria-selected={active}
       className={`shrink-0 border-b-3 px-4 py-3 text-sm font-semibold transition-colors ${active ? 'border-amber-500 text-slate-950' : 'border-transparent text-slate-500 hover:text-slate-800'}`}
     >

@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { useParams, useNavigate, Link } from 'react-router-dom'
+import { useParams, Link } from 'react-router-dom'
 import { useMutation, useQuery } from '@tanstack/react-query'
 import { apiRequest } from '@/lib/api'
 
@@ -24,7 +24,6 @@ interface PreviewResp {
  */
 export function AcceptInvitePage() {
   const { token = '' } = useParams<{ token: string }>()
-  const navigate = useNavigate()
 
   const preview = useQuery({
     queryKey: ['accept-invite', token],
@@ -36,16 +35,19 @@ export function AcceptInvitePage() {
   const [confirm, setConfirm] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [success, setSuccess] = useState(false)
+  const [downloadUrl, setDownloadUrl] = useState<string | null>(null)
+  const [downloadSent, setDownloadSent] = useState(false)
 
   const accept = useMutation({
     mutationFn: () =>
-      apiRequest('/v1/auth/accept-invite', {
+      apiRequest<{ data: { app_download_url?: string | null; app_download_delivery?: { email_sent: boolean; sms_sent: boolean } | null } }>('/v1/auth/accept-invite', {
         method: 'POST',
         body: { token, password },
       }),
-    onSuccess: () => {
+    onSuccess: (response) => {
       setSuccess(true)
-      setTimeout(() => navigate('/login'), 2000)
+      setDownloadUrl(response.data.app_download_url ?? null)
+      setDownloadSent(Boolean(response.data.app_download_delivery?.email_sent || response.data.app_download_delivery?.sms_sent))
     },
     onError: (e: Error) => setError(e.message),
   })
@@ -74,11 +76,11 @@ export function AcceptInvitePage() {
   if (preview.isError) {
     return (
       <div className="min-h-screen flex items-center justify-center p-6">
-        <div className="max-w-md w-full bg-white border border-slate-200 rounded-xl p-8 text-center shadow-sm">
+        <div className="max-w-md w-full bg-white border border-slate-200 rounded-xl p-8 text-center shadow-sm" data-tour="accept-invite-expired">
           <div className="text-4xl mb-3">⚠</div>
           <h1 className="text-xl font-semibold text-navy-900">Invite link no longer works</h1>
           <p className="text-sm text-slate-600 mt-2">
-            This invite is invalid, expired, or already used. Ask the shop owner to send a fresh one.
+            This invite is invalid, expired, or already used. Ask the person who invited you to send a fresh one.
           </p>
           <Link
             to="/login"
@@ -102,18 +104,22 @@ export function AcceptInvitePage() {
           </div>
         </div>
 
+        <div data-tour="accept-invite-welcome">
         <h1 className="text-xl font-semibold text-navy-900 text-center">Welcome to {d.tenant_name ?? 'CrewBarn'}</h1>
         <p className="text-sm text-slate-600 text-center mt-1">
           Hi {d.first_name ?? 'there'} — set a password to activate{' '}
           <code className="text-xs">{d.email}</code>.
         </p>
+        </div>
 
         {success ? (
           <div className="mt-6 rounded-md bg-emerald-50 border border-emerald-200 text-emerald-900 p-4 text-center text-sm">
-            ✓ Password set. Redirecting to login…
+            <p className="font-semibold">Your password is set. You’re ready to sign in.</p>
+            {downloadUrl && <><a className="inline-block mt-4 rounded-lg bg-amber-500 px-4 py-2 font-semibold text-slate-900" href={downloadUrl}>Download the phone app</a><p className="mt-2 text-xs">{downloadSent ? 'We also sent you the download link.' : 'Your password is saved. You can download the app here, even if the email or text could not be sent.'}</p></>}
+            <Link className="block mt-4 underline" to="/login">Continue to sign in</Link>
           </div>
         ) : (
-          <div className="mt-6 space-y-3">
+          <div className="mt-6 space-y-3" data-tour="accept-invite-password">
             <div>
               <label className="block text-xs font-medium text-slate-700 mb-1 uppercase tracking-wide">
                 New password
@@ -123,7 +129,7 @@ export function AcceptInvitePage() {
                 autoComplete="new-password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                placeholder="at least 8 characters"
+                placeholder="At least 8 characters"
                 className="w-full text-sm px-3 py-2 border border-slate-300 rounded-md focus:outline-none focus:border-amber-500"
                 onKeyDown={(e) => e.key === 'Enter' && submit()}
               />
@@ -160,7 +166,7 @@ export function AcceptInvitePage() {
         )}
 
         {d.expires_at && !success && (
-          <p className="text-[11px] text-slate-400 text-center mt-4">
+          <p className="text-[11px] text-slate-400 text-center mt-4" data-tour="accept-invite-expiry">
             Link expires {new Date(d.expires_at).toLocaleDateString()}
           </p>
         )}

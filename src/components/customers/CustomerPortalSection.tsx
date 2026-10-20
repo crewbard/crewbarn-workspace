@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { apiRequest, type ApiError } from '@/lib/api'
+import { usePermissions } from '@/hooks/usePermissions'
 
 /**
  * Provider-side card on the customer detail page that controls the
@@ -54,6 +55,8 @@ export function CustomerPortalSection({
   customerEmail: string | null
 }) {
   const qc = useQueryClient()
+  const { has } = usePermissions()
+  const canEdit = has('customers.edit')
 
   const status = useQuery({
     queryKey: ['customer-portal-status', customerId],
@@ -77,10 +80,10 @@ export function CustomerPortalSection({
 
   const noEmail = !customerEmail
   const data = status.data?.data
-  const busy = invite.isPending || revoke.isPending || status.isLoading
+  const busy = !canEdit || invite.isPending || revoke.isPending || status.isLoading
 
   return (
-    <section className="bg-white rounded-lg border border-navy-100 p-6">
+    <section data-tour="customer-portal" className="bg-white rounded-lg border border-navy-100 p-6">
       <div className="flex items-center justify-between mb-2">
         <h2 className="text-sm font-semibold text-navy-800 uppercase tracking-wider">
           Customer Portal

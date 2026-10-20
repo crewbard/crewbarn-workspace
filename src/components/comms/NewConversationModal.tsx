@@ -82,6 +82,7 @@ export function NewConversationModal({
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onMouseDown={close}>
       <div
+        data-tour="comms-compose"
         className="w-full max-w-2xl rounded-xl bg-white shadow-xl"
         onMouseDown={(event) => event.stopPropagation()}
       >
@@ -105,9 +106,11 @@ export function NewConversationModal({
             <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">{error}</div>
           )}
 
-          <div className="grid grid-cols-2 gap-1 rounded-lg bg-slate-100 p-1">
+          <div data-tour="comms-compose-mode" className="grid grid-cols-2 gap-1 rounded-lg bg-slate-100 p-1">
             <button
               type="button"
+              data-tour="comms-compose-text"
+              aria-pressed={mode === 'sms'}
               onClick={() => {
                 setMode('sms')
                 setError(null)
@@ -118,6 +121,8 @@ export function NewConversationModal({
             </button>
             <button
               type="button"
+              data-tour="comms-compose-email"
+              aria-pressed={mode === 'email'}
               onClick={() => {
                 setMode('email')
                 setError(null)
@@ -128,7 +133,7 @@ export function NewConversationModal({
             </button>
           </div>
 
-          <div>
+          <div data-tour="comms-compose-to">
             <label className="mb-1 block text-xs font-medium text-slate-500">
               {mode === 'email' ? 'To email' : 'To phone'}
             </label>
@@ -142,7 +147,7 @@ export function NewConversationModal({
           </div>
 
           {mode === 'email' && (
-            <div>
+            <div data-tour="comms-compose-subject">
               <label className="mb-1 block text-xs font-medium text-slate-500">Subject</label>
               <input
                 type="text"
@@ -154,7 +159,7 @@ export function NewConversationModal({
             </div>
           )}
 
-          <div>
+          <div data-tour="comms-compose-body">
             <label className="mb-1 block text-xs font-medium text-slate-500">Message</label>
             <textarea
               value={body}
@@ -173,6 +178,7 @@ export function NewConversationModal({
         <div className="flex items-center justify-end gap-2 border-t border-slate-200 px-5 py-3">
           <button
             type="button"
+            data-tour="comms-compose-cancel"
             onClick={close}
             className="rounded-md border border-slate-300 px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50"
           >
@@ -180,6 +186,7 @@ export function NewConversationModal({
           </button>
           <button
             type="button"
+            data-tour="comms-compose-send"
             onClick={() => {
               setError(null)
               if (mode === 'email') {

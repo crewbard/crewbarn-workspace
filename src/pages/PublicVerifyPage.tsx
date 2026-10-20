@@ -63,8 +63,8 @@ export function PublicVerifyPage() {
 
   return (
     <div className="min-h-screen bg-slate-100 px-4 py-10">
-      <div className="mx-auto max-w-lg">
-        <div className="mb-5 flex items-center gap-2.5">
+      <div data-tour="verify-result" className="mx-auto max-w-lg">
+        <div data-tour="verify-brand" className="mb-5 flex items-center gap-2.5">
           <svg viewBox="0 0 64 64" width="26" height="26" aria-hidden="true">
             <path
               d="M14 27 V38 q0 8 8 8 h20"
@@ -129,7 +129,7 @@ export function PublicVerifyPage() {
 
         {state === 'ok' && data && (
           <>
-            <div className="rounded-t-xl bg-emerald-700 p-6 text-white">
+            <div data-tour="verify-verdict" className="rounded-t-xl bg-emerald-700 p-6 text-white">
               <p className="text-[11px] font-bold uppercase tracking-[0.06em] text-emerald-100">
                 Verified record
               </p>
@@ -141,7 +141,7 @@ export function PublicVerifyPage() {
               </p>
             </div>
 
-            <div className="rounded-b-xl border border-t-0 border-slate-200 bg-white">
+            <div data-tour="verify-details" className="rounded-b-xl border border-t-0 border-slate-200 bg-white">
               <Row label="Record" value={data.record_id} mono />
               <Row
                 label="Signed"
@@ -164,11 +164,13 @@ export function PublicVerifyPage() {
                 value={data.servicer.license_number ?? 'Not published'}
                 mono={!!data.servicer.license_number}
               />
+              {data.servicer.phone && <Row label="Phone" value={data.servicer.phone} />}
             </div>
 
-            {data.asset && (
+            {data.asset?.code && (
               <Link
-                to={`/scan/${data.asset.tenant_id}/${data.asset.code ?? ''}`}
+                data-tour="verify-open-record"
+                to={`/scan/${encodeURIComponent(data.asset.tenant_id)}/${encodeURIComponent(data.asset.code)}`}
                 className="mt-4 block rounded-xl bg-slate-900 py-3.5 text-center text-sm font-bold text-white"
               >
                 Open the full asset record
@@ -176,7 +178,7 @@ export function PublicVerifyPage() {
             )}
 
             <p className="mt-4 text-center text-xs leading-relaxed text-slate-500">
-              Only finalised inspections appear here. A record that is still in progress will not
+              Only finalized inspections appear here. A record that is still in progress will not
               verify.
             </p>
           </>

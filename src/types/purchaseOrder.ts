@@ -71,13 +71,20 @@ export interface PurchaseOrderItem {
 export interface PurchaseOrder {
   id: string
   tenant_id: string
-  vendor_id: string
-  vendor?: PurchaseOrderVendorMini
+  /** Null while a draft waits for the buyer to choose who it goes to. */
+  vendor_id: string | null
+  vendor?: PurchaseOrderVendorMini | null
   po_number: string
   vendor_order_number: string | null
   status: PurchaseOrderStatus
   /** Stock for the shelves, or parts for one estimate that wait on its answer. */
   kind?: 'stock' | 'estimate'
+  /** A draft CrewBarn started when stock ran low; a person checks it and orders it. */
+  auto_reorder?: boolean
+  /** Written from a call with the vendor (the call is in that conversation). */
+  source_call?: { message_id: string; conversation_id: string | null } | null
+  /** Parts read off a blueprint (/purchase-orders/blueprints/:id). */
+  source_takeoff_id?: string | null
   estimate_id?: string | null
   estimate_number?: string | null
   work_order_id?: string | null
@@ -101,7 +108,8 @@ export interface PurchaseOrder {
 }
 
 export interface PurchaseOrderInput {
-  vendor_id: string
+  /** Null on a draft: not chosen yet. Needed before it is ordered. */
+  vendor_id: string | null
   vendor_order_number?: string | null
   order_date?: string | null
   expected_delivery?: string | null
@@ -146,4 +154,34 @@ export interface PurchaseOrderReceiveLineInput {
 
 export interface PurchaseOrderReceiveInput {
   lines: PurchaseOrderReceiveLineInput[]
+}
+
+/**
+ * GET /v1/purchase-orders/{id}/supplier-copy: the order as the supplier sees
+ * it. Never bins, the shop's SKU or its notes.
+ */
+export interface SupplierCopyLine {
+  id: string
+  /** The supplier's own number; null when there isn't one (the copy shows the words only). */
+  supplier_part_number: string | null
+  description: string
+  qty: number
+  unit_label: string | null
+  unit_cost_cents: number
+  line_total_cents: number
+  missing_part_number: boolean
+}
+
+export interface SupplierCopy {
+  po_number: string
+  status: PurchaseOrderStatus
+  order_date: string | null
+  expected_delivery: string | null
+  vendor_order_number: string | null
+  currency: string
+  shop: { name: string | null; address: string | null; phone: string | null; email: string | null; logo_url: string | null }
+  supplier: { name: string; account_number: string | null; phone: string | null; email: string | null; address: string[]; payment_terms: string | null } | null
+  lines: SupplierCopyLine[]
+  missing_part_numbers: number
+  money: { subtotal_cents: number; tax_cents: number | null; shipping_cents: number | null; total_cents: number }
 }

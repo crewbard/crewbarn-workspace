@@ -97,6 +97,12 @@ export interface OnboardingStatus {
   onboarding_completed_at: string | null
   should_redirect: boolean
   progress_percent: number
+  /** Finished setup can't be run again: the server refuses onboarding writes. */
+  setup_locked?: boolean
+  /** Why it's locked: 'free_plan' until a free company starts using CrewBarn, else 'finished'. */
+  locked_reason?: 'free_plan' | 'finished' | null
+  /** A Google Maps key is saved (the key itself is never sent). */
+  google_maps_key_saved?: boolean
   steps: OnboardingStep[]
   counts: Record<string, number>
   seed_state: {
@@ -228,6 +234,6 @@ export interface InviteOnboardingStaffResponse {
   invite: {
     email_sent: boolean
     email_error: string | null
-    accept_url: string
+    accept_url: string | null
   }
 }

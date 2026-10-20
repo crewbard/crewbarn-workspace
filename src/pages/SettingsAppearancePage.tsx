@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import type { ReactNode } from 'react'
 import { useTheme, type AppTheme } from '@/hooks/useTheme'
+import { PERM, usePermissions } from '@/hooks/usePermissions'
 import { CHROME_COLORS, chromeHex, isCustomChromeColor } from '@/lib/chromeColors'
 import { ACCENT_COLORS, accentBase } from '@/lib/accentColors'
 import { TEXT_SCALES, UI_FONTS, ensureUiFontLoaded, uiFontStack, type TextScale } from '@/lib/uiFonts'
@@ -10,11 +11,12 @@ import { IconLayoutSidebar, IconPalette, IconTypography } from '@tabler/icons-re
 /**
  * Tool Shed → Appearance.
  *
- * A focused, adaptive redesign — three areas, all per-browser (localStorage)
+ * A focused, adaptive redesign — layout follows the account and company;
+ * color and typography remain per-browser.
  * and instant:
  *
- *   1. Layout — Top bar or Side bar. Two clean shells; each applies sensible
- *      density/width defaults and adapts down to a hamburger on small screens.
+ *   1. Layout — each shell keeps its own browsing preferences. Selecting a
+ *      layout never rewrites another layout's density, width or list views.
  *   2. Color  — the brand accent (flows through the whole app) and the
  *      navigation chrome color.
  *   3. Font   — typeface and reading size.
@@ -31,13 +33,17 @@ const appearanceSections = [
 ] satisfies Array<{ id: AppearanceSection; label: string; description: string; group: string; icon: ReactNode }>
 
 interface LayoutOption {
-  value: 'top' | 'side' | 'rail' | 'easy-side' | 'easy-top'
+  value: 'top' | 'side' | 'rail' | 'focus' | 'easy-side' | 'easy-top'
   theme: AppTheme
   name: string
   blurb: string
 }
 
 const LAYOUTS: LayoutOption[] = [
+  {
+    value: 'focus', theme: 'focus', name: 'Focus · Full workspace',
+    blurb: 'A compact, task-first layout across jobs, customers, estimates and money. The existing schedule and drag-and-drop calendar remain available.',
+  },
   {
     value: 'easy-side', theme: 'easy-side', name: 'Easy · Side bar (preview)',
     blurb: 'Optional Easy foundation with a side menu. Existing working pages are retained while the guided page designs are built.',
@@ -71,6 +77,12 @@ export function SettingsAppearancePage() {
   const {
     theme,
     setTheme,
+    defaultTheme,
+    themeOverride,
+    appearanceLoading,
+    appearanceError,
+    clearThemeOverride,
+    setDefaultTheme,
     chromeColor,
     setChromeColor,
     accentColor,
@@ -79,14 +91,16 @@ export function SettingsAppearancePage() {
     setUiFont,
     textScale,
     setTextScale,
-    setDensity,
-    setPageWidth,
   } = useTheme()
+  const { has } = usePermissions()
+  const canEditCompany = has(PERM.SETTINGS_EDIT)
+  const [layoutMessage, setLayoutMessage] = useState<string | null>(null)
+  const [savingCompany, setSavingCompany] = useState(false)
   const chrome = chromeHex(chromeColor)
   const customColor = isCustomChromeColor(chromeColor) ? chromeColor : chrome
   const contrastOk = contrastRatio(chrome, '#ffffff') >= 4.5
   const activeLayout: LayoutOption['value'] =
-    theme === 'easy-side' || theme === 'easy-top' ? theme : theme === 'pro' ? 'side' : theme === 'rail' ? 'rail' : 'top'
+    theme === 'easy-side' || theme === 'easy-top' ? theme : theme === 'pro' ? 'side' : theme === 'rail' || theme === 'focus' ? theme : 'top'
   const [activeSection, setActiveSection] = useState<AppearanceSection>(() => settingsSectionFromHash(appearanceSections, 'layout'))
 
   // Preload the typeface options while the Font section is open so each font
@@ -96,24 +110,17 @@ export function SettingsAppearancePage() {
   }, [activeSection])
 
   function applyLayout(option: LayoutOption) {
+    if (appearanceLoading) return
     setTheme(option.theme)
-    // Sensible defaults per shell; each user's list-view choice is left alone.
-    if (option.value === 'top' || option.value === 'easy-top') {
-      setDensity('comfortable')
-      setPageWidth('centered')
-    } else {
-      setDensity('comfortable')
-      setPageWidth('wide')
-    }
   }
 
   return (
     <div className="mx-auto max-w-7xl px-4 py-8 md:px-6">
-      <header className="mb-6">
+      <header className="mb-6" data-tour="appearance-header">
         <h1 className="text-2xl font-bold text-navy-900">Appearance</h1>
         <p className="mt-1 text-sm text-slate-600">
-          Choose your layout, colors, and type. These settings apply to this
-          browser and take effect immediately.
+          Choose your layout, colors, and type. Layout follows your account or
+          company default; colors and type apply to this browser.
         </p>
       </header>
 
@@ -126,18 +133,37 @@ export function SettingsAppearancePage() {
             updateSettingsSectionHash(section)
           }}
           title="Appearance"
+          tour="appearance-tabs"
         />
         <main className="min-w-0">
 
           {/* Layout */}
           {activeSection === 'layout' && (
             <>
-              <h2 className="mb-1 text-sm font-semibold text-navy-900">Layout</h2>
+              <div data-tour="appearance-layout-who" className="mb-5 rounded-xl border border-slate-200 bg-white p-4">
+                <h2 className="text-sm font-semibold text-navy-900">Who uses this layout?</h2>
+                <p className="mt-1 text-xs text-slate-600">Company default: {LAYOUTS.find((item) => item.theme === defaultTheme)?.name}. {themeOverride ? 'You have a personal override.' : 'Your account follows the company default.'}</p>
+                {themeOverride && <button type="button" disabled={appearanceLoading} onClick={() => { void clearThemeOverride().then(() => setLayoutMessage('Your account now follows the company default.')).catch(() => setLayoutMessage('Could not clear your personal layout. Please try again.')) }} className="mt-3 rounded-lg border border-slate-300 px-3 py-2 text-xs font-semibold text-navy-900 hover:bg-slate-50 disabled:opacity-50">Use company default</button>}
+                {canEditCompany && <div data-tour="appearance-company-layout" className="mt-4 border-t border-slate-100 pt-4">
+                  <label htmlFor="company-layout" className="block text-xs font-semibold text-navy-900">Company default layout</label>
+                  <p className="mt-1 text-xs text-slate-600">People without a personal choice will see this layout. Existing personal choices stay in place.</p>
+                  <select id="company-layout" value={defaultTheme} disabled={savingCompany || appearanceLoading} onChange={(event) => {
+                    const value = event.target.value as AppTheme
+                    setSavingCompany(true)
+                    setLayoutMessage(null)
+                    void setDefaultTheme(value).then(() => setLayoutMessage('Company default saved.')).catch(() => setLayoutMessage('Could not save the company default. Please try again.')).finally(() => setSavingCompany(false))
+                  }} className="mt-2 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-navy-900 disabled:opacity-50">
+                    {LAYOUTS.map((item) => <option key={item.theme} value={item.theme}>{item.name}</option>)}
+                  </select>
+                </div>}
+                {(layoutMessage || appearanceError) && <p role="status" className="mt-3 text-xs text-slate-700">{layoutMessage || appearanceError}</p>}
+              </div>
+              <h2 data-tour="appearance-layout" className="mb-1 text-sm font-semibold text-navy-900">Layout</h2>
               <p className="mb-3 text-xs text-slate-600">
-                Both layouts adapt to the screen — on phones and narrow windows
+                Select a personal layout for your account. Every layout adapts to the screen — on phones and narrow windows
                 they collapse to a slide-out menu.
               </p>
-              <div className="grid gap-4 sm:grid-cols-2">
+              <div className="grid gap-4 sm:grid-cols-2" data-tour="appearance-layout-options">
                 {LAYOUTS.map((opt) => {
                   const active = activeLayout === opt.value
                   return (
@@ -145,6 +171,8 @@ export function SettingsAppearancePage() {
                       key={opt.value}
                       type="button"
                       onClick={() => applyLayout(opt)}
+                      disabled={appearanceLoading}
+                      data-tour={`appearance-layout-${opt.value}`}
                       aria-pressed={active}
                       className={[
                         'rounded-xl border-2 p-4 text-left transition-colors focus:outline-none',
@@ -176,7 +204,7 @@ export function SettingsAppearancePage() {
           {/* Color */}
           {activeSection === 'color' && (
             <>
-              <h2 className="mb-1 text-sm font-semibold text-navy-900">Color</h2>
+              <h2 data-tour="appearance-color" className="mb-1 text-sm font-semibold text-navy-900">Color</h2>
               <p className="mb-4 max-w-2xl text-xs text-slate-600">
                 The brand accent flows through the whole app — buttons, active
                 nav, links, focus rings, and badges. The navigation color tints
@@ -184,7 +212,7 @@ export function SettingsAppearancePage() {
               </p>
 
               {/* Brand accent */}
-              <div className="rounded-xl border border-slate-200 bg-white p-4">
+              <div className="rounded-xl border border-slate-200 bg-white p-4" data-tour="appearance-accent">
                 <h3 className="text-sm font-semibold text-navy-900">Brand accent</h3>
                 <div className="mt-3 flex flex-wrap gap-4">
                   {ACCENT_COLORS.map((a) => {
@@ -223,7 +251,7 @@ export function SettingsAppearancePage() {
               </div>
 
               {/* Navigation color */}
-              <div className="mt-4 rounded-xl border border-slate-200 bg-white p-4">
+              <div className="mt-4 rounded-xl border border-slate-200 bg-white p-4" data-tour="appearance-nav-color">
                 <h3 className="text-sm font-semibold text-navy-900">Navigation color</h3>
                 <p className="mt-0.5 text-xs text-slate-500">Tints the top bar and side bar. Darker colors keep the white nav text readable.</p>
                 <div className="mt-3 flex flex-wrap gap-3">
@@ -257,7 +285,7 @@ export function SettingsAppearancePage() {
                   })}
                 </div>
 
-                <div className="mt-4 flex flex-col gap-3 border-t border-slate-100 pt-4 sm:flex-row sm:items-center sm:justify-between">
+                <div className="mt-4 flex flex-col gap-3 border-t border-slate-100 pt-4 sm:flex-row sm:items-center sm:justify-between" data-tour="appearance-nav-custom">
                   <div className="flex items-center gap-3">
                     <label className="relative h-11 w-11 shrink-0 cursor-pointer overflow-hidden rounded-full border border-slate-300 shadow-sm">
                       <input
@@ -297,7 +325,7 @@ export function SettingsAppearancePage() {
           {/* Font */}
           {activeSection === 'font' && (
             <>
-              <h2 className="mb-1 text-sm font-semibold text-navy-900">Font</h2>
+              <h2 data-tour="appearance-font" className="mb-1 text-sm font-semibold text-navy-900">Font</h2>
               <p className="mb-4 max-w-2xl text-xs text-slate-600">
                 The typeface and reading size used throughout the app, including
                 navigation, forms, cards, dialogs, and notes. Changes apply
@@ -306,7 +334,7 @@ export function SettingsAppearancePage() {
               <div className="flex flex-wrap items-start gap-6">
                 <div className="min-w-0 space-y-4" style={{ flex: '100 1 360px' }}>
                   {/* Typeface */}
-                  <div className="rounded-xl border border-slate-200 bg-white p-4">
+                  <div data-tour="appearance-typeface" className="rounded-xl border border-slate-200 bg-white p-4">
                     <h3 className="text-sm font-semibold text-navy-900">Typeface</h3>
                     <div className="mt-3 grid gap-2.5" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))' }}>
                       {UI_FONTS.map((f) => {
@@ -332,7 +360,7 @@ export function SettingsAppearancePage() {
                   </div>
 
                   {/* Text size */}
-                  <div className="rounded-xl border border-slate-200 bg-white p-4">
+                  <div data-tour="appearance-text-size" className="rounded-xl border border-slate-200 bg-white p-4">
                     <h3 className="text-sm font-semibold text-navy-900">Text size</h3>
                     <div className="mt-3 grid grid-cols-3 gap-1 rounded-lg bg-slate-100 p-1">
                       {TEXT_SCALES.map((s) => {
@@ -383,7 +411,7 @@ export function SettingsAppearancePage() {
                               <span className="font-mono text-[10px] text-slate-500">WO-1042</span>
                               <span className="rounded-full border border-amber-200 bg-amber-50 px-1.5 py-0.5 text-[10px] font-semibold text-amber-700">On site</span>
                             </div>
-                            <div className="mt-1.5 text-xs font-semibold text-slate-900">Rekey — 3 locks</div>
+                            <div className="mt-1.5 text-xs font-semibold text-slate-900">Annual service visit</div>
                             <button type="button" className="mt-2 rounded-md bg-amber-500 px-2.5 py-1 text-[11px] font-semibold text-white">Start job</button>
                           </div>
                         </div>
@@ -419,7 +447,25 @@ function relativeLuminance(hex: string): number {
 }
 
 /** Tiny CSS wireframe so the layout choice is visual, not just words. */
-function LayoutPreview({ kind, chrome }: { kind: 'top' | 'side' | 'rail'; chrome: string }) {
+function LayoutPreview({ kind, chrome }: { kind: 'top' | 'side' | 'rail' | 'focus'; chrome: string }) {
+  if (kind === 'focus') {
+    return <div className="flex aspect-[16/10] w-full overflow-hidden rounded-lg border border-slate-200 bg-[#edf2f4]">
+      <div className="flex w-[10%] flex-col items-center gap-2 bg-[#09232b] py-2">
+        {[0, 1, 2, 3, 4].map(i => <span key={i} className={`h-1.5 w-1.5 rounded-full ${i === 0 ? 'bg-white' : 'bg-white/40'}`} />)}
+      </div>
+      <div className="w-[18%] space-y-2 border-r border-slate-200 bg-[#f7faf9] p-2">
+        {[0, 1, 2, 3, 4, 5].map(i => <span key={i} className={`block h-1 rounded ${i === 0 ? 'bg-slate-700' : 'bg-slate-300'}`} />)}
+      </div>
+      <div className="flex min-w-0 flex-1 flex-col">
+        <div className="flex h-5 items-center gap-1.5 border-b border-slate-200 bg-white px-2"><span className="h-1.5 w-1/6 rounded bg-slate-700" /><span className="h-2 w-1/3 rounded bg-slate-100" /><span className="ml-auto h-2 w-2 rounded-full bg-amber-400" /></div>
+        <div className="space-y-1.5 p-2">
+          <div className="flex items-center justify-between"><span className="h-2 w-1/3 rounded bg-slate-700" /><span className="h-2 w-1/6 rounded bg-amber-400" /></div>
+          <div className="flex gap-1">{[0, 1, 2, 3].map(i => <span key={i} className="h-3 w-1/4 rounded border border-slate-200 bg-white" />)}</div>
+          <div className="flex gap-1"><div className="w-2/3 space-y-1 rounded border border-slate-200 bg-white p-1">{[0, 1, 2, 3].map(i => <span key={i} className="block h-2 rounded bg-slate-100" />)}</div><div className="w-1/3 space-y-1 rounded border border-slate-200 bg-white p-1">{[0, 1, 2].map(i => <span key={i} className="block h-2 rounded bg-slate-100" />)}</div></div>
+        </div>
+      </div>
+    </div>
+  }
   // Rail: a narrow coloured edge of category marks, then a light panel of what
   // is under the chosen one, then the page. Three bands, which is the whole
   // point of the layout.

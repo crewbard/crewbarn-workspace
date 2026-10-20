@@ -49,6 +49,8 @@ export function ConnectCloudflare({ onProvisioned }: { onProvisioned: () => void
   const status = useQuery({
     queryKey: KEY,
     queryFn: () => apiRequest<{ data: CloudflareStatus }>('/v1/settings/cloudflare'),
+    // The token is made on Connect in another tab; check again the moment they come back.
+    refetchOnWindowFocus: 'always',
   })
   const s = status.data?.data
 
@@ -80,7 +82,7 @@ export function ConnectCloudflare({ onProvisioned }: { onProvisioned: () => void
   // Already done — say so and get out of the way.
   if (s?.r2_bucket) {
     return (
-      <div className="rounded-2xl border border-slate-200 bg-white p-5">
+      <div className="rounded-2xl border border-slate-200 bg-white p-5" data-guide="cloudflare" data-guide-state="done">
         <div className="flex flex-wrap items-center justify-between gap-2"><p className="text-base font-bold text-navy-900">Your Cloudflare storage</p><span className="rounded-full bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-800">Configured ✓</span></div>
         <p className="mt-2 text-sm leading-relaxed text-slate-600">
           Connected bucket: <span className="break-all font-mono">{s.r2_bucket}</span> in your own Cloudflare account.
@@ -92,7 +94,7 @@ export function ConnectCloudflare({ onProvisioned }: { onProvisioned: () => void
   }
 
   return (
-    <div className="rounded-2xl border border-slate-200 bg-white p-5">
+    <div className="rounded-2xl border border-slate-200 bg-white p-5" data-guide="cloudflare" data-guide-state={s?.connected ? 'connected' : 'none'}>
       <p className="text-[15px] font-bold text-navy-900">Let CrewBarn set it up for you</p>
       <p className="mt-1 text-sm leading-relaxed text-slate-600">
         Paste one Cloudflare token and CrewBarn makes the bucket, works out the addresses and fills in the keys. The

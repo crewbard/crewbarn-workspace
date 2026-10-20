@@ -53,7 +53,12 @@ export function workspaceHref(path: string): string {
  * printer is a physical object on one desk; it is set up at that desk, in
  * the place the printing happens.
  */
-export const ALWAYS_IN_WORKSPACE = ['/tool-shed/appearance', '/tool-shed/label-printer']
+export const ALWAYS_IN_WORKSPACE = [
+  '/tool-shed/appearance', '/tool-shed/label-printer', '/tool-shed/company-files',
+  // Listed in Connect's menu under Catalog & inventory, but a work surface: the books are read
+  // and ordered from while working, so the link goes to the workspace instead of a redirect.
+  '/catalogs',
+]
 
 /**
  * Is this route a company setting — one whose home is Connect?

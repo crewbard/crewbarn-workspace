@@ -30,6 +30,7 @@ interface Panel {
 
 const ARC: Array<[string, string]> = [
   ['Set up your shop', 'Company details, your trade, your people, what you charge. About twenty minutes, and the walkthrough asks in plain English.'],
+  ['Bring in your catalog', 'Upload a company PDF catalog and CrewBarn turns it into a draft pricebook of services and products. Review the names, costs and selling prices before using it — nothing is sent to a customer until you approve it.'],
   ['A customer calls', 'The call, text or web request lands in Messages. Turn it into a job in one step — CrewBarn already has the customer if they have been before.'],
   ['Book it and send it out', 'Put it on the schedule, assign a tech, and they get it on the phone app with the address, the history and the photos.'],
   ['Do the work', 'The tech clocks in, takes photos, adds the parts used and gets a signature on the phone. It all lands on the job while they are still on site.'],
@@ -42,6 +43,7 @@ const TOOLS: Array<[string, string]> = [
   ['Money', 'Invoices, payments by card and bank transfer, expenses, purchase orders, accounting and reports'],
   ['People', 'Staff and crews, time clock, payroll, time off, hiring, and a portal where your crew see their own week'],
   ['Parts', 'Inventory across vans and shelves, stock counts, low-stock alerts, suppliers and purchase orders'],
+  ['Catalog and estimates', 'Import a PDF into your pricebook, review the draft items, then build an estimate with the catalog open beside the work'],
   ['Customers', 'Customer records, service locations, documents, a customer portal, and a marketplace listing'],
   ['Talking to people', 'Calls, texts and email in one inbox, templates, automatic reminders and job updates'],
   ['Your shopfront', 'A website CrewBarn builds and hosts, your own domain, and a branded app for your customers'],

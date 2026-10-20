@@ -8,7 +8,7 @@ import { WorkOrderMessagesTab } from './WorkOrderMessagesTab'
  * they ride the customer's thread, so the caller passes the estimate's customer.
  */
 export type MessagesContext =
-  | { kind: 'customer'; customer: Customer }
+  | { kind: 'customer'; customer: Customer; estimateId?: string | null; locationId?: string | null }
   | { kind: 'work_order'; workOrderId: string; customerId: string | null }
 
 /**
@@ -54,7 +54,14 @@ export function MessagesDrawer({
           </button>
         </div>
         <div className="flex-1 min-h-0 p-3 sm:p-4">
-          {context.kind === 'customer' && <CustomerMessagesTab customer={context.customer} fill />}
+          {context.kind === 'customer' && (
+            <CustomerMessagesTab
+              customer={context.customer}
+              estimateId={context.estimateId ?? null}
+              locationId={context.locationId ?? null}
+              fill
+            />
+          )}
           {context.kind === 'work_order' && (
             <WorkOrderMessagesTab workOrderId={context.workOrderId} customerId={context.customerId} fill />
           )}

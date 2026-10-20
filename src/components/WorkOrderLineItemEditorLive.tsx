@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import {
   WorkOrderLineItemEditorCore,
   type EditableLine,
@@ -13,6 +13,10 @@ import {
 } from '@/hooks/useWorkOrders'
 import type { WorkOrderLineItemDraft } from '@/types/workOrderLineItem'
 import type { CatalogItem } from '@/types/catalogItem'
+import { useTaxClasses } from '@/hooks/useTaxClasses'
+import { usePermissions, PERM } from '@/hooks/usePermissions'
+import type { PickedPart } from '@/lib/catalogOrders'
+import { exactCatalogItemForPdfPart, openPdfCatalogForLine, pdfLineReviewNote, pdfPartLineDescription } from '@/lib/pdfCatalogLine'
 
 interface WorkOrderLineItemEditorLiveProps {
   /** Rendered under the totals — see WorkOrderLineItemEditorCore. */
@@ -22,6 +26,9 @@ interface WorkOrderLineItemEditorLiveProps {
 
   /** Covered assets available for per-line tagging. */
   availableAssets?: WorkOrderLineEditorAvailableAsset[]
+
+  /** Read-only (e.g. the viewer lacks jobs.edit): every control is disabled. */
+  disabled?: boolean
 }
 
 /**
@@ -34,7 +41,8 @@ interface WorkOrderLineItemEditorLiveProps {
  * The mutation has optimistic cache updates (see useUpdateLineItem in
  * useWorkOrders.ts), so inputs don't flash back to old values during save.
  */
-export function WorkOrderLineItemEditorLive({ workOrderId, availableAssets = [], footer }: WorkOrderLineItemEditorLiveProps) {
+export function WorkOrderLineItemEditorLive({ workOrderId, availableAssets = [], footer, disabled = false }: WorkOrderLineItemEditorLiveProps) {
+  const { has } = usePermissions()
   const { data: lines = [], isLoading, error } = useLineItems(workOrderId)
 
   /**
@@ -58,6 +66,16 @@ export function WorkOrderLineItemEditorLive({ workOrderId, availableAssets = [],
   const updateMutation = useUpdateLineItem()
   const deleteMutation = useDeleteLineItem()
   const reorderMutation = useReorderLineItems()
+  // Tenant default tax class (Catalog › Tax classes), if one is marked default.
+  const { data: taxClassesData } = useTaxClasses({ active: true })
+  const defaultTaxClass = (taxClassesData?.data ?? []).find((tc) => tc.is_default) ?? null
+  const pdfPickRef = useRef<(part: PickedPart) => Promise<string>>(async () => '')
+  const mountedRef = useRef(true)
+
+  useEffect(() => {
+    mountedRef.current = true
+    return () => { mountedRef.current = false }
+  }, [])
 
   const handleAdd = () => {
     createMutation.mutate({
@@ -67,8 +85,9 @@ export function WorkOrderLineItemEditorLive({ workOrderId, availableAssets = [],
         quantity: 1,
         unit_label: 'each',
         customer_cost_cents: 0,
-        is_taxable: false,
-        tax_rate_pct: 0,
+        is_taxable: !!defaultTaxClass,
+        tax_rate_pct: defaultTaxClass?.rate_pct ?? 0,
+        tax_class_id: defaultTaxClass?.id ?? null,
         asset_id: defaultAssetId,
       },
     }, report)
@@ -139,6 +158,46 @@ export function WorkOrderLineItemEditorLive({ workOrderId, availableAssets = [],
     }, report)
   }
 
+  useEffect(() => {
+    pdfPickRef.current = async (part) => {
+    if (!mountedRef.current || disabled || !has(PERM.CATALOG_VIEW)) throw new Error('This job is no longer editable. Reopen its line items when editing is available.')
+    const item = await exactCatalogItemForPdfPart(part)
+    if (!mountedRef.current || disabled || !has(PERM.CATALOG_VIEW)) throw new Error('This job is no longer editable. Reopen its line items when editing is available.')
+    try {
+      await createMutation.mutateAsync({
+        workOrderId,
+        input: item ? {
+          description: item.name,
+          quantity: item.default_quantity || 1,
+          unit_label: item.unit_label || 'each',
+          customer_cost_cents: item.pricing.customer_cost_cents,
+          owner_cost_cents: item.pricing.owner_cost_cents,
+          is_taxable: !!item.tax_class?.id,
+          tax_rate_pct: item.tax_class?.rate_pct ?? 0,
+          catalog_item_id: item.id,
+          tax_class_id: item.tax_class?.id ?? null,
+          asset_id: defaultAssetId,
+        } : {
+          description: pdfPartLineDescription(part),
+          quantity: part.qty ?? 1,
+          unit_label: 'each',
+          customer_cost_cents: part.list_price_cents ?? 0,
+          is_taxable: !!defaultTaxClass,
+          tax_rate_pct: defaultTaxClass?.rate_pct ?? 0,
+          tax_class_id: defaultTaxClass?.id ?? null,
+          asset_id: defaultAssetId,
+          notes: [part.source_page_label && `PDF page ${part.source_page_label}`, 'Price and tax need review'].filter(Boolean).join(' · '),
+        },
+      })
+      setFailure(null)
+      return pdfLineReviewNote(!!item)
+    } catch (error) {
+      onError(error)
+      throw error
+    }
+    }
+  })
+
   if (isLoading) {
     return <div className="text-sm text-slate-500">Loading line items...</div>
   }
@@ -184,8 +243,10 @@ export function WorkOrderLineItemEditorLive({ workOrderId, availableAssets = [],
       onDelete={handleDelete}
       onReorder={handleReorder}
       onPickFromCatalog={handlePickFromCatalog}
+      onOpenPdf={!disabled && has(PERM.CATALOG_VIEW) ? () => openPdfCatalogForLine((part) => pdfPickRef.current(part)) : undefined}
       availableAssets={availableAssets}
       saving={isSaving}
+      disabled={disabled}
     />
     </>
   )

@@ -1,9 +1,7 @@
 import { useEffect, useMemo } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
-import Echo from 'laravel-echo'
-import Pusher from 'pusher-js'
 import type { Account } from '@/lib/auth'
-import { API_URL, getActingTenant, getStoredToken } from '@/lib/api'
+import { getRealtimeEcho, listenPrivate, resolveTenantId } from '@/lib/realtimeEcho'
 
 type WorkOrderChangedEvent = {
   tenant_id: string
@@ -12,10 +10,6 @@ type WorkOrderChangedEvent = {
   work_order?: {
     id?: string
   } | null
-}
-
-type WindowWithPusher = Window & {
-  Pusher?: typeof Pusher
 }
 
 const LIVE_QUERY_ROOTS = new Set([
@@ -33,71 +27,23 @@ const LIVE_QUERY_ROOTS = new Set([
   'work-orders-incoming-requests',
 ])
 
-function boolEnv(value: string | undefined, fallback: boolean): boolean {
-  if (value === undefined || value === '') return fallback
-  return ['1', 'true', 'yes', 'https'].includes(value.toLowerCase())
-}
-
-function numberEnv(value: string | undefined, fallback: number): number {
-  const parsed = Number(value)
-  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback
-}
-
-function resolveTenantId(account: Account | null): string | null {
-  if (account?.tenant?.id) return account.tenant.id
-  if (account?.is_platform_admin) return getActingTenant()
-  return null
-}
-
+/**
+ * Jobs, tasks, estimates and late-risk changes, live. Mounted once for the
+ * whole app by AppLayout, on the one shared connection (lib/realtimeEcho):
+ * it used to open its own websocket, so every tab held a second one.
+ */
 export function useRealtimeWorkOrders(account: Account | null): void {
   const queryClient = useQueryClient()
   const tenantId = useMemo(() => resolveTenantId(account), [account])
 
   useEffect(() => {
-    if (!tenantId || typeof window === 'undefined') return
+    if (!tenantId) return
+    const echo = getRealtimeEcho(account)
+    if (!echo) return
 
-    const token = getStoredToken()
-    const appKey = import.meta.env.VITE_REVERB_APP_KEY
-    if (!token || !appKey) return
-
-    const scheme = import.meta.env.VITE_REVERB_SCHEME || window.location.protocol.replace(':', '')
-    const forceTLS = boolEnv(scheme, window.location.protocol === 'https:')
-    const host = import.meta.env.VITE_REVERB_HOST || window.location.hostname
-    const port = numberEnv(
-      import.meta.env.VITE_REVERB_PORT,
-      forceTLS ? 443 : 80,
-    )
-
-    ;(window as WindowWithPusher).Pusher = Pusher
-
-    const authHeaders: Record<string, string> = {
-      Authorization: `Bearer ${token}`,
-    }
-    const actingTenant = getActingTenant()
-    const authTenant = actingTenant || (account?.is_platform_admin ? tenantId : null)
-    if (authTenant) {
-      authHeaders['X-Act-As-Tenant'] = authTenant
-    }
-
-    const echo = new Echo({
-      broadcaster: 'reverb',
-      key: appKey,
-      wsHost: host,
-      wsPort: port,
-      wssPort: port,
-      forceTLS,
-      // pusher-js's WebSocket transport is named 'ws'; forceTLS upgrades it to
-      // wss://. 'wss' is NOT a valid transport name — listing it alone produces
-      // an empty strategy and the connection fails instantly (state: failed).
-      enabledTransports: ['ws', 'wss'],
-      authEndpoint: `${API_URL}/broadcasting/auth`,
-      auth: {
-        headers: authHeaders,
-      },
-    })
-
+    // The dashboard listens on this channel too; each cleanup below removes
+    // only this hook's own listener.
     const channelName = `tenant.${tenantId}.work-orders`
-    const channel = echo.private(channelName)
 
     const invalidateLive = () => {
       queryClient.invalidateQueries({
@@ -105,29 +51,35 @@ export function useRealtimeWorkOrders(account: Account | null): void {
       })
     }
 
-    channel.listen('.work-order.changed', (event: WorkOrderChangedEvent) => {
-      const workOrderId = event.work_order?.id
+    const stops = [
+      listenPrivate(echo, channelName, '.work-order.changed', (event: WorkOrderChangedEvent) => {
+        const workOrderId = event.work_order?.id
 
-      invalidateLive()
+        invalidateLive()
 
-      if (workOrderId) {
-        queryClient.invalidateQueries({ queryKey: ['work-orders', 'detail', workOrderId] })
-        queryClient.invalidateQueries({ queryKey: ['work-order-invoices', workOrderId] })
-        queryClient.invalidateQueries({ queryKey: ['work-order-payments', workOrderId] })
-        queryClient.invalidateQueries({ queryKey: ['work-order-reimbursements', workOrderId] })
-      }
+        if (workOrderId) {
+          queryClient.invalidateQueries({ queryKey: ['work-orders', 'detail', workOrderId] })
+          queryClient.invalidateQueries({ queryKey: ['work-order-invoices', workOrderId] })
+          queryClient.invalidateQueries({ queryKey: ['work-order-payments', workOrderId] })
+          queryClient.invalidateQueries({ queryKey: ['work-order-reimbursements', workOrderId] })
+        }
 
-      window.dispatchEvent(new CustomEvent('crewbarn:work-order-live', { detail: event }))
-    })
+        window.dispatchEvent(new CustomEvent('crewbarn:work-order-live', { detail: event }))
+      }),
 
-    // Tasks + estimates ride the same channel — a change to either refreshes the
-    // calendar / task + estimate lists (both are in LIVE_QUERY_ROOTS).
-    channel.listen('.task.changed', () => invalidateLive())
-    channel.listen('.estimate.changed', () => invalidateLive())
+      // Tasks + estimates ride the same channel — a change to either refreshes the
+      // calendar / task + estimate lists (both are in LIVE_QUERY_ROOTS).
+      listenPrivate(echo, channelName, '.task.changed', () => invalidateLive()),
+      listenPrivate(echo, channelName, '.estimate.changed', () => invalidateLive()),
 
-    return () => {
-      echo.leave(channelName)
-      echo.disconnect()
-    }
+      // A tech may be late, or it's been seen or is over: the Schedule button
+      // starts or stops flashing now rather than at its next poll.
+      listenPrivate(echo, channelName, '.late-risk.changed', () => {
+        queryClient.invalidateQueries({ queryKey: ['late-risks'] })
+      }),
+    ]
+
+    return () => stops.forEach((stop) => stop())
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [queryClient, tenantId])
 }

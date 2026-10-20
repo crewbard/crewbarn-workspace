@@ -7,7 +7,7 @@ import type { PageNumbers } from './pageNumbers'
 
 const SOURCE: Record<Suggestion['source'], string> = {
   edges: 'Its printed tabs',
-  contents: 'Its contents page',
+  contents: 'Its table of contents',
   bookmarks: 'Its bookmarks',
   headings: 'Its headings',
 }
@@ -68,6 +68,8 @@ export function TabEditor({
   return (
     <aside
       aria-label="Tabs"
+      data-tour="book-tabs-editor"
+      data-tab-count={rows.length}
       className="flex h-full w-[min(22rem,100vw)] shrink-0 flex-col border-l border-white/10 bg-white text-slate-900"
     >
       <div className="border-b border-slate-200 px-4 py-3">
@@ -86,13 +88,13 @@ export function TabEditor({
           shop's file names, a contents page that lists the wrong level.
         */}
         {suggestions.length > 0 && (
-          <div className="space-y-1.5">
+          <div data-tour="book-tabs-suggest" className="space-y-1.5">
             <p className="text-xs font-semibold text-slate-500">
               {rows.length === 0 ? 'Start from the PDF' : 'Or start over from the PDF'}
             </p>
-            {suggestions.map((suggestion) => (
+            {suggestions.map((suggestion, k) => (
               <button
-                key={suggestion.source}
+                key={`${suggestion.source}-${k}`}
                 type="button"
                 onClick={() => setRows(suggestion.tabs.map((t) => ({ label: t.label, page: t.page, color: t.color ?? null })))}
                 className="w-full rounded-lg border border-dashed border-sky-300 bg-sky-50 px-3 py-2 text-left text-sm text-sky-900 hover:bg-sky-100"
@@ -102,6 +104,11 @@ export function TabEditor({
                   {suggestion.tabs.length} tabs: {suggestion.tabs.slice(0, 4).map((t) => t.label).join(', ')}
                   {suggestion.tabs.length > 4 ? '…' : ''}
                 </span>
+                {suggestion.missing && suggestion.missing.length > 0 && (
+                  <span className="mt-1 block text-xs text-amber-700">
+                    Not found in the book yet: {suggestion.missing.join(', ')}. Turn to where each starts and add its tab.
+                  </span>
+                )}
               </button>
             ))}
           </div>
@@ -190,6 +197,7 @@ export function TabEditor({
 
         <button
           type="button"
+          data-tour="book-tabs-add"
           disabled={full}
           onClick={() => setRows((r) => [...r, { label: '', page, color: null }])}
           className="inline-flex items-center gap-1.5 rounded px-2 py-1.5 text-sm font-medium text-sky-700 hover:bg-sky-50 disabled:text-slate-400 disabled:hover:bg-transparent"
@@ -199,7 +207,7 @@ export function TabEditor({
         </button>
       </div>
 
-      <div className="space-y-2 border-t border-slate-200 px-4 py-3">
+      <div data-tour="book-tabs-save" className="space-y-2 border-t border-slate-200 px-4 py-3">
         {(error || problems.length > 0) && (
           <p className="text-xs text-amber-800">{error ?? `Before saving: ${problems.join(', ')}.`}</p>
         )}

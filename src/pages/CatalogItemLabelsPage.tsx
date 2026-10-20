@@ -55,17 +55,23 @@ export function CatalogItemLabelsPage() {
    * tell apart, which defeats scanning one to consume it.
    */
   const perUnit = search.get('per_unit') === '1'
+  // The units one purchase-order line brought in (the PO label sheet sends
+  // people here), wherever they sit now, instead of one bin's.
+  const poItemId = search.get('po_item_id') ?? null
 
 
   const itemQuery = useCatalogItem(id)
 
   const unitsQuery = useQuery({
-    queryKey: ['stock-units-for-labels', id, locationIdFromUrl, binIdFromUrl],
+    queryKey: ['stock-units-for-labels', id, locationIdFromUrl, binIdFromUrl, poItemId],
     queryFn: () =>
       apiRequest<{ data: { id: string; qr_payload: string; internal_serial?: string | null }[] }>(
         `/v1/inventory-stock-units?catalog_item_id=${encodeURIComponent(id ?? '')}` +
           (locationIdFromUrl ? `&location_id=${encodeURIComponent(locationIdFromUrl)}` : '') +
-          `&bin_id=${encodeURIComponent(binIdFromUrl ?? '')}&per_page=200`,
+          (poItemId
+            ? `&purchase_order_item_id=${encodeURIComponent(poItemId)}`
+            : `&bin_id=${encodeURIComponent(binIdFromUrl ?? '')}`) +
+          '&per_page=200',
       ),
     enabled: perUnit && !!id,
   })
@@ -103,7 +109,8 @@ export function CatalogItemLabelsPage() {
         code: u.internal_serial ?? item.sku ?? undefined,
         tag: 'UNIT',
       }))
-    : [{ qrValue, name: item.name, code: item.sku ?? undefined, tag: 'ITEM' }]
+    : // Same payload the printed card encodes, so preview and print match.
+      [{ qrValue: qrUrl, name: item.name, code: item.sku ?? undefined, tag: 'ITEM' }]
 
   return (
     <div className="bg-white min-h-screen">
@@ -113,7 +120,8 @@ export function CatalogItemLabelsPage() {
       `}</style>
 
       <LabelStudio
-        backTo={{ href: `/catalog/products/${item.id}`, label: item.name }}
+        // Products have no page of their own; ?item= opens its details.
+        backTo={{ href: `/catalog/products?item=${item.id}`, label: item.name }}
         faces={faces}
         size={thermal}
         onSize={(next) => setParam('thermal', next === 'sheet' ? null : next)}
@@ -128,7 +136,7 @@ export function CatalogItemLabelsPage() {
             {
               value: 'product',
               title: 'One label for the product',
-              help: 'Scans to the product page — the same code however many you have',
+              help: 'Scans to the product — the same code however many you have',
               count: 1,
             },
             {
@@ -139,6 +147,9 @@ export function CatalogItemLabelsPage() {
             },
           ],
         }}
+        // The browser prints .print-stage, which draws each label once per
+        // copy; the studio leaves the unticked ones out of it.
+        printStageCopies={copies}
         onPrint={() => window.print()}
       />
       <div className={`print-stage ${isThermal && !multiUp ? 'p-0' : 'p-4'}`}>
@@ -180,9 +191,9 @@ export function CatalogItemLabelsPage() {
             </div>
           )}
           {perUnit
-            ? (unitsQuery.data?.data ?? []).map((u) => (
+            ? (unitsQuery.data?.data ?? []).flatMap((u) => Array.from({ length: copies }, (_, c) => (
                 <CatalogLabelCard
-                  key={u.id}
+                  key={`${u.id}-${c}`}
                   isThermal={isThermal}
                   isFullSheet={isFullSheet}
                   isMini={isMini}
@@ -197,7 +208,7 @@ export function CatalogItemLabelsPage() {
                   qrUrl={u.qr_payload}
                   qrValue={u.internal_serial || u.qr_payload}
                 />
-              ))
+              )))
             : Array.from({ length: copies }).map((_, idx) => (
                 <CatalogLabelCard
                   key={idx}

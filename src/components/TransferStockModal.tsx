@@ -8,7 +8,7 @@ import { listInventoryUnits } from '@/lib/inventoryUnits'
 import { inventoryUnitKeys } from '@/hooks/useInventoryUnits'
 import { createInventoryMovement } from '@/lib/inventoryMovements'
 import { inventoryMovementKeys } from '@/hooks/useInventoryMovements'
-import { ApiError } from '@/lib/api'
+import { ApiError, apiRequest } from '@/lib/api'
 import { isCountableUnit, qtyStepFor, formatQty } from '@/lib/unitsOfMeasure'
 import type { InventoryBin } from '@/types/inventoryBin'
 import type { InventoryStockLevel } from '@/types/inventoryStockLevel'
@@ -23,10 +23,14 @@ import type { InventoryStockLevel } from '@/types/inventoryStockLevel'
  *
  * The applier handles the actual stock_levels deltas + unit transitions
  * atomically per movement. We just orchestrate the per-line dispatch.
+ *
+ * A van on either side is different: the API won't move van stock directly.
+ * Each line becomes a transfer request (POST /v1/inventory-transfers) that
+ * the van's tech accepts on their phone, and the stock moves when they do.
  */
-export function TransferStockModal({ onClose }: { onClose: () => void }) {
+export function TransferStockModal({ onClose, defaultFromLocationId }: { onClose: () => void; /** Stock tab details: start from this row's location. */ defaultFromLocationId?: string }) {
   const queryClient = useQueryClient()
-  const [fromLocation, setFromLocation] = useState<string>('')
+  const [fromLocation, setFromLocation] = useState<string>(defaultFromLocationId ?? '')
   const [fromBin, setFromBin] = useState<InventoryBin | null>(null)
   const [toLocation, setToLocation] = useState<string>('')
   const [toBin, setToBin] = useState<InventoryBin | null>(null)
@@ -35,6 +39,12 @@ export function TransferStockModal({ onClose }: { onClose: () => void }) {
 
   const { data: locsData } = useInventoryLocations({ per_page: 200 })
   const locations = locsData?.data ?? []
+  // A van on either side: the van's tech accepts it (the source van first).
+  const fromLoc = locations.find((l) => l.id === fromLocation)
+  const toLoc = locations.find((l) => l.id === toLocation)
+  const van = fromLoc?.type === 'truck' ? fromLoc : toLoc?.type === 'truck' ? toLoc : null
+  const vanTech = van?.assigned_tech?.display_name ?? (van?.assigned_tech_account_id ? 'the van’s tech' : null)
+  const [sent, setSent] = useState<string | null>(null)
 
   // Fetch stock at source. We always filter by location; bin filter only
   // applied when fromBin is set, otherwise we list everything at the
@@ -66,7 +76,8 @@ export function TransferStockModal({ onClose }: { onClose: () => void }) {
       const next = { ...prev }
       for (const sl of filteredSourceRows) {
         if (next[sl.id] === undefined) {
-          next[sl.id] = String(sl.quantities.qty_on_hand)
+          // Reserved stock is spoken for, so default to what's free to move.
+          next[sl.id] = String(Math.max(0, sl.quantities.qty_available ?? sl.quantities.qty_on_hand))
         }
       }
       return next
@@ -84,7 +95,7 @@ export function TransferStockModal({ onClose }: { onClose: () => void }) {
     (fromBin?.id ?? null) === (toBin?.id ?? null)
 
   const canSubmit =
-    !!fromLocation && !!toLocation && !sameSpot && selectedCount > 0
+    !!fromLocation && !!toLocation && !sameSpot && selectedCount > 0 && (!van || !!van.assigned_tech_account_id)
 
   const [submitting, setSubmitting] = useState(false)
   const [progress, setProgress] = useState<string | null>(null)
@@ -112,7 +123,35 @@ export function TransferStockModal({ onClose }: { onClose: () => void }) {
         qty: Number(qtys[sl.id]),
       }))
 
+    // Lines go one at a time with no rollback, so if one fails the person
+    // has to know which ones already moved.
+    const done: string[] = []
     try {
+      if (van) {
+        // Van stock moves only when the van's tech accepts on their phone.
+        let n = 0
+        for (const { sl, qty } of linesToTransfer) {
+          n++
+          const itemName = sl.catalog_item?.name ?? sl.catalog_item_id
+          setProgress(`Sending ${n} of ${linesToTransfer.length} to ${vanTech}: ${itemName}`)
+          await apiRequest('/v1/inventory-transfers', {
+            method: 'POST',
+            body: {
+              catalog_item_id: sl.catalog_item_id,
+              quantity: qty,
+              from_location_id: sl.location_id,
+              from_bin_id: sl.bin_id ?? null,
+              to_location_id: toLocation,
+              to_bin_id: toBin?.id ?? null,
+              note: 'Sent from the office',
+            },
+          })
+          done.push(itemName)
+        }
+        setPicked({})
+        setSent(`Sent ${done.length} ${done.length === 1 ? 'item' : 'items'} to ${vanTech}. The stock moves when they check it in on their phone.`)
+        return
+      }
       let i = 0
       for (const { sl, qty } of linesToTransfer) {
         i++
@@ -161,6 +200,7 @@ export function TransferStockModal({ onClose }: { onClose: () => void }) {
             reason: 'Manual transfer',
           })
         }
+        done.push(itemName)
       }
 
       queryClient.invalidateQueries({ queryKey: stockLevelKeys.lists() })
@@ -170,13 +210,22 @@ export function TransferStockModal({ onClose }: { onClose: () => void }) {
       queryClient.invalidateQueries({ queryKey: inventoryMovementKeys.lists() })
       onClose()
     } catch (err) {
-      setError(
+      const msg =
         err instanceof ApiError
           ? err.message
           : err instanceof Error
             ? err.message
             : String(err)
-      )
+      if (done.length > 0) {
+        // Earlier lines did move; refresh so the table shows that.
+        queryClient.invalidateQueries({ queryKey: stockLevelKeys.lists() })
+        queryClient.invalidateQueries({ queryKey: ['inventory-bins', 'stock-rollup'] })
+        queryClient.invalidateQueries({ queryKey: inventoryUnitKeys.lists() })
+        queryClient.invalidateQueries({ queryKey: inventoryMovementKeys.lists() })
+        setError(`${van ? 'Already sent' : 'Already moved'}: ${done.join(', ')}. Stopped there: ${msg}`)
+      } else {
+        setError(msg)
+      }
     } finally {
       setSubmitting(false)
       setProgress(null)
@@ -186,7 +235,7 @@ export function TransferStockModal({ onClose }: { onClose: () => void }) {
   return (
     <Modal isOpen={true} onClose={submitting ? () => {} : onClose} title="Transfer Stock" size="xl">
       <Modal.Body>
-        <div className="space-y-4">
+        <div data-tour="inv-transfer" className="space-y-4">
           {/* Source / destination */}
           <div className="grid grid-cols-2 gap-4">
             <BinSlot
@@ -221,6 +270,22 @@ export function TransferStockModal({ onClose }: { onClose: () => void }) {
           {sameSpot && (
             <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded px-3 py-2">
               Source and destination are the same. Pick a different destination.
+            </p>
+          )}
+          {van && !sameSpot && !sent && (
+            van.assigned_tech_account_id ? (
+              <p className="text-xs text-slate-700 bg-slate-50 border border-slate-200 rounded px-3 py-2">
+                {van.name} is a van, so each item goes to {vanTech}. The stock moves when they check it in on their phone.
+              </p>
+            ) : (
+              <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded px-3 py-2">
+                {van.name} has no tech assigned to accept transfers. Assign one on its location first.
+              </p>
+            )
+          )}
+          {sent && (
+            <p role="status" className="text-sm text-emerald-800 bg-emerald-50 border border-emerald-200 rounded px-3 py-2">
+              {sent}
             </p>
           )}
 
@@ -268,7 +333,7 @@ export function TransferStockModal({ onClose }: { onClose: () => void }) {
                     const checked = !!picked[sl.id]
                     const unit = sl.catalog_item?.unit_label ?? 'each'
                     const isCount = isCountableUnit(unit)
-                    const available = sl.quantities.qty_on_hand
+                    const available = sl.quantities.qty_available ?? sl.quantities.qty_on_hand
                     const enteredQty = Number(qtys[sl.id]) || 0
                     const overAvail = enteredQty > available
                     return (
@@ -349,14 +414,26 @@ export function TransferStockModal({ onClose }: { onClose: () => void }) {
         >
           Cancel
         </button>
-        <button
-          type="button"
-          onClick={handleSubmit}
-          disabled={!canSubmit || submitting}
-          className="px-4 py-2 text-sm font-medium rounded-md bg-emerald-600 hover:bg-emerald-700 text-white disabled:bg-slate-300 disabled:cursor-not-allowed"
-        >
-          {submitting ? 'Transferring…' : `Transfer ${selectedCount > 0 ? `(${selectedCount})` : ''}`}
-        </button>
+        {sent ? (
+          <button
+            type="button"
+            onClick={onClose}
+            className="px-4 py-2 text-sm font-medium rounded-md bg-amber-600 hover:bg-amber-700 text-white"
+          >
+            Done
+          </button>
+        ) : (
+          <button
+            type="button"
+            onClick={handleSubmit}
+            disabled={!canSubmit || submitting}
+            className="px-4 py-2 text-sm font-medium rounded-md bg-amber-600 hover:bg-amber-700 text-white disabled:bg-slate-300 disabled:cursor-not-allowed"
+          >
+            {submitting
+              ? van ? 'Sending…' : 'Transferring…'
+              : `${van ? `Send to ${vanTech}` : 'Transfer'} ${selectedCount > 0 ? `(${selectedCount})` : ''}`}
+          </button>
+        )}
       </Modal.Footer>
 
       {pickingFrom && (

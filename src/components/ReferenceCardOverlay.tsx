@@ -1,17 +1,20 @@
 import { useMemo, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { useQuery } from '@tanstack/react-query'
 import { IconBook2, IconChevronRight } from '@tabler/icons-react'
 import { apiRequest } from '@/lib/api'
 import { PERM, usePermissions } from '@/hooks/usePermissions'
-import { formatSize } from '@/lib/referenceCardDocuments'
+import { openCatalogs } from '@/lib/catalogs'
 import {
+  linkLabel,
   tabsOf,
   type ReferenceCard,
-  type ReferenceCardDocument,
   type ReferenceCardSection,
 } from '@/lib/referenceCards'
-import { OpenDocument } from '@/components/magazine/OpenDocument'
+import { useCardPicture } from '@/hooks/useCardPicture'
+import { AddToCartButton } from '@/components/parts/AddToCartButton'
+import { WhoSellsThis } from '@/components/parts/WhoSellsThis'
+import { FromJobs } from '@/components/reference/FromJobs'
 
 export type { ReferenceCard, ReferenceCardSection }
 
@@ -47,8 +50,6 @@ export function ReferenceCardOverlay({
 }) {
   const { has } = usePermissions()
   const mayEdit = has(PERM.CATALOG_EDIT)
-  const qc = useQueryClient()
-  const [reading, setReading] = useState<ReferenceCardDocument | null>(null)
 
   const cardQ = useQuery({
     queryKey: ['reference-card', cardId],
@@ -57,6 +58,9 @@ export function ReferenceCardOverlay({
   })
 
   const card = cardQ.data?.card
+  const picture = useCardPicture(card?.has_picture ? card.id : null)
+  const foundIn = card?.found_in ?? []
+  const names = [...(card?.part_numbers ?? []), ...(card?.aliases ?? [])]
   const sections = useMemo(() => card?.sections ?? [], [card])
   const tabs = useMemo(() => tabsOf(sections), [sections])
 
@@ -89,6 +93,7 @@ export function ReferenceCardOverlay({
   return createPortal(
     <div className="fixed inset-0 z-50 bg-slate-900/50" onClick={onClose}>
       <div
+        data-tour="refcard-open"
         onClick={(e) => e.stopPropagation()}
         /*
          * Down the right, so whatever this was opened from stays
@@ -112,6 +117,15 @@ export function ReferenceCardOverlay({
           </div>
 
           <div className="flex shrink-0 items-center gap-2">
+            {card && (card.part_numbers ?? []).length > 0 && (
+              <AddToCartButton
+                tour="refcard-add-to-cart"
+                source="reference_card"
+                label="Add to cart"
+                className="inline-flex items-center gap-1 rounded border border-slate-300 px-2 py-1 text-xs font-medium text-slate-700 hover:border-amber-400 hover:bg-amber-50"
+                part={{ reference_card_id: card.id, part_number: card.part_numbers?.[0], description: card.title, label: card.title }}
+              />
+            )}
             {card && mayEdit && card.mine && card.status !== 'approved' && onEdit && (
               <button
                 type="button"
@@ -143,33 +157,59 @@ export function ReferenceCardOverlay({
 
           {card && (
             <>
-              {/*
-                The files first: a card with a manual on it is usually
-                opened for the manual.
-              */}
-              {(card.documents?.length ?? 0) > 0 && (
-                <ul className="space-y-1.5">
-                  {card.documents!.map((doc) => (
-                    <li key={doc.id}>
-                      <button
-                        type="button"
-                        onClick={() => setReading(doc)}
-                        className="flex w-full items-center gap-3 rounded-lg border border-slate-200 px-3 py-2 text-left hover:border-sky-300 hover:bg-sky-50"
-                      >
-                        <IconBook2 size={20} className="shrink-0 text-sky-700" />
-                        <span className="min-w-0 flex-1">
-                          <span className="block truncate text-sm font-medium text-slate-900">{doc.title}</span>
-                          <span className="block text-xs text-slate-500">
-                            {formatSize(doc.size_bytes)}
-                            {doc.tabs.length > 0 && ` · ${doc.tabs.length} tabs`}
-                          </span>
-                        </span>
-                        <IconChevronRight size={16} className="shrink-0 text-slate-400" />
-                      </button>
-                    </li>
-                  ))}
-                </ul>
+              {(picture || names.length > 0) && (
+                <div data-tour="refcard-part" className="flex items-start gap-3">
+                  {picture && (
+                    <img src={picture} alt={card.title} className="h-24 w-32 shrink-0 rounded-lg border border-slate-200 bg-white object-contain" />
+                  )}
+                  {names.length > 0 && (
+                    <div className="min-w-0 flex-1">
+                      <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-500">Goes by</h3>
+                      <div className="mt-1 flex flex-wrap gap-1.5">
+                        {names.map((name) => (
+                          <span key={name} className="rounded-full bg-slate-100 px-2.5 py-0.5 font-mono text-xs text-slate-800">{name}</span>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
               )}
+
+              {/*
+                Where the part is found, first: a card about a part is
+                usually opened to go and look at it in the book.
+              */}
+              {foundIn.length > 0 && (
+                <div data-tour="refcard-files">
+                  <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-500">Found in</h3>
+                  <ul className="mt-1.5 space-y-1.5">
+                    {foundIn.map((link) => (
+                      <li key={link.id}>
+                        <button
+                          type="button"
+                          onClick={() => openCatalogs({ documentId: link.document_id, page: link.page ?? undefined })}
+                          className="flex w-full items-center gap-3 rounded-lg border border-slate-200 px-3 py-2 text-left hover:border-sky-300 hover:bg-sky-50"
+                        >
+                          <IconBook2 size={20} className="shrink-0 text-sky-700" />
+                          <span className="min-w-0 flex-1">
+                            <span className="block truncate text-sm font-medium text-slate-900">{linkLabel(link)}</span>
+                            {link.vendor && <span className="block truncate text-xs text-slate-500">{link.vendor}</span>}
+                          </span>
+                          <IconChevronRight size={16} className="shrink-0 text-slate-400" />
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+
+              {/* Who sells it, from orders and catalog prices: the phase 4 lookups read the same. */}
+              {(card.part_numbers ?? []).length > 0 && (
+                <WhoSellsThis partNumbers={card.part_numbers} tour="refcard-sellers" compact />
+              )}
+
+              {/* What this shop's own jobs found, above what anybody wrote. */}
+              <FromJobs fromJobs={card.from_jobs} tour="refcard-what-worked" />
 
               {/*
                 The untabbed sections are the card itself. They stay on
@@ -181,7 +221,7 @@ export function ReferenceCardOverlay({
               ))}
 
               {tabs.length > 0 && (
-                <div className="border-b border-slate-200">
+                <div data-tour="refcard-tabs" className="border-b border-slate-200">
                   <div className="-mb-px flex flex-wrap gap-1">
                     {tabs.map((name, i) => (
                       <button
@@ -206,7 +246,7 @@ export function ReferenceCardOverlay({
                 <Section key={`${current ?? ''}-${i}`} section={section} />
               ))}
 
-              {sections.length === 0 && (card.documents?.length ?? 0) === 0 && (
+              {sections.length === 0 && foundIn.length === 0 && !card.from_jobs?.jobs && (
                 <p className="text-sm text-slate-500">This card is empty.</p>
               )}
             </>
@@ -214,15 +254,6 @@ export function ReferenceCardOverlay({
         </div>
       </div>
 
-      {card && reading && (
-        <OpenDocument
-          cardId={card.id}
-          document={reading}
-          canEdit={mayEdit && card.mine && card.status !== 'approved'}
-          onClose={() => setReading(null)}
-          onTabsSaved={() => void qc.invalidateQueries({ queryKey: ['reference-card', card.id] })}
-        />
-      )}
     </div>,
     document.body,
   )

@@ -2,6 +2,8 @@ import { useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { apiRequest, type ApiError } from '@/lib/api'
+import { ReferencedText } from '@/components/ReferencedText'
+import { FlashWordsContext } from '@/lib/flashContext'
 
 /**
  * Append-only notes feed for a work order. Once saved, a note is
@@ -81,7 +83,9 @@ export function WorkOrderNotesTabButton({
       <button
         type="button"
         onClick={onClick}
+        data-tour="job-tab-notes"
         aria-current={active ? 'page' : undefined}
+        aria-pressed={active}
         className={`pb-3 -mb-px text-sm font-medium border-b-2 inline-flex items-center gap-1.5 ${
           active
             ? 'border-amber-600 text-amber-700'
@@ -168,7 +172,9 @@ export function WorkOrderNotesPanel({
   const hasLegacy = !!(legacyInternal && legacyInternal.trim()) || !!(legacyPublic && legacyPublic.trim())
 
   return (
-    <section className="bg-white border border-slate-200 rounded-xl shadow-sm p-5">
+    // A part named in a note can go straight onto this job from its flash card.
+    <FlashWordsContext.Provider value={{ job: { id: workOrderId, label: 'This job' } }}>
+    <section data-tour="job-notes-panel" className="bg-white border border-slate-200 rounded-xl shadow-sm p-5">
       <div className="flex items-center justify-between mb-4">
         <h2 className="text-sm font-semibold text-navy-900 uppercase tracking-wider">
           Notes
@@ -176,6 +182,7 @@ export function WorkOrderNotesPanel({
         {!composing && (
           <button
             type="button"
+            data-tour="job-notes-add"
             onClick={() => setComposing(true)}
             className="text-xs font-semibold text-amber-700 hover:text-amber-800 inline-flex items-center gap-1"
           >
@@ -258,7 +265,7 @@ export function WorkOrderNotesPanel({
                   <span className="inline-block text-[10px] font-semibold text-slate-500 uppercase mr-2">
                     Internal
                   </span>
-                  {legacyInternal}
+                  <ReferencedText text={legacyInternal} source="note" />
                 </div>
               )}
               {legacyPublic && (
@@ -266,7 +273,7 @@ export function WorkOrderNotesPanel({
                   <span className="inline-block text-[10px] font-semibold text-emerald-700 uppercase mr-2">
                     Public
                   </span>
-                  {legacyPublic}
+                  <ReferencedText text={legacyPublic} source="note" />
                 </div>
               )}
             </li>
@@ -274,6 +281,7 @@ export function WorkOrderNotesPanel({
         </ul>
       )}
     </section>
+    </FlashWordsContext.Provider>
   )
 }
 
@@ -314,7 +322,7 @@ function NoteItem({ note }: { note: NoteRow }) {
         </div>
         {visBadge}
       </div>
-      <div className="text-sm whitespace-pre-wrap text-slate-800">{note.body}</div>
+      <div className="text-sm whitespace-pre-wrap text-slate-800"><ReferencedText text={note.body} source="note" /></div>
     </li>
   )
 }

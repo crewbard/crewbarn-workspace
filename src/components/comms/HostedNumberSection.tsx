@@ -18,7 +18,7 @@ interface HostedNumberSectionProps {
   onActiveChange?: (active: boolean) => void
 }
 
-export function HostedNumberSection({ activeProvider, onActiveChange }: HostedNumberSectionProps) {
+export function HostedNumberSection(props: HostedNumberSectionProps) {
   const { account } = useAuth()
   // Beta / free-for-life: numbers come from the tenant's own Twilio or Net2Phone, never bought through CrewBarn.
   if (account?.tenant?.byo_only) {
@@ -28,6 +28,14 @@ export function HostedNumberSection({ activeProvider, onActiveChange }: HostedNu
       </div>
     )
   }
+  return <HostedNumberPurchase {...props} />
+}
+
+// Its own component so its hooks run in the same order on every render. They
+// used to sit below the beta-account early return above, so an account
+// switching in or out of byo_only while the page was open broke React's hook
+// order ("Rendered more hooks than during the previous render").
+function HostedNumberPurchase({ activeProvider, onActiveChange }: HostedNumberSectionProps) {
   const queryClient = useQueryClient()
   const { data, isLoading, isError, error } = useQuery({
     queryKey: QUERY_KEY,
@@ -76,14 +84,14 @@ export function HostedNumberSection({ activeProvider, onActiveChange }: HostedNu
   }, [active, onActiveChange])
 
   return (
-    <section className="bg-white border border-slate-200 rounded-xl shadow-sm">
+    <section className="bg-white border border-slate-200 rounded-xl shadow-sm" data-tour="comms-hosted-number">
       <div className="px-6 pt-5 pb-4 border-b border-slate-100">
         <div className="flex items-start justify-between gap-6">
           <div>
             <h2 className="text-base font-semibold text-navy-900">Optional CrewBarn mobile number</h2>
             <p className="text-sm text-slate-500 mt-1">
-              Buy a separate Twilio number for mobile calling only when the tenant does not want to
-              verify its existing public number. Net2Phone can remain selected for office service.
+              Buy a separate Twilio number for mobile calling only when you do not want to
+              verify your existing public number. Net2Phone can remain selected for office service.
             </p>
           </div>
           {active && (
@@ -105,14 +113,14 @@ export function HostedNumberSection({ activeProvider, onActiveChange }: HostedNu
 
         {data && !data.enabled && (
           <div className="rounded-md bg-amber-50 border border-amber-200 px-3 py-2 text-sm text-amber-800">
-            Hosted number buying is not configured on this CrewBarn environment yet. Add
-            HOSTED_TWILIO_* credentials to the API environment before tenants can buy numbers.
+            Buying a CrewBarn number is not available on your account yet. Verify your existing
+            number above instead, or contact CrewBarn support.
           </div>
         )}
 
         {active && (
           <div className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-3">
-            <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Tenant number</p>
+            <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Your number</p>
             <p className="mt-1 text-2xl font-semibold text-navy-900">{active.phone_number}</p>
             <p className="text-sm text-slate-600">
               {monthly}/month number fee. 10DLC status: {active.ten_dlc_status ?? 'not started'}.
@@ -123,7 +131,7 @@ export function HostedNumberSection({ activeProvider, onActiveChange }: HostedNu
             </p>
             {!data?.test_mode && active.ten_dlc_status !== 'approved' && (
               <p className="mt-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
-                Outbound customer SMS is blocked until 10DLC is approved for this tenant number.
+                Outbound customer SMS is blocked until 10DLC is approved for this number.
               </p>
             )}
             {data?.test_mode && active.ten_dlc_status !== 'approved' && (
@@ -140,7 +148,7 @@ export function HostedNumberSection({ activeProvider, onActiveChange }: HostedNu
             <div className="mt-4 rounded-lg border border-red-200 bg-white px-4 py-3">
               <p className="text-sm font-semibold text-red-800">Cancel hosted number billing</p>
               <p className="mt-1 text-sm text-slate-600">
-                Use this only after the tenant has moved to BYO, ported out, or no longer needs
+                Use this only after you have moved to BYO, ported out, or no longer needs
                 this number. Releasing removes it from Twilio and stops future number billing, but
                 the number may not be recoverable.
               </p>
@@ -174,7 +182,7 @@ export function HostedNumberSection({ activeProvider, onActiveChange }: HostedNu
         {!active && data?.enabled && (
           <>
             <div className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700">
-              Search by area code to buy an optional mobile caller-ID number. If the tenant keeps its
+              Search by area code to buy an optional mobile caller-ID number. If you keep your
               existing Net2Phone or BYO number, verify that number above instead and skip this fee.
             </div>
             <div className="grid gap-3 sm:grid-cols-[180px_1fr]">
@@ -186,7 +194,7 @@ export function HostedNumberSection({ activeProvider, onActiveChange }: HostedNu
                   id="hosted_area_code"
                   value={areaCode}
                   onChange={(e) => setAreaCode(e.target.value)}
-                  placeholder="321"
+                  placeholder="555"
                   className="block w-32 rounded-md border border-slate-300 px-3 py-2 text-sm text-navy-900 placeholder:text-slate-400 focus:border-amber-500 focus:outline-none focus:ring-1 focus:ring-amber-500"
                   maxLength={3}
                   inputMode="numeric"
@@ -236,7 +244,7 @@ export function HostedNumberSection({ activeProvider, onActiveChange }: HostedNu
 
             {data && !data.provisioning_enabled && results.length > 0 && (
               <div className="rounded-md bg-amber-50 border border-amber-200 px-3 py-2 text-sm text-amber-800">
-                Search is available, but buying is disabled until HOSTED_TWILIO_PROVISIONING_ENABLED=true.
+                You can search numbers, but buying one is not switched on for your account yet. Contact CrewBarn support.
               </div>
             )}
 

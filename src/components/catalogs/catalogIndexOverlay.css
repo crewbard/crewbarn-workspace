@@ -1,0 +1,105 @@
+/* The catalog reader overlay (CatalogIndexOverlay.tsx). */
+
+.cix-grid {
+  background-color: var(--color-navy-800, #0f1a2e);
+  background-image: radial-gradient(rgba(168, 179, 200, 0.12) 1px, transparent 1px);
+  background-size: 18px 18px;
+}
+
+/* The beam reading down the page. */
+.cix-beam {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 22%;
+  top: -22%;
+  background: linear-gradient(to bottom, rgba(251, 191, 36, 0) 0%, rgba(251, 191, 36, 0.16) 85%, rgba(252, 211, 77, 0.55) 100%);
+  border-bottom: 2px solid rgba(252, 211, 77, 0.95);
+  box-shadow: 0 6px 18px rgba(251, 191, 36, 0.45);
+  animation: cix-scan 1.5s cubic-bezier(0.45, 0, 0.55, 1) infinite;
+  pointer-events: none;
+}
+@keyframes cix-scan {
+  from { transform: translateY(0); }
+  to { transform: translateY(560%); }
+}
+
+/* A part number found on the page. */
+.cix-hit {
+  position: absolute;
+  border: 2px solid rgb(245, 158, 11);
+  background: rgba(252, 211, 77, 0.28);
+  border-radius: 3px;
+  box-shadow: 0 0 0 3px rgba(251, 191, 36, 0.22), 0 0 16px rgba(245, 158, 11, 0.55);
+  animation: cix-pop 0.32s cubic-bezier(0.2, 0.9, 0.3, 1.3) both;
+  pointer-events: none;
+}
+@keyframes cix-pop {
+  from { transform: scale(0.4); opacity: 0; }
+  to { transform: scale(1); opacity: 1; }
+}
+
+/* The sheets behind the page, so it reads as a book. */
+.cix-sheet {
+  position: absolute;
+  inset: 0;
+  border-radius: 4px;
+  background: #e8ecf3;
+}
+
+/* A new find in the feed. */
+.cix-feed-in {
+  animation: cix-feed 0.35s ease-out both;
+}
+@keyframes cix-feed {
+  from { transform: translateY(-8px); opacity: 0; }
+  to { transform: translateY(0); opacity: 1; }
+}
+
+/* The bar's sheen, moving while it reads. */
+.cix-sheen {
+  background-image: linear-gradient(110deg, transparent 30%, rgba(255, 255, 255, 0.45) 50%, transparent 70%);
+  background-size: 200% 100%;
+  animation: cix-sheen 1.8s linear infinite;
+}
+@keyframes cix-sheen {
+  from { background-position: 150% 0; }
+  to { background-position: -50% 0; }
+}
+
+.cix-pulse {
+  animation: cix-pulse 1.4s ease-in-out infinite;
+}
+@keyframes cix-pulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.35; transform: scale(0.7); }
+}
+
+/* The finished tick, drawn. */
+.cix-check circle {
+  stroke-dasharray: 164;
+  stroke-dashoffset: 164;
+  animation: cix-draw 0.6s ease-out forwards;
+}
+.cix-check path {
+  stroke-dasharray: 48;
+  stroke-dashoffset: 48;
+  animation: cix-draw 0.4s 0.45s ease-out forwards;
+}
+@keyframes cix-draw {
+  to { stroke-dashoffset: 0; }
+}
+
+.cix-page-in {
+  animation: cix-page 0.25s ease-out both;
+}
+@keyframes cix-page {
+  from { opacity: 0.55; }
+  to { opacity: 1; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .cix-beam { display: none; }
+  .cix-hit, .cix-feed-in, .cix-page-in, .cix-sheen, .cix-pulse { animation: none; }
+  .cix-check circle, .cix-check path { animation: none; stroke-dashoffset: 0; }
+}

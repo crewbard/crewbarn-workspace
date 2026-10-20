@@ -1,14 +1,12 @@
-import { useState, useMemo, useEffect, useCallback } from "react"
+import { useState, useMemo } from "react"
 import { useSearchParams } from "react-router-dom"
 import { isDeleteCancelled } from "@/lib/api"
-import { QRCodeCanvas } from "qrcode.react"
 import {
   useInventoryLocations,
   useCreateInventoryLocation,
   useUpdateInventoryLocation,
   useDeleteInventoryLocation,
 } from "@/hooks/useInventoryLocations"
-import { Link } from "react-router-dom"
 import {
   useAllInventoryBins,
   useBinStockRollup,
@@ -17,39 +15,23 @@ import {
   useUpdateInventoryBin,
   useDeleteInventoryBin,
 } from "@/hooks/useInventoryBins"
-import {
-  useStockLevels,
-  useCreateStockLevel,
-  useUpdateStockLevel,
-  useDeleteStockLevel,
-  useCleanupOrphanStockLevels,
-} from "@/hooks/useInventoryStockLevels"
-import { useAuth } from "@/hooks/useAuth"
-import { useCatalogItems, useCatalogItem } from "@/hooks/useCatalogItems"
-import { EditModal as ProductCatalogEditModal } from "@/pages/ProductCatalogPage"
+import { useCatalogItem } from "@/hooks/useCatalogItems"
+import { EditModal as ProductCatalogEditModal, ProductViewModal } from "@/pages/ProductCatalogPage"
 import { InventoryUnitsPage } from "@/pages/InventoryUnitsPage"
 import { InventoryMovementsPage } from "@/pages/InventoryMovementsPage"
 import { InventoryReconciliationsPage } from "@/pages/InventoryReconciliationsPage"
 import { InventorySettingsPanel } from "@/pages/SettingsInventoryPage"
-import { TransferStockModal } from "@/components/TransferStockModal"
-import { isCountableUnit, qtyStepFor, formatQty } from "@/lib/unitsOfMeasure"
-import { useInventorySettings } from "@/hooks/useInventorySettings"
-import { CatalogItemQuickCreate } from "@/components/CatalogItemQuickCreate"
-import { BinTreePicker } from "@/components/BinTreePicker"
-import { useHardwareScanner } from "@/hooks/useHardwareScanner"
-import { QrScanButton } from "@/components/QrScanButton"
-import { resolveScan } from "@/lib/scanResolve"
+import { formatQty } from "@/lib/unitsOfMeasure"
 import { PERM, usePermissions } from "@/hooks/usePermissions"
-import { StockWhereOverlay } from "@/components/catalog/StockWhereOverlay"
 import { InventoryStructureBuilder } from "@/components/inventory/InventoryStructureBuilder"
-import { ReceiveStockModal } from "@/components/inventory/ReceiveStockModal"
+import { BinsExplorer, type AddChildDefaults } from "@/components/inventory/bins/BinsExplorer"
+import { useStockInRules } from "@/hooks/usePoOverride"
 import { GlobalInventorySearch } from "@/components/inventory/GlobalInventorySearch"
 import { useInventoryReconciliations } from "@/hooks/useInventoryReconciliations"
-import { ReturnFormModal } from "@/components/ReturnFormModal"
-import type { InventoryStockLevel } from "@/types/inventoryStockLevel"
+import { useStockLevels } from "@/hooks/useInventoryStockLevels"
+import { chipCounts } from "@/lib/stockRows"
 import type { CatalogItem as CatalogItemFull } from "@/types/catalogItem"
 import { ApiError } from "@/lib/api"
-import type { BinStockRollup } from "@/lib/inventoryBins"
 import type {
   InventoryLocation,
   InventoryLocationType,
@@ -58,19 +40,26 @@ import { INVENTORY_LOCATION_TYPES, INVENTORY_LOCATION_TYPE_LABELS } from "@/type
 import type { InventoryBin, InventoryBinInput } from "@/types/inventoryBin"
 import { BIN_KIND_OPTIONS } from "@/types/inventoryBin"
 import { useTheme } from '@/hooks/useTheme'
+import { ModalShell, Footer, Field, ErrorBanner } from "@/components/inventory/inventoryModalUi"
+import { extractError } from "@/lib/inventoryErrors"
+import { StockInButton, type InventoryTabKey } from "@/components/inventory/StockInButton"
+import { StockTab } from "@/components/inventory/stock/StockTab"
+import { StockLevelFormModal } from "@/components/inventory/stock/StockLevelFormModal"
 import { EasyPageHeading } from '@/components/easy/EasyPageHeading'
 
 // ---------- Tab definitions ----------
 
-type TabKey = "locations" | "bins" | "stock" | "units" | "movements" | "reconciliation" | "settings"
+type TabKey = InventoryTabKey
 
+// Day-to-day first (Patrick's order): Stock is what people open the page for;
+// Locations and Settings are set up once.
 const TABS: Array<{ key: TabKey; label: string }> = [
-  { key: "locations", label: "Locations" },
+  { key: "stock", label: "Stock" },
   { key: "bins", label: "Bins" },
-  { key: "stock", label: "Stock Levels" },
   { key: "units", label: "Units" },
   { key: "movements", label: "Movements" },
   { key: "reconciliation", label: "Reconciliation" },
+  { key: "locations", label: "Locations" },
   { key: "settings", label: "Settings" },
 ]
 
@@ -81,7 +70,7 @@ export function InventoryPage() {
   const easy = theme === 'easy-side' || theme === 'easy-top'
   const [searchParams, setSearchParams] = useSearchParams()
   const tabParam = searchParams.get("tab") as TabKey | null
-  const activeTab: TabKey = tabParam && TABS.some(t => t.key === tabParam) ? tabParam : "locations"
+  const activeTab: TabKey = tabParam && TABS.some(t => t.key === tabParam) ? tabParam : "stock"
 
   const setActiveTab = (tab: TabKey) => {
     const next = new URLSearchParams(searchParams)
@@ -94,14 +83,14 @@ export function InventoryPage() {
   const locationCount = locationsData?.meta?.total ?? 0
 
   return (
-    <div className={easy ? 'w-full min-w-0 p-6 space-y-6' : 'max-w-7xl mx-auto p-6 space-y-6'}>
+    <div data-focus-page="inventory" className={easy ? 'w-full min-w-0 p-6 space-y-6' : 'max-w-7xl mx-auto p-6 space-y-6'}>
       {easy && <EasyPageHeading title="Parts & inventory" description="Find stock, organize where it lives, and follow what moved. Receiving and reconciliation stay in the same workspace." />}
       <Header
         easy={easy}
         onOpenQueue={() => setActiveTab('reconciliation')}
         defaultLocationId={locationsData?.data?.[0]?.id}
       />
-      <GlobalInventorySearch onGoToTab={setActiveTab} />
+      <div data-tour="inv-global-search"><GlobalInventorySearch onGoToTab={setActiveTab} /></div>
       <div className={easy ? 'grid items-start gap-5 lg:grid-cols-[220px_minmax(0,1fr)]' : 'space-y-6'}>
         <TabNav active={activeTab} onChange={setActiveTab} locationCount={locationCount} easy={easy} />
         <div className={easy ? 'min-w-0' : ''}><TabContent active={activeTab} /></div>
@@ -121,14 +110,13 @@ function Header({
   onOpenQueue: () => void
   defaultLocationId?: string
 }) {
-  const [receiving, setReceiving] = useState(false)
   // Badge the queue so it reads as work rather than a page. An empty queue is
   // the normal state, so the count only shows when there is something in it.
   const { data: queueData } = useInventoryReconciliations({ status: 'pending', per_page: 1 })
   const pendingCount = queueData?.meta?.total ?? 0
 
   return (
-    <div className={easy ? 'flex flex-wrap items-center justify-between gap-4 rounded-xl border border-slate-200 bg-white p-4' : 'flex items-start justify-between gap-6'}>
+    <div data-tour="inv-header" className={easy ? 'flex flex-wrap items-center justify-between gap-4 rounded-xl border border-slate-200 bg-white p-4' : 'flex flex-wrap items-start justify-between gap-6'}>
       <div>
         {easy ? <h2 className="font-semibold text-slate-900">Stock operations</h2> : <h1 className="text-3xl font-semibold text-slate-900">Inventory</h1>}
         <p className="text-sm text-slate-600 mt-1">
@@ -139,6 +127,8 @@ function Header({
         <button
           type="button"
           onClick={onOpenQueue}
+          data-tour="inv-queue-button"
+          data-pending={pendingCount > 0 ? 'yes' : 'no'}
           title="Stock events recorded as owed but not yet reconciled"
           className="mt-2 inline-flex items-center gap-2 rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
         >
@@ -149,20 +139,8 @@ function Header({
             </span>
           )}
         </button>
-        <button
-          type="button"
-          onClick={() => setReceiving(true)}
-          className="mt-2 rounded-md bg-amber-500 px-4 py-2 text-sm font-medium text-white hover:bg-amber-600"
-        >
-          + Receive stock
-        </button>
+        <div className="mt-2"><StockInButton tour="inv-receive-button" defaultLocationId={defaultLocationId} /></div>
       </div>
-
-      <ReceiveStockModal
-        isOpen={receiving}
-        onClose={() => setReceiving(false)}
-        defaultLocationId={defaultLocationId}
-      />
     </div>
   )
 }
@@ -181,28 +159,45 @@ function TabNav({
   onChange: (tab: TabKey) => void
   locationCount: number
 }) {
+  // Badges: rows that are Low or Out (the Stock tab's own rule and the same
+  // read as its default view, so the number matches its chips), and the
+  // reconciliation queue (the same read as the header button).
+  const stockRead = useStockLevels({ per_page: 200 })
+  const stockCounts = chipCounts(stockRead.data?.data ?? [])
+  const needsLook = stockCounts.low + stockCounts.out
+  const { data: queueData } = useInventoryReconciliations({ status: 'pending', per_page: 1 })
+  const pending = queueData?.meta?.total ?? 0
+  const badge = (key: TabKey): { n: number; title: string; warn: boolean } | null => {
+    if (key === 'locations') return { n: locationCount, title: `${locationCount} locations`, warn: false }
+    if (key === 'stock' && needsLook > 0) return { n: needsLook, title: `${stockCounts.low} low, ${stockCounts.out} out`, warn: true }
+    if (key === 'reconciliation' && pending > 0) return { n: pending, title: `${pending} waiting to be explained`, warn: true }
+    return null
+  }
   return (
-    <div className={easy ? 'rounded-xl border border-slate-200 bg-white p-2' : 'border-b border-slate-200'}>
+    <div data-tour="inv-tabs" className={easy ? 'rounded-xl border border-slate-200 bg-white p-2' : 'border-b border-slate-200 overflow-x-auto'}>
       <div aria-label="Inventory sections" role="group" className={easy ? 'grid grid-cols-2 gap-1 sm:grid-cols-3 lg:grid-cols-1' : 'flex gap-1'}>
         {TABS.map((tab) => {
           const isActive = tab.key === active
-          const count = tab.key === "locations" ? locationCount : null
+          const b = badge(tab.key)
           return (
             <button
               key={tab.key}
               type="button"
               onClick={() => onChange(tab.key)}
               aria-pressed={isActive}
-              className={easy ? `rounded-lg px-3 py-3 text-left text-sm font-medium ${isActive ? 'bg-emerald-950 text-white' : 'text-slate-600 hover:bg-emerald-50'}` : `px-4 py-2 text-sm font-medium border-b-2 ${
+              data-tour={`inv-tab-${tab.key}`}
+              className={easy ? `rounded-lg px-3 py-3 text-left text-sm font-medium ${isActive ? 'bg-amber-600 text-white' : 'text-slate-600 hover:bg-amber-50'}` : `px-4 py-2 text-sm font-medium border-b-2 whitespace-nowrap ${
                 isActive
                   ? "text-amber-600 border-amber-500"
                   : "text-slate-600 hover:text-amber-600 border-transparent"
               }`}
             >
               {tab.label}
-              {count !== null && (
-                <span className="ml-1 text-xs text-slate-400 font-mono">({count})</span>
-              )}
+              {b && (b.warn ? (
+                <span data-tab-badge={tab.key} title={b.title} className={`ml-1.5 rounded-full px-1.5 py-0.5 text-[11px] font-bold tabular-nums ${isActive && easy ? 'bg-white/25 text-white' : 'bg-amber-100 text-amber-800'}`}>{b.n.toLocaleString('en-US')}</span>
+              ) : (
+                <span data-tab-badge={tab.key} title={b.title} className={`ml-1 text-xs font-mono ${isActive && easy ? 'text-white/80' : 'text-slate-400'}`}>({b.n})</span>
+              ))}
             </button>
           )
         })}
@@ -213,14 +208,16 @@ function TabNav({
 
 // ---------- Tab content router ----------
 
+// Each tab's body carries its own guided-tour marker, written out so the
+// markers can be found by searching for them.
 function TabContent({ active }: { active: TabKey }) {
-  if (active === "locations") return <LocationsTab />
-  if (active === "bins") return <BinsTab />
-  if (active === "stock") return <StockLevelsTab />
-  if (active === "units") return <InventoryUnitsPage />
-  if (active === "movements") return <InventoryMovementsPage />
-  if (active === "reconciliation") return <InventoryReconciliationsPage />
-  if (active === "settings") return <InventorySettingsPanel />
+  if (active === "locations") return <div data-tour="inv-locations"><LocationsTab /></div>
+  if (active === "bins") return <div data-tour="inv-bins"><BinsTab /></div>
+  if (active === "stock") return <div data-tour="inv-stock-levels"><StockTab /></div>
+  if (active === "units") return <div data-tour="inv-units"><InventoryUnitsPage embedded /></div>
+  if (active === "movements") return <div data-tour="inv-movements"><InventoryMovementsPage embedded /></div>
+  if (active === "reconciliation") return <div data-tour="inv-reconciliation"><InventoryReconciliationsPage embedded /></div>
+  if (active === "settings") return <div data-tour="inv-settings"><InventorySettingsPanel /></div>
   return null
 }
 
@@ -232,6 +229,7 @@ function LocationsTab() {
   const { data, isLoading, isFetching, isError, error, refetch } = useInventoryLocations({ per_page: 200 })
   const [editing, setEditing] = useState<InventoryLocation | null>(null)
   const [showCreate, setShowCreate] = useState(false)
+  const canEdit = usePermissions().has(PERM.INVENTORY_EDIT)
 
   const locations = data?.data ?? []
 
@@ -245,13 +243,16 @@ function LocationsTab() {
               Warehouses, trucks, and other stocking locations.
             </p>
           </div>
-          <button
-            type="button"
-            onClick={() => setShowCreate(true)}
-            className="text-sm px-4 py-2 bg-amber-500 hover:bg-amber-600 text-white rounded-md font-medium transition-colors"
-          >
-            + New Location
-          </button>
+          {canEdit && (
+            <button
+              type="button"
+              onClick={() => setShowCreate(true)}
+              data-tour="inv-location-new"
+              className="text-sm px-4 py-2 bg-amber-500 hover:bg-amber-600 text-white rounded-md font-medium transition-colors"
+            >
+              + New Location
+            </button>
+          )}
         </div>
 
         {isError && (
@@ -269,7 +270,7 @@ function LocationsTab() {
           </div>
         )}
 
-        {!isLoading && !isError && <LocationsTable locations={locations} onEdit={setEditing} />}
+        {!isLoading && !isError && <LocationsTable locations={locations} onEdit={canEdit ? setEditing : undefined} />}
       </div>
 
       {showCreate && <CreateLocationModal onClose={() => setShowCreate(false)} />}
@@ -283,11 +284,11 @@ function LocationsTable({
   onEdit,
 }: {
   locations: InventoryLocation[]
-  onEdit: (loc: InventoryLocation) => void
+  onEdit?: (loc: InventoryLocation) => void
 }) {
   if (locations.length === 0) {
     return (
-      <div className="p-12 text-center">
+      <div data-tour="inv-locations-empty" className="p-12 text-center">
         <p className="text-sm text-slate-600">
           No locations yet. Click "+ New Location" to add a warehouse, truck, or other stocking location.
         </p>
@@ -296,7 +297,7 @@ function LocationsTable({
   }
 
   return (
-    <div className="overflow-x-auto">
+    <div data-tour="inv-locations-table" className="overflow-x-auto">
     <table className="w-full text-sm min-w-[720px]">
       <thead className="bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
         <tr>
@@ -348,13 +349,15 @@ function LocationsTable({
               )}
             </td>
             <td className="px-6 py-4 text-right">
-              <button
-                type="button"
-                onClick={() => onEdit(loc)}
-                className="text-sm text-slate-600 hover:text-amber-600"
-              >
-                Edit
-              </button>
+              {onEdit && (
+                <button
+                  type="button"
+                  onClick={() => onEdit(loc)}
+                  className="text-sm text-slate-600 hover:text-amber-600"
+                >
+                  Edit
+                </button>
+              )}
             </td>
           </tr>
         ))}
@@ -451,13 +454,14 @@ function CreateLocationModal({ onClose }: { onClose: () => void }) {
     : null
 
   return (
-    <ModalShell title="New Location" onClose={onClose}>
+    <ModalShell title="New Location" onClose={onClose} tour="inv-location-form">
       <LocationForm form={form} onChange={setForm} />
       {errorMsg && <div className="px-6 pb-2"><ErrorBanner message={errorMsg} /></div>}
-      <Footer>
+      <Footer tour="inv-location-footer">
         <button
           type="button"
           onClick={onClose}
+          data-tour="inv-location-cancel"
           className="text-sm px-4 py-2 text-slate-600 hover:text-slate-900"
         >
           Cancel
@@ -563,7 +567,7 @@ function LocationForm({
 
   return (
     <div className="p-6 space-y-4">
-      <div className="grid grid-cols-2 gap-4">
+      <div data-tour="inv-location-basics" className="grid grid-cols-2 gap-4">
         <Field label="Name" required>
           <input
             type="text"
@@ -589,7 +593,7 @@ function LocationForm({
         </Field>
       </div>
 
-      <div className="border-t border-slate-100 pt-4">
+      <div data-tour="inv-location-address" className="border-t border-slate-100 pt-4">
         <h3 className="text-xs font-medium text-slate-700 uppercase tracking-wide mb-3">Address (optional)</h3>
         <div className="space-y-3">
           <Field label="Street address">
@@ -615,7 +619,7 @@ function LocationForm({
                 type="text"
                 value={form.region}
                 onChange={(e) => set("region", e.target.value)}
-                placeholder="FL"
+                placeholder="e.g. NY"
                 className="w-full text-sm px-3 py-2 border border-slate-200 rounded focus:outline-none focus:border-amber-500"
               />
             </Field>
@@ -631,6 +635,7 @@ function LocationForm({
         </div>
       </div>
 
+      <div data-tour="inv-location-more" className="space-y-4">
       <Field label="Notes (internal)">
         <textarea
           value={form.notes}
@@ -652,185 +657,11 @@ function LocationForm({
           <span className="text-sm text-slate-700">{form.active ? "Active" : "Inactive"}</span>
         </label>
       </div>
+      </div>
 
       <p className="text-xs text-slate-500 border-t border-slate-100 pt-3">
         Stock value is quantity on hand times your cost, matching the inventory valuation report.
       </p>
-    </div>
-  )
-}
-
-// ---------- Modal infrastructure ----------
-
-function ModalShell({
-  title,
-  children,
-  onClose,
-}: {
-  title: string
-  children: React.ReactNode
-  onClose: () => void
-}) {
-  // Close on Escape
-  useEffect(() => {
-    const handler = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose()
-    }
-    window.addEventListener("keydown", handler)
-    return () => window.removeEventListener("keydown", handler)
-  }, [onClose])
-
-  return (
-    <div
-      className="fixed inset-0 z-40 flex items-center justify-center p-4"
-      style={{ background: "rgba(15, 26, 46, 0.5)" }}
-      onClick={(e) => { if (e.target === e.currentTarget) onClose() }}
-    >
-      <div className="bg-white rounded-xl shadow-xl max-w-2xl w-full max-h-[90vh] overflow-hidden flex flex-col">
-        <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between">
-          <h2 className="text-lg font-semibold text-slate-900">{title}</h2>
-          <button
-            type="button"
-            onClick={onClose}
-            className="text-slate-400 hover:text-slate-600 text-xl"
-            aria-label="Close"
-          >
-            ×
-          </button>
-        </div>
-        <div className="overflow-y-auto flex-1">{children}</div>
-      </div>
-    </div>
-  )
-}
-
-function Footer({ children }: { children: React.ReactNode }) {
-  return (
-    <div className="px-6 py-4 border-t border-slate-100 bg-slate-50 flex items-center justify-end gap-3">
-      {children}
-    </div>
-  )
-}
-
-function Field({ label, required, children }: { label: string; required?: boolean; children: React.ReactNode }) {
-  return (
-    <div>
-      <label className="block text-xs font-medium text-slate-700 mb-1 uppercase tracking-wide">
-        {label}
-        {required && <span className="text-red-500 ml-1">*</span>}
-      </label>
-      {children}
-    </div>
-  )
-}
-
-function ErrorBanner({ message, onRetry, busy = false }: { message: string; onRetry?: () => void; busy?: boolean }) {
-  return (
-    <div role="alert" className="p-3 bg-red-50 border border-red-100 rounded">
-      <p className="text-sm text-red-700">{message}</p>
-      {onRetry && <button type="button" onClick={onRetry} disabled={busy} className="mt-2 text-sm text-red-700 underline disabled:opacity-50">Try again</button>}
-    </div>
-  )
-}
-
-/**
- * "Return / RMA" trigger inside the Edit Stock modal. Opens the
- * ReturnFormModal stacked on top, which writes the return record + a
- * TYPE_WRITE_OFF movement and redirects to the 4×6 supplier-label print
- * page on success.
- */
-function ReturnSection({
-  stockLevel,
-  onClose,
-}: {
-  stockLevel: InventoryStockLevel
-  onClose: () => void
-}) {
-  const [open, setOpen] = useState(false)
-  if (!stockLevel.catalog_item_id) return null
-
-  return (
-    <>
-      <div className="border-t border-slate-100 pt-4 mt-2">
-        <div className="text-xs font-medium text-slate-700 uppercase tracking-wide mb-2">
-          Return to vendor
-        </div>
-        <div className="flex items-center justify-between bg-slate-50 border border-slate-200 rounded p-3">
-          <div className="text-xs text-slate-600">
-            Damage, defective, recall, or RMA? Create a return — stock decrements and the supplier label is printable at 4×6.
-          </div>
-          <button
-            type="button"
-            onClick={() => setOpen(true)}
-            className="text-sm px-4 py-2 rounded-md bg-red-600 hover:bg-red-700 text-white font-medium whitespace-nowrap"
-          >
-            Return
-          </button>
-        </div>
-      </div>
-      {open && (
-        <ReturnFormModal
-          stockLevel={stockLevel}
-          onClose={() => setOpen(false)}
-          onSavedRedirectTo={(returnId) => {
-            setOpen(false)
-            onClose()
-            window.open(`/inventory-returns/${returnId}/labels`, '_blank')
-          }}
-        />
-      )}
-    </>
-  )
-}
-
-/**
- * QR-code preview + Print button shown inside the Edit Stock modal.
- * The QR encodes the deep-link to the catalog item; clicking Print opens
- * the configurable label page in a new tab pre-populated with the bin
- * label + on-hand qty (long-form layout).
- */
-function PrintQrSection({ stockLevel }: { stockLevel: InventoryStockLevel }) {
-  const itemId = stockLevel.catalog_item_id
-  if (!itemId) return null
-
-  const qrUrl = `${window.location.origin}/catalog/products/${itemId}`
-  const binLabel = stockLevel.bin?.path_label || stockLevel.bin?.name || ''
-  const qty = stockLevel.quantities.qty_on_hand ?? ''
-  // One label per physical unit, not N copies of one code. Four on hand is
-  // four items, each carrying its own fingerprint — identical labels would
-  // give a tech no way to scan the one in their hand.
-  const printHref =
-    `/catalog-items/${itemId}/labels` +
-    `?detail=long` +
-    `&per_unit=1` +
-    `&location_id=${stockLevel.location_id ?? ''}` +
-    `&bin_id=${stockLevel.bin_id ?? ''}` +
-    `&bin_label=${encodeURIComponent(binLabel)}` +
-    `&qty=${qty}`
-
-  return (
-    <div className="border-t border-slate-100 pt-4 mt-2">
-      <div className="text-xs font-medium text-slate-700 uppercase tracking-wide mb-2">
-        Print QR code
-      </div>
-      <div className="flex items-center gap-4 bg-slate-50 border border-slate-200 rounded p-3">
-        <div className="flex-shrink-0 bg-white p-2 rounded border border-slate-200">
-          <QRCodeCanvas value={qrUrl} size={96} level="H" includeMargin />
-        </div>
-        <div className="flex-1 min-w-0 text-xs text-slate-600 space-y-0.5">
-          <div>One QR per unit on hand — each scans as that exact item.</div>
-          {binLabel && <div>📍 {binLabel}</div>}
-          {qty != null && <div>On hand: {String(qty)}</div>}
-        </div>
-        <a
-          href={printHref}
-          target="_blank"
-          rel="noreferrer"
-          className="text-sm px-4 py-2 rounded-md bg-amber-500 hover:bg-amber-600 text-white font-medium whitespace-nowrap"
-        >
-          Print QR
-        </a>
-      </div>
     </div>
   )
 }
@@ -842,309 +673,98 @@ function PrintQrSection({ stockLevel }: { stockLevel: InventoryStockLevel }) {
 function BinsTab() {
   const { data: locationsData } = useInventoryLocations({ per_page: 200 })
   const locations = locationsData?.data ?? []
-  const [filterLocationId, setFilterLocationId] = useState<string>("")
-  const [filterKind, setFilterKind] = useState<string>("")
-  const [search, setSearch] = useState("")
-  const [debouncedSearch, setDebouncedSearch] = useState("")
-
-  useEffect(() => {
-    const t = setTimeout(() => setDebouncedSearch(search.trim()), 250)
-    return () => clearTimeout(t)
-  }, [search])
-
   // ALL pages, not the first. The tree draws every branch, so a single page
-  // silently hid entire locations: with 754 bins the first 200 were all one
-  // location and the other three rendered empty, which read as bins vanishing.
-  const { data, isLoading, isFetching, isError, error, refetch } = useAllInventoryBins({
-    location_id: filterLocationId || undefined,
-    kind: filterKind || undefined,
-    q: debouncedSearch || undefined,
-  })
+  // silently hid entire locations. Searching and filtering happen on the
+  // screen now, so the list is always the whole shop.
+  const { data, isLoading, isFetching, isError, error, refetch } = useAllInventoryBins({})
   const bins = data?.data ?? []
   const binsTruncated = data?.truncated ?? false
+  // What is in each bin (direct counts); the tree adds up each branch.
+  const { data: stockRollup } = useBinStockRollup(undefined)
+  // The server refuses direct stock adds when this is on; the screen says so.
+  const requirePoForStock = useStockInRules().poRequired
+  const canEditBins = usePermissions().has(PERM.INVENTORY_EDIT)
 
   const [editing, setEditing] = useState<InventoryBin | null>(null)
   const [viewing, setViewing] = useState<InventoryBin | null>(null)
-  /**
-   * "+ Add stock" target. Setting up a shop for the first time means walking
-   * the rack putting items into bins, and doing that from the Stock Levels tab
-   * means picking the location and the bin by hand for every single row — the
-   * tree already knows both.
-   */
-  const [addStockBin, setAddStockBin] = useState<InventoryBin | null>(null)
-  // Server refuses manual stock adds when this is on, so the action is hidden
-  // rather than offered and then rejected.
-  // What is actually in each bin, so every level of the tree can say how much
-  // it holds. Direct counts; the subtree total is summed as the tree renders.
-  const { data: stockRollup } = useBinStockRollup(filterLocationId || undefined)
-  const { data: binTabInvSettings } = useInventorySettings()
-  const requirePoForStock = !!binTabInvSettings?.inventory_require_po_for_stock_add
-  /**
-   * "Create new bin" intent. null = closed. When non-null, holds the
-   * default location id to land in. Empty string = falls back to current
-   * filter or first location. Decoupled from filterLocationId so that
-   * '+ Add root bin' on a location row doesn't trip the filter and
-   * collapse the tree into flat mode.
-   */
+  const [addStockAt, setAddStockAt] = useState<{ bin: InventoryBin | null; locationId: string | null } | null>(null)
+  /** "+ New Bin" / "+ Add root bin": the location to land in ("" = first). */
   const [createInLocationId, setCreateInLocationId] = useState<string | null>(null)
-  /**
-   * When non-null, opens BinFormModal pre-loaded as a child of this bin
-   * (clicked the "+ Add child" inline button on a tree node).
-   */
-  const [addingChildOf, setAddingChildOf] = useState<InventoryBin | null>(null)
-  /** Set of bin/location ids that are expanded in the tree view. */
-  const [expanded, setExpanded] = useState<Set<string>>(new Set())
+  /** "Add row" and friends: the parent, with the tree's suggestions. */
+  const [addingChild, setAddingChild] = useState<{ parent: InventoryBin; defaults: AddChildDefaults } | null>(null)
   const [showSetupWizard, setShowSetupWizard] = useState(false)
-
-  function toggleExpanded(id: string) {
-    setExpanded((prev) => {
-      const next = new Set(prev)
-      if (next.has(id)) next.delete(id)
-      else next.add(id)
-      return next
-    })
-  }
-  function expandAll() {
-    setExpanded(new Set([...locations.map((l) => l.id), ...bins.map((b) => b.id)]))
-  }
-  function collapseAll() {
-    setExpanded(new Set())
-  }
-
-  // Tree mode applies when no filter is active. Otherwise show a flat list
-  // of matches (the search/filter result is intrinsically scoped, the tree
-  // would just hide rows the user is hunting for).
-  const filtersActive = !!(debouncedSearch || filterLocationId || filterKind)
-
   const noLocations = !locationsData || locations.length === 0
 
   return (
     <div className="space-y-4">
       <div className="bg-white border border-slate-200 rounded-xl shadow-sm">
-        <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between gap-4">
+        <div className="px-4 sm:px-6 py-4 border-b border-slate-100 flex flex-wrap items-center justify-between gap-4">
           <div>
             <h3 className="text-base font-semibold text-slate-900">Bins</h3>
             <p className="text-sm text-slate-500 mt-0.5">
-              Containers within locations. Stock and SN units live in bins.
+              Where everything is kept: racks, shelves, bins and rows in each location.
             </p>
           </div>
-          <div className="flex items-center gap-2">
+          {canEditBins && <div className="flex flex-wrap items-center gap-2">
             <button
               type="button"
               onClick={() => setShowSetupWizard(true)}
+              data-tour="inv-bins-build"
               disabled={noLocations}
               title={noLocations ? "Create a location first" : "Describe your storage shape and create it"}
-              className="text-sm px-4 py-2 border border-amber-200 bg-amber-50 hover:bg-amber-100 disabled:bg-slate-100 disabled:text-slate-400 disabled:cursor-not-allowed text-amber-800 rounded-md font-medium transition-colors"
+              className="text-sm px-4 py-2.5 border border-amber-200 bg-amber-50 hover:bg-amber-100 disabled:bg-slate-100 disabled:text-slate-400 disabled:cursor-not-allowed text-amber-800 rounded-md font-medium transition-colors"
             >
               Build structure
             </button>
             <button
               type="button"
-              onClick={() => setCreateInLocationId(filterLocationId || "")}
+              onClick={() => setCreateInLocationId("")}
+              data-tour="inv-bins-new"
               disabled={noLocations}
               title={noLocations ? "Create a location first" : undefined}
-              className="text-sm px-4 py-2 bg-amber-500 hover:bg-amber-600 disabled:bg-slate-300 disabled:cursor-not-allowed text-white rounded-md font-medium transition-colors"
+              className="text-sm px-4 py-2.5 bg-amber-500 hover:bg-amber-600 disabled:bg-slate-300 disabled:cursor-not-allowed text-white rounded-md font-medium transition-colors"
             >
               + New Bin
             </button>
-          </div>
+          </div>}
         </div>
 
         {noLocations && (
-          <div className="px-6 py-4 text-sm text-amber-800 bg-amber-50 border-b border-amber-100">
+          <div data-tour="inv-bins-nolocations" className="px-6 py-4 text-sm text-amber-800 bg-amber-50 border-b border-amber-100">
             Create a location first — bins live inside locations.
           </div>
         )}
-
-        <div data-easy-list-toolbar className="px-6 py-3 border-b border-slate-100 flex gap-3 items-center">
-          <input
-            type="search"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="Filter by name, code, barcode..."
-            className="flex-1 max-w-sm text-sm px-3 py-2 border border-slate-200 rounded focus:outline-none focus:border-amber-500"
-          />
-          <select
-            value={filterLocationId}
-            onChange={(e) => setFilterLocationId(e.target.value)}
-            className="text-sm px-3 py-2 border border-slate-200 rounded focus:outline-none focus:border-amber-500 bg-white"
-          >
-            <option value="">All locations</option>
-            {locations.map((loc) => (
-              <option key={loc.id} value={loc.id}>
-                {loc.name}
-              </option>
-            ))}
-          </select>
-          <select
-            value={filterKind}
-            onChange={(e) => setFilterKind(e.target.value)}
-            className="text-sm px-3 py-2 border border-slate-200 rounded focus:outline-none focus:border-amber-500 bg-white"
-          >
-            <option value="">All kinds</option>
-            {BIN_KIND_OPTIONS.map((k) => (
-              <option key={k} value={k}>
-                {k}
-              </option>
-            ))}
-          </select>
-        </div>
-
         {isError && (
           <div className="px-6 py-4 text-sm text-red-700 bg-red-50">
             Failed to load bins.{error instanceof Error ? ` ${error.message}` : ""}
             <button type="button" disabled={isFetching} className="ml-2 underline disabled:opacity-50" onClick={() => void refetch()}>Try again</button>
           </div>
         )}
-
+        {/* A tree that silently stops short reads as missing data. */}
+        {binsTruncated && (
+          <div className="px-6 py-2 bg-amber-50 border-b border-amber-200 text-[13px] text-amber-900">
+            Showing the first 5,000 bins. Some places are not on this screen.
+          </div>
+        )}
         {isLoading && (
           <div className="p-6 animate-pulse space-y-3">
             <div className="h-12 bg-slate-100 rounded" />
             <div className="h-12 bg-slate-100 rounded" />
           </div>
         )}
-
-        {!isLoading && !isError && bins.length === 0 && !filtersActive && locations.length === 0 && (
-          <div className="p-12 text-center">
-            <p className="text-sm text-slate-600">
-              No bins yet. Click "+ New Bin" to create one.
-            </p>
-          </div>
-        )}
-        {!isLoading && !isError && bins.length === 0 && filtersActive && (
-          <div className="p-12 text-center">
-            <p className="text-sm text-slate-600">No bins match those filters.</p>
-          </div>
-        )}
-
-        {/* Expand-all / collapse-all toolbar — tree mode only */}
-        {!isLoading && !isError && !filtersActive && locations.length > 0 && (
-          <div className="px-6 py-2 bg-slate-50 border-b border-slate-100 flex items-center gap-3 text-xs">
-            <button
-              type="button"
-              onClick={expandAll}
-              className="text-slate-600 hover:text-amber-700"
-            >
-              Expand all
-            </button>
-            <span className="text-slate-300">·</span>
-            <button
-              type="button"
-              onClick={collapseAll}
-              className="text-slate-600 hover:text-amber-700"
-            >
-              Collapse all
-            </button>
-          </div>
-        )}
-
-        {/* A tree that silently stops short is indistinguishable from missing
-            data — which is exactly how the page-limit bug presented. If we ever
-            hit the ceiling again, say so instead of drawing a short tree. */}
-        {binsTruncated && (
-          <div className="px-6 py-2 bg-amber-50 border-b border-amber-200 text-[13px] text-amber-900">
-            Showing the first 5,000 bins — this location has more. Filter by location or
-            search to narrow it down.
-          </div>
-        )}
-
-        {/* Tree view — when no filters are active */}
-        {!isLoading && !isError && !filtersActive && locations.length > 0 && (
-          <div className="divide-y divide-slate-100">
-            {locations.map((loc) => (
-              <LocationTreeNode
-                key={loc.id}
-                location={loc}
-                allBins={bins}
-                expanded={expanded}
-                onToggle={toggleExpanded}
-                onEdit={setEditing}
-                onView={setViewing}
-                onAddChild={setAddingChildOf}
-                onAddStock={requirePoForStock ? undefined : setAddStockBin}
-                rollup={stockRollup ?? {}}
-                onAddRoot={() => setCreateInLocationId(loc.id)}
-              />
-            ))}
-          </div>
-        )}
-
-        {/* Flat list — when search/filter is active */}
-        {!isLoading && !isError && filtersActive && bins.length > 0 && (
-          <div className="overflow-x-auto">
-          <table className="w-full text-sm min-w-[640px]">
-            <thead className="bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
-              <tr>
-                <th className="text-left px-6 py-3 font-medium">Path</th>
-                <th className="text-left px-6 py-3 font-medium">Kind</th>
-                <th className="text-left px-6 py-3 font-medium">Code</th>
-                <th className="text-left px-6 py-3 font-medium">Barcode</th>
-                <th className="text-center px-6 py-3 font-medium">Active</th>
-                <th className="px-6 py-3"></th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100">
-              {bins.map((b) => {
-                const loc = locations.find((l) => l.id === b.location_id)
-                return (
-                  <tr key={b.id} className="hover:bg-slate-50">
-                    <td className="px-6 py-3">
-                      <div className="font-medium text-slate-900">
-                        {b.path_label || b.name || b.bin_code || b.id}
-                      </div>
-                      {loc && (
-                        <div className="text-xs text-slate-500">📍 {loc.name}</div>
-                      )}
-                    </td>
-                    <td className="px-6 py-3">
-                      {b.kind ? (
-                        <span className="inline-flex items-center px-2 py-0.5 text-xs bg-blue-50 text-blue-700 rounded font-medium">
-                          {b.kind}
-                        </span>
-                      ) : (
-                        <span className="text-slate-300 text-xs">—</span>
-                      )}
-                    </td>
-                    <td className="px-6 py-3 font-mono text-xs text-slate-600">
-                      {b.bin_code || <span className="text-slate-300">—</span>}
-                    </td>
-                    <td className="px-6 py-3 font-mono text-xs text-slate-600">
-                      {b.barcode || <span className="text-slate-300">—</span>}
-                    </td>
-                    <td className="px-6 py-3 text-center">
-                      {b.active ? (
-                        <span className="inline-flex items-center px-2 py-0.5 text-xs bg-emerald-50 text-emerald-700 rounded">
-                          Active
-                        </span>
-                      ) : (
-                        <span className="inline-flex items-center px-2 py-0.5 text-xs bg-slate-100 text-slate-500 rounded">
-                          Inactive
-                        </span>
-                      )}
-                    </td>
-                    <td className="px-6 py-3 text-right whitespace-nowrap">
-                      <button
-                        type="button"
-                        onClick={() => setViewing(b)}
-                        className="text-sm text-slate-600 hover:text-amber-600 mr-3"
-                        title="View everything stored in this bin and its descendants"
-                      >
-                        Contents
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setEditing(b)}
-                        className="text-sm text-slate-600 hover:text-amber-600"
-                      >
-                        Edit
-                      </button>
-                    </td>
-                  </tr>
-                )
-              })}
-            </tbody>
-          </table>
-          </div>
+        {!isLoading && !isError && locations.length > 0 && (
+          <BinsExplorer
+            locations={locations}
+            bins={bins}
+            rollup={stockRollup ?? {}}
+            canEdit={canEditBins}
+            poRequired={requirePoForStock}
+            onEdit={setEditing}
+            onAddChild={(parent, defaults) => setAddingChild({ parent, defaults })}
+            onAddRoot={(locId) => setCreateInLocationId(locId)}
+            onOpenCatalog={setViewing}
+            onAddStock={setAddStockAt}
+          />
         )}
       </div>
 
@@ -1152,7 +772,7 @@ function BinsTab() {
         <BinFormModal
           locations={locations}
           allBins={bins}
-          defaultLocationId={createInLocationId || filterLocationId || ""}
+          defaultLocationId={createInLocationId || locations[0]?.id || ""}
           onClose={() => setCreateInLocationId(null)}
         />
       )}
@@ -1164,30 +784,41 @@ function BinsTab() {
           onClose={() => setEditing(null)}
         />
       )}
-      {addingChildOf && (
+      {addingChild && (
         <BinFormModal
           locations={locations}
           allBins={bins}
-          defaultLocationId={addingChildOf.location_id}
-          defaultParentBinId={addingChildOf.id}
-          onClose={() => setAddingChildOf(null)}
+          defaultLocationId={addingChild.parent.location_id}
+          defaultParentBinId={addingChild.parent.id}
+          defaultBinCode={addingChild.defaults.code}
+          defaultKind={addingChild.defaults.kind}
+          defaultName={addingChild.defaults.name}
+          defaultSortOrder={addingChild.defaults.sortOrder}
+          defaultHoldsStock={addingChild.defaults.holdsStock}
+          defaultCapacity={addingChild.defaults.capacity}
+          onClose={() => setAddingChild(null)}
         />
       )}
       {viewing && (
         <BinContentsModal bin={viewing} onClose={() => setViewing(null)} />
       )}
-      {addStockBin && (
+      {/* Bins "Add product" (row, top button, detail panel, and "without a PO"
+          for whoever may override) opens the original Add stock window: pick or
+          make the product (+ New product has the photo upload), bin filled in.
+          Its save is POST /v1/inventory-stock-levels, which the server books as a
+          "Stock received" movement (2c3864ad3), so nothing goes in unlogged.
+          With PO-only on, Bins sends this to the add-from-PO window instead. */}
+      {addStockAt && (
         <StockLevelFormModal
           locations={locations}
           allBins={bins}
-          defaultLocationId={addStockBin.location_id}
-          defaultBinId={addStockBin.id}
-          onClose={() => setAddStockBin(null)}
+          defaultLocationId={addStockAt.bin?.location_id ?? addStockAt.locationId ?? undefined}
+          defaultBinId={addStockAt.bin?.id}
+          onClose={() => setAddStockAt(null)}
         />
       )}
       {/* Structure builder — describe the storage shape in the shop's own words,
-          any depth, and read the codes before committing. Replaces the fixed
-          rack/shelf/bin/section wizard; the old endpoints still exist. */}
+          any depth, and read the codes before committing. */}
       {showSetupWizard && (
         <div
           className="fixed inset-0 z-[120] flex justify-center overflow-y-auto bg-slate-900/50 p-3 backdrop-blur-[2px] sm:p-6"
@@ -1196,10 +827,10 @@ function BinsTab() {
           aria-label="Build a storage structure"
           onMouseDown={(e) => { if (e.target === e.currentTarget) setShowSetupWizard(false) }}
         >
-          <div className="h-fit w-full max-w-[1400px] rounded-2xl bg-[#F4F6FA] p-4 shadow-2xl sm:p-5">
+          <div className="h-fit w-full max-w-[1400px] rounded-2xl bg-slate-100 p-4 shadow-2xl sm:p-5">
             <div className="mb-3 flex items-start justify-between gap-4">
               <div>
-                <h2 className="text-[20px] font-bold text-[#0A1220]">Build a storage structure</h2>
+                <h2 className="text-[20px] font-bold text-slate-900">Build a storage structure</h2>
                 <p className="mt-0.5 text-[13px] text-slate-600">
                   Pick a place, describe its shape, and see every code before you create it.
                 </p>
@@ -1217,7 +848,7 @@ function BinsTab() {
             </div>
             <InventoryStructureBuilder
               locations={locations}
-              initialLocationId={filterLocationId || ""}
+              initialLocationId=""
               onClose={() => setShowSetupWizard(false)}
             />
           </div>
@@ -1227,295 +858,6 @@ function BinsTab() {
   )
 }
 
-// ---------- Location + bin tree nodes ----------
-
-/**
- * Everything held by this bin AND every bin beneath it.
- *
- * The rollup endpoint returns DIRECT contents per bin, because a recursive
- * total per node would be one query per bin. Stock sits in the leaves, so
- * without summing the subtree a rack always reads as empty — the count is only
- * useful if "what is on this rack" answers with the rack's whole contents.
- */
-function subtreeStock(
-  binId: string,
-  allBins: InventoryBin[],
-  rollup: BinStockRollup,
-): { items: number; qty: number; units: number } {
-  const own = rollup[binId] ?? { items: 0, qty: 0, units: 0 }
-  let items = own.items
-  let qty = own.qty
-  let units = own.units
-  for (const child of allBins) {
-    if (child.parent_bin_id !== binId) continue
-    const sub = subtreeStock(child.id, allBins, rollup)
-    items += sub.items
-    qty += sub.qty
-    units += sub.units
-  }
-  return { items, qty, units }
-}
-
-/** Compact "12 items · 48" badge, or null when the bin is empty. */
-function StockCount({ total }: { total: { items: number; qty: number; units: number } }) {
-  if (total.items === 0 && total.units === 0) return null
-  return (
-    <span
-      className="rounded bg-emerald-50 px-1.5 py-0.5 text-[11px] font-semibold text-emerald-800"
-      title={`${total.items} distinct item(s), ${total.qty} on hand${total.units ? `, ${total.units} tracked unit(s)` : ''}`}
-    >
-      {total.items > 0 && `${total.items} item${total.items === 1 ? '' : 's'}`}
-      {total.items > 0 && total.qty > 0 && ` · ${total.qty}`}
-      {total.items === 0 && total.units > 0 && `${total.units} unit${total.units === 1 ? '' : 's'}`}
-    </span>
-  )
-}
-
-function LocationTreeNode({
-  location,
-  allBins,
-  expanded,
-  onToggle,
-  onEdit,
-  onView,
-  onAddChild,
-  onAddStock,
-  onAddRoot,
-  rollup,
-}: {
-  location: InventoryLocation
-  allBins: InventoryBin[]
-  expanded: Set<string>
-  onToggle: (id: string) => void
-  onEdit: (b: InventoryBin) => void
-  onView: (b: InventoryBin) => void
-  onAddChild: (b: InventoryBin) => void
-  /** Undefined hides the action — set only when manual stock adds are allowed. */
-  onAddStock?: (b: InventoryBin) => void
-  onAddRoot: () => void
-  rollup: BinStockRollup
-}) {
-  const isOpen = expanded.has(location.id)
-  const binsHere = allBins.filter((b) => b.location_id === location.id)
-  const rootBins = binsHere.filter((b) => !b.parent_bin_id)
-  const totalCount = binsHere.length
-
-  return (
-    <div>
-      <div
-        role="button"
-        tabIndex={0}
-        onClick={() => onToggle(location.id)}
-        onKeyDown={(e) => {
-          if (e.key === 'Enter' || e.key === ' ') {
-            e.preventDefault()
-            onToggle(location.id)
-          }
-        }}
-        className="px-6 py-3 flex items-center gap-2 hover:bg-slate-50 cursor-pointer select-none"
-      >
-        <span className="text-slate-400 text-sm w-4 text-center">
-          {isOpen ? '▾' : '▸'}
-        </span>
-        <span className="text-base">📍</span>
-        <span className="font-semibold text-slate-900">{location.name}</span>
-        <span className="text-xs text-slate-500 font-mono">({totalCount})</span>
-        <StockCount
-          total={allBins
-            .filter((b) => b.location_id === location.id && !b.parent_bin_id)
-            .reduce(
-              (acc, root) => {
-                const sub = subtreeStock(root.id, allBins, rollup)
-                return {
-                  items: acc.items + sub.items,
-                  qty: acc.qty + sub.qty,
-                  units: acc.units + sub.units,
-                }
-              },
-              { items: 0, qty: 0, units: 0 },
-            )}
-        />
-        <span className="ml-auto flex items-center gap-3">
-          <button
-            type="button"
-            onClick={(e) => {
-              e.stopPropagation()
-              onAddRoot()
-            }}
-            className="text-xs text-amber-700 hover:underline font-medium"
-          >
-            + Add root bin
-          </button>
-        </span>
-      </div>
-      {isOpen && rootBins.length === 0 && (
-        <div className="px-12 pb-3 text-xs text-slate-500 italic">
-          No bins in this location yet.
-        </div>
-      )}
-      {isOpen &&
-        rootBins.map((b) => (
-          <BinTreeNode
-            key={b.id}
-            bin={b}
-            allBins={binsHere}
-            depth={1}
-            expanded={expanded}
-            onToggle={onToggle}
-            onEdit={onEdit}
-            onView={onView}
-            onAddChild={onAddChild}
-            onAddStock={onAddStock}
-            rollup={rollup}
-          />
-        ))}
-    </div>
-  )
-}
-
-function BinTreeNode({
-  bin,
-  allBins,
-  depth,
-  expanded,
-  onToggle,
-  onEdit,
-  onView,
-  onAddChild,
-  onAddStock,
-  rollup,
-}: {
-  bin: InventoryBin
-  allBins: InventoryBin[]
-  depth: number
-  expanded: Set<string>
-  onToggle: (id: string) => void
-  onEdit: (b: InventoryBin) => void
-  onView: (b: InventoryBin) => void
-  onAddChild: (b: InventoryBin) => void
-  /** Undefined hides the action — set only when manual stock adds are allowed. */
-  onAddStock?: (b: InventoryBin) => void
-  rollup: BinStockRollup
-}) {
-  const children = allBins.filter((b) => b.parent_bin_id === bin.id)
-  const hasChildren = children.length > 0
-  const isOpen = expanded.has(bin.id)
-  const indentPx = 24 + depth * 24
-
-  return (
-    <div>
-      <div
-        className="py-2 flex items-center gap-2 hover:bg-slate-50 group"
-        style={{ paddingLeft: indentPx, paddingRight: 24 }}
-      >
-        {hasChildren ? (
-          <button
-            type="button"
-            onClick={() => onToggle(bin.id)}
-            className="text-slate-400 hover:text-slate-700 text-sm w-4 text-center"
-          >
-            {isOpen ? '▾' : '▸'}
-          </button>
-        ) : (
-          <span className="w-4" />
-        )}
-        <span className="font-medium text-slate-800 truncate">
-          {bin.name || bin.bin_code || bin.id}
-        </span>
-        {bin.kind && (
-          <span className="inline-flex items-center px-1.5 py-0.5 text-[10px] bg-blue-50 text-blue-700 rounded font-medium uppercase tracking-wide">
-            {bin.kind}
-          </span>
-        )}
-        {bin.bin_code && bin.name && (
-          <span className="font-mono text-xs text-slate-400">{bin.bin_code}</span>
-        )}
-        {hasChildren && (
-          <span className="text-xs text-slate-400">
-            ({children.length} child{children.length === 1 ? '' : 'ren'})
-          </span>
-        )}
-        <StockCount total={subtreeStock(bin.id, allBins, rollup)} />
-        {!bin.active && (
-          <span className="text-[10px] px-1.5 py-0.5 bg-slate-100 text-slate-500 rounded">
-            Inactive
-          </span>
-        )}
-        <span className="ml-auto flex items-center gap-3 opacity-0 group-hover:opacity-100 transition-opacity">
-          <button
-            type="button"
-            onClick={() => onAddChild(bin)}
-            className="text-xs text-amber-700 hover:underline font-medium"
-            title="Add a child container under this one"
-          >
-            + Add child
-          </button>
-          {/* Only where stock can physically sit, and only while the shop
-              allows manual adds — with "require purchase orders" on, the server
-              refuses this and the button would exist purely to produce a 422.
-              This is the first-setup path: walk the rack, put items in bins. */}
-          {onAddStock && (bin.holds_stock ?? !hasChildren) && (
-            <button
-              type="button"
-              onClick={() => onAddStock(bin)}
-              className="text-xs font-medium text-amber-700 hover:text-amber-800"
-              title="Put a catalog item in this bin"
-            >
-              + Add stock
-            </button>
-          )}
-          {/* ONE link. There used to be three (Print / + items / All), each
-              pre-setting a different combination on the labels page — which has
-              those same choices as toggles in its own toolbar. Three links into
-              one screen read as three different reports, and "+ items" was
-              taken to mean "add items" rather than "print item labels". */}
-          <Link
-            to={`/inventory-bins/${bin.id}/labels`}
-            target="_blank"
-            className="text-xs text-slate-600 hover:text-amber-700"
-            title="Print QR stickers — this bin, its contents, or everything under it"
-          >
-            🏷 Labels
-          </Link>
-          <button
-            type="button"
-            onClick={() => onView(bin)}
-            className="text-xs text-slate-600 hover:text-amber-700"
-            title="View what's stored in this bin and below"
-          >
-            Contents
-          </button>
-          <button
-            type="button"
-            onClick={() => onEdit(bin)}
-            className="text-xs text-slate-600 hover:text-amber-700"
-          >
-            Edit
-          </button>
-        </span>
-      </div>
-      {isOpen &&
-        children.map((c) => (
-          <BinTreeNode
-            key={c.id}
-            bin={c}
-            allBins={allBins}
-            depth={depth + 1}
-            expanded={expanded}
-            onToggle={onToggle}
-            onEdit={onEdit}
-            onView={onView}
-            onAddChild={onAddChild}
-            onAddStock={onAddStock}
-            rollup={rollup}
-          />
-        ))}
-    </div>
-  )
-}
-
-// ---------- Bin contents modal ----------
-
 function BinContentsModal({
   bin,
   onClose,
@@ -1524,9 +866,21 @@ function BinContentsModal({
   onClose: () => void
 }) {
   const { data, isLoading, isFetching, isError, error, refetch } = useBinContents(bin.id)
+  const [catalogSearch, setCatalogSearch] = useState('')
+  // "View product" opens the product over this catalog instead of leaving it.
+  const { has } = usePermissions()
+  const [viewingId, setViewingId] = useState<string | null>(null)
+  const [editingProduct, setEditingProduct] = useState<CatalogItemFull | null>(null)
+  const viewingItem = useCatalogItem(viewingId ?? undefined)
+  const [scope, setScope] = useState<'subtree' | 'bin'>('subtree')
   const subBins = (data?.bins ?? []).filter((b) => b.id !== bin.id)
-  const units = data?.units ?? []
-  const stockLevels = data?.stock_levels ?? []
+  const units = useMemo(() => (data?.units ?? []).filter((unit) =>
+    (scope === 'subtree' || unit.bin_id === bin.id) &&
+    (unit.status === 'available' || unit.status === 'reserved'),
+  ), [data, scope, bin.id])
+  const stockLevels = useMemo(() => (data?.stock_levels ?? []).filter((level) =>
+    scope === 'subtree' || level.bin_id === bin.id,
+  ), [data, scope, bin.id])
 
   // Group units + stock by catalog item for a cleaner read
   const grouped = useMemo(() => {
@@ -1536,6 +890,8 @@ function BinContentsModal({
         catalogId: string
         name: string
         sku: string | null
+        imageUrl: string | null
+        unitLabel: string | null
         unitCount: number
         stockQty: number
         unitsByBin: Map<string, number>
@@ -1545,10 +901,12 @@ function BinContentsModal({
       const id = u.catalog_item_id
       const name = u.catalog_item?.name ?? '—'
       const sku = u.catalog_item?.sku ?? null
+      const imageUrl = u.catalog_item?.images?.thumb_url ?? u.catalog_item?.images?.medium_url ?? null
       if (!map.has(id)) {
-        map.set(id, { catalogId: id, name, sku, unitCount: 0, stockQty: 0, unitsByBin: new Map() })
+        map.set(id, { catalogId: id, name, sku, imageUrl, unitLabel: u.catalog_item?.unit_label ?? null, unitCount: 0, stockQty: 0, unitsByBin: new Map() })
       }
       const row = map.get(id)!
+      row.imageUrl ||= imageUrl
       row.unitCount += 1
       const binPath = u.bin?.path_label ?? '(no bin)'
       row.unitsByBin.set(binPath, (row.unitsByBin.get(binPath) ?? 0) + 1)
@@ -1557,10 +915,13 @@ function BinContentsModal({
       const id = s.catalog_item_id
       const name = s.catalog_item?.name ?? '—'
       const sku = s.catalog_item?.sku ?? null
+      const imageUrl = s.catalog_item?.images?.thumb_url ?? s.catalog_item?.images?.medium_url ?? null
       if (!map.has(id)) {
-        map.set(id, { catalogId: id, name, sku, unitCount: 0, stockQty: 0, unitsByBin: new Map() })
+        map.set(id, { catalogId: id, name, sku, imageUrl, unitLabel: s.catalog_item?.unit_label ?? null, unitCount: 0, stockQty: 0, unitsByBin: new Map() })
       }
       const row = map.get(id)!
+      row.imageUrl ||= imageUrl
+      row.unitLabel ||= s.catalog_item?.unit_label ?? null
       row.stockQty += Number(s.quantities?.qty_on_hand) || 0
       // Non-SN stock has a bin too. Only tracked units were recording one, so
       // "Where" was blank for ordinary stock — the common case. The number in
@@ -1575,9 +936,15 @@ function BinContentsModal({
     return Array.from(map.values()).sort((a, b) => a.name.localeCompare(b.name))
   }, [units, stockLevels])
 
+  const visibleItems = grouped.filter((row) =>
+    `${row.name} ${row.sku ?? ''}`.toLowerCase().includes(catalogSearch.trim().toLowerCase()),
+  )
+
   return (
-    <ModalShell title={`Contents — ${bin.path_label || bin.name || bin.bin_code}`} onClose={onClose}>
-      <div className="p-6 space-y-5">
+    <>
+    {/* Escape closes the product on top first, then the catalog. */}
+    <ModalShell title={`Bin catalog — ${bin.path_label || bin.name || bin.bin_code}`} onClose={() => (editingProduct ? undefined : viewingId ? setViewingId(null) : onClose())} tour="inv-bin-contents-modal" wide>
+      <div className="p-4 sm:p-6 space-y-5">
         {isLoading && (
           <div className="text-sm text-slate-500 py-8 text-center">Loading bin contents…</div>
         )}
@@ -1591,90 +958,60 @@ function BinContentsModal({
 
         {!isLoading && !isError && (
           <>
-            {/* Sub-bins */}
-            {subBins.length > 0 && (
-              <section>
-                <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-700 mb-2">
-                  Sub-bins ({subBins.length})
-                </h3>
-                <div className="border border-slate-200 rounded overflow-x-auto">
-                  <table className="w-full text-sm min-w-[520px]">
-                    <thead className="bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
-                      <tr>
-                        <th className="text-left px-4 py-2 font-medium">Path</th>
-                        <th className="text-left px-4 py-2 font-medium">Code</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-100">
-                      {subBins.map((b) => (
-                        <tr key={b.id} className="hover:bg-slate-50">
-                          <td className="px-4 py-2 text-slate-800">
-                            {b.path_label || b.name || b.bin_code}
-                          </td>
-                          <td className="px-4 py-2 font-mono text-xs text-slate-500">
-                            {b.bin_code || '—'}
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              </section>
-            )}
-
-            {/* Items */}
-            <section>
-              <div className="flex items-center justify-between mb-2">
-                <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-700">
-                  Items in this {subBins.length > 0 ? 'subtree' : 'bin'} ({grouped.length})
-                </h3>
-                <div className="text-xs text-slate-500">
-                  {units.length} SN unit{units.length === 1 ? '' : 's'} ·{' '}
-                  {stockLevels.length} stock row{stockLevels.length === 1 ? '' : 's'}
-                </div>
-              </div>
-              {grouped.length === 0 ? (
-                <div className="text-sm text-slate-500 py-6 text-center border border-slate-200 rounded">
-                  Nothing stored here yet.
-                </div>
-              ) : (
-                <div className="border border-slate-200 rounded">
-                  <table className="w-full text-sm">
-                    <thead className="bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
-                      <tr>
-                        <th className="text-left px-4 py-2 font-medium">Item</th>
-                        <th className="text-right px-4 py-2 font-medium">SN units</th>
-                        <th className="text-right px-4 py-2 font-medium">Stock qty</th>
-                        <th className="text-left px-4 py-2 font-medium">Where</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-100">
-                      {grouped.map((row) => (
-                        <tr key={row.catalogId} className="hover:bg-slate-50">
-                          <td className="px-4 py-2">
-                            <div className="font-medium text-slate-800">{row.name}</div>
-                            {row.sku && (
-                              <div className="font-mono text-xs text-slate-400">{row.sku}</div>
-                            )}
-                          </td>
-                          <td className="px-4 py-2 text-right tabular-nums">
-                            {row.unitCount > 0 ? row.unitCount : '—'}
-                          </td>
-                          <td className="px-4 py-2 text-right tabular-nums">
-                            {row.stockQty > 0 ? row.stockQty : '—'}
-                          </td>
-                          <td className="px-4 py-2 text-xs text-slate-600">
-                            {Array.from(row.unitsByBin.entries())
-                              .map(([path, n]) => `${path} (${n})`)
-                              .join(' · ') || '—'}
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
+            <div className="flex flex-wrap items-center gap-3 rounded-xl bg-slate-50 p-3 text-sm text-slate-700">
+              <span className="font-semibold text-slate-900">{grouped.length} products</span>
+              <span>{stockLevels.length} stock rows</span>
+              <span>{units.length} serial-tracked units</span>
+              {subBins.length > 0 && <span>{subBins.length} sub-bins</span>}
+            </div>
+            <div className="flex flex-wrap items-center gap-3">
+              <input
+                type="search"
+                aria-label="Search this bin catalog"
+                placeholder="Find a product or SKU in this bin…"
+                value={catalogSearch}
+                onChange={(e) => setCatalogSearch(e.target.value)}
+                className="min-w-[220px] flex-1 rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-amber-500 focus:outline-none"
+              />
+              {subBins.length > 0 && (
+                <div className="inline-flex rounded-lg border border-slate-300 bg-white p-0.5 text-sm" role="group" aria-label="Bin catalog scope">
+                  <button type="button" onClick={() => setScope('subtree')} aria-pressed={scope === 'subtree'} className={`rounded-md px-3 py-1.5 ${scope === 'subtree' ? 'bg-amber-600 text-white' : 'text-slate-600'}`}>This bin + below</button>
+                  <button type="button" onClick={() => setScope('bin')} aria-pressed={scope === 'bin'} className={`rounded-md px-3 py-1.5 ${scope === 'bin' ? 'bg-amber-600 text-white' : 'text-slate-600'}`}>This bin only</button>
                 </div>
               )}
-            </section>
+            </div>
+            {visibleItems.length === 0 ? (
+              <div className="rounded-xl border border-dashed border-slate-300 py-12 text-center text-sm text-slate-500">
+                {grouped.length === 0 ? 'No products are stored here yet.' : 'No products match that search.'}
+              </div>
+            ) : (
+              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                {visibleItems.map((row) => (
+                  <article key={row.catalogId} className="flex min-w-0 gap-3 rounded-xl border border-slate-200 bg-white p-3 shadow-sm">
+                    <div className="relative flex h-24 w-24 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-slate-100 text-xs text-slate-400">
+                      <span aria-hidden>Image unavailable</span>
+                      {row.imageUrl && <img src={row.imageUrl} alt={row.name} loading="lazy" className="absolute inset-0 h-full w-full object-contain bg-white" onError={(e) => { e.currentTarget.style.display = 'none' }} />}
+                    </div>
+                    <div className="flex min-w-0 flex-1 flex-col">
+                      <div className="line-clamp-2 text-sm font-semibold text-slate-900" title={row.name}>{row.name}</div>
+                      {row.sku && <div className="truncate font-mono text-xs text-slate-500" title={row.sku}>{row.sku}</div>}
+                      <div className="mt-2 text-lg font-bold tabular-nums text-slate-900">{formatQty(row.stockQty + row.unitCount, row.unitLabel)} <span className="text-xs font-medium text-slate-500">on hand</span></div>
+                      {row.unitCount > 0 && <div className="text-xs text-slate-500">{row.unitCount} serial-tracked</div>}
+                      <div className="mt-auto pt-2 text-xs text-slate-600" title={Array.from(row.unitsByBin.entries()).map(([path, n]) => `${path} (${formatQty(n, row.unitLabel)})`).join(' · ')}>
+                        {Array.from(row.unitsByBin.entries()).map(([path, n]) => `${path} (${formatQty(n, row.unitLabel)})`).join(' · ')}
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setViewingId(row.catalogId)}
+                        className="mt-2 self-start text-xs font-semibold text-amber-700 hover:underline"
+                      >
+                        {viewingId === row.catalogId && viewingItem.isLoading ? 'Opening…' : 'View product'}
+                      </button>
+                    </div>
+                  </article>
+                ))}
+              </div>
+            )}
           </>
         )}
       </div>
@@ -1682,12 +1019,23 @@ function BinContentsModal({
         <button
           type="button"
           onClick={onClose}
+          data-tour="inv-bin-contents-close"
           className="text-sm px-4 py-2 text-slate-600 hover:text-slate-900"
         >
           Close
         </button>
       </Footer>
     </ModalShell>
+    {viewingId && viewingItem.data && !editingProduct && (
+      <ProductViewModal
+        item={viewingItem.data}
+        canEdit={has(PERM.CATALOG_EDIT)}
+        onClose={() => setViewingId(null)}
+        onEdit={() => setEditingProduct(viewingItem.data ?? null)}
+      />
+    )}
+    {editingProduct && <ProductCatalogEditModal item={editingProduct} onClose={() => setEditingProduct(null)} />}
+    </>
   )
 }
 
@@ -1705,6 +1053,7 @@ function blankBinInput(locationId: string): InventoryBinInput {
     notes: null,
     sort_order: 0,
     active: true,
+    capacity: null,
   }
 }
 
@@ -1720,6 +1069,8 @@ function inputFromBin(b: InventoryBin): InventoryBinInput {
     notes: b.notes,
     sort_order: b.sort_order,
     active: b.active,
+    capacity: b.capacity ?? null,
+    holds_stock: b.holds_stock ?? true,
   }
 }
 
@@ -1729,6 +1080,12 @@ function BinFormModal({
   allBins,
   defaultLocationId,
   defaultParentBinId,
+  defaultBinCode,
+  defaultKind,
+  defaultName,
+  defaultSortOrder,
+  defaultHoldsStock,
+  defaultCapacity,
   onClose,
 }: {
   bin?: InventoryBin
@@ -1737,6 +1094,15 @@ function BinFormModal({
   defaultLocationId?: string
   /** When opening from a tree node's "+ Add child" button, pre-set the parent. */
   defaultParentBinId?: string
+  /** Suggested by the tree from the siblings ("Add row" after A, B -> C). */
+  defaultBinCode?: string | null
+  defaultKind?: string | null
+  defaultName?: string | null
+  /** After the last sibling, like the structure builder numbers them. */
+  defaultSortOrder?: number
+  /** Copied from the siblings, so a new row behaves like the rows beside it. */
+  defaultHoldsStock?: boolean
+  defaultCapacity?: number | null
   onClose: () => void
 }) {
   const isEdit = !!bin
@@ -1759,6 +1125,13 @@ function BinFormModal({
         blank.name = parent?.name || parent?.bin_code || null
       }
     }
+    // The tree's suggestion follows what is already there, so it wins.
+    if (defaultKind) blank.kind = defaultKind
+    if (defaultName !== undefined) blank.name = defaultName
+    if (defaultBinCode) blank.bin_code = defaultBinCode
+    if (defaultSortOrder !== undefined) blank.sort_order = defaultSortOrder
+    if (defaultHoldsStock !== undefined) blank.holds_stock = defaultHoldsStock
+    if (defaultCapacity) blank.capacity = defaultCapacity
     return blank
   })
   const [error, setError] = useState<string | null>(null)
@@ -1869,6 +1242,7 @@ function BinFormModal({
         notes: null,
         sort_order: 0,
         active: true,
+        capacity: null,
       })
     } catch (err) {
       setError(extractError(err))
@@ -1959,7 +1333,7 @@ function BinFormModal({
   })()
 
   return (
-    <ModalShell title={isEdit ? `Edit: ${bin?.path_label ?? "Bin"}` : "New Bin"} onClose={onClose}>
+    <ModalShell title={isEdit ? `Edit: ${bin?.path_label ?? "Bin"}` : "New Bin"} onClose={onClose} tour="inv-bin-form">
       <div className="p-6 space-y-4">
         {!isEdit && breadcrumbText && (
           <div className="px-3 py-2 bg-emerald-50 border border-emerald-200 rounded text-xs text-emerald-800">
@@ -1967,7 +1341,7 @@ function BinFormModal({
             {breadcrumbText}
           </div>
         )}
-        <div className="grid grid-cols-2 gap-3">
+        <div data-tour="inv-bin-form-where" className="grid grid-cols-2 gap-3">
           <Field label="Location" required>
             <select
               value={form.location_id}
@@ -2015,6 +1389,12 @@ function BinFormModal({
                   {k}
                 </option>
               ))}
+              {/* The structure builder writes the shop's own words (Row,
+                  Level…). Without this the dropdown showed them as blank and
+                  saving cleared them. */}
+              {form.kind && !(BIN_KIND_OPTIONS as readonly string[]).includes(form.kind) && (
+                <option value={form.kind}>{form.kind}</option>
+              )}
             </select>
           </Field>
         </div>
@@ -2104,12 +1484,12 @@ function BinFormModal({
               </button>
             </div>
             <p className="text-[11px] text-slate-500">
-              Address + notes can be filled in later under Tool Shed → Inventory → Locations.
+              Address + notes can be filled in later on the Locations tab of this page.
             </p>
           </div>
         )}
 
-        <div className="grid grid-cols-2 gap-3">
+        <div data-tour="inv-bin-form-names" className="grid grid-cols-2 gap-3">
           <Field label="Name">
             <input
               type="text"
@@ -2134,7 +1514,7 @@ function BinFormModal({
           Need name OR code, ideally both. Code is short for picking lists; name is human label.
         </p>
 
-        <div className="grid grid-cols-2 gap-3">
+        <div data-tour="inv-bin-form-codes" className="grid grid-cols-2 gap-3">
           <Field label="Barcode">
             <input
               type="text"
@@ -2155,6 +1535,26 @@ function BinFormModal({
           </Field>
         </div>
 
+        <Field label="Capacity (units that fit here)">
+          <input
+            type="number"
+            inputMode="numeric"
+            min={1}
+            step={1}
+            value={form.capacity ?? ""}
+            onChange={(e) => {
+              const n = Math.floor(Number(e.target.value))
+              set("capacity", e.target.value === "" || !Number.isFinite(n) || n < 1 ? null : n)
+            }}
+            placeholder="Leave blank if it doesn't matter"
+            data-tour="inv-bin-form-capacity"
+            className="w-full text-sm px-3 py-2 border border-slate-200 rounded focus:outline-none focus:border-amber-500"
+          />
+          <p className="text-[11px] text-slate-500 mt-1">
+            Lets the tree show how full it is. A rack or shelf without one adds up the places inside it.
+          </p>
+        </Field>
+
         <Field label="Notes">
           <textarea
             value={form.notes ?? ""}
@@ -2173,11 +1573,21 @@ function BinFormModal({
           />
           <span>{form.active ? "Active" : "Inactive"}</span>
         </label>
+        <label className="flex items-center gap-2 text-sm">
+          <input
+            type="checkbox"
+            checked={form.holds_stock ?? true}
+            onChange={(e) => set("holds_stock", e.target.checked)}
+            className="rounded border-slate-300 text-amber-600 focus:ring-amber-500"
+          />
+          <span>Stock can sit directly in this {(form.kind || "bin").toLowerCase()}</span>
+          <span className="text-xs text-slate-500">(off for a rack or shelf that only holds other places)</span>
+        </label>
 
         {error && <ErrorBanner message={error} />}
       </div>
 
-      <Footer>
+      <Footer tour="inv-bin-form-footer">
         {isEdit && (
           <button
             type="button"
@@ -2191,6 +1601,7 @@ function BinFormModal({
         <button
           type="button"
           onClick={onClose}
+          data-tour="inv-bin-form-close"
           className="text-sm px-4 py-2 text-slate-600 hover:text-slate-900"
         >
           {isEdit ? "Cancel" : "Done"}
@@ -2215,993 +1626,6 @@ function BinFormModal({
           {isPending ? "Saving..." : isEdit ? "Save changes" : "Save & close"}
         </button>
       </Footer>
-    </ModalShell>
-  )
-}
-
-function extractError(err: unknown): string {
-  if (err instanceof ApiError) {
-    // Surface field-level validation errors (422) — Laravel returns
-    // them under details.errors.{field}: ["message", ...]. The default
-    // err.message is the generic "The given data was invalid"; the
-    // useful info is one level deeper.
-    const details = err.details as
-      | { errors?: Record<string, string[]> }
-      | undefined
-    const errors = details?.errors
-    if (errors && Object.keys(errors).length > 0) {
-      const lines: string[] = []
-      for (const [field, msgs] of Object.entries(errors)) {
-        const label = field.replace(/_/g, ' ')
-        for (const m of msgs) {
-          lines.push(`${label}: ${m}`)
-        }
-      }
-      return lines.join(' · ')
-    }
-    return err.message
-  }
-  if (err instanceof Error) return err.message
-  return String(err)
-}
-
-// =================================================================
-// STOCK LEVELS TAB
-// =================================================================
-
-function StockLevelsTab() {
-  const { data: locationsData } = useInventoryLocations({ per_page: 200 })
-  const locations = locationsData?.data ?? []
-  const [filterLocationId, setFilterLocationId] = useState<string>("")
-  const [filterBinId, setFilterBinId] = useState<string>("")
-  const [hasStock, setHasStock] = useState<boolean>(false)
-  const [search, setSearch] = useState("")
-  const [debouncedSearch, setDebouncedSearch] = useState("")
-
-  useEffect(() => {
-    const t = setTimeout(() => setDebouncedSearch(search.trim().toLowerCase()), 250)
-    return () => clearTimeout(t)
-  }, [search])
-
-  /**
-   * A barcode gun anywhere on this tab filters the list to what was scanned.
-   *
-   * Three label types reach this bench and a person cannot tell them apart by
-   * looking, so the payload is decoded rather than trusted:
-   *   CBSTK:v:unitId:hash  — a stock unit; the id is the discriminating part
-   *   .../catalog/products/ID — a product label printed from this page
-   *   anything else — a supplier barcode or SKU, which the text filter handles
-   *
-   * It sets the search box rather than navigating: the row stays on screen with
-   * its Edit button, which is what someone at a receiving bench wants next.
-   */
-  // Which item's "where is it" overlay is open. A row here is ONE bin, so the
-  // figures answer "how many here" — this answers "where else", which is the
-  // question a dispatcher actually has when a van comes up short.
-  const [whereItem, setWhereItem] = useState<{ id: string; name: string; unit: string } | null>(null)
-  const [scanNote, setScanNote] = useState<string | null>(null)
-  // Set by scanning a container. Filters to that bin AND everything under it,
-  // which is what "show me this rack" has to mean.
-  const [scanSubtree, setScanSubtree] = useState<{ id: string; label: string } | null>(null)
-
-  /**
-   * One handler for the barcode gun AND the camera, so a label means the same
-   * thing whichever way it was read.
-   *
-   * A stock unit used to dead-end here — the payload is a fingerprint with no
-   * words in it, so there was nothing to search on and it just printed the id.
-   * Resolving it server-side gets the catalog item and the bin it is sitting
-   * in, which is the actual question ("what is this and where does it live").
-   */
-  const handleScan = useCallback(async (payload: string) => {
-    const result = await resolveScan(payload)
-    setScanNote(result.label)
-
-    if (result.kind === 'stock_unit') {
-      const item = result.unit.catalog_item
-      setSearch(item?.sku || item?.name || '')
-      // Both, because the bin filter is applied within a location — setting
-      // one without the other silently returns nothing.
-      if (result.unit.current_location_id) setFilterLocationId(result.unit.current_location_id)
-      if (result.unit.current_bin_id) setFilterBinId(result.unit.current_bin_id)
-    } else if (result.kind === 'product') {
-      setSearch(result.productId)
-    } else if (result.kind === 'bin') {
-      // Scanning a container asks "what is in here", and that has to mean
-      // EVERYTHING under it. Stock never sits on a rack — it sits in bins
-      // several levels below — so an exact bin match shows an empty list for
-      // every container above the leaf, which reads as "the rack is empty".
-      if (result.bin.location_id) setFilterLocationId(result.bin.location_id)
-      setFilterBinId('')
-      setScanSubtree({ id: result.bin.id, label: result.bin.path_label || result.bin.name || 'bin' })
-      setSearch('')
-    } else if (result.kind === 'text') {
-      setSearch(result.text)
-    }
-
-    window.setTimeout(() => setScanNote(null), 4000)
-  }, [])
-
-  useHardwareScanner((payload) => { void handleScan(payload) })
-
-  const { data: binsData } = useAllInventoryBins(
-    filterLocationId ? { location_id: filterLocationId } : {}
-  )
-  const bins = binsData?.data ?? []
-
-  const stockQuery = useStockLevels({
-    location_id: filterLocationId || undefined,
-    bin_id: filterBinId || undefined,
-    in_bin_subtree: scanSubtree?.id || undefined,
-    has_stock: hasStock || undefined,
-    per_page: 200,
-  })
-
-  const allLevels = stockQuery.data?.data ?? []
-  // Client-side text search across catalog item name/sku, location, bin path.
-  const levels = useMemo(() => {
-    if (!debouncedSearch) return allLevels
-    return allLevels.filter((sl) => {
-      const sluggable = [
-        sl.catalog_item?.name,
-        sl.catalog_item?.sku,
-        sl.location?.name,
-        sl.bin?.path_label,
-        sl.bin?.bin_code,
-      ]
-        .filter(Boolean)
-        .join(' ')
-        .toLowerCase()
-      return sluggable.includes(debouncedSearch)
-    })
-  }, [allLevels, debouncedSearch])
-
-  const [editing, setEditing] = useState<InventoryStockLevel | null>(null)
-  const [showCreate, setShowCreate] = useState(false)
-  const [showTransfer, setShowTransfer] = useState(false)
-  const cleanupMutation = useCleanupOrphanStockLevels()
-  const noLocations = locations.length === 0
-  // Maintenance action — only platform admins see it. SaaS tenants never
-  // need this since orphans are auto-filtered from the list anyway.
-  const { account } = useAuth()
-  const isPlatformAdmin = account?.is_platform_admin === true
-  // Tenant admin toggle — when on, manual '+ Add stock' is disabled
-  // and stock can only arrive via PO receive.
-  const { data: invSettings } = useInventorySettings()
-  const requirePo = !!invSettings?.inventory_require_po_for_stock_add
-
-  async function handleCleanup() {
-    if (!confirm('Delete all stock-level rows whose item / location / bin has been removed? This is safe — those rows can\'t be edited or used.')) return
-    try {
-      const n = await cleanupMutation.mutateAsync()
-      alert(`Cleaned up ${n} orphan row${n === 1 ? '' : 's'}.`)
-    } catch (err) {
-      alert(err instanceof Error ? err.message : String(err))
-    }
-  }
-
-  return (
-    <div className="space-y-4">
-      <div className="bg-white border border-slate-200 rounded-xl shadow-sm">
-        <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between gap-4">
-          <div>
-            <h3 className="text-base font-semibold text-slate-900">Stock levels</h3>
-            <p className="text-sm text-slate-500 mt-0.5">
-              How much of each item is in each bin. Adjust counts here or
-              create new rows when stock arrives somewhere new.
-            </p>
-          </div>
-          <div className="flex items-center gap-2">
-            {isPlatformAdmin && (
-              <button
-                type="button"
-                onClick={handleCleanup}
-                disabled={cleanupMutation.isPending}
-                className="text-sm px-3 py-2 border border-slate-300 text-slate-600 hover:bg-slate-50 rounded-md font-medium disabled:opacity-50"
-                title="Platform admin: delete rows whose catalog item / location / bin has been removed (orphans)"
-              >
-                {cleanupMutation.isPending ? 'Cleaning…' : '🧹 Clean up orphans'}
-              </button>
-            )}
-            <button
-              type="button"
-              onClick={() => setShowTransfer(true)}
-              disabled={noLocations}
-              title={noLocations ? "Create a location first" : "Move stock from one location/bin to another"}
-              className="text-sm px-3 py-2 border border-emerald-300 text-emerald-700 hover:bg-emerald-50 rounded-md font-medium disabled:opacity-50"
-            >
-              ⇄ Transfer stock
-            </button>
-            <button
-              type="button"
-              onClick={() => setShowCreate(true)}
-              disabled={noLocations || requirePo}
-              title={
-                noLocations
-                  ? "Create a location first"
-                  : requirePo
-                    ? "Stock-add via PO is required (admin setting). Receive a PO to add stock."
-                    : undefined
-              }
-              className="text-sm px-4 py-2 bg-amber-500 hover:bg-amber-600 disabled:bg-slate-300 disabled:cursor-not-allowed text-white rounded-md font-medium"
-            >
-              + Add stock
-            </button>
-          </div>
-        </div>
-
-        {noLocations && (
-          <div className="px-6 py-4 text-sm text-amber-800 bg-amber-50 border-b border-amber-100">
-            No inventory locations yet. Add one in the Locations tab first.
-          </div>
-        )}
-
-        {scanNote && (
-          <div className="px-6 py-2 bg-amber-50 border-b border-amber-200 text-[13px] text-amber-900">
-            {scanNote}
-          </div>
-        )}
-        {/* A subtree filter hides most of the list, so it has to announce
-            itself and be one click to escape — otherwise the next person to
-            walk up sees an inexplicably short inventory. */}
-        {scanSubtree && (
-          <div className="px-6 py-2 bg-slate-50 border-b border-slate-200 text-[13px] text-slate-700 flex items-center gap-3">
-            <span>Showing everything inside <strong>{scanSubtree.label}</strong></span>
-            <button
-              type="button"
-              onClick={() => setScanSubtree(null)}
-              className="text-xs font-semibold text-amber-700 hover:underline"
-            >
-              Clear
-            </button>
-          </div>
-        )}
-        <div data-easy-list-toolbar className="px-6 py-3 border-b border-slate-100 flex gap-3 items-center flex-wrap">
-          <input
-            type="search"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="Filter by item, location, bin… or just scan"
-            className="flex-1 min-w-[200px] max-w-sm text-sm px-3 py-2 border border-slate-200 rounded focus:outline-none focus:border-amber-500"
-          />
-          {/* The gun needs no button — it types. This is for the laptop or
-              phone that doesn't have one, and it decodes identically. */}
-          <QrScanButton
-            onScan={(code) => { void handleScan(code) }}
-            buttonLabel="📷 Scan"
-            buttonClassName="text-sm px-3 py-2 border border-slate-200 rounded bg-white hover:border-amber-400 hover:bg-amber-50 font-medium text-slate-700"
-          />
-          <select
-            value={filterLocationId}
-            onChange={(e) => {
-              setFilterLocationId(e.target.value)
-              setFilterBinId("")
-            }}
-            className="text-sm px-3 py-2 border border-slate-200 rounded focus:outline-none focus:border-amber-500 bg-white"
-          >
-            <option value="">All locations</option>
-            {locations.map((loc) => (
-              <option key={loc.id} value={loc.id}>
-                {loc.name}
-              </option>
-            ))}
-          </select>
-          <select
-            value={filterBinId}
-            onChange={(e) => setFilterBinId(e.target.value)}
-            disabled={!filterLocationId}
-            className="text-sm px-3 py-2 border border-slate-200 rounded focus:outline-none focus:border-amber-500 bg-white disabled:bg-slate-50 disabled:text-slate-400"
-          >
-            <option value="">All bins</option>
-            {bins
-              .filter((b) => !filterLocationId || b.location_id === filterLocationId)
-              .map((b) => (
-                <option key={b.id} value={b.id}>
-                  {b.path_label || b.name || b.bin_code}
-                </option>
-              ))}
-          </select>
-          <label className="flex items-center gap-2 text-sm text-slate-600 cursor-pointer">
-            <input
-              type="checkbox"
-              checked={hasStock}
-              onChange={(e) => setHasStock(e.target.checked)}
-              className="rounded border-slate-300 text-amber-600 focus:ring-amber-500"
-            />
-            Only rows with qty &gt; 0
-          </label>
-        </div>
-
-        {stockQuery.isError && (
-          <div className="px-6 py-4 text-sm text-red-700 bg-red-50">
-            Failed to load stock levels.{stockQuery.error instanceof Error ? ` ${stockQuery.error.message}` : ""}
-            <button type="button" disabled={stockQuery.isFetching} className="ml-2 underline disabled:opacity-50" onClick={() => void stockQuery.refetch()}>Try again</button>
-          </div>
-        )}
-
-        {stockQuery.isLoading && (
-          <div className="p-6 animate-pulse space-y-3">
-            <div className="h-12 bg-slate-100 rounded" />
-            <div className="h-12 bg-slate-100 rounded" />
-          </div>
-        )}
-
-        {!stockQuery.isLoading && !stockQuery.isError && levels.length === 0 && (
-          <div className="p-12 text-center">
-            <p className="text-sm text-slate-600">
-              {debouncedSearch || filterLocationId || filterBinId || hasStock
-                ? "No stock levels match those filters."
-                : "No stock levels yet. Click \"+ Add stock\" to record what's where."}
-            </p>
-          </div>
-        )}
-
-        {!stockQuery.isLoading && !stockQuery.isError && levels.length > 0 && (
-          <table className="w-full text-sm">
-            <thead className="bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
-              <tr>
-                <th className="text-left px-6 py-3 font-medium">Item</th>
-                <th className="text-left px-6 py-3 font-medium">Where</th>
-                <th className="text-right px-6 py-3 font-medium">On hand</th>
-                <th className="text-right px-6 py-3 font-medium">Should carry</th>
-                <th className="text-right px-6 py-3 font-medium">Reserved</th>
-                <th className="text-right px-6 py-3 font-medium">Available</th>
-                <th className="px-6 py-3"></th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100">
-              {levels.map((sl) => (
-                <tr key={sl.id} className="hover:bg-slate-50">
-                  <td className="px-6 py-3">
-                    <div className="font-medium text-slate-800">
-                      {sl.catalog_item?.name ?? (
-                        <span className="text-slate-400 italic">
-                          (no item name — id: <span className="font-mono">{sl.catalog_item_id}</span>)
-                        </span>
-                      )}
-                    </div>
-                    {sl.catalog_item?.sku && (
-                      <div className="font-mono text-xs text-slate-400">{sl.catalog_item.sku}</div>
-                    )}
-                    {sl.quantities.sn_tracked && (
-                      <div className="text-[10px] text-blue-700 mt-0.5 uppercase tracking-wide">
-                        SN-tracked (count = active units)
-                      </div>
-                    )}
-                  </td>
-                  <td className="px-6 py-3 text-xs text-slate-700">
-                    <div className="font-medium">
-                      📍 {sl.location?.name ?? (
-                        <span className="text-slate-400 italic">
-                          (no location — id: <span className="font-mono">{sl.location_id}</span>)
-                        </span>
-                      )}
-                    </div>
-                    {sl.bin_id && (
-                      sl.bin ? (
-                        <div className="text-slate-500">
-                          📦 {sl.bin.path_label || sl.bin.name || sl.bin.bin_code}
-                        </div>
-                      ) : (
-                        <div className="text-slate-400 italic">
-                          📦 (no bin — id: <span className="font-mono">{sl.bin_id}</span>)
-                        </div>
-                      )
-                    )}
-                  </td>
-                  <td className="px-6 py-3 text-right tabular-nums font-medium">
-                    <button
-                      type="button"
-                      onClick={() =>
-                        sl.catalog_item_id &&
-                        setWhereItem({
-                          id: sl.catalog_item_id,
-                          name: sl.catalog_item?.name ?? 'Item',
-                          unit: sl.catalog_item?.unit_label || 'each',
-                        })
-                      }
-                      className="underline decoration-dotted underline-offset-2 hover:decoration-solid"
-                      title="See every place this item is, and which units"
-                    >
-                      {formatQty(sl.quantities.qty_on_hand, sl.catalog_item?.unit_label)}
-                    </button>
-                  </td>
-                  {/* Par, and how far under it. A spot with no par shows a
-                      dash rather than a zero — "nobody set one" and "carry
-                      none of these" are different answers. */}
-                  <td className="px-6 py-3 text-right tabular-nums">
-                    {sl.quantities.par_qty == null ? (
-                      <span className="text-slate-300">—</span>
-                    ) : (
-                      <span>
-                        {formatQty(sl.quantities.par_qty, sl.catalog_item?.unit_label)}
-                        {!!sl.quantities.short_by && sl.quantities.short_by > 0 && (
-                          <span className="ml-2 rounded bg-amber-100 px-1.5 py-0.5 text-[11px] font-bold text-amber-800">
-                            short {formatQty(sl.quantities.short_by, sl.catalog_item?.unit_label)}
-                          </span>
-                        )}
-                      </span>
-                    )}
-                  </td>
-                  <td className="px-6 py-3 text-right tabular-nums text-slate-500">
-                    {formatQty(sl.quantities.qty_reserved, sl.catalog_item?.unit_label)}
-                  </td>
-                  <td className="px-6 py-3 text-right tabular-nums text-emerald-700 font-medium">
-                    <button
-                      type="button"
-                      onClick={() =>
-                        sl.catalog_item_id &&
-                        setWhereItem({
-                          id: sl.catalog_item_id,
-                          name: sl.catalog_item?.name ?? 'Item',
-                          unit: sl.catalog_item?.unit_label || 'each',
-                        })
-                      }
-                      className="underline decoration-dotted underline-offset-2 hover:decoration-solid"
-                      title="See every place this item is, and which units"
-                    >
-                      {formatQty(sl.quantities.qty_available, sl.catalog_item?.unit_label)}
-                    </button>
-                  </td>
-                  <td className="px-6 py-3 text-right">
-                    <div className="flex items-center justify-end gap-3">
-                      <button
-                        type="button"
-                        onClick={() => setEditing(sl)}
-                        className="text-sm text-slate-600 hover:text-amber-600"
-                      >
-                        Edit
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
-      </div>
-
-      {showCreate && (
-        <StockLevelFormModal
-          locations={locations}
-          allBins={bins}
-          onClose={() => setShowCreate(false)}
-        />
-      )}
-      {editing && (
-        <StockLevelFormModal
-          stockLevel={editing}
-          locations={locations}
-          allBins={bins}
-          onClose={() => setEditing(null)}
-        />
-      )}
-      {whereItem && (
-        <StockWhereOverlay
-          itemId={whereItem.id}
-          itemName={whereItem.name}
-          unitLabel={whereItem.unit}
-          onClose={() => setWhereItem(null)}
-        />
-      )}
-      {showTransfer && (
-        <TransferStockModal onClose={() => setShowTransfer(false)} />
-      )}
-    </div>
-  )
-}
-
-// ---------- Stock level create / edit modal ----------
-
-function StockLevelFormModal({
-  stockLevel,
-  locations,
-  allBins,
-  defaultLocationId,
-  defaultBinId,
-  onClose,
-}: {
-  stockLevel?: InventoryStockLevel
-  locations: InventoryLocation[]
-  allBins: InventoryBin[]
-  /** Opened from a bin in the tree — land in that exact place. */
-  defaultLocationId?: string
-  defaultBinId?: string
-  onClose: () => void
-}) {
-  const isEdit = !!stockLevel
-  const [locationId, setLocationId] = useState(
-    stockLevel?.location_id ?? defaultLocationId ?? locations[0]?.id ?? "",
-  )
-  const [binId, setBinId] = useState<string>(stockLevel?.bin_id ?? defaultBinId ?? "")
-  const [catalogItemId, setCatalogItemId] = useState(stockLevel?.catalog_item_id ?? "")
-  const [catalogQuery, setCatalogQuery] = useState("")
-  const [debouncedQuery, setDebouncedQuery] = useState("")
-  const [showPicker, setShowPicker] = useState(false)
-  /**
-   * "+ New product" stacked modal. When the user can't find the
-   * catalog item they need in the typeahead, they can create one
-   * with full catalog fields (matches the Tool Shed → Product
-   * Catalog form). On create, we auto-select it for this stock row.
-   */
-  const [showNewProduct, setShowNewProduct] = useState(false)
-  const [justCreatedItem, setJustCreatedItem] = useState<CatalogItemFull | null>(null)
-  const [showBinPicker, setShowBinPicker] = useState(false)
-  /**
-   * Seeded from defaultBinId when opened from the tree's "+ Add stock".
-   *
-   * binId alone is not enough: "+ New product" only places stock when it
-   * receives the picked bin OBJECT (its guard is `if (pickedBin)`), and it is
-   * handed this state. With only the id set, the overlay created the product,
-   * silently discarded the starting quantity, and left this modal open at 0 —
-   * so the number the user typed simply vanished.
-   */
-  const [pickedBin, setPickedBin] = useState<InventoryBin | null>(
-    () => allBins.find((b) => b.id === (stockLevel?.bin_id ?? defaultBinId)) ?? null,
-  )
-  // inventory_require_po_for_stock_add is enforced server-side on both create
-  // and update, but only after Save — so typing a bigger number and pressing
-  // the button was the only way to discover the rule. Say it up front.
-  const { data: stockRules } = useInventorySettings()
-  const poRequired = !!stockRules?.inventory_require_po_for_stock_add
-  const originalQty = Number(stockLevel?.quantities.qty_on_hand ?? 0)
-
-  const [qtyOnHand, setQtyOnHand] = useState(
-    stockLevel?.quantities.qty_on_hand != null ? String(stockLevel.quantities.qty_on_hand) : "0"
-  )
-  const [qtyReserved, setQtyReserved] = useState(
-    stockLevel?.quantities.qty_reserved != null ? String(stockLevel.quantities.qty_reserved) : "0"
-  )
-  // Empty string is a real value here: it means "no par", and it has to be
-  // distinguishable from "0", which is a par of none.
-  const [parQty, setParQty] = useState(
-    stockLevel?.quantities.par_qty != null ? String(stockLevel.quantities.par_qty) : ""
-  )
-  const [error, setError] = useState<string | null>(null)
-
-  // "Edit" button → opens the full Product Catalog edit form for the selected
-  // item without leaving this Add-stock context. catalog.edit, matching what
-  // the API enforces — the old is_platform_admin gate meant a tenant owner
-  // could see the button's absence and conclude the feature did not exist.
-  const canEditCatalog = usePermissions().has(PERM.CATALOG_EDIT)
-  const [editingCatalogItemId, setEditingCatalogItemId] = useState<string | null>(null)
-  const editingItemQuery = useCatalogItem(editingCatalogItemId ?? undefined)
-
-  const createMutation = useCreateStockLevel()
-  const updateMutation = useUpdateStockLevel()
-  const deleteMutation = useDeleteStockLevel()
-
-  useEffect(() => {
-    const t = setTimeout(() => setDebouncedQuery(catalogQuery.trim()), 200)
-    return () => clearTimeout(t)
-  }, [catalogQuery])
-
-  const itemsQuery = useCatalogItems({
-    q: debouncedQuery || undefined,
-    type: 'product',
-    active: true,
-    per_page: 12,
-  })
-  const itemResults = itemsQuery.data?.data ?? []
-
-  // Resolve the picked item's unit_label so the qty inputs can swap
-  // between integer (each / pair / set) and decimal (lbs / gal / L / etc.).
-  // Sources, in priority: just-created item → search results → existing
-  // stock_level's catalog_item mini (when editing) → fallback to "each".
-  const pickedUnit: string =
-    (justCreatedItem?.id === catalogItemId && justCreatedItem?.unit_label) ||
-    itemResults.find((it) => it.id === catalogItemId)?.unit_label ||
-    stockLevel?.catalog_item?.unit_label ||
-    'each'
-
-  const initialItemName =
-    stockLevel?.catalog_item?.name ?? null
-
-  const isPending =
-    createMutation.isPending || updateMutation.isPending || deleteMutation.isPending
-  const canSave =
-    !isPending && !!locationId && !!catalogItemId && qtyOnHand !== ""
-
-  async function handleSave() {
-    setError(null)
-    try {
-      const payload = {
-        location_id: locationId,
-        bin_id: binId || null,
-        catalog_item_id: catalogItemId,
-        qty_on_hand: Number(qtyOnHand) || 0,
-        qty_reserved: Number(qtyReserved) || 0,
-        // Blank clears it. Number('') is 0, which would quietly turn "no par"
-        // into "carry none" and start reporting the spot as stocked-to-par.
-        par_qty: parQty.trim() === '' ? null : Number(parQty),
-      }
-      if (isEdit && stockLevel) {
-        await updateMutation.mutateAsync({
-          id: stockLevel.id,
-          input: payload,
-        })
-      } else {
-        await createMutation.mutateAsync(payload)
-      }
-      onClose()
-    } catch (err) {
-      setError(extractError(err))
-    }
-  }
-
-  async function handleDelete() {
-    if (!stockLevel) return
-    // Confirmation handled by the global delete modal (password + reason).
-    setError(null)
-    try {
-      await deleteMutation.mutateAsync(stockLevel.id)
-      onClose()
-    } catch (err) {
-      if (!isDeleteCancelled(err)) setError(extractError(err))
-    }
-  }
-
-  const binsForLocation = allBins.filter((b) => b.location_id === locationId)
-
-  return (
-    <ModalShell title={isEdit ? 'Edit stock' : 'Add stock'} onClose={onClose}>
-      <div className="p-6 space-y-4">
-        <Field label="Item" required>
-          {catalogItemId ? (
-            <div className="flex items-center justify-between bg-slate-50 border border-slate-200 rounded px-3 py-2">
-              <div className="text-sm text-slate-800">
-                {justCreatedItem && justCreatedItem.id === catalogItemId
-                  ? justCreatedItem.name
-                  : initialItemName && stockLevel?.catalog_item_id === catalogItemId
-                    ? initialItemName
-                    : itemResults.find((it) => it.id === catalogItemId)?.name ?? catalogItemId}
-              </div>
-              <div className="flex items-center gap-3">
-                {canEditCatalog && (
-                  <button
-                    type="button"
-                    onClick={() => setEditingCatalogItemId(catalogItemId)}
-                    className="text-xs text-slate-600 hover:text-amber-700 hover:underline"
-                    title="Edit this product's catalog details (description, image, threshold, etc.)"
-                  >
-                    Edit
-                  </button>
-                )}
-                {!isEdit && (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setCatalogItemId("")
-                      setJustCreatedItem(null)
-                    }}
-                    className="text-xs text-amber-700 hover:underline"
-                  >
-                    Change
-                  </button>
-                )}
-              </div>
-            </div>
-          ) : (
-            <div className="relative">
-              <div className="flex items-center gap-2 mb-1">
-                <input
-                  type="search"
-                  value={catalogQuery}
-                  onChange={(e) => {
-                    setCatalogQuery(e.target.value)
-                    setShowPicker(true)
-                  }}
-                  onFocus={() => setShowPicker(true)}
-                  onBlur={() => setTimeout(() => setShowPicker(false), 150)}
-                  placeholder="Search catalog by name or SKU…"
-                  className="flex-1 text-sm px-3 py-2 border border-slate-200 rounded focus:outline-none focus:border-amber-500"
-                  autoFocus
-                />
-                <button
-                  type="button"
-                  onClick={() => setShowNewProduct(true)}
-                  className="text-xs text-amber-700 hover:underline font-medium whitespace-nowrap"
-                  title="Create a new catalog item without leaving this dialog"
-                >
-                  + New product
-                </button>
-              </div>
-              {showPicker && debouncedQuery && (
-                <div className="absolute z-10 mt-1 left-0 right-0 bg-white border border-slate-200 rounded shadow-lg max-h-60 overflow-y-auto">
-                  {itemsQuery.isLoading && (
-                    <div className="px-3 py-2 text-xs text-slate-500">Loading…</div>
-                  )}
-                  {itemsQuery.isError && (
-                    <div role="alert" className="px-3 py-2 text-xs text-red-700">
-                      Product search could not be loaded.
-                      <button type="button" disabled={itemsQuery.isFetching} className="ml-2 underline disabled:opacity-50" onMouseDown={event => event.preventDefault()} onClick={() => void itemsQuery.refetch()}>Try again</button>
-                    </div>
-                  )}
-                  {!itemsQuery.isLoading && !itemsQuery.isError && itemResults.length === 0 && (
-                    <div className="px-3 py-2 text-xs text-slate-500 flex items-center justify-between">
-                      <span>No matches.</span>
-                      <button
-                        type="button"
-                        onMouseDown={() => {
-                          setShowPicker(false)
-                          setShowNewProduct(true)
-                        }}
-                        className="text-amber-700 hover:underline font-medium"
-                      >
-                        + Create &quot;{debouncedQuery}&quot;
-                      </button>
-                    </div>
-                  )}
-                  {!itemsQuery.isError && itemResults.map((it) => (
-                    <button
-                      type="button"
-                      key={it.id}
-                      onMouseDown={() => {
-                        setCatalogItemId(it.id)
-                        setCatalogQuery("")
-                        setShowPicker(false)
-                      }}
-                      className="block w-full text-left px-3 py-2 hover:bg-amber-50 text-sm"
-                    >
-                      <div className="font-medium text-slate-800">{it.name}</div>
-                      {it.sku && (
-                        <div className="font-mono text-xs text-slate-400">{it.sku}</div>
-                      )}
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
-          )}
-        </Field>
-
-        <div className="grid grid-cols-2 gap-3">
-          <Field label="Location" required>
-            <select
-              value={locationId}
-              onChange={(e) => {
-                setLocationId(e.target.value)
-                setBinId("")
-              }}
-              disabled={isEdit}
-              className="w-full text-sm px-3 py-2 border border-slate-200 rounded focus:outline-none focus:border-amber-500 bg-white"
-            >
-              <option value="">— Select —</option>
-              {locations.map((loc) => (
-                <option key={loc.id} value={loc.id}>
-                  {loc.name}
-                </option>
-              ))}
-            </select>
-          </Field>
-          <Field label="Bin (leaf only)">
-            {(() => {
-              const display = pickedBin
-                ? pickedBin.path_label || pickedBin.name || pickedBin.bin_code
-                : binId
-                  ? binsForLocation.find((b) => b.id === binId)?.path_label || binId
-                  : null
-              const hasValue = !!display
-              return (
-                <div className="flex items-center gap-2">
-                  <div
-                    className={`flex-1 text-sm px-3 py-2 border rounded truncate ${
-                      hasValue
-                        ? 'bg-emerald-50 border-emerald-300 text-emerald-900 font-medium'
-                        : 'bg-slate-50 border-slate-200 text-slate-700'
-                    }`}
-                  >
-                    {hasValue ? (
-                      <>📍 {display}</>
-                    ) : (
-                      <span className="italic text-slate-400">— None —</span>
-                    )}
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => setShowBinPicker(true)}
-                    disabled={isEdit || !locationId}
-                    aria-label={hasValue ? 'Change bin' : 'Pick a bin'}
-                    title={hasValue ? 'Change bin' : 'Pick a bin'}
-                    className="text-base px-3 py-2 border border-slate-300 rounded hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap leading-none"
-                  >
-                    🗂️
-                  </button>
-                  {!isEdit && hasValue && (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setBinId("")
-                        setPickedBin(null)
-                      }}
-                      className="text-xs text-slate-500 hover:text-slate-800"
-                    >
-                      Clear
-                    </button>
-                  )}
-                </div>
-              )
-            })()}
-          </Field>
-        </div>
-
-        <div className="grid grid-cols-2 gap-3">
-          <Field label={`${stockLevel?.quantities.sn_tracked ? 'Qty on hand (computed)' : 'Qty on hand'}${isCountableUnit(pickedUnit) ? '' : ` (${pickedUnit})`}`} required>
-            <input
-              type="number"
-              step={qtyStepFor(pickedUnit)}
-              min="0"
-              inputMode={isCountableUnit(pickedUnit) ? 'numeric' : 'decimal'}
-              value={qtyOnHand}
-              onChange={(e) => {
-                const allow = isCountableUnit(pickedUnit)
-                  ? e.target.value.replace(/[^0-9]/g, '')
-                  : e.target.value.replace(/[^0-9.]/g, '').replace(/(\..*?)\..*/g, '$1')
-                setQtyOnHand(allow)
-              }}
-              disabled={stockLevel?.quantities.sn_tracked}
-              className="w-full text-sm px-3 py-2 border border-slate-200 rounded text-right focus:outline-none focus:border-amber-500 disabled:bg-slate-50 disabled:text-slate-500"
-              title={stockLevel?.quantities.sn_tracked
-                ? "Computed from active SN units. Add/remove units to change this."
-                : undefined}
-            />
-            {poRequired && Number(qtyOnHand || 0) > originalQty && (
-              <p className="mt-1 text-[12px] text-rose-700">
-                This shop only takes stock in through a received purchase order,
-                so this increase will be refused. Receive a PO instead, or turn
-                off &ldquo;Require PO before adding stock&rdquo; in Inventory settings.
-              </p>
-            )}
-          </Field>
-          <Field label={`Qty reserved${isCountableUnit(pickedUnit) ? '' : ` (${pickedUnit})`}`}>
-            <input
-              type="number"
-              step={qtyStepFor(pickedUnit)}
-              min="0"
-              inputMode={isCountableUnit(pickedUnit) ? 'numeric' : 'decimal'}
-              value={qtyReserved}
-              onChange={(e) => {
-                const allow = isCountableUnit(pickedUnit)
-                  ? e.target.value.replace(/[^0-9]/g, '')
-                  : e.target.value.replace(/[^0-9.]/g, '').replace(/(\..*?)\..*/g, '$1')
-                setQtyReserved(allow)
-              }}
-              className="w-full text-sm px-3 py-2 border border-slate-200 rounded text-right focus:outline-none focus:border-amber-500"
-            />
-          </Field>
-        </div>
-        <p className="text-xs text-slate-500">
-          Available = on hand − reserved.
-          {stockLevel?.quantities.sn_tracked
-            ? " On-hand is computed from active SN units — edit individual units to change it."
-            : ""}
-        </p>
-
-        {/*
-          What this spot should carry. Left blank it is not stocked here on
-          purpose and nothing reports it as short; a van only shows up on its
-          own restock list for items somebody decided it carries.
-        */}
-        <Field label={`Should carry${isCountableUnit(pickedUnit) ? '' : ` (${pickedUnit})`}`}>
-          <input
-            type="number"
-            step={qtyStepFor(pickedUnit)}
-            min="0"
-            inputMode={isCountableUnit(pickedUnit) ? 'numeric' : 'decimal'}
-            value={parQty}
-            placeholder="Leave blank if this spot does not stock it"
-            onChange={(e) => {
-              const allow = isCountableUnit(pickedUnit)
-                ? e.target.value.replace(/[^0-9]/g, '')
-                : e.target.value.replace(/[^0-9.]/g, '').replace(/(\..*?)\..*/g, '$1')
-              setParQty(allow)
-            }}
-            className="w-full text-sm px-3 py-2 border border-slate-200 rounded text-right focus:outline-none focus:border-amber-500"
-          />
-          <p className="mt-1 text-[12px] text-slate-500">
-            The number this van or shelf is meant to hold. Drop below it and it
-            shows on this location&rsquo;s restock list. Blank means no target;
-            0 means it should carry none.
-          </p>
-        </Field>
-
-        {isEdit && stockLevel?.catalog_item_id && (
-          <PrintQrSection stockLevel={stockLevel} />
-        )}
-
-        {isEdit && stockLevel?.catalog_item_id && (
-          <ReturnSection stockLevel={stockLevel} onClose={onClose} />
-        )}
-
-        {error && <ErrorBanner message={error} />}
-      </div>
-
-      <Footer>
-        {isEdit && (
-          <button
-            type="button"
-            onClick={handleDelete}
-            disabled={isPending}
-            className="text-sm px-3 py-2 text-red-600 hover:text-red-800 disabled:opacity-50 mr-auto"
-          >
-            Delete
-          </button>
-        )}
-        <button
-          type="button"
-          onClick={onClose}
-          className="text-sm px-4 py-2 text-slate-600 hover:text-slate-900"
-        >
-          Cancel
-        </button>
-        <button
-          type="button"
-          onClick={handleSave}
-          disabled={!canSave}
-          className="text-sm px-4 py-2 rounded-md bg-amber-500 hover:bg-amber-600 disabled:bg-slate-300 disabled:cursor-not-allowed text-white font-medium"
-        >
-          {isPending ? 'Saving…' : isEdit ? 'Save changes' : 'Add stock'}
-        </button>
-      </Footer>
-
-      {showNewProduct && (
-        <CatalogItemQuickCreate
-          defaultName={catalogQuery}
-          defaultInitialQty={qtyOnHand}
-          initialDefaultBinId={binId}
-          initialDefaultPickedBin={pickedBin}
-          onClose={() => setShowNewProduct(false)}
-          onCreated={(item) => {
-            // Auto-select the freshly-created product. Stash on a local
-            // state so we can render its name without waiting for the
-            // catalog list refetch.
-            setJustCreatedItem(item)
-            setCatalogItemId(item.id)
-            setCatalogQuery("")
-            setShowPicker(false)
-            // If QuickCreate set a default bin and we don't already have
-            // bin/location filled in the parent, inherit them. Saves the
-            // user from picking the same bin twice when "+ New product"
-            // didn't write stock (e.g. qty was 0).
-            if (item.default_bin && !binId) {
-              setLocationId(item.default_bin.location_id)
-              setBinId(item.default_bin.id)
-              const fromAll = allBins.find((b) => b.id === item.default_bin!.id)
-              if (fromAll) setPickedBin(fromAll)
-            }
-          }}
-          onStockCreated={() => {
-            // QuickCreate already wrote the stock — close this whole
-            // "+ Add stock" modal so the user doesn't accidentally create
-            // a second stock_levels row by hitting Save here.
-            onClose()
-          }}
-        />
-      )}
-      {showBinPicker && (
-        <BinTreePicker
-          isOpen={true}
-          onClose={() => setShowBinPicker(false)}
-          allowNoBin={true}
-          defaultLocationId={locationId}
-          title="Stock bin"
-          highlightItemId={catalogItemId || undefined}
-          onPick={(bin) => {
-            setPickedBin(bin)
-            setBinId(bin?.id ?? "")
-            // If the picked bin's location is different from current, update.
-            if (bin && bin.location_id !== locationId) {
-              setLocationId(bin.location_id)
-            }
-          }}
-        />
-      )}
-      {editingCatalogItemId && editingItemQuery.data && (
-        <ProductCatalogEditModal
-          item={editingItemQuery.data}
-          onClose={() => setEditingCatalogItemId(null)}
-        />
-      )}
     </ModalShell>
   )
 }

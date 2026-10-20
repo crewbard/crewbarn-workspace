@@ -59,7 +59,7 @@ export function RecordPaymentModal({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-      <div className="bg-white rounded-xl shadow-xl max-w-md w-full p-5">
+      <div data-tour="take-payment" className="bg-white rounded-xl shadow-xl max-w-md w-full p-5">
         <h2 className="text-base font-semibold text-navy-900 mb-3">
           {/* Not "mark paid": the amount is editable and part payments are
               normal, so the old title described only one of the two outcomes. */}
@@ -67,7 +67,7 @@ export function RecordPaymentModal({
         </h2>
 
         <div className="space-y-3 text-sm">
-          <label className="block">
+          <label className="block" data-tour="take-payment-amount">
             <span className="block text-xs font-medium text-slate-600 mb-1">
               Amount received
             </span>
@@ -83,7 +83,7 @@ export function RecordPaymentModal({
             </span>
           </label>
 
-          <label className="block">
+          <label className="block" data-tour="take-payment-method">
             <span className="block text-xs font-medium text-slate-600 mb-1">
               Payment method
             </span>
@@ -101,7 +101,7 @@ export function RecordPaymentModal({
             </select>
           </label>
 
-          <label className="block">
+          <label className="block" data-tour="take-payment-reference">
             <span className="block text-xs font-medium text-slate-600 mb-1">
               Reference (check #, txn id, etc.)
             </span>
@@ -114,7 +114,7 @@ export function RecordPaymentModal({
             />
           </label>
 
-          <label className="block">
+          <label className="block" data-tour="take-payment-date">
             <span className="block text-xs font-medium text-slate-600 mb-1">
               Date received
             </span>
@@ -136,6 +136,7 @@ export function RecordPaymentModal({
         <div className="mt-5 flex items-center justify-end gap-2">
           <button
             type="button"
+            data-tour="take-payment-cancel"
             onClick={onClose}
             className="text-sm px-3 py-1.5 rounded text-slate-600 hover:bg-slate-100"
           >
@@ -143,6 +144,7 @@ export function RecordPaymentModal({
           </button>
           <button
             type="button"
+            data-tour="take-payment-save"
             disabled={save.isPending || !amount}
             onClick={() => save.mutate()}
             className="text-sm px-4 py-1.5 rounded bg-emerald-600 hover:bg-emerald-700 text-white font-semibold disabled:opacity-50"

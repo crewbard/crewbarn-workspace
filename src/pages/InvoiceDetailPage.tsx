@@ -7,5 +7,5 @@ export default function InvoiceDetailPage() {
   const { id = '' } = useParams<{ id: string }>()
   const { theme } = useTheme()
 
-  return <InvoiceDetail invoiceId={id} presentation={theme === 'easy-side' || theme === 'easy-top' ? 'easy' : 'standard'} />
+  return <InvoiceDetail invoiceId={id} presentation={theme === 'focus' ? 'focus' : theme === 'easy-side' || theme === 'easy-top' ? 'easy' : 'standard'} />
 }

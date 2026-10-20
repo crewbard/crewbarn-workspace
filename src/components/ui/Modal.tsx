@@ -27,6 +27,9 @@ interface ModalProps {
   disableBackdropClose?: boolean
   /** Disable Escape-to-close. */
   disableEscapeClose?: boolean
+  /** No header bar: the title is still the dialog's accessible name. For
+   *  short centred notices (NotAuthorizedOverlay) that carry their own heading. */
+  hideHeader?: boolean
   children: ReactNode
 }
 
@@ -49,6 +52,7 @@ export function Modal({
   size = 'md',
   disableBackdropClose = false,
   disableEscapeClose = false,
+  hideHeader = false,
   children,
 }: ModalProps) {
   const dialogRef = useRef<HTMLDivElement>(null)
@@ -120,7 +124,8 @@ export function Modal({
       className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4"
       role="dialog"
       aria-modal="true"
-      aria-labelledby="modal-title"
+      aria-labelledby={hideHeader ? undefined : 'modal-title'}
+      aria-label={hideHeader ? title : undefined}
     >
       {/* Backdrop */}
       <div
@@ -140,7 +145,7 @@ export function Modal({
         className={`relative w-full ${SIZE_CLASS[size]} max-h-[95vh] sm:max-h-[90vh] flex flex-col bg-white rounded-t-2xl sm:rounded-lg shadow-2xl outline-none`}
       >
         {/* Header */}
-        <div data-work-dialog-header className="px-4 sm:px-6 py-3 sm:py-4 border-b border-slate-200 flex items-start justify-between gap-4">
+        {!hideHeader && <div data-work-dialog-header className="px-4 sm:px-6 py-3 sm:py-4 border-b border-slate-200 flex items-start justify-between gap-4">
           <div className="min-w-0 flex-1">
             <h2 id="modal-title" className="text-lg font-semibold text-slate-900 truncate">
               {title}
@@ -168,7 +173,7 @@ export function Modal({
               />
             </svg>
           </button>
-        </div>
+        </div>}
 
         {children}
       </div>

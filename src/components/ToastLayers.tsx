@@ -1,6 +1,7 @@
 import { createPortal } from 'react-dom'
 import { IncomingCallToasts } from '@/components/IncomingCallToasts'
 import { IntakeToasts } from '@/components/IntakeToasts'
+import { LateRiskToasts } from '@/components/LateRiskToasts'
 import { MessageToasts } from '@/components/MessageToasts'
 import { PaymentToasts } from '@/components/PaymentToasts'
 import { ReviewToasts } from '@/components/ReviewToasts'
@@ -30,6 +31,7 @@ export function ToastLayers() {
         <MessageToasts />
         <IncomingCallToasts />
         <IntakeToasts />
+        <LateRiskToasts />
         <PaymentToasts />
         <ReviewToasts />
       </NotificationStack>

@@ -5,7 +5,10 @@ import { useSearchParams } from 'react-router-dom'
 import { useFormDrafts, newDraftId, type FormDraft } from '@/hooks/useFormDrafts'
 import { TimeField } from '@/components/TimeField'
 import { useQuery } from '@tanstack/react-query'
+import { JobTasksEditor } from '@/components/jobTasks/JobTasksEditor'
+import { jobTaskKeys, listTaskGroups, useCanEditJobTasks, withGroup, type JobTaskDraft } from '@/lib/jobTasks'
 import { apiRequest } from '@/lib/api'
+import { continueAfterFailedConflictCheck } from '@/lib/conflictCheck'
 import type { Customer, CustomerServiceLocation } from '@/types/customer'
 import type {
   WorkOrder,
@@ -28,7 +31,7 @@ import { WorkOrderLineItemEditorBuffered } from '@/components/WorkOrderLineItemE
 import { CustomerAssetsPickerModal } from '@/components/CustomerAssetsPickerModal'
 import { EstimateLineItemEditorBuffered } from '@/components/EstimateLineItemEditorBuffered'
 import { useAssets } from '@/hooks/useAssets'
-import type { EstimateLineItemDraft } from '@/types/estimateLineItem'
+import type { EstimateLineItemDraft, EstimateOptionDraft } from '@/types/estimateLineItem'
 import { CustomFieldsSection, type CustomValues } from '@/components/CustomFieldsSection'
 import { CreateFormPdfPicker, type ExtractedContent } from '@/components/workorders/CreateFormPdfPicker'
 import {
@@ -38,6 +41,7 @@ import {
 import type { AiIntakeDraft } from '@/lib/comms'
 import { Modal } from '@/components/ui/Modal'
 import { SavedDraftPanel } from '@/components/forms/SavedDraftPanel'
+import { useTheme } from '@/hooks/useTheme'
 
 /**
  * WorkOrderForm — create + edit work orders.
@@ -77,6 +81,10 @@ export interface EstimateCreateFromFormInput {
   contract_template_id: string | null
   covered_asset_ids: string[]
   line_drafts: EstimateLineItemDraft[]
+  /** Good / better / best tiers built on the form; their lines carry option_key. */
+  option_drafts?: EstimateOptionDraft[]
+  /** Its tasks (the office's), carried to the job when it converts. */
+  job_tasks?: JobTaskDraft[]
 }
 // (Repeated property guard removed.)
 
@@ -106,7 +114,11 @@ interface WorkOrderFormProps {
   /** Full-page create mode uses the two-column workspace; guided mode stays single-column. */
   layout?: 'stacked' | 'workspace'
   guidedMode?: boolean
+  /** Request the active line editor to open the PDF book, including in guided mode. */
+  pdfPickerRequest?: number
   onGuidedModeChange?: (guided: boolean) => void
+  /** Focus owns its layout preference; other themes may adopt the tenant's default. */
+  allowTenantGuidedDefault?: boolean
   /** AI-parsed call/text intake draft used to prefill a dispatcher-reviewed create form. */
   aiIntakeDraft?: AiIntakeDraft | null
   /**
@@ -148,6 +160,8 @@ interface FormState {
   covered_asset_ids: string[]
   /** Estimate-only: line item drafts (buffered until estimate saves). */
   line_drafts: EstimateLineItemDraft[]
+  /** Estimate-only: good / better / best tiers, buffered the same way. */
+  option_drafts?: EstimateOptionDraft[]
 
   // Section 1
   title: string
@@ -186,6 +200,8 @@ interface FormState {
   // Section 3
   is_scheduled: boolean
   is_multi_day: boolean
+  is_selected_days: boolean
+  planned_days: Array<{ id?: string; date: string; start_time: string; end_time: string }>
   scheduled_date: string
   scheduled_end_date: string
   scheduled_start_time: string
@@ -204,6 +220,14 @@ interface FormState {
   // Section 5 — inspection scope (optional). System slugs like
   // 'nfpa-80-annual' for the NFPA standards; tenant-owned ids for customs.
   inspection_checklist_id: string | null
+
+  // Job tasks: the steps of the work, set by the office. Every one is
+  // ticked off on the phone before the job can be completed.
+  job_tasks: JobTaskDraft[]
+
+  // A lead (status Lead): when the tech must have called the customer by,
+  // as a datetime-local value. '' = no call-by time.
+  lead_call_by: string
 }
 
 const PRIORITIES: WorkOrderPriority[] = ['low', 'normal', 'urgent', 'emergency']
@@ -337,6 +361,22 @@ function isoToLocalDate(iso: string | null | undefined): string {
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`
 }
 
+/** Render a stored instant in the job location's timezone, not this browser's. */
+function plannedSessionParts(iso: string, timezone?: string | null): { date: string; time: string } {
+  const instant = new Date(iso)
+  if (Number.isNaN(instant.getTime())) return { date: '', time: '' }
+  try {
+    const parts = new Intl.DateTimeFormat('en-US', {
+      timeZone: timezone || 'UTC', year: 'numeric', month: '2-digit', day: '2-digit',
+      hour: '2-digit', minute: '2-digit', hourCycle: 'h23',
+    }).formatToParts(instant)
+    const value = (type: string) => parts.find((part) => part.type === type)?.value ?? ''
+    return { date: `${value('year')}-${value('month')}-${value('day')}`, time: `${value('hour')}:${value('minute')}` }
+  } catch {
+    return { date: isoToLocalDate(iso), time: '00:00' }
+  }
+}
+
 /** True when a job's end lands on a later local day than its start. */
 function isMultiDaySchedule(startAt?: string | null, endAt?: string | null): boolean {
   const s = isoToLocalDate(startAt)
@@ -434,6 +474,8 @@ function buildInitialState(
       // Estimates aren't auto-scheduled.
       is_scheduled: initialKind === 'job',
       is_multi_day: false,
+      is_selected_days: false,
+      planned_days: [],
       scheduled_date: initialKind === 'job' ? todayLocalDate() : '',
       scheduled_end_date: '',
       scheduled_start_time: initialKind === 'job' ? nowLocalTime() : '',
@@ -443,6 +485,8 @@ function buildInitialState(
       public_notes: '',
       contract_template_id: '',
       inspection_checklist_id: null,
+      job_tasks: [],
+      lead_call_by: '',
     }
   }
   const initialLocation = findInitialLocation(
@@ -474,7 +518,13 @@ function buildInitialState(
     crew_id: initialData.crew_id ?? null,
     crew_member_account_ids: initialData.crew_members?.map((member) => member.id) ?? [],
     is_scheduled: initialData.schedule.is_scheduled,
-    is_multi_day: isMultiDaySchedule(initialData.schedule.start_at, initialData.schedule.end_at),
+    is_multi_day: !(initialData.schedule.planned_sessions?.length) && isMultiDaySchedule(initialData.schedule.start_at, initialData.schedule.end_at),
+    is_selected_days: !!initialData.schedule.planned_sessions?.length,
+    planned_days: (initialData.schedule.planned_sessions ?? []).map((session) => {
+      const start = plannedSessionParts(session.scheduled_start_at, initialData.schedule.timezone)
+      const end = plannedSessionParts(session.scheduled_end_at, initialData.schedule.timezone)
+      return { id: session.id, date: start.date, start_time: start.time, end_time: end.time }
+    }),
     scheduled_date: initialData.schedule.date ?? '',
     scheduled_end_date: isMultiDaySchedule(initialData.schedule.start_at, initialData.schedule.end_at)
       ? isoToLocalDate(initialData.schedule.end_at)
@@ -489,6 +539,10 @@ function buildInitialState(
     public_notes: initialData.public_notes ?? '',
     contract_template_id: (initialData as { contract_template_id?: string | null }).contract_template_id ?? '',
     inspection_checklist_id: initialData.inspection_checklist_id ?? null,
+    // Edited on the job itself (its Job tasks tab), not here.
+    job_tasks: [],
+    // Set on the job itself (the lead card on Overview).
+    lead_call_by: '',
   }
 }
 
@@ -501,7 +555,9 @@ export function WorkOrderForm({
   lockKind = false,
   layout = 'stacked',
   guidedMode: controlledGuidedMode,
+  pdfPickerRequest = 0,
   onGuidedModeChange,
+  allowTenantGuidedDefault = true,
   aiIntakeDraft = null,
   templatePdf,
   onTemplatePdfChange,
@@ -513,6 +569,7 @@ export function WorkOrderForm({
   submitting = false,
   serverErrors = {},
 }: WorkOrderFormProps) {
+  const { theme } = useTheme()
   const [form, setForm] = useState<FormState>(() => {
     const base = buildInitialState(initialData, initialServiceCustomer, initialBillingCustomer)
     return { ...base, kind: initialKind }
@@ -538,6 +595,19 @@ export function WorkOrderForm({
   const autoDefaultJobTypeIdRef = useRef<string | null>(null)
   const jobTypeWasManuallySelectedRef = useRef(false)
   const statusWasManuallySelectedRef = useRef(false)
+  // Once somebody edits the tasks, a job type's default group no longer
+  // replaces them.
+  const jobTasksTouchedRef = useRef(false)
+  // Whether the tasks there now came from a job type's group, not a person
+  // (or a restored draft), so changing the type may swap them.
+  const jobTasksFromGroupRef = useRef(false)
+  const canEditJobTasks = useCanEditJobTasks()
+  const taskGroupsQuery = useQuery({
+    queryKey: jobTaskKeys.groups,
+    queryFn: listTaskGroups,
+    enabled: canEditJobTasks && mode === 'create',
+    staleTime: 60_000,
+  })
 
   // Tenant chooses the default workflow. A dispatcher can override it on this
   // device without changing the tenant-wide setting.
@@ -554,6 +624,9 @@ export function WorkOrderForm({
   })
   const guidedMode = controlledGuidedMode ?? internalGuidedMode
   const [step, setStep] = useState(0)
+  const [pendingPdfPickerRequest, setPendingPdfPickerRequest] = useState<number | null>(null)
+  const guidedStepHeadingRef = useRef<HTMLDivElement | null>(null)
+  const guidedContextRef = useRef<HTMLElement | null>(null)
   const [activeSetupPanel, setActiveSetupPanel] = useState<JobSetupPanel>(null)
 
   const workspaceLayout = mode === 'create' && !guidedMode && layout === 'workspace'
@@ -579,12 +652,47 @@ export function WorkOrderForm({
   // plus Line items step. Both kinds get Assets — repair work usually
   // targets a specific tracked asset.
   // Optional setup tools live with Job Basics; the final step is for notes and tenant fields.
+  const focusGuidedNavigation = theme === 'focus' && mode === 'create' && guidedMode
+  const splitFocusJobSchedule = focusGuidedNavigation && form.kind === 'job'
   const STEPS = form.kind === 'estimate'
     ? (['Customer', 'Basics', 'Assets', 'Line items', 'Notes'] as const)
-    : (['Customer', 'Job basics', 'Assets', 'Notes'] as const)
+    : splitFocusJobSchedule
+      ? (['Customer', 'Work', 'Schedule', 'Catalog & lines', 'Files & proof', 'Review'] as const)
+      : (['Customer', 'Job basics', 'Assets', 'Notes'] as const)
   const lastStep = STEPS.length - 1
   const currentStepName: string = STEPS[step] ?? ''
   const onLastStep = step >= lastStep
+
+  useEffect(() => {
+    if (!pdfPickerRequest || mode !== 'create') return
+    let cancelled = false
+    // The request originates in the page header; schedule its form transition
+    // after this commit so guided step changes cannot cascade in the effect.
+    queueMicrotask(() => {
+      if (cancelled) return
+      setPendingPdfPickerRequest(pdfPickerRequest)
+      if (guidedMode) {
+        const lineStep = STEPS.findIndex((name) => name === 'Line items' || name === 'Catalog & lines' || name === 'Assets')
+        if (lineStep >= 0) setStep(lineStep)
+      }
+    })
+    return () => { cancelled = true }
+  // A new request selects the correct step; later form edits must not reopen the book.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pdfPickerRequest])
+
+  function moveGuidedStep(nextStep: number) {
+    setStep(Math.max(0, Math.min(lastStep, nextStep)))
+    if (focusGuidedNavigation) {
+      requestAnimationFrame(() => {
+        const target = guidedContextRef.current ?? guidedStepHeadingRef.current
+        target?.scrollIntoView({
+          behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'instant' : 'smooth',
+          block: 'start',
+        })
+      })
+    }
+  }
 
   // ---------- Picker data ----------
   const jobTypesQuery = useJobTypes({ active: true, per_page: 100 })
@@ -603,10 +711,10 @@ export function WorkOrderForm({
   const intake = intakeQuery.data?.data ?? {}
 
   useEffect(() => {
-    if (mode !== 'create' || !intakeQuery.isSuccess || hasGuidedModeOverride.current) return
+    if (mode !== 'create' || !allowTenantGuidedDefault || !intakeQuery.isSuccess || hasGuidedModeOverride.current) return
     setInternalGuidedMode(!!intake.guided_default)
     onGuidedModeChange?.(!!intake.guided_default)
-  }, [intake.guided_default, intakeQuery.isSuccess, mode])
+  }, [allowTenantGuidedDefault, intake.guided_default, intakeQuery.isSuccess, mode])
 
   // ---------- Enrich service customer with full detail (includes service_locations) ----------
   // The /v1/customers list endpoint returns "skinny" customer objects without
@@ -679,9 +787,50 @@ export function WorkOrderForm({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [form.job_type_id, form.is_scheduled, form.status_id, jobStatuses.length, jobTypes.length])
 
+  // ---------- Job type default duration (create mode, jobs only) ----------
+  // When the picked job type carries a default duration, fill Duration (min)
+  // — and slide an untouched end time to match — unless the user already
+  // typed their own duration. Re-applies when the type changes.
+  const autoDurationRef = useRef<string | null>(null)
+  useEffect(() => {
+    if (mode !== 'create' || form.kind !== 'job') return
+    const picked = jobTypes.find((t) => t.id === form.job_type_id)
+    const minutes = picked?.default_duration_minutes ?? 0
+    if (!minutes || minutes <= 0) return
+    const current = form.estimated_duration_minutes
+    if (current && current !== autoDurationRef.current) return
+    const nextDuration = String(minutes)
+    if (current === nextDuration) return
+    autoDurationRef.current = nextDuration
+    const start = form.scheduled_start_time
+    const endUntouched = !form.scheduled_end_time
+      || form.scheduled_end_time === addHours(start, 2)
+      || (current ? form.scheduled_end_time === addMinutes(start, parseInt(current, 10) || 0) : false)
+    update({
+      estimated_duration_minutes: nextDuration,
+      ...(start && endUntouched ? { scheduled_end_time: addMinutes(start, minutes) } : {}),
+    })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [form.job_type_id, form.kind, jobTypes.length])
+
   function update(patch: Partial<FormState>) {
     setForm((prev) => ({ ...prev, ...patch }))
   }
+
+  // The chosen status is the company's Lead status: a call to make, not a visit.
+  const selectedIsLead = jobStatuses.find((js) => js.id === form.status_id)?.slug === 'lead'
+
+  // A job type's task group starts a new job's tasks, until somebody edits
+  // them by hand.
+  useEffect(() => {
+    if (mode !== 'create' || !canEditJobTasks || jobTasksTouchedRef.current) return
+    const group = (taskGroupsQuery.data ?? []).find((g) => g.job_type_id && g.job_type_id === form.job_type_id)
+    setForm((prev) => {
+      if (prev.job_tasks.length > 0 && !jobTasksFromGroupRef.current) return prev
+      jobTasksFromGroupRef.current = !!group
+      return { ...prev, job_tasks: group ? withGroup([], group) : [] }
+    })
+  }, [form.job_type_id, taskGroupsQuery.data, canEditJobTasks, mode])
 
   async function applyExtractedCustomerDocument(extracted: ExtractedContent): Promise<string> {
     const workOrderNumber = extracted.wo_number?.trim() ?? ''
@@ -1042,6 +1191,20 @@ export function WorkOrderForm({
     if (!aiIntakeDraft.matched_customer_id && !form.service_customer && hasAiCustomerSeed(customer, location)) {
       setIsQuickAddCustomerOpen(true)
     }
+    // Billed to the dealer: when exactly one of the shop's customers is that
+    // dealer by name, it becomes the billing customer (still shown, and
+    // changeable, under the billing override). No match, or more than one,
+    // and it stays a note for the office to pick, as before.
+    const dealerName = aiText(dealer, 'name')
+    if (aiText(billing, 'bill_to').toLowerCase() === 'dealer' && dealerName !== '' && !form.billing_customer) {
+      void listCustomers({ q: dealerName, active: true })
+        .then((res) => {
+          const wanted = dealerName.toLowerCase()
+          const same = (res.data ?? []).filter((c) => c.display_name.trim().toLowerCase() === wanted)
+          if (same.length === 1) update({ has_billing_override: true, billing_customer: same[0] })
+        })
+        .catch(() => undefined)
+    }
     setAppliedAiDraftId(aiIntakeDraft.id)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [aiIntakeDraft?.id, appliedAiDraftId, mode])
@@ -1070,10 +1233,25 @@ export function WorkOrderForm({
     if (current.has_billing_override && !current.billing_customer) {
       errs.billing_customer_id = 'Pick a billing customer or turn off the override'
     }
-    if (current.is_scheduled && !current.scheduled_date) {
+    if (current.is_scheduled && !current.is_selected_days && !current.scheduled_date) {
       errs.scheduled_date = 'Date is required when scheduled'
     }
-    if (current.is_scheduled && current.is_multi_day) {
+    if (current.is_scheduled && current.is_selected_days) {
+      if (current.planned_days.length === 0) {
+        errs.planned_days = 'Add at least one workday'
+      } else if (current.planned_days.length > 100) {
+        errs.planned_days = 'A job can have at most 100 planned workdays'
+      } else {
+        const seen = new Set<string>()
+        current.planned_days.forEach((day, index) => {
+          if (!day.date || !day.start_time || !day.end_time) errs.planned_days = `Complete the date and times for workday ${index + 1}`
+          else if (day.end_time <= day.start_time) errs.planned_days = `Workday ${index + 1} must end after it starts`
+          else if (seen.has(day.date)) errs.planned_days = 'Each workday needs a different date'
+          seen.add(day.date)
+        })
+      }
+    }
+    if (current.is_scheduled && current.is_multi_day && !current.is_selected_days) {
       if (!current.scheduled_end_date) {
         errs.scheduled_end_date = 'End date is required for a multi-day job'
       } else if (current.scheduled_date && current.scheduled_end_date < current.scheduled_date) {
@@ -1085,7 +1263,7 @@ export function WorkOrderForm({
     if (current.kind === 'estimate' && intake.estimate_location && !current.service_location_id) {
       errs.service_location_id = 'Service location is required'
     }
-    if (intake.schedule && (!current.is_scheduled || !current.scheduled_date)) {
+    if (intake.schedule && (!current.is_scheduled || (!current.is_selected_days && !current.scheduled_date))) {
       errs.scheduled_date = 'A scheduled date is required'
     }
     if (current.kind === 'job' && intake.lead_tech && !current.lead_tech_account_id && !current.crew_id && current.crew_member_account_ids.length === 0) {
@@ -1147,10 +1325,10 @@ export function WorkOrderForm({
         `Save this ${current.kind} anyway?`,
       ]
       return window.confirm(lines.join('\n'))
-    } catch {
-      // If this user cannot view staff-wide PTO, do not block the save. Schedule page
-      // and manager screens still enforce the warning for dispatch users.
-      return true
+    } catch (error) {
+      // Someone who can't see staff time off (403) saves as before; any other
+      // failure asks, rather than looking like "no conflicts".
+      return continueAfterFailedConflictCheck(error, 'tech time off')
     }
   }
 
@@ -1165,9 +1343,11 @@ export function WorkOrderForm({
         return 'Pick a service location before continuing.'
       }
     }
-    if (currentStepName === 'Job basics' || currentStepName === 'Basics') {
+    if (currentStepName === 'Job basics' || currentStepName === 'Work' || currentStepName === 'Basics') {
       if (!current.title.trim()) return 'Title is required.'
       if (!current.job_type_id) return 'Job type is required.'
+    }
+    if (currentStepName === 'Schedule' || (!splitFocusJobSchedule && (currentStepName === 'Job basics' || currentStepName === 'Basics'))) {
       if (intake.schedule && (!current.is_scheduled || !current.scheduled_date)) {
         return 'Schedule is required.'
       }
@@ -1193,7 +1373,7 @@ export function WorkOrderForm({
       return
     }
     setClientErrors({})
-    setStep((s) => Math.min(lastStep, s + 1))
+    moveGuidedStep(step + 1)
   }
 
   // ---------- Submit ----------
@@ -1223,6 +1403,9 @@ export function WorkOrderForm({
     const okToSchedule = await confirmLeadTechTimeOff(effectiveForm)
     if (!okToSchedule) return
 
+    const firstPlannedDay = effectiveForm.is_scheduled && effectiveForm.is_selected_days
+      ? [...effectiveForm.planned_days].sort((a, b) => `${a.date}${a.start_time}`.localeCompare(`${b.date}${b.start_time}`))[0]
+      : null
     const input: WorkOrderInput = {
       title: effectiveForm.title.trim(),
       job_type_id: effectiveForm.job_type_id,
@@ -1245,25 +1428,36 @@ export function WorkOrderForm({
       their_po_number: effectiveForm.their_po_number.trim() || null,
 
       is_scheduled: effectiveForm.is_scheduled,
-      scheduled_date: effectiveForm.is_scheduled ? effectiveForm.scheduled_date || null : null,
+      scheduled_date: effectiveForm.is_scheduled ? (firstPlannedDay?.date ?? effectiveForm.scheduled_date) || null : null,
       scheduled_start_time: effectiveForm.is_scheduled
-        ? effectiveForm.scheduled_start_time || null
+        ? (firstPlannedDay?.start_time ?? effectiveForm.scheduled_start_time) || null
         : null,
       scheduled_end_time: effectiveForm.is_scheduled
-        ? effectiveForm.scheduled_end_time || null
+        ? (firstPlannedDay?.end_time ?? effectiveForm.scheduled_end_time) || null
         : null,
       // Multi-day jobs: send explicit timestamps so the end lands on the END
       // date (not collapsed onto scheduled_date). The backend saving hook
       // prefers scheduled_start_at/scheduled_end_at when present. Omit for
       // single-day so its date+time composition is unchanged.
       scheduled_start_at:
-        effectiveForm.is_scheduled && effectiveForm.is_multi_day
+        !effectiveForm.is_scheduled && initialData?.schedule.planned_sessions?.length
+          ? null
+          : effectiveForm.is_scheduled && !effectiveForm.is_selected_days && (effectiveForm.is_multi_day || !!initialData?.schedule.planned_sessions?.length)
           ? combineToIso(effectiveForm.scheduled_date, effectiveForm.scheduled_start_time)
           : undefined,
       scheduled_end_at:
-        effectiveForm.is_scheduled && effectiveForm.is_multi_day
-          ? combineToIso(effectiveForm.scheduled_end_date, effectiveForm.scheduled_end_time)
+        !effectiveForm.is_scheduled && initialData?.schedule.planned_sessions?.length
+          ? null
+          : effectiveForm.is_scheduled && !effectiveForm.is_selected_days && (effectiveForm.is_multi_day || !!initialData?.schedule.planned_sessions?.length)
+          ? combineToIso(effectiveForm.is_multi_day ? effectiveForm.scheduled_end_date : effectiveForm.scheduled_date, effectiveForm.scheduled_end_time)
           : undefined,
+      planned_sessions: effectiveForm.is_scheduled && effectiveForm.is_selected_days
+        ? effectiveForm.planned_days.map((day) => ({
+            ...(day.id ? { id: day.id } : {}),
+            scheduled_start_at: combineToIso(day.date, day.start_time)!,
+            scheduled_end_at: combineToIso(day.date, day.end_time)!,
+          }))
+        : initialData?.schedule.planned_sessions?.length ? [] : undefined,
       estimated_duration_minutes:
         effectiveForm.is_scheduled && effectiveForm.estimated_duration_minutes
           ? parseInt(effectiveForm.estimated_duration_minutes, 10) || null
@@ -1273,6 +1467,12 @@ export function WorkOrderForm({
       public_notes: effectiveForm.public_notes.trim() || null,
       contract_template_id: effectiveForm.contract_template_id || null,
       inspection_checklist_id: effectiveForm.inspection_checklist_id,
+      ...(mode === 'create' && canEditJobTasks && effectiveForm.job_tasks.length > 0
+        ? { job_tasks: effectiveForm.job_tasks.filter((t) => t.title.trim()) }
+        : {}),
+      ...(mode === 'create' && selectedIsLead && effectiveForm.lead_call_by
+        ? { lead_call_by: new Date(effectiveForm.lead_call_by).toISOString() }
+        : {}),
     }
 
     // Estimate branch: re-shape the form payload into the estimate POST
@@ -1305,6 +1505,7 @@ export function WorkOrderForm({
         priority: effectiveForm.priority,
         covered_asset_ids: effectiveForm.covered_asset_ids,
         line_drafts: effectiveForm.line_drafts,
+        option_drafts: effectiveForm.option_drafts ?? [],
         scheduled_start_at: startIso,
         scheduled_end_at: endIso,
         estimated_duration_minutes:
@@ -1316,6 +1517,7 @@ export function WorkOrderForm({
         internal_notes: effectiveForm.internal_notes.trim() || null,
         customer_notes: effectiveForm.public_notes.trim() || null,
         contract_template_id: effectiveForm.contract_template_id || null,
+        job_tasks: canEditJobTasks ? effectiveForm.job_tasks.filter((t) => t.title.trim()) : [],
       }
       await onSubmitEstimate(estInput)
       return
@@ -1395,9 +1597,11 @@ export function WorkOrderForm({
           className="inline-flex w-fit rounded-lg border border-slate-300 bg-slate-100 p-1"
           role="group"
           aria-label="Schedule mode"
+          data-tour="job-schedule-mode"
         >
           <button
             type="button"
+            data-tour="job-schedule-scheduled"
             aria-pressed={form.is_scheduled}
             onClick={() => {
               const defaults = defaultScheduleValues()
@@ -1419,6 +1623,7 @@ export function WorkOrderForm({
           </button>
           <button
             type="button"
+            data-tour="job-schedule-unscheduled"
             aria-pressed={!form.is_scheduled}
             onClick={() => update({ is_scheduled: false })}
             className={`rounded-md px-3 py-1.5 text-sm font-semibold transition-colors ${
@@ -1436,7 +1641,7 @@ export function WorkOrderForm({
         <input
           type="checkbox"
           checked={form.is_multi_day}
-          disabled={!form.is_scheduled}
+          disabled={!form.is_scheduled || form.is_selected_days}
           onChange={(e) => {
             const checked = e.target.checked
             update({
@@ -1453,6 +1658,60 @@ export function WorkOrderForm({
         <span className="font-medium">Multi-day job</span>
         <span className="text-slate-500">(spans a start and end date)</span>
       </label>
+
+      {form.kind === 'job' && (
+        <label className="flex items-center gap-2 pt-1 text-sm">
+          <input
+            type="checkbox"
+            checked={form.is_selected_days}
+            disabled={!form.is_scheduled}
+            onChange={(e) => update({
+              is_selected_days: e.target.checked,
+              is_multi_day: e.target.checked ? false : form.is_multi_day,
+              planned_days: e.target.checked && form.planned_days.length === 0
+                ? [{ date: form.scheduled_date || todayLocalDate(), start_time: form.scheduled_start_time || '09:00', end_time: form.scheduled_end_time || '10:00' }]
+                : form.planned_days,
+            })}
+            className="rounded border-slate-300 text-amber-600 focus:ring-amber-500 disabled:cursor-not-allowed"
+          />
+          <span className="font-medium">Choose specific workdays</span>
+          <span className="text-slate-500">(skip days off without blocking the calendar)</span>
+        </label>
+      )}
+
+      {form.is_selected_days && form.is_scheduled ? (
+        <div className="space-y-2 pt-2">
+          {form.planned_days.map((day, index) => (
+            <div key={day.id ?? `new-${index}`} className="grid gap-2 rounded-lg border border-slate-200 bg-slate-50 p-3 sm:grid-cols-[minmax(150px,1fr)_minmax(110px,0.6fr)_minmax(110px,0.6fr)_auto] sm:items-end">
+              <Field label={`Workday ${index + 1}`} required>
+                <input type="date" value={day.date} className={inputClass()}
+                  onChange={(e) => update({ planned_days: form.planned_days.map((item, i) => i === index ? { ...item, date: e.target.value } : item) })} />
+              </Field>
+              <Field label="Start" required>
+                <input type="time" value={day.start_time} className={inputClass()}
+                  onChange={(e) => update({ planned_days: form.planned_days.map((item, i) => i === index ? { ...item, start_time: e.target.value } : item) })} />
+              </Field>
+              <Field label="End" required>
+                <input type="time" value={day.end_time} className={inputClass()}
+                  onChange={(e) => update({ planned_days: form.planned_days.map((item, i) => i === index ? { ...item, end_time: e.target.value } : item) })} />
+              </Field>
+              <button type="button" disabled={form.planned_days.length === 1}
+                onClick={() => update({ planned_days: form.planned_days.filter((_, i) => i !== index) })}
+                className="rounded-md border border-slate-300 px-3 py-2 text-sm text-slate-700 disabled:opacity-40">Remove</button>
+            </div>
+          ))}
+          {fieldError('planned_days') && <p className="text-sm text-red-600" role="alert">{fieldError('planned_days')}</p>}
+          <button type="button" disabled={form.planned_days.length >= 100} onClick={() => {
+            const last = form.planned_days[form.planned_days.length - 1]
+            const next = last?.date ? new Date(`${last.date}T12:00:00`) : null
+            if (next) next.setDate(next.getDate() + 1)
+            update({ planned_days: [...form.planned_days, {
+              date: next ? `${next.getFullYear()}-${String(next.getMonth() + 1).padStart(2, '0')}-${String(next.getDate()).padStart(2, '0')}` : '',
+              start_time: last?.start_time || '09:00', end_time: last?.end_time || '10:00',
+            }] })
+          }} className="rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-sm font-semibold text-amber-900 disabled:opacity-40">+ Add workday</button>
+        </div>
+      ) : (
 
       <div
         className={`grid grid-cols-1 gap-4 pt-2 md:grid-cols-4 ${
@@ -1500,14 +1759,18 @@ export function WorkOrderForm({
             value={form.scheduled_start_time}
             disabled={!form.is_scheduled}
             onChange={(newStart) => {
-              const oldExpectedEnd = addHours(form.scheduled_start_time, 2)
+              // Slide an untouched end time: the window is the Duration
+              // (e.g. a job type's default) or the 2-hour default.
+              const windowMin = parseInt(form.estimated_duration_minutes, 10) || 120
+              const oldExpectedEnd = addMinutes(form.scheduled_start_time, windowMin)
               const shouldSlideEnd =
                 !form.scheduled_end_time ||
-                form.scheduled_end_time === oldExpectedEnd
+                form.scheduled_end_time === oldExpectedEnd ||
+                form.scheduled_end_time === addHours(form.scheduled_start_time, 2)
               update({
                 scheduled_start_time: newStart,
                 scheduled_end_time: shouldSlideEnd
-                  ? addHours(newStart, 2)
+                  ? addMinutes(newStart, windowMin)
                   : form.scheduled_end_time,
               })
             }}
@@ -1534,6 +1797,7 @@ export function WorkOrderForm({
           />
         </Field>
       </div>
+      )}
     </div>
   )
   const renderScheduleSection = () => (
@@ -1567,9 +1831,9 @@ export function WorkOrderForm({
   )
   // ---------- Render ----------
   return (
-    <form onSubmit={handleSubmit} className={formShellClass}>
+    <form onSubmit={handleSubmit} className={formShellClass} data-focus-form-grid={workspaceLayout ? form.kind : undefined}>
       {mode === 'create' && !workspaceLayout && otherDrafts.length > 0 && (
-        <div className={`${fullSpanClass} mb-3 rounded-lg border border-slate-300 bg-slate-50 px-4 py-3 text-sm`}>
+        <div data-tour="job-drafts" className={`${fullSpanClass} mb-3 rounded-lg border border-slate-300 bg-slate-50 px-4 py-3 text-sm`}>
           <div className="font-semibold text-slate-800 mb-1.5">
             Unsaved draft{otherDrafts.length === 1 ? '' : 's'} — pick up where you left off
           </div>
@@ -1599,7 +1863,7 @@ export function WorkOrderForm({
         </div>
       )}
       {mode === 'create' && aiIntakeDraft && (
-        <div className={`${fullSpanClass} mb-4 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-slate-700`}>
+        <div data-tour="job-ai-draft" className={`${fullSpanClass} mb-4 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-slate-700`}>
           <div className="flex flex-wrap items-center gap-2">
             <span className="font-semibold text-slate-900">AI draft from transcript</span>
             {aiIntakeDraft.classification && (
@@ -1639,7 +1903,7 @@ export function WorkOrderForm({
           operates on a fixed record. Hidden when the route already
           commits to a kind (e.g. /estimates/new uses lockKind). */}
       {mode === 'create' && !lockKind && (
-        <div className={`${fullSpanClass} mb-0 rounded-lg border border-slate-200 bg-white px-3 py-2 shadow-sm`}>
+        <div data-tour="job-record-type" className={`${fullSpanClass} mb-0 rounded-lg border border-slate-200 bg-white px-3 py-2 shadow-sm`}>
           <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
             <div className="flex flex-wrap items-center gap-3">
               <span className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-400">Record type</span>
@@ -1650,6 +1914,8 @@ export function WorkOrderForm({
                     <button
                       key={k}
                       type="button"
+                      data-tour={`job-kind-${k}`}
+                      aria-pressed={active}
                       onClick={() => {
                         update({ kind: k })
                         setStep(0)
@@ -1672,6 +1938,7 @@ export function WorkOrderForm({
                 })}
                 <button
                   type="button"
+                  data-tour="job-kind-sub"
                   onClick={() => {
                     const next = new URLSearchParams(searchParams)
                     next.set('kind', 'sub')
@@ -1693,22 +1960,81 @@ export function WorkOrderForm({
         </div>
       )}
 
+      {focusGuidedNavigation && form.kind === 'estimate' && (
+        <section ref={guidedContextRef} data-focus-quote-context aria-label="Current estimate" className="mb-4 grid scroll-mt-24 gap-2 rounded-xl border border-slate-200 bg-white p-3 sm:grid-cols-2 xl:grid-cols-4">
+          <div className="min-w-0 rounded-lg bg-slate-50 px-3 py-2">
+            <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Customer</div>
+            <div className="truncate text-sm font-semibold text-slate-900">{form.service_customer?.display_name || 'Choose a customer'}</div>
+          </div>
+          <div className="min-w-0 rounded-lg bg-slate-50 px-3 py-2">
+            <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Service location</div>
+            <div className="truncate text-sm font-semibold text-slate-900">{form.selected_location ? locationLabel(form.selected_location) : intake.estimate_location ? 'Required by your shop' : 'Optional for a phone quote'}</div>
+          </div>
+          <div className="min-w-0 rounded-lg bg-slate-50 px-3 py-2">
+            <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Quote format</div>
+            <div className="truncate text-sm font-semibold text-slate-900">{form.option_drafts?.length ? `${form.option_drafts.length} customer choices` : 'Single-price draft'}</div>
+          </div>
+          <div className="min-w-0 rounded-lg bg-slate-50 px-3 py-2">
+            <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Scope</div>
+            <div className="truncate text-sm font-semibold text-slate-900">{form.line_drafts.length} line{form.line_drafts.length === 1 ? '' : 's'} added</div>
+          </div>
+        </section>
+      )}
+      {splitFocusJobSchedule && (
+        <section ref={guidedContextRef} data-focus-job-context aria-label="Current job" className="mb-4 grid scroll-mt-24 gap-2 rounded-xl border border-slate-200 bg-white p-3 sm:grid-cols-2 xl:grid-cols-4">
+          <div className="min-w-0 rounded-lg bg-slate-50 px-3 py-2">
+            <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Customer</div>
+            <div className="truncate text-sm font-semibold text-slate-900">{form.service_customer?.display_name || 'Choose a customer'}</div>
+          </div>
+          <div className="min-w-0 rounded-lg bg-slate-50 px-3 py-2">
+            <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Work</div>
+            <div className="truncate text-sm font-semibold text-slate-900">{form.title || 'Describe the work'}</div>
+          </div>
+          <div className="min-w-0 rounded-lg bg-slate-50 px-3 py-2">
+            <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Visit</div>
+            <div className="truncate text-sm font-semibold text-slate-900">{form.is_scheduled && form.scheduled_date ? form.scheduled_date : 'Unscheduled'}</div>
+          </div>
+          <div className="min-w-0 rounded-lg bg-slate-50 px-3 py-2">
+            <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Team</div>
+            <div className="truncate text-sm font-semibold text-slate-900">{form.lead_tech_account_id ? 'Lead tech selected' : form.crew_id || form.crew_member_account_ids.length ? 'Crew selected' : 'No team selected'}</div>
+          </div>
+        </section>
+      )}
+
       {guidedMode && (
-        <div className="mb-4">
+        <div ref={guidedStepHeadingRef} className="mb-4 scroll-mt-24">
           <div className="flex items-center justify-between mb-2">
             <div className="text-sm font-semibold text-slate-900">
               Step {step + 1} of {STEPS.length}: {STEPS[step]}
             </div>
             <div className="text-xs text-slate-500">{Math.round(((step + 1) / STEPS.length) * 100)}%</div>
           </div>
-          <div className="flex gap-1">
-            {STEPS.map((_, i) => (
-              <div
-                key={i}
-                className={`flex-1 h-1.5 rounded-full ${i <= step ? 'bg-amber-500' : 'bg-slate-200'}`}
-              />
-            ))}
-          </div>
+          {focusGuidedNavigation ? (
+            <nav aria-label="Create form steps" className="flex gap-2 overflow-x-auto pb-1">
+              {STEPS.map((name, i) => (
+                <button
+                  key={name}
+                  type="button"
+                  aria-current={i === step ? 'step' : undefined}
+                  disabled={i >= step || submitting}
+                  onClick={() => moveGuidedStep(i)}
+                  className={`min-w-28 flex-1 rounded-lg border px-3 py-2 text-left text-xs font-semibold transition-colors disabled:cursor-default ${i === step ? 'border-amber-500 bg-amber-50 text-amber-900' : i < step ? 'border-slate-300 bg-white text-slate-700 hover:border-amber-500 hover:text-amber-800' : 'border-slate-200 bg-slate-50 text-slate-400'}`}
+                >
+                  <span className="block text-[10px] uppercase tracking-wide">Step {i + 1}</span>
+                  {name}
+                </button>
+              ))}
+            </nav>
+          ) : (
+            <div className="flex gap-1">
+              {STEPS.map((_, i) => (
+                <div
+                  key={i}
+                  className={`flex-1 h-1.5 rounded-full ${i <= step ? 'bg-amber-500' : 'bg-slate-200'}`}
+                />
+              ))}
+            </div>
+          )}
         </div>
       )}
 
@@ -1727,6 +2053,7 @@ export function WorkOrderForm({
 
       {workspaceLayout && (
         <div className={rightRailClass}>
+          <div data-tour="job-drafts">
           <SavedDraftPanel
             drafts={otherDrafts}
             selected={selectedSavedDraft}
@@ -1751,7 +2078,7 @@ export function WorkOrderForm({
               setSelectedSavedDraft(null)
               setSelectedDraftCustomer(null)
             }}
-            useLabel={(draft) => draft.data.kind === 'estimate' ? 'Create estimate from draft' : 'Create job from draft'}
+            useLabel={(draft) => draft.data.kind === 'estimate' ? 'Continue this estimate draft' : 'Continue this job draft'}
             reviewContent={(draft) => {
               if (draft.data.service_customer) {
                 return (
@@ -1804,6 +2131,7 @@ export function WorkOrderForm({
               { label: 'Internal notes', value: draft.data.internal_notes, wide: true },
             ]}
           />
+          </div>
           <div data-tour="job-schedule">
             {renderScheduleSection()}
           </div>
@@ -1828,7 +2156,7 @@ export function WorkOrderForm({
           Customer first — it's the very first thing dispatch asks for
           when answering the phone. Title / type / schedule come after. */}
       {(!guidedMode || step === 0) && (
-      <div data-tour={form.kind === 'estimate' ? 'estimate-customer' : 'job-customer'} className={leftTopClass}>
+      <div data-tour={`${form.kind}-customer`} className={leftTopClass}>
       <FormSection title="Customer & Location" allowOverflow>
         <Field
           label="Service Customer"
@@ -1848,6 +2176,7 @@ export function WorkOrderForm({
             {mode === 'create' && !form.service_customer && !isQuickAddCustomerOpen && (
               <button
                 type="button"
+                data-tour="job-new-customer"
                 onClick={() => setIsQuickAddCustomerOpen(true)}
                 className="text-sm font-medium px-3 py-2 rounded-md border border-amber-500 text-amber-700 hover:bg-amber-50 whitespace-nowrap"
               >
@@ -1963,7 +2292,7 @@ export function WorkOrderForm({
         )}
 
         {/* Billing override */}
-        <div className="border-t border-slate-200 pt-4">
+        <div data-tour="job-bill-other" className="border-t border-slate-200 pt-4">
           <label className="flex items-center gap-2 text-sm">
             <input
               type="checkbox"
@@ -2026,11 +2355,18 @@ export function WorkOrderForm({
       )}
 
       {/* ---------- Section 2: Job Basics ---------- */}
-      {(!guidedMode || step === 1) && (
+      {(!guidedMode || step === 1 || (splitFocusJobSchedule && currentStepName === 'Files & proof')) && (
       <div className={leftMidClass}>
-      {mode === 'create' && (
+      {splitFocusJobSchedule && currentStepName === 'Files & proof' && (
+        <div className="mb-4 rounded-lg border border-slate-200 bg-white px-4 py-3">
+          <h2 className="text-base font-semibold text-slate-900">Files & proof</h2>
+          <p className="mt-1 text-sm text-slate-600">Add the customer’s work order, site photos, a signable document, or an inspection checklist when this job needs them.</p>
+        </div>
+      )}
+      {mode === 'create' && (!splitFocusJobSchedule || currentStepName === 'Files & proof') && (
         <>
           <div
+            data-tour="job-setup-tools"
             role="toolbar"
             aria-label="Additional job setup"
             className="mb-4 grid grid-cols-2 gap-2 overflow-visible rounded-lg border border-slate-300 bg-slate-200 p-2 shadow-inner md:grid-cols-4"
@@ -2038,6 +2374,7 @@ export function WorkOrderForm({
             <IntakeSetupTab
               icon={<IconSignature size={18} />}
               label="Signable document"
+              tour="job-setup-signable"
               status={form.contract_template_id ? 'Selected' : 'Optional'}
               description="Choose a signable template or generate one with AI. The customer signs it during the configured job or estimate workflow."
               active={activeSetupPanel === 'signable'}
@@ -2049,6 +2386,7 @@ export function WorkOrderForm({
             <IntakeSetupTab
               icon={<IconFileInvoice size={18} />}
               label="Customer's WO / PO"
+              tour="job-setup-customer-pdf"
               status={templatePdf?.name ?? 'No PDF'}
               description="Upload the customer's work order or purchase order PDF. CBI reads it for customer, scope, priority, dates, and reference numbers."
               active={activeSetupPanel === 'customer-pdf'}
@@ -2059,6 +2397,7 @@ export function WorkOrderForm({
             <IntakeSetupTab
               icon={<IconPaperclip size={18} />}
               label="Photos & Documents"
+              tour="job-setup-attachments"
               status={(attachments?.length ?? 0) > 0 ? `${attachments?.length} ready` : 'None yet'}
               description="Add job photos, PDFs, and supporting documents. Preview each file and choose whether the customer can see it in the portal."
               active={activeSetupPanel === 'attachments'}
@@ -2069,6 +2408,7 @@ export function WorkOrderForm({
             <IntakeSetupTab
               icon={<IconChecklist size={18} />}
               label="Inspection Scope"
+              tour="job-setup-inspection"
               status={form.inspection_checklist_id ? 'Checklist attached' : 'Optional'}
               description="Attach a tenant inspection checklist that defines the field questions, required checks, and completion scope for this job."
               active={activeSetupPanel === 'inspection'}
@@ -2088,7 +2428,7 @@ export function WorkOrderForm({
           >
             <Modal.Body>{renderContractSection()}</Modal.Body>
             <Modal.Footer>
-              <button type="button" onClick={() => setActiveSetupPanel(null)} className="rounded-md bg-slate-950 px-4 py-2 text-sm font-semibold text-white">Done</button>
+              <button type="button" data-tour="job-signable-done" onClick={() => setActiveSetupPanel(null)} className="rounded-md bg-slate-950 px-4 py-2 text-sm font-semibold text-white">Done</button>
             </Modal.Footer>
           </Modal>
 
@@ -2137,7 +2477,8 @@ export function WorkOrderForm({
           </Modal>
         </>
       )}
-      <div className="mb-4">
+      {(!splitFocusJobSchedule || currentStepName === 'Work') && (<>
+      <div data-tour="job-custom-required" className="mb-4">
         <FormSection title="Required custom fields">
           <CustomFieldsSection
             requirement="required"
@@ -2149,19 +2490,20 @@ export function WorkOrderForm({
           />
         </FormSection>
       </div>
+      <div data-tour="job-basics">
       <FormSection title="Job Basics">
-        <Field label="Title" required error={fieldError('title')}>
+        <Field label="Title" required error={fieldError('title')} tour="job-title">
           <input
             type="text"
             value={form.title}
             onChange={(e) => update({ title: e.target.value })}
-            placeholder="e.g., Annual fire door inspection"
+            placeholder="e.g., Annual service visit"
             className={inputClass(fieldError('title'))}
           />
         </Field>
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <Field label="Job Type" required error={fieldError('job_type_id')}>
+          <Field label="Job Type" required error={fieldError('job_type_id')} tour="job-type">
             <select
               value={form.job_type_id}
               onChange={(e) => {
@@ -2184,7 +2526,7 @@ export function WorkOrderForm({
           </Field>
 
           {form.kind === 'job' && (
-            <Field label="Status" required error={fieldError('status_id')}>
+            <Field label="Status" required error={fieldError('status_id')} tour="job-status">
               <select
                 value={form.status_id}
                 onChange={(e) => {
@@ -2206,7 +2548,7 @@ export function WorkOrderForm({
             </Field>
           )}
 
-          <Field label="Priority">
+          <Field label="Priority" tour="job-priority">
             <select
               value={form.priority}
               onChange={(e) => update({ priority: e.target.value as WorkOrderPriority })}
@@ -2221,7 +2563,22 @@ export function WorkOrderForm({
           </Field>
         </div>
 
-        <Field label="Description">
+        {form.kind === 'job' && mode === 'create' && selectedIsLead && (
+          <Field label="Call the customer by" tour="job-lead-call-by">
+            <p className="mb-2 text-xs text-slate-500">
+              A lead is a call to make, not a visit, so running-late calls and reminders don&rsquo;t apply. If the lead tech
+              hasn&rsquo;t called five minutes after this time, CrewBarn calls them, and Schedule flashes if it&rsquo;s still not done.
+            </p>
+            <input
+              type="datetime-local"
+              value={form.lead_call_by}
+              onChange={(e) => update({ lead_call_by: e.target.value })}
+              className={inputClass()}
+            />
+          </Field>
+        )}
+
+        <Field label="Description" tour="job-description">
           <AutoTextarea
             value={form.description}
             onChange={(e) => update({ description: e.target.value })}
@@ -2231,7 +2588,22 @@ export function WorkOrderForm({
           />
         </Field>
 
-        {!workspaceLayout && (
+        {mode === 'create' && canEditJobTasks && (
+          <Field label="Job tasks" tour="job-tasks">
+            <p className="mb-2 text-xs text-slate-500">
+              The steps of the work, ticked off on the phone. Tick Photo or video where the tech must show it was done.
+            </p>
+            <JobTasksEditor
+              value={form.job_tasks}
+              onChange={(job_tasks) => {
+                jobTasksTouchedRef.current = true
+                update({ job_tasks })
+              }}
+            />
+          </Field>
+        )}
+
+        {!workspaceLayout && !splitFocusJobSchedule && (
           <div className="mt-5 space-y-5 border-t border-slate-200 pt-5" data-tour="job-dispatch">
             <div>
               <h3 className="text-sm font-semibold text-slate-950">Dispatch</h3>
@@ -2255,24 +2627,51 @@ export function WorkOrderForm({
         )}
       </FormSection>
       </div>
+      </>)}
+      </div>
+      )}
+      {splitFocusJobSchedule && currentStepName === 'Schedule' && (
+        <div data-tour="job-dispatch" className={leftMidClass}>
+          <FormSection title="Schedule & assignment">
+            <p className="mb-4 text-sm text-slate-600">
+              Choose who will do the work and when. Leave the job unscheduled if it belongs in the dispatch queue; your shop’s required assignment and schedule rules still apply.
+            </p>
+            <div className="space-y-5">
+              <CrewSection
+                leadTechAccountId={form.lead_tech_account_id}
+                onLeadTechChange={(lead_tech_account_id) => update({ lead_tech_account_id })}
+                projectManagerAccountId={form.project_manager_account_id}
+                onProjectManagerChange={(project_manager_account_id) => update({ project_manager_account_id })}
+                leadTechError={fieldError('lead_tech_account_id')}
+                crewMemberAccountIds={form.crew_member_account_ids}
+                onCrewMemberChange={(crew_member_account_ids) => update({ crew_member_account_ids })}
+                showCrew
+                embedded
+              />
+              {renderScheduleFields()}
+            </div>
+          </FormSection>
+        </div>
       )}
       {/* ---------- Line Items (hidden for Estimate-kind) ----------
           Estimate line items live on the estimate detail page (different
           schema — type: service|product, snapshot semantics). Adding them
           inline here would duplicate that surface. */}
-      {(!guidedMode || currentStepName === 'Assets') && form.kind === 'job' && mode === 'create' && (
+      {(!guidedMode || currentStepName === 'Assets' || (splitFocusJobSchedule && currentStepName === 'Catalog & lines')) && form.kind === 'job' && mode === 'create' && (
         <div data-tour="job-lineitems" className={lineItemsClass}>
         <FormSection
           title="Line Items"
-          collapsible={!workspaceLayout}
-          defaultOpen={workspaceLayout}
+          collapsible={!workspaceLayout && !guidedMode}
+          defaultOpen={workspaceLayout || guidedMode}
           summary={drafts.length > 0 ? `${drafts.length} item${drafts.length === 1 ? '' : 's'}` : 'None yet'}
         >
           <div className="text-xs text-slate-500 mb-2">
             Add line items now or later. They&apos;ll be saved together with the
-            work order.
+            job.
           </div>
           <WorkOrderLineItemEditorBuffered
+            openPdfRequest={pendingPdfPickerRequest}
+            onPdfRequestHandled={() => setPendingPdfPickerRequest(null)}
             drafts={drafts}
             onChange={setDrafts}
             availableAssets={customerAssets
@@ -2295,8 +2694,8 @@ export function WorkOrderForm({
           a specific tracked asset (the AC the company installed, the
           fire extinguisher being inspected, etc.). For estimates, sits
           BEFORE Line items so the per-line asset dropdown is scoped. */}
-      {(!guidedMode || currentStepName === 'Assets') && (
-        <div className={lineItemsClass}>
+      {(!guidedMode || currentStepName === 'Assets' || (splitFocusJobSchedule && currentStepName === 'Catalog & lines')) && (
+        <div data-tour="job-assets" className={lineItemsClass}>
         <FormSection
           title="Covered assets"
           collapsible={!workspaceLayout && !guidedMode}
@@ -2305,6 +2704,7 @@ export function WorkOrderForm({
         >
           {form.service_customer ? (
             <CoveredAssetsSection
+              kind={form.kind}
               customerId={form.service_customer.id}
               selectedIds={form.covered_asset_ids}
               onChange={(ids) => update({ covered_asset_ids: ids })}
@@ -2313,7 +2713,7 @@ export function WorkOrderForm({
             <NoCustomerYet
               hint="Assets live on the customer's record — pick one first to see what's available."
               guidedMode={guidedMode}
-              onGoBack={() => setStep(0)}
+              onGoBack={() => moveGuidedStep(0)}
             />
           )}
         </FormSection>
@@ -2330,15 +2730,22 @@ export function WorkOrderForm({
           title="Line items"
           collapsible={!workspaceLayout && !guidedMode}
           defaultOpen={workspaceLayout}
-          summary={form.line_drafts.length > 0 ? `${form.line_drafts.length} item${form.line_drafts.length === 1 ? '' : 's'}` : 'None yet'}
+          summary={(form.option_drafts?.length ?? 0) > 0
+            ? `${form.option_drafts!.length} tiers`
+            : form.line_drafts.length > 0 ? `${form.line_drafts.length} item${form.line_drafts.length === 1 ? '' : 's'}` : 'None yet'}
         >
           <div className="text-xs text-slate-500 mb-2">
-            Add service, product, fee, or discount lines now. Choose a customer
-            when you need to associate a line with one of their tracked assets.
+            {focusGuidedNavigation
+              ? 'Start with one price, or use New tier to offer Good / Better / Best choices. Add catalog products, services, fees, and discounts to each choice. Only the option your customer approves becomes the job scope.'
+              : 'Add service, product, fee, or discount lines now. Choose a customer when you need to associate a line with one of their tracked assets.'}
           </div>
           <EstimateLineItemEditorBuffered
+            openPdfRequest={pendingPdfPickerRequest}
+            onPdfRequestHandled={() => setPendingPdfPickerRequest(null)}
             drafts={form.line_drafts}
             onChange={(d) => update({ line_drafts: d })}
+            options={form.option_drafts ?? []}
+            onTiersChange={({ drafts: d, options }) => update({ line_drafts: d, option_drafts: options })}
             availableAssets={customerAssets
               .filter((a) => form.covered_asset_ids.includes(a.id))
               .map((a) => ({ id: a.id, name: a.name }))}
@@ -2348,9 +2755,34 @@ export function WorkOrderForm({
         </div>
       )}
 
+      {splitFocusJobSchedule && currentStepName === 'Review' && (
+        <section data-focus-job-review aria-label="Review job before creating" className="mb-4 rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+          <h2 className="text-base font-semibold text-slate-950">Review before creating</h2>
+          <p className="mt-1 text-sm text-slate-600">Check the customer, work, visit, and attached setup. The selected starting status and later invoice eligibility follow your shop’s rules; this action does not create an invoice.</p>
+          <dl className="mt-4 grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
+            {[
+              ['Customer', form.service_customer?.display_name || 'Not selected'],
+              ['Service location', form.selected_location ? locationLabel(form.selected_location) : 'Not selected'],
+              ['Work', form.title || 'No title yet'],
+              ['Starting status', jobStatuses.find((status) => status.id === form.status_id)?.name || 'Not selected'],
+              ['Visit', form.is_scheduled && form.scheduled_date ? form.scheduled_date : 'Unscheduled'],
+              ['Team', form.lead_tech_account_id ? 'Lead tech selected' : form.crew_id || form.crew_member_account_ids.length ? 'Crew selected' : 'No team selected'],
+              ['Line items', `${drafts.length} line${drafts.length === 1 ? '' : 's'}`],
+              ['Covered assets', `${form.covered_asset_ids.length} selected`],
+              ['Files & proof', `${(attachments?.length ?? 0) + (templatePdf ? 1 : 0)} file${(attachments?.length ?? 0) + (templatePdf ? 1 : 0) === 1 ? '' : 's'}; ${form.contract_template_id ? 'signable document selected' : 'no signable document'}; ${form.inspection_checklist_id ? 'inspection scope selected' : 'no inspection scope'}`],
+            ].map(([label, value]) => (
+              <div key={label} className="min-w-0 rounded-lg bg-slate-50 px-3 py-2">
+                <dt className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">{label}</dt>
+                <dd className="mt-0.5 break-words text-sm font-medium text-slate-900">{value}</dd>
+              </div>
+            ))}
+          </dl>
+        </section>
+      )}
+
       {/* ---------- Notes ---------- */}
       {(!guidedMode || step === lastStep) && (
-        <div className={bottomLeftClass}>
+        <div data-tour="job-custom-optional" className={bottomLeftClass}>
           <FormSection title="Optional custom fields">
             <CustomFieldsSection
               requirement="optional"
@@ -2364,7 +2796,7 @@ export function WorkOrderForm({
         </div>
       )}
       {(!guidedMode || step === lastStep) && (
-      <div className={bottomLeftClass}>
+      <div data-tour="job-notes" className={bottomLeftClass}>
       <FormSection
         title="Notes"
         collapsible={!workspaceLayout && !guidedMode}
@@ -2403,7 +2835,7 @@ export function WorkOrderForm({
             {step > 0 ? (
               <button
                 type="button"
-                onClick={() => setStep((s) => Math.max(0, s - 1))}
+                onClick={() => moveGuidedStep(step - 1)}
                 disabled={submitting}
                 className="px-4 py-2 text-sm font-medium border border-slate-300 bg-white hover:bg-slate-50 rounded-md disabled:opacity-50"
               >
@@ -2447,7 +2879,7 @@ export function WorkOrderForm({
           {guidedMode && step > 0 && (
             <button
               type="button"
-              onClick={() => setStep((s) => Math.max(0, s - 1))}
+              onClick={() => moveGuidedStep(step - 1)}
               disabled={submitting}
               className="px-4 py-2 text-sm font-medium border border-slate-300 hover:bg-slate-50 rounded-md disabled:opacity-50"
             >
@@ -2459,6 +2891,7 @@ export function WorkOrderForm({
           {onCancel && (
             <button
               type="button"
+              data-tour="job-cancel"
               onClick={onCancel}
               disabled={submitting}
               className="px-4 py-2 text-sm font-medium text-slate-700 hover:text-slate-900 disabled:opacity-50"
@@ -2477,7 +2910,7 @@ export function WorkOrderForm({
           ) : (
             <button
               type="submit"
-              data-tour={form.kind === 'estimate' ? 'estimate-save' : 'job-save'}
+              data-tour={`${form.kind}-save`}
               disabled={submitting}
               className="px-4 py-2 text-sm font-medium bg-amber-600 hover:bg-amber-700 text-white rounded-md disabled:opacity-50"
             >
@@ -2555,7 +2988,10 @@ function CrewMemberMultiPicker({
 
   return (
     <div ref={containerRef} className="block">
-      <span className="block text-xs font-medium text-slate-700 mb-1">Crew helpers (optional)</span>
+      <span className="block text-xs font-medium text-slate-700">Crew helpers (optional)</span>
+      <span className="block text-[11px] text-slate-500 mb-1">
+        Individual extra people on this job — not a saved crew from Staff › Crews.
+      </span>
       {selectedAccounts.length > 0 && (
         <div className="flex flex-wrap gap-2 mb-2">
           {selectedAccounts.map((account) => (
@@ -2650,7 +3086,7 @@ function CrewSection({
   embedded?: boolean
 }) {
   const body = (
-    <div className={compact ? 'px-4 py-3 space-y-3' : 'space-y-4'}>
+    <div data-tour="job-assignment" className={compact ? 'px-4 py-3 space-y-3' : 'space-y-4'}>
       <p className="text-xs text-slate-500">
         Select the lead tech responsible for the {showCrew ? 'job' : 'estimate'}. Add crew helpers when extra hands are assigned.
       </p>
@@ -2920,7 +3356,7 @@ function InspectionChecklistPicker({
       )}
       {!q.isLoading && rows.length === 0 && (
         <p className="text-xs text-slate-500 italic">
-          No checklists configured yet. Run the inspection checklists seeder.
+          No inspection checklists are set up yet.
         </p>
       )}
     </div>
@@ -3030,14 +3466,17 @@ function Field({
   required,
   error,
   children,
+  tour,
 }: {
   label: string
   required?: boolean
   error?: string
   children: React.ReactNode
+  /** Tutorial marker (data-tour) for this field. */
+  tour?: string
 }) {
   return (
-    <div>
+    <div data-tour={tour}>
       <label className="block text-xs font-medium text-slate-700 mb-1">
         {label}
         {required && <span className="text-red-600 ml-0.5">*</span>}
@@ -3110,10 +3549,12 @@ function defaultScheduleValues() {
  * for phone-in quotes where there's no walkthrough.
  */
 function CoveredAssetsSection({
+  kind,
   customerId,
   selectedIds,
   onChange,
 }: {
+  kind: WorkOrderFormKind
   customerId: string
   selectedIds: string[]
   onChange: (ids: string[]) => void
@@ -3127,8 +3568,9 @@ function CoveredAssetsSection({
   return (
     <div className="space-y-2">
       <p className="text-xs text-slate-600">
-        Pick which assets this estimate covers. Optional — skip when the estimate is
-        a phone-in for one-off work that doesn&apos;t tie back to a specific asset.
+        {kind === 'estimate'
+          ? 'Pick which assets this estimate covers. Optional — skip when the estimate is a phone-in for one-off work that doesn\u2019t tie back to a specific asset.'
+          : 'Pick which assets this job covers. Optional — skip it for one-off work that doesn\u2019t tie back to a specific asset.'}
       </p>
       {selected.length === 0 ? (
         <div className="text-sm text-slate-400 italic">No assets selected.</div>
@@ -3223,6 +3665,7 @@ function NoCustomerYet({
 function IntakeSetupTab({
   icon,
   label,
+  tour,
   status,
   description,
   active,
@@ -3234,6 +3677,8 @@ function IntakeSetupTab({
 }: {
   icon: ReactNode
   label: string
+  /** Tutorial marker (data-tour) for the tab button. */
+  tour?: string
   status: string
   description: string
   active: boolean
@@ -3267,6 +3712,7 @@ function IntakeSetupTab({
       <button
         type="button"
         aria-haspopup="dialog"
+        data-tour={tour}
         onClick={onClick}
         className={`flex h-full min-h-20 w-full items-center gap-3 rounded-md border px-3 py-2.5 text-left shadow-sm transition-all ${
           active
@@ -3408,11 +3854,12 @@ function ContractFormSection({
       : 'Customer signs it on the field tech’s phone before check-in.'
 
   return (
-    <section className={variant === 'workspace' ? 'bg-white border border-slate-200 rounded-lg shadow-sm mb-0 overflow-hidden' : 'bg-white border border-slate-200 rounded-xl p-4 mb-4'}>
+    <section data-tour="job-signable-section" className={variant === 'workspace' ? 'bg-white border border-slate-200 rounded-lg shadow-sm mb-0 overflow-hidden' : 'bg-white border border-slate-200 rounded-xl p-4 mb-4'}>
       <div className={variant === 'workspace' ? 'flex items-center justify-between gap-3 border-b border-slate-200 bg-slate-50 px-4 py-2.5' : 'flex items-center justify-between gap-3 mb-3'}>
         <h3 className="text-base font-semibold text-slate-900">Signable document</h3>
         <button
           type="button"
+          data-tour="job-signable-ai"
           onClick={() => setAiOpen(true)}
           className="text-xs font-semibold border border-sky-300 text-sky-700 hover:bg-sky-50 rounded px-2 py-1 inline-flex items-center gap-1"
           title="Describe the scope; AI drafts a contract + saves it to Templates & Forms"

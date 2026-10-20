@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useSeedOnboardingInventoryStock } from '@/hooks/useOnboarding'
+import { usePoOverrideGate } from '@/hooks/usePoOverride'
+import { PoOverrideBox } from '@/components/inventory/PoOverrideBox'
 import { SeedField, SeedPicker } from '@/components/onboarding/steps/SeedPicker'
 import { seedIntelligenceLabel, type StepProps } from '@/components/onboarding/steps/shared'
 
@@ -59,6 +61,8 @@ export function StarterStockStep({ complete, onGateSaved, onboarding, saving }: 
   }, [stockRecommendationKey, stockRecommendations])
 
   const stockSaving = saving || seedInventoryStock.isPending
+  // Starter stock is stock coming in: with PO-only already on it needs the override.
+  const override = usePoOverrideGate(stockDrafts.some((d) => d.selected && Number(d.quantity) > 0))
 
   function updateStockDraft(index: number, patch: Partial<OnboardingStockDraft>) {
     setStockDrafts((current) =>
@@ -81,19 +85,23 @@ export function StarterStockStep({ complete, onGateSaved, onboarding, saving }: 
       }))
 
     if (items.length === 0) {
-      setStockError('Nothing is ticked. Tick at least one, or use Skip for now at the bottom — stock can wait.')
+      setStockError('Nothing is ticked. Tick at least one, or skip this step for now — stock can wait.')
       return
     }
 
+    if (!override.ready) {
+      setStockError('Your shop requires purchase orders for stock. Fill in the override below, or set the quantities to 0.')
+      return
+    }
     setStockError(null)
-    seedInventoryStock.mutate(items, {
+    seedInventoryStock.mutate({ items, override: override.body }, {
       onSuccess: () => onGateSaved?.(),
       onError: (err) => setStockError(err instanceof Error ? err.message : String(err)),
     })
   }
 
   return (
-    <div className="space-y-5">
+    <div className="space-y-5" data-guide="stock-picker" data-tour="onboarding-stock">
       {complete && (
         <p className="rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-sm leading-relaxed text-emerald-900">
           <span className="font-bold">Saved.</span> It is all in Inventory now, where you can count it properly later.
@@ -136,6 +144,7 @@ export function StarterStockStep({ complete, onGateSaved, onboarding, saving }: 
         )}
       />
 
+      <PoOverrideBox gate={override} what="starter stock" />
       {stockError && (
         <p className="rounded-lg border border-rose-200 bg-rose-50 p-3 text-sm leading-relaxed text-rose-800">
           {stockError}
@@ -146,6 +155,7 @@ export function StarterStockStep({ complete, onGateSaved, onboarding, saving }: 
         <button
           type="button"
           onClick={saveInventoryStock}
+          data-tour="onboarding-stock-save"
           disabled={stockSaving}
           className="rounded-lg bg-amber-500 px-5 py-3 text-base font-bold text-white hover:bg-amber-600 disabled:bg-slate-200 disabled:text-slate-500"
         >

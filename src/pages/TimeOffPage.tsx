@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useLocation } from 'react-router-dom'
 import { apiRequest } from '@/lib/api'
+import { continueAfterFailedConflictCheck } from '@/lib/conflictCheck'
 import { Modal } from '@/components/ui/Modal'
 import { PERM, usePermissions } from '@/hooks/usePermissions'
 
@@ -63,6 +64,11 @@ const STATUS_META: Record<
   cancelled: { label: 'Cancelled', chip: 'bg-slate-50 text-slate-700 border-slate-200', dot: 'bg-slate-400' },
 }
 
+/** "jury" → "Jury" for display; the stored value stays lowercase. */
+function typeLabel(type: string): string {
+  return type ? type.charAt(0).toUpperCase() + type.slice(1) : type
+}
+
 function fmtDate(iso: string | null): string {
   if (!iso) return '-'
   const d = new Date(iso + 'T00:00:00')
@@ -113,11 +119,15 @@ const EMPTY_FORM: Form = {
   reason: '',
 }
 
-export function TimeOffPage() {
+/**
+ * `personal` forces "only my own requests" (used by the /me portal), the same
+ * as opening /my-time-off, even for office users who can see the team queue.
+ */
+export function TimeOffPage({ personal = false }: { personal?: boolean } = {}) {
   const qc = useQueryClient()
   const permissions = usePermissions()
   const location = useLocation()
-  const personalMode = location.pathname === '/my-time-off'
+  const personalMode = personal || location.pathname === '/my-time-off'
   const canViewAll = !personalMode && permissions.has(PERM.STAFF_VIEW)
   const canDecide = !personalMode && permissions.has(PERM.STAFF_EDIT)
   const [statusFilter, setStatusFilter] = useState<'all' | TimeOffRow['status']>('all')
@@ -185,7 +195,7 @@ export function TimeOffPage() {
 
   return (
     <div className="max-w-[1080px] mx-auto px-4 sm:px-6 py-8">
-      <div className="mb-6 flex flex-wrap items-start justify-between gap-4">
+      <div data-tour="time-off-header" data-view={canViewAll ? 'team' : 'mine'} className="mb-6 flex flex-wrap items-start justify-between gap-4">
         <div>
           <p className="text-xs uppercase tracking-[0.18em] font-bold text-amber-600 mb-2">
             {canViewAll ? 'Team schedule' : 'My schedule'}
@@ -198,6 +208,7 @@ export function TimeOffPage() {
           </p>
         </div>
         <button
+          data-tour="time-off-new"
           type="button"
           onClick={() => setCreateOpen(true)}
           className="text-sm px-4 py-2 rounded-md bg-amber-500 hover:bg-amber-600 text-white font-medium shrink-0"
@@ -206,7 +217,7 @@ export function TimeOffPage() {
         </button>
       </div>
 
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-5">
+      <div data-tour="time-off-counts" className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-5">
         {(['pending', 'approved', 'denied', 'cancelled'] as const).map((s) => {
           const meta = STATUS_META[s]
           return (
@@ -229,7 +240,7 @@ export function TimeOffPage() {
         })}
       </div>
 
-      <div className="mb-4 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+      <div data-tour="time-off-filters" className="mb-4 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
         <div className="flex flex-wrap gap-2">
           {(['all', 'pending', 'approved', 'denied', 'cancelled'] as const).map((s) => (
             <button
@@ -264,7 +275,7 @@ export function TimeOffPage() {
       )}
 
       {!query.isLoading && !query.isError && !permissions.isLoading && sortedRows.length === 0 && (
-        <div className="bg-slate-50 border border-slate-200 rounded-lg p-10 text-center text-sm text-slate-500">
+        <div data-tour="time-off-empty" className="bg-slate-50 border border-slate-200 rounded-lg p-10 text-center text-sm text-slate-500">
           {search.trim()
             ? 'No time-off requests match that search.'
             : statusFilter === 'all'
@@ -273,12 +284,18 @@ export function TimeOffPage() {
         </div>
       )}
 
-      <div className="space-y-3">
+      {(decide.isError || cancelMine.isError || remove.isError) && !decisionRequest && (
+        <p role="alert" className="mb-4 rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">
+          {((decide.error ?? cancelMine.error ?? remove.error) as Error | null)?.message ?? 'That change could not be saved.'}
+        </p>
+      )}
+
+      <div data-tour="time-off-list" className="space-y-3">
         {sortedRows.map((r) => {
           const meta = STATUS_META[r.status]
           const isMine = r.account_id === permissions.accountId
           return (
-            <div key={r.id} className="bg-white border border-slate-200 rounded-lg p-4">
+            <div key={r.id} data-tour="time-off-row" data-status={r.status} className="bg-white border border-slate-200 rounded-lg p-4">
               <div className="flex items-start justify-between gap-4 flex-wrap">
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 flex-wrap">
@@ -295,7 +312,7 @@ export function TimeOffPage() {
                       {meta.label}
                     </span>
                     <span className="text-[10px] text-slate-500 uppercase tracking-wide font-semibold">
-                      {r.type}
+                      {typeLabel(r.type)}
                     </span>
                   </div>
                   <div className="text-sm text-slate-700 mt-2">
@@ -323,7 +340,7 @@ export function TimeOffPage() {
                     </div>
                   )}
                 </div>
-                <div className="flex flex-col gap-2 shrink-0">
+                <div className="flex flex-col gap-2 shrink-0" data-tour="time-off-row-actions">
                   {canDecide && r.status === 'pending' && (
                     <>
                       <button
@@ -347,14 +364,18 @@ export function TimeOffPage() {
                   {canDecide && r.status !== 'pending' && r.status !== 'cancelled' && (
                     <button
                       type="button"
-                      onClick={() => decide.mutate({ id: r.id, status: 'pending' })}
+                      onClick={() => {
+                        if (window.confirm(`Reopen this ${STATUS_META[r.status].label.toLowerCase()} request? It goes back to Pending and needs a new decision.`)) {
+                          decide.mutate({ id: r.id, status: 'pending' })
+                        }
+                      }}
                       disabled={decide.isPending}
                       className="text-xs px-3 py-1.5 rounded-md border border-slate-300 text-slate-700 hover:bg-slate-50 disabled:opacity-50"
                     >
                       Reopen
                     </button>
                   )}
-                  {!canDecide && isMine && r.status === 'pending' && (
+                  {isMine && r.status === 'pending' && (
                     <button
                       type="button"
                       onClick={() => cancelMine.mutate(r.id)}
@@ -461,8 +482,8 @@ function DecisionModal({
         '',
         'Approve the time-off request anyway?',
       ].join('\n'))
-    } catch {
-      return true
+    } catch (error) {
+      return continueAfterFailedConflictCheck(error, 'scheduled work during this time off')
     } finally {
       setCheckingConflicts(false)
     }
@@ -585,6 +606,10 @@ function CreateRequestModal({
       setErrors({ start_date: 'Start and end dates are required' })
       return
     }
+    if (form.end_date < form.start_date) {
+      setErrors({ end_date: 'End date must be on or after the start date' })
+      return
+    }
     if (!form.all_day) {
       if (form.start_date !== form.end_date) {
         setErrors({ end_date: 'Hourly time off must be on one day. Use all day for multi-day requests.' })
@@ -622,7 +647,7 @@ function CreateRequestModal({
         )}
 
         {canManage && (
-          <div>
+          <div data-tour="time-off-form-for">
             <label className="block text-xs font-medium text-slate-700 mb-1">
               For
             </label>
@@ -651,7 +676,7 @@ function CreateRequestModal({
         )}
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          <div>
+          <div data-tour="time-off-form-type">
             <label className="block text-xs font-medium text-slate-700 mb-1">
               Type
             </label>
@@ -663,12 +688,12 @@ function CreateRequestModal({
             >
               {TYPES.map((t) => (
                 <option key={t} value={t}>
-                  {t}
+                  {typeLabel(t)}
                 </option>
               ))}
             </select>
           </div>
-          <label className="flex items-center gap-2 rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-sm font-semibold text-slate-700">
+          <label data-tour="time-off-form-allday" className="flex items-center gap-2 rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-sm font-semibold text-slate-700">
             <input
               type="checkbox"
               checked={form.all_day}
@@ -678,7 +703,7 @@ function CreateRequestModal({
             />
             All day
           </label>
-          <div>
+          <div data-tour="time-off-form-start">
             <label className="block text-xs font-medium text-slate-700 mb-1">Start *</label>
             <input
               type="date"
@@ -691,7 +716,7 @@ function CreateRequestModal({
               <p className="text-[11px] text-red-600 mt-1">{errors.start_date}</p>
             )}
           </div>
-          <div>
+          <div data-tour="time-off-form-end">
             <label className="block text-xs font-medium text-slate-700 mb-1">End *</label>
             <input
               type="date"
@@ -707,7 +732,7 @@ function CreateRequestModal({
         </div>
 
         {!form.all_day && (
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <div data-tour="time-off-form-times" className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <div>
               <label className="block text-xs font-medium text-slate-700 mb-1">Start time *</label>
               <input
@@ -737,7 +762,7 @@ function CreateRequestModal({
           </div>
         )}
 
-        <div>
+        <div data-tour="time-off-form-reason">
           <label className="block text-xs font-medium text-slate-700 mb-1">
             Reason (optional)
           </label>
@@ -752,10 +777,11 @@ function CreateRequestModal({
         </div>
       </Modal.Body>
       <Modal.Footer>
-        <button onClick={onClose} disabled={mutation.isPending} className="px-4 py-2 text-sm">
+        <button data-tour="time-off-form-cancel" onClick={onClose} disabled={mutation.isPending} className="px-4 py-2 text-sm">
           Cancel
         </button>
         <button
+          data-tour="time-off-form-submit"
           onClick={save}
           disabled={mutation.isPending}
           className="px-4 py-2 text-sm rounded-md bg-amber-500 hover:bg-amber-600 text-white font-medium disabled:opacity-50"

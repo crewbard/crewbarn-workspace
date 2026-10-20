@@ -5,6 +5,8 @@ import { apiRequest } from '@/lib/api'
 import { IconChevronLeft, IconPlus, IconTrash } from '@tabler/icons-react'
 import { AgreementTabs, useAgreementTab } from '@/components/contracts/AgreementTabs'
 import { SeasonStrip, rhythmInWords, seasonInWords, type Rhythm } from '@/components/contracts/SeasonStrip'
+import { usePermissions } from '@/hooks/usePermissions'
+import { ConfirmVisitsPanel } from '@/components/contracts/ConfirmVisitsPanel'
 
 /**
  * A contract, its service lines, and the rhythm each line follows.
@@ -62,9 +64,9 @@ const MONTHS = [
   'July', 'August', 'September', 'October', 'November', 'December',
 ]
 
-/** Exact cents, never rounded for display. */
+/** Exact cents, never rounded for display. Same format as the tabs below. */
 const money = (cents: number | null | undefined) =>
-  ((cents ?? 0) / 100).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+  ((cents ?? 0) / 100).toLocaleString(undefined, { style: 'currency', currency: 'USD' })
 
 export default function MaintenanceContractDetailPage() {
   const { id } = useParams<{ id: string }>()
@@ -72,6 +74,9 @@ export default function MaintenanceContractDetailPage() {
   const qc = useQueryClient()
   const [error, setError] = useState<string | null>(null)
   const [tab, setTab] = useAgreementTab()
+  const { has } = usePermissions()
+  // Viewing needs contracts.view; anything that changes the agreement needs contracts.edit.
+  const canEdit = has('contracts.edit')
   // Hooks live above the loading / not-found returns below. Declared
   // beside the action that uses them, they ran only on some renders,
   // which is "rendered more hooks than during the previous render".
@@ -263,16 +268,17 @@ export default function MaintenanceContractDetailPage() {
   }
 
   return (
-    <div className="relative w-full min-w-0 px-4 py-7 sm:px-6">
+    <div data-focus-record="agreement" className="relative w-full min-w-0 px-4 py-7 sm:px-6">
       <button
         type="button"
+        data-tour="contract-back"
         onClick={() => navigate('/maintenance-contracts')}
         className="mb-3 inline-flex items-center gap-1 text-sm font-semibold text-slate-600 hover:text-slate-900"
       >
         <IconChevronLeft size={16} /> All contracts
       </button>
 
-      <div className="flex flex-wrap items-start justify-between gap-4">
+      <div data-tour="contract-header" className="flex flex-wrap items-start justify-between gap-4">
         <div>
           <h1 className="text-2xl font-extrabold tracking-tight text-navy-950">{data.title}</h1>
           <p className="mt-1 text-sm text-slate-600">
@@ -282,12 +288,13 @@ export default function MaintenanceContractDetailPage() {
             {data.billing_interval_count === 1 ? '' : 's'}
           </p>
         </div>
-        <div className="flex items-center gap-2">
-          <span className={`rounded-full px-3 py-1 text-xs font-bold ${shown.tone}`}>{shown.label}</span>
-          {(data.status === 'draft' || data.status === 'pending_signature') && (
+        <div data-tour="contract-actions" className="flex flex-wrap items-center gap-2">
+          <span data-tour="contract-status" data-status={data.status} className={`rounded-full px-3 py-1 text-xs font-bold ${shown.tone}`}>{shown.label}</span>
+          {canEdit && (data.status === 'draft' || data.status === 'pending_signature') && (
             <>
               <button
                 type="button"
+                data-tour="contract-send"
                 onClick={sendForSignature}
                 disabled={sending}
                 className="rounded-lg border border-amber-500 px-3 py-1.5 text-sm font-semibold text-amber-700 hover:bg-amber-50 disabled:opacity-50"
@@ -300,6 +307,7 @@ export default function MaintenanceContractDetailPage() {
               </button>
               <button
                 type="button"
+                data-tour="contract-paper"
                 onClick={markSigned}
                 className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm font-semibold text-slate-700 hover:bg-slate-50"
               >
@@ -307,18 +315,20 @@ export default function MaintenanceContractDetailPage() {
               </button>
             </>
           )}
-          {(data.status === 'draft' || data.status === 'paused') && (
+          {canEdit && (data.status === 'draft' || data.status === 'paused') && (
             <button
               type="button"
+              data-tour="contract-start"
               onClick={() => setStatus('active')}
               className="rounded-lg bg-amber-500 px-3 py-1.5 text-sm font-bold text-white hover:bg-amber-600"
             >
               {data.status === 'draft' ? 'Start it' : 'Pick it back up'}
             </button>
           )}
-          {data.status === 'active' && (
+          {canEdit && data.status === 'active' && (
             <button
               type="button"
+              data-tour="contract-pause"
               onClick={() => setStatus('paused')}
               className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm font-semibold text-slate-700 hover:bg-slate-50"
             >
@@ -341,7 +351,7 @@ export default function MaintenanceContractDetailPage() {
       {/* Said out loud, because a status word on its own does not tell
           anybody that their agreement is booking nothing. */}
       {shown.note && (
-        <p className="mt-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+        <p data-tour="contract-status-note" className="mt-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
           {shown.note}
         </p>
       )}
@@ -349,7 +359,7 @@ export default function MaintenanceContractDetailPage() {
       {/* Renewal is shown here rather than buried in settings, because the
           number it produces is the one the customer will see. */}
       {uplift !== 0 && (
-        <p className="mt-3 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
+        <p data-tour="contract-renewal" className="mt-3 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
           Renews {data.renewal_mode === 'auto' ? 'automatically' : 'after review'} at{' '}
           <strong>{money(data.renewal_amount_cents)}</strong> — {uplift > 0 ? 'up' : 'down'}{' '}
           {Math.abs(uplift)}% from {money(data.billing_amount_cents)}.
@@ -362,6 +372,8 @@ export default function MaintenanceContractDetailPage() {
         </p>
       )}
 
+      <ConfirmVisitsPanel contractId={id!} canEdit={canEdit} serviceNames={serviceNames} locationLabels={locationLabels} />
+
       <AgreementTabs
         contractId={id!}
         tab={tab}
@@ -370,13 +382,13 @@ export default function MaintenanceContractDetailPage() {
         serviceNames={serviceNames}
       />
 
-      <div className="mt-6 flex items-center justify-between">
+      <div data-tour="contract-services" className="mt-6 flex items-center justify-between">
         <h2 className="text-lg font-extrabold tracking-tight text-navy-950">What is covered</h2>
-        <AddServiceButton
+        {canEdit && <AddServiceButton
           jobTypes={jobTypes.data?.data ?? []}
           onAdd={(body) => { setError(null); addService.mutate(body) }}
           busy={addService.isPending}
-        />
+        />}
       </div>
 
       {data.services.length === 0 && (
@@ -392,7 +404,12 @@ export default function MaintenanceContractDetailPage() {
             key={service.id}
             service={service}
             jobTypeName={jobTypes.data?.data.find((t) => t.id === service.job_type_id)?.name}
-            onRemove={() => { setError(null); removeService.mutate(service.id) }}
+            readOnly={!canEdit}
+            onRemove={() => {
+              if (!window.confirm(`Remove "${service.name}" from this agreement? Its rhythms go with it.`)) return
+              setError(null)
+              removeService.mutate(service.id)
+            }}
             onSaveRule={(ruleId, body) => { setError(null); saveRule.mutate({ serviceId: service.id, ruleId, body }) }}
             onRemoveRule={(ruleId) => { setError(null); removeRule.mutate({ serviceId: service.id, ruleId }) }}
             busy={saveRule.isPending || removeRule.isPending}
@@ -420,6 +437,7 @@ function AddServiceButton({
     return (
       <button
         type="button"
+        data-tour="contract-add-service"
         onClick={() => setOpen(true)}
         className="inline-flex items-center gap-1.5 rounded-lg bg-amber-500 px-4 py-2 text-sm font-bold text-white shadow-sm hover:bg-amber-600"
       >
@@ -474,8 +492,10 @@ function ServiceCard({
   onSaveRule,
   onRemoveRule,
   busy,
+  readOnly = false,
 }: {
   service: Service
+  readOnly?: boolean
   jobTypeName?: string
   onRemove: () => void
   onSaveRule: (ruleId: string | undefined, body: Record<string, unknown>) => void
@@ -485,7 +505,7 @@ function ServiceCard({
   const [adding, setAdding] = useState(false)
 
   return (
-    <section className="overflow-hidden rounded-xl border border-slate-200 bg-white">
+    <section data-tour="contract-service-card" className="overflow-hidden rounded-xl border border-slate-200 bg-white">
       <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 px-4 py-3">
         <div>
           <div className="text-sm font-bold text-navy-950">{service.name}</div>
@@ -495,18 +515,18 @@ function ServiceCard({
             {service.rate_cents ? ` · ${money(service.rate_cents)} a visit` : ''}
           </div>
         </div>
-        <button
+        {!readOnly && <button
           type="button"
           onClick={onRemove}
           className="inline-flex items-center gap-1 rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-600 hover:bg-slate-50"
         >
           <IconTrash size={13} /> Remove
-        </button>
+        </button>}
       </div>
 
       <div className="px-4 py-4">
         <div className="text-xs font-bold uppercase tracking-wide text-slate-500">The year</div>
-        <div className="mt-2">
+        <div data-tour="contract-season-strip" className="mt-2">
           <SeasonStrip rhythms={service.rules} />
         </div>
 
@@ -519,11 +539,12 @@ function ServiceCard({
               onSave={(body) => onSaveRule(rule.id, body)}
               onRemove={() => onRemoveRule(rule.id)}
               busy={busy}
+              readOnly={readOnly}
             />
           ))}
         </div>
 
-        {adding ? (
+        {readOnly ? null : adding ? (
           <div className="mt-3 rounded-lg border border-amber-300 bg-amber-50/40 p-3">
             <RuleRow
               rule={{ interval_count: 1, interval_unit: 'week' }}
@@ -537,6 +558,7 @@ function ServiceCard({
         ) : (
           <button
             type="button"
+            data-tour="contract-add-season"
             onClick={() => setAdding(true)}
             className="mt-3 inline-flex items-center gap-1.5 rounded-lg border border-dashed border-slate-300 px-3 py-1.5 text-xs font-bold text-slate-600 hover:border-slate-400"
           >
@@ -562,8 +584,10 @@ function RuleRow({
   onRemove,
   busy,
   isNew = false,
+  readOnly = false,
 }: {
   rule: Rhythm
+  readOnly?: boolean
   canRemove: boolean
   onSave: (body: Record<string, unknown>) => void
   onRemove: () => void
@@ -609,10 +633,13 @@ function RuleRow({
       // harmless -- the comparison is month-then-day and nothing falls
       // between the 30th and the 31st.
       season_end_day: seasonal ? 31 : null,
+      // Same rule as the New agreement page: a season beats the all-year
+      // rhythm where they overlap.
+      priority: seasonal ? 1 : 0,
     })
 
   return (
-    <div className="rounded-lg border border-slate-200 bg-white px-3 py-2.5">
+    <fieldset data-tour="contract-rule" disabled={readOnly} className="min-w-0 rounded-lg border border-slate-200 bg-white px-3 py-2.5">
       <div className="flex flex-wrap items-center gap-2 text-sm">
         <span className="text-slate-500">Every</span>
         <input
@@ -672,7 +699,7 @@ function RuleRow({
       <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
         <span className="text-xs text-slate-500">{preview}</span>
         <span className="flex items-center gap-2">
-          {(dirty || isNew) && (
+          {!readOnly && (dirty || isNew) && (
             <button
               type="button"
               onClick={save}
@@ -682,7 +709,7 @@ function RuleRow({
               {isNew ? 'Add it' : 'Save'}
             </button>
           )}
-          {(canRemove || isNew) && (
+          {!readOnly && (canRemove || isNew) && (
             <button
               type="button"
               onClick={onRemove}
@@ -694,6 +721,6 @@ function RuleRow({
           )}
         </span>
       </div>
-    </div>
+    </fieldset>
   )
 }

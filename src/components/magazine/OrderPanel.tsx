@@ -1,67 +1,66 @@
-import { useEffect, useImperativeHandle, useState, type Ref } from 'react'
+import { useImperativeHandle, useEffect, useRef, useState, type Ref } from 'react'
 import { Link } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   IconChevronDown,
+  IconChevronLeft,
+  IconChevronRight,
   IconChevronUp,
   IconMinus,
   IconPlus,
   IconShoppingCart,
   IconX,
 } from '@tabler/icons-react'
-import { ApiError } from '@/lib/api'
 import { usePermissions, PERM } from '@/hooks/usePermissions'
 import { onConnect } from '@/lib/workspaceScope'
 import {
-  STAGE_LABEL,
-  activeOrderId,
-  addToOrder,
-  changeLine,
-  changeVendor,
   composeCode,
   count,
-  keepAsStock,
-  listDrafts,
-  listVendors,
   lookupParts,
-  makeCatalogItem,
-  markOrdered,
   money,
   poLabel,
   readBuild,
-  readOrder,
-  removeLine,
-  setActiveOrderId,
-  setVendorDiscount,
-  vendorForDocument,
   writeBuild,
   type Build,
-  type CatalogOrder,
   type CatalogPart,
   type EstimateContext,
-  type OrderLine,
   type PartStock,
   type PickedPart,
   type Piece,
 } from '@/lib/catalogOrders'
-
-/** What the book hands the panel: a part off a page, or out of the search. */
-export type OrderPanelHandle = { add: (part: PickedPart) => void }
+import { CART_KEYS, addAsk, askFor, changeAsk, listAsks, removeAsk, type Ask, type NewAsk } from '@/lib/purchaseRequests'
+import { bestHit, type Book, type SearchHit } from './pdfBook'
+import { useBookFind, type FindState } from './useBookFind'
 
 /**
- * The order beside the book.
+ * What the book hands the panel: a part off a page, or out of the search.
+ * `clearFind` takes the cart's search off the page, and says whether there
+ * was one to take off.
+ */
+export type OrderPanelHandle = { add: (part: PickedPart) => void; clearFind: () => boolean }
+
+/** Matches listed under the cart's search box. */
+const FIND_MAX = 50
+
+/** A phone: the cart covers the book, so a match is shown with the cart folded down. */
+const narrow = () => typeof window !== 'undefined' && window.innerWidth < 640
+
+/**
+ * The parts cart beside the book.
  *
- * A real draft purchase order, started by the first part put on it. It
- * stays while the pages turn and folds down to a bar to read past it.
- * Every line shows what the shop already has of it, so nobody orders
- * five of what is on the van.
+ * Nobody picks a supplier here. A part off the page goes in the cart; the
+ * buyer sees every cart's parts together on Order parts, chooses who each
+ * comes from (or splits it between suppliers) and makes the purchase
+ * orders. The same part asked for twice is one line with more of it.
+ * The cart stays while the pages turn and folds down to a bar.
  *
- * Opened from an estimate, it is that estimate's order: the part goes on
- * the estimate at its sell price and on the order only as far as the
- * shelves cannot cover it, and the order waits for the customer.
+ * Opened from an estimate, it is that estimate's cart: the part can go on
+ * the estimate at its sell price, and in the cart only as far as the
+ * shelves cannot cover it. Its order waits for the customer's answer.
  */
 export function OrderPanel({
   ref,
+  book,
   documentId,
   estimate,
   minimized,
@@ -70,8 +69,11 @@ export function OrderPanel({
   onMinimize,
   onClose,
   onGoToPage,
+  onFound,
 }: {
   ref?: Ref<OrderPanelHandle>
+  /** The book open beside the cart: what is typed is looked for in it too. */
+  book: Book
   documentId: string
   estimate?: EstimateContext
   minimized: boolean
@@ -81,27 +83,19 @@ export function OrderPanel({
   onMinimize: (minimized: boolean) => void
   onClose: () => void
   onGoToPage: (page: number) => void
+  /** Light up what the search found, with one of them open; `jump` turns to its page. */
+  onFound: (hits: SearchHit[], active: number | null, jump: boolean) => void
 }) {
   const qc = useQueryClient()
   const { has } = usePermissions()
-
-  /*
-   * The order on screen. Undefined until somebody picks one: then it is
-   * the stock order this browser was building, or the estimate's draft to
-   * this catalogue's vendor. Null is "a new order", chosen on purpose.
-   */
-  const [picked, setPicked] = useState<string | null | undefined>(undefined)
-  const [remembered] = useState(() => (estimate ? null : activeOrderId()))
-  const [vendorId, setVendorId] = useState<string | null>(null)
-  // A part picked before anybody said who the order goes to.
-  const [waiting, setWaiting] = useState<PickedPart | null>(null)
+  const buyer = has(PERM.INVENTORY_ORDER)
   const [busy, setBusy] = useState(false)
   const [note, setNote] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [alsoEstimate, setAlsoEstimate] = useState(true)
   /*
    * A build: several codes going onto one line. While one is open, every
-   * code picked goes into it instead of onto the order. Kept in this
+   * code picked goes into it instead of into the cart. Kept in this
    * browser, so closing the book does not lose it.
    */
   const [build, setBuildState] = useState<Build | null>(() => readBuild())
@@ -110,59 +104,26 @@ export function OrderPanel({
     writeBuild(next)
   }
 
-  const vendors = useQuery({ queryKey: ['catalog-order-vendors'], queryFn: listVendors, staleTime: 5 * 60_000 })
-  const suggested = useQuery({
-    queryKey: ['catalog-order-vendor-for', documentId],
-    queryFn: () => vendorForDocument(documentId),
-    staleTime: 60_000,
+  const cart = useQuery({
+    queryKey: ['parts-cart', estimate?.id ?? 'mine'],
+    queryFn: () => listAsks(estimate ? { estimate_id: estimate.id } : {}),
   })
-  const drafts = useQuery({
-    queryKey: ['catalog-order-drafts', estimate?.id ?? null],
-    queryFn: () => listDrafts(estimate?.id),
-    enabled: !!estimate,
-  })
+  const asks = cart.data?.asks ?? []
 
-  // An estimate's draft to carry on with: the one to this catalogue's vendor, else the latest.
-  const preferredDraft = drafts.data?.find((d) => d.vendor?.id === suggested.data?.id) ?? drafts.data?.[0]
-  const wantedId = picked !== undefined ? picked : (estimate ? (preferredDraft?.id ?? null) : remembered)
-
-  const order = useQuery({
-    queryKey: ['catalog-order', wantedId],
-    queryFn: () => readOrder(wantedId as string).catch((e: unknown) => {
-      // A stock order remembered from before that has since gone: start fresh.
-      if (e instanceof ApiError && e.status === 404 && wantedId === activeOrderId()) setActiveOrderId(null)
-      throw e
-    }),
-    enabled: wantedId !== null,
-    retry: false,
-  })
-  const gone = order.error instanceof ApiError && order.error.status === 404
-  const orderId = gone ? null : wantedId
-
-  const state = gone ? undefined : order.data
-  const chosenVendor = state?.order.vendor?.id ?? vendorId ?? suggested.data?.id ?? null
-  const editable = !state || state.order.status === 'draft'
-
-  const show = (next: CatalogOrder) => {
-    qc.setQueryData(['catalog-order', next.order.id], next)
-    void qc.invalidateQueries({ queryKey: ['catalog-order-drafts'] })
-    void qc.invalidateQueries({ queryKey: ['parts-orders'] })
+  const refresh = () => {
+    for (const key of CART_KEYS) void qc.invalidateQueries({ queryKey: [...key] })
     void qc.invalidateQueries({ queryKey: ['parts-readiness'] })
-    // The estimate behind the book has new lines on it.
+    // The estimate behind the book may have new lines on it.
     if (estimate) void qc.invalidateQueries({ queryKey: ['estimates'] })
-    if (next.order.id !== orderId) {
-      setPicked(next.order.id)
-      if (next.order.kind === 'stock') setActiveOrderId(next.order.id)
-    }
   }
 
-  const run = async (work: () => Promise<CatalogOrder>) => {
+  const run = async (work: () => Promise<{ note?: string | null } | unknown>) => {
     setBusy(true)
     setError(null)
     try {
-      const next = await work()
-      show(next)
-      return next
+      const res = await work()
+      refresh()
+      return res
     } catch (e) {
       setError(e instanceof Error ? e.message : 'That did not work.')
       return null
@@ -171,7 +132,20 @@ export function OrderPanel({
     }
   }
 
-  const add = async (part: PickedPart, vendor = chosenVendor) => {
+  const put = async (body: NewAsk, fallback: string) => {
+    const res = (await run(() => addAsk({
+      ...body,
+      source: 'catalog',
+      source_document_id: body.source_document_id ?? documentId,
+      estimate_id: estimate?.id,
+      for_kind: estimate ? 'estimate' : 'stock',
+      add_to_estimate: estimate ? alsoEstimate : undefined,
+    }))) as { note?: string | null; ask?: Ask | null } | null
+    if (res) setNote(res.note ?? (res.ask ? fallback : 'Nothing to order: the shelves cover it.'))
+    return res
+  }
+
+  const add = async (part: PickedPart) => {
     onMinimize(false)
     setNote(null)
     if (build) {
@@ -187,92 +161,142 @@ export function OrderPanel({
       setNote(`${part.part_number ?? 'That'} is in the build.`)
       return
     }
-    if (!orderId && !vendor) {
-      setWaiting(part)
-      return
-    }
-    if (state && !editable) {
-      setError(`${poLabel(state.order.po_number)} has gone to the vendor. Start a new order to add to.`)
-      return
-    }
-    setWaiting(null)
-    const next = await run(() => addToOrder({
-      ...part,
-      purchase_order_id: orderId ?? undefined,
-      vendor_id: orderId ? undefined : (vendor ?? undefined),
-      estimate_id: estimate?.id,
-      add_to_estimate: estimate ? alsoEstimate : undefined,
-    }))
-    if (next?.note) setNote(next.note)
+    await put({
+      catalog_item_id: part.catalog_item_id,
+      part_number: part.part_number,
+      description: part.description,
+      qty: part.qty,
+      list_price_cents: part.list_price_cents,
+      source_document_id: part.source_document_id,
+      source_page: part.source_page,
+      source_page_label: part.source_page_label,
+    }, `${part.part_number ?? part.description ?? 'That part'} is in the cart.`)
   }
 
-  useImperativeHandle(ref, () => ({ add: (part) => void add(part) }))
+  /*
+   * What is typed in the search box, kept here rather than in the box so
+   * it lasts while the cart is folded down to show a match on a phone.
+   * The book is searched for it as well as the shop's own items.
+   */
+  const [text, setText] = useState('')
+  const [qty, setQty] = useState(1)
+  const [active, setActive] = useState<number | null>(null)
+  const activeRef = useRef<number | null>(null)
+  // A new search lands on its best match; once somebody steps through them, it stays put.
+  const fresh = useRef(true)
+  const chosen = useRef(false)
+  const show = (hits: SearchHit[], at: number | null, jump: boolean) => {
+    activeRef.current = at
+    setActive(at)
+    onFound(hits, at, jump)
+  }
 
-  /** The build, onto the order as one line. */
+  const find = useBookFind(book, text, {
+    max: FIND_MAX,
+    onFound: (hits) => {
+      if (hits.length === 0) {
+        show([], null, false)
+        return
+      }
+      const best = bestHit(hits)
+      const now = activeRef.current
+      if (fresh.current || now === null || (!chosen.current && best !== null && hits[best].score > (hits[now]?.score ?? 0))) {
+        fresh.current = false
+        show(hits, best, true)
+      } else {
+        show(hits, now, false)
+      }
+    },
+  })
+
+  const type = (next: string) => {
+    setText(next)
+    fresh.current = true
+    chosen.current = false
+  }
+
+  const goToHit = (i: number, fold = false) => {
+    const hit = find.hits[i]
+    if (!hit) return
+    chosen.current = true
+    show(find.hits, i, true)
+    if (fold && narrow()) onMinimize(true)
+  }
+
+  const step = (by: 1 | -1) => {
+    const n = find.hits.length
+    if (n === 0) return
+    goToHit(active === null ? 0 : (active + by + n) % n)
+  }
+
+  const clearFind = () => {
+    const had = text.trim() !== '' || activeRef.current !== null
+    type('')
+    show([], null, false)
+    return had
+  }
+
+  /** The part number at a match, into the cart (or the open build), as many as typed. */
+  const addFound = (hit: SearchHit) => {
+    if (!hit.part) return
+    void add({
+      part_number: hit.part.text,
+      description: hit.part.line,
+      list_price_cents: hit.part.price,
+      kind: hit.part.kind,
+      source_document_id: documentId,
+      source_page: hit.page,
+      source_page_label: pageLabel(hit.page),
+      qty,
+    })
+    clearFind()
+    setQty(1)
+  }
+
+  useImperativeHandle(ref, () => ({ add: (part) => void add(part), clearFind }))
+
+  /** The build, into the cart as one line. */
   const addBuild = async () => {
     if (!build || build.pieces.length === 0) return
-    if (!orderId && !chosenVendor) {
-      setError('Choose who this order is going to first.')
-      return
-    }
-    const next = await run(() => addToOrder({
+    const res = await put({
       description: build.name.trim() || 'Build',
       components: build.pieces,
       order_code: build.code?.trim() || undefined,
       qty: build.qty,
-      source_document_id: documentId,
-      purchase_order_id: orderId ?? undefined,
-      vendor_id: orderId ? undefined : (chosenVendor ?? undefined),
-      estimate_id: estimate?.id,
-      add_to_estimate: estimate ? alsoEstimate : undefined,
-    }))
-    if (next) {
-      setBuild(null)
-      setNote(next.note ?? 'The build is on the order as one line.')
-    }
+    }, 'The build is in the cart as one line.')
+    if (res) setBuild(null)
   }
 
-  const pickVendor = async (id: string) => {
-    setVendorId(id)
-    if (waiting) {
-      await add(waiting, id)
-      return
-    }
-    if (estimate) {
-      // One order per vendor per estimate: switch to that vendor's, or start one with the next part.
-      const existing = drafts.data?.find((d) => d.vendor?.id === id)
-      setPicked(existing?.id ?? null)
-      return
-    }
-    if (state && editable && state.order.vendor?.id !== id) {
-      await run(() => changeVendor(state.order.id, id))
-    }
-  }
+  const waiting = asks.filter((a) => a.open > 0).length
+  const summary = `Parts cart · ${asks.length} ${asks.length === 1 ? 'part' : 'parts'}`
 
-  const startNew = () => {
-    setActiveOrderId(null)
-    setPicked(null)
-    setVendorId(null)
-    setNote(null)
-    setError(null)
-  }
-
-  const lines = state?.lines ?? []
-  const summary = state
-    ? `${poLabel(state.order.po_number)} · ${state.order.vendor?.name ?? 'No vendor'} · ${lines.length} ${lines.length === 1 ? 'line' : 'lines'} · ${money(state.order.subtotal_cents)}`
-    : 'New order'
+  const current = active !== null ? find.hits[active] : undefined
 
   if (minimized) {
     return (
-      <div className="pointer-events-none absolute inset-x-0 bottom-3 z-20 flex justify-center px-3">
+      <div className="pointer-events-none absolute inset-x-0 bottom-3 z-20 flex flex-col items-center gap-2 px-3">
+        {current && (
+          <FoundBar
+            find={find}
+            active={active as number}
+            hit={current}
+            qty={qty}
+            pageCount={book.pageCount}
+            pageLabel={pageLabel}
+            busy={busy}
+            onStep={step}
+            onAdd={() => addFound(current)}
+            onClear={clearFind}
+          />
+        )}
         <button
           type="button"
+          data-tour="book-order-min"
           onClick={() => onMinimize(false)}
           className="pointer-events-auto flex max-w-full items-center gap-2.5 rounded-full bg-white py-2 pl-3 pr-2 text-sm text-slate-800 shadow-[0_8px_24px_rgba(0,0,0,0.45)] hover:bg-slate-50"
         >
           <IconShoppingCart size={17} className="shrink-0 text-amber-600" />
           <span className="truncate tabular-nums">{summary}</span>
-          {state && <StageChip stage={state.order.stage} />}
           <span className="flex items-center gap-0.5 rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-600">
             <IconChevronUp size={14} /> Open
           </span>
@@ -283,89 +307,58 @@ export function OrderPanel({
 
   return (
     <aside
-      aria-label="Order"
+      aria-label="Parts cart"
+      data-tour="book-order"
+      data-order-for={estimate ? 'estimate' : 'stock'}
+      data-order-state={asks.length > 0 ? 'cart' : 'new'}
       className="flex h-full w-[min(24rem,100vw)] shrink-0 flex-col border-l border-white/10 bg-white text-slate-900"
     >
       <div className="flex items-start gap-2 border-b border-slate-200 px-3 py-2.5">
         <IconShoppingCart size={18} className="mt-0.5 shrink-0 text-amber-600" aria-hidden />
         <div className="min-w-0 flex-1">
-          <h3 className="flex flex-wrap items-center gap-x-2 text-sm font-semibold">
-            {state ? poLabel(state.order.po_number) : 'New order'}
-            {state && <StageChip stage={state.order.stage} />}
-          </h3>
+          <h3 className="text-sm font-semibold">Parts cart</h3>
           <p className="text-xs text-slate-500">
-            {estimate
-              ? `For estimate ${estimate.number}${state?.order.estimate?.customer ? ` · ${state.order.estimate.customer}` : ''}`
-              : 'Parts for stock'}
+            {estimate ? `For estimate ${estimate.number}` : 'Parts you asked for, for stock'}
           </p>
         </div>
-        <button type="button" onClick={() => onMinimize(true)} aria-label="Fold the order down to keep reading" title="Fold down"
+        <button type="button" onClick={() => onMinimize(true)} aria-label="Fold the cart down to keep reading" title="Fold down"
           className="rounded p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700">
           <IconChevronDown size={16} />
         </button>
-        <button type="button" onClick={onClose} aria-label="Close the order" title="Close (the draft is kept)"
+        <button type="button" onClick={onClose} aria-label="Close the cart" title="Close (the cart is kept)"
           className="rounded p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700">
           <IconX size={16} />
         </button>
       </div>
 
-      <div className="flex items-center gap-2 border-b border-slate-100 px-3 py-2 text-sm">
-        <label htmlFor="order-vendor" className="shrink-0 text-xs text-slate-500">To</label>
-        <select
-          id="order-vendor"
-          value={chosenVendor ?? ''}
-          disabled={!editable || busy}
-          onChange={(e) => void pickVendor(e.target.value)}
-          className="min-w-0 flex-1 rounded border border-slate-300 bg-white px-2 py-1 text-sm disabled:bg-slate-50"
-        >
-          <option value="" disabled>Choose a vendor…</option>
-          {(vendors.data ?? []).map((v) => <option key={v.id} value={v.id}>{v.name}</option>)}
-        </select>
-      </div>
+      <p data-tour="book-order-vendor" className="border-b border-slate-100 bg-slate-50 px-3 py-2 text-xs text-slate-600">
+        No supplier to pick here. {buyer ? 'You choose who each part comes from on Order parts.' : 'Whoever orders parts chooses who each part comes from.'}
+        {estimate && ' Parts for an estimate are ordered once the customer approves.'}
+      </p>
 
-      {chosenVendor && (
-        <DiscountRow
-          key={chosenVendor}
-          vendorId={chosenVendor}
-          vendorName={state?.order.vendor?.name ?? vendors.data?.find((v) => v.id === chosenVendor)?.name ?? 'this vendor'}
-          pct={state?.order.vendor?.list_discount_pct ?? vendors.data?.find((v) => v.id === chosenVendor)?.list_discount_pct ?? null}
-          canEdit={has(PERM.INVENTORY_EDIT)}
-          onSaved={() => {
-            void qc.invalidateQueries({ queryKey: ['catalog-order-vendors'] })
-            if (orderId) void qc.invalidateQueries({ queryKey: ['catalog-order', orderId] })
-          }}
-        />
-      )}
+      <AddPart
+        text={text}
+        qty={qty}
+        onText={type}
+        onQty={setQty}
+        find={find}
+        active={active}
+        pageCount={book.pageCount}
+        pageLabel={pageLabel}
+        onStep={step}
+        onGoToHit={(i) => goToHit(i, true)}
+        onAddFound={addFound}
+        onClearFind={clearFind}
+        busy={busy}
+        estimate={!!estimate}
+        building={!!build}
+        alsoEstimate={alsoEstimate}
+        onAlsoEstimate={setAlsoEstimate}
+        onAdd={(part) => void add({ ...part, source_document_id: documentId })}
+      />
 
-      {estimate && state?.order.stage === 'waiting_on_approval' && (
-        <p className="border-b border-sky-100 bg-sky-50 px-3 py-2 text-xs text-sky-900">
-          Built with the estimate. It is ordered once the customer approves, and closes by itself if they decline.
-        </p>
-      )}
-      {state?.order.status_note && (
-        <StatusNote state={state} busy={busy} canSend={state.can_send}
-          onKeep={() => void run(() => keepAsStock(state.order.id))} />
-      )}
-
-      {waiting && !chosenVendor && (
-        <p className="border-b border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
-          Who is this order going to? Choose a vendor above and {waiting.part_number ?? 'the part'} goes on it.
-        </p>
-      )}
-
-      {editable && (
-        <AddPart
-          busy={busy}
-          estimate={!!estimate}
-          building={!!build}
-          alsoEstimate={alsoEstimate}
-          onAlsoEstimate={setAlsoEstimate}
-          onAdd={(part) => void add({ ...part, source_document_id: documentId })}
-        />
-      )}
-
-      {editable && !build && (
-        <div className="border-b border-slate-100 px-3 py-1.5">
+      {!build && (
+        <div data-tour="book-order-build" className="border-b border-slate-100 px-3 py-1.5">
           <button
             type="button"
             onClick={() => setBuild({ name: '', pieces: [], code: null, qty: 1 })}
@@ -394,56 +387,131 @@ export function OrderPanel({
         </p>
       )}
 
-      <ol className="m-0 min-h-0 flex-1 list-none overflow-y-auto p-0">
-        {lines.length === 0 && (
+      <ol data-tour="book-order-lines" className="m-0 min-h-0 flex-1 list-none overflow-y-auto p-0">
+        {asks.length === 0 && (
           <li className="px-4 py-6 text-center text-sm text-slate-500">
-            {state ? 'Nothing on this order yet.' : 'Click a part number on the page, use Find, or type one above.'}
+            {cart.isLoading ? 'Opening the cart…' : 'Click a part number on the page, use Find, or type one above.'}
           </li>
         )}
-        {lines.map((line) => (
-          <Line
-            key={line.id}
-            line={line}
-            editable={editable}
+        {asks.map((ask) => (
+          <CartLine
+            key={ask.id}
+            ask={ask}
             busy={busy}
-            here={line.source_document_id === documentId}
-            canMakeItem={has(PERM.CATALOG_EDIT)}
+            here={ask.source_document_id === documentId}
             pageLabel={pageLabel}
             onGoToPage={onGoToPage}
-            onQty={(qty) => state && void run(() => changeLine(state.order.id, line.id, { qty }))}
-            onRemove={() => state && void run(() => removeLine(state.order.id, line.id))}
-            onMakeItem={(body) => state && run(() => makeCatalogItem(state.order.id, line.id, body))}
+            onQty={(qty) => void run(() => changeAsk(ask.id, { qty }))}
+            onRemove={() => void run(() => removeAsk(ask.id))}
           />
         ))}
       </ol>
 
-      {state && (
-        <SendBar
-          state={state}
-          busy={busy}
-          onSend={(body) => run(() => markOrdered(state.order.id, body))}
-          onNew={startNew}
-        />
-      )}
+      <div data-tour="book-order-send" className="flex flex-wrap items-center gap-2 border-t border-slate-200 px-3 py-2.5 text-sm">
+        <span className="text-slate-500">
+          {waiting} {waiting === 1 ? 'part' : 'parts'} waiting to be ordered
+        </span>
+        <span className="grow" />
+        {!onConnect() && (
+          <Link to="/order-parts" className="rounded bg-slate-900 px-3 py-1 text-sm font-medium text-white hover:bg-slate-800">
+            {buyer ? 'Order parts' : 'See my parts'}
+          </Link>
+        )}
+      </div>
     </aside>
   )
 }
 
-function StageChip({ stage }: { stage: CatalogOrder['order']['stage'] }) {
-  const tone = stage === 'waiting_on_approval'
-    ? 'bg-sky-100 text-sky-800'
-    : stage === 'ready_to_order'
-      ? 'bg-emerald-100 text-emerald-800'
-      : stage === 'cancelled'
-        ? 'bg-slate-200 text-slate-600'
-        : stage === 'draft'
-          ? 'bg-amber-100 text-amber-800'
-          : 'bg-violet-100 text-violet-800'
-  return <span className={`rounded-full px-2 py-px text-[11px] font-medium ${tone}`}>{STAGE_LABEL[stage] ?? stage}</span>
+/** One part in the cart: how many, what for, and where it is once ordered. */
+function CartLine({
+  ask,
+  busy,
+  here,
+  pageLabel,
+  onGoToPage,
+  onQty,
+  onRemove,
+}: {
+  ask: Ask
+  busy: boolean
+  here: boolean
+  pageLabel: (page: number) => string
+  onGoToPage: (page: number) => void
+  onQty: (qty: number) => void
+  onRemove: () => void
+}) {
+  const editable = ask.on_order === 0
+  return (
+    <li className="border-b border-slate-100 px-3 py-2">
+      <div className="flex items-start gap-2">
+        <div className="min-w-0 flex-1">
+          <p className="truncate text-sm text-slate-900" title={ask.description}>{ask.description}</p>
+          {ask.components && ask.components.length > 0 && (
+            <ul className="my-0.5 list-none p-0 text-[11.5px] text-slate-600">
+              {ask.components.map((piece, i) => (
+                <li key={i} className="truncate">
+                  {piece.part_number && <span className="font-mono text-slate-800">{piece.part_number} </span>}
+                  {piece.description && piece.description !== piece.part_number ? piece.description : ''}
+                  {piece.list_price_cents ? <span className="tabular-nums text-slate-500"> · {money(piece.list_price_cents)}</span> : null}
+                </li>
+              ))}
+            </ul>
+          )}
+          <p className="flex flex-wrap items-center gap-x-2 text-xs text-slate-500">
+            {ask.part_number && ask.part_number !== ask.description && <span className="font-mono">{ask.part_number}</span>}
+            {ask.list_price_cents ? <span className="tabular-nums" title="The price printed in the catalog">List {money(ask.list_price_cents)}</span> : null}
+            {ask.source_page && (here ? (
+              <button type="button" onClick={() => onGoToPage(ask.source_page as number)} className="text-sky-700 hover:underline">
+                p. {pageLabel(ask.source_page)}
+              </button>
+            ) : (
+              <span>p. {ask.source_page_label ?? ask.source_page}</span>
+            ))}
+            <span>for {askFor(ask)}</span>
+            {ask.estimate_line_item_id && <span className="text-sky-700">on the estimate</span>}
+          </p>
+        </div>
+        <div className="flex shrink-0 items-center gap-1">
+          {editable ? (
+            <>
+              <button type="button" aria-label="One fewer" disabled={busy || ask.qty <= 1} onClick={() => onQty(ask.qty - 1)}
+                className="rounded p-0.5 text-slate-500 hover:bg-slate-100 disabled:opacity-30"><IconMinus size={14} /></button>
+              <span className="w-7 text-center text-sm tabular-nums">{count(ask.qty)}</span>
+              <button type="button" aria-label="One more" disabled={busy} onClick={() => onQty(ask.qty + 1)}
+                className="rounded p-0.5 text-slate-500 hover:bg-slate-100 disabled:opacity-30"><IconPlus size={14} /></button>
+            </>
+          ) : (
+            <span className="text-sm tabular-nums">× {count(ask.qty)}</span>
+          )}
+        </div>
+        {editable && (
+          <button type="button" aria-label={`Take ${ask.description} out of the cart`} disabled={busy} onClick={onRemove}
+            className="rounded p-0.5 text-slate-400 hover:bg-slate-100 hover:text-red-700"><IconX size={14} /></button>
+        )}
+      </div>
+      {ask.orders.length > 0 && (
+        <p className="mt-1 text-xs text-violet-800">
+          {ask.orders.map((o) => `${count(o.qty)} on ${poLabel(o.po_number)}${o.vendor ? ` (${o.vendor})` : ''}${o.can_undo ? '' : ', ordered'}`).join(' · ')}
+        </p>
+      )}
+    </li>
+  )
 }
 
 /** Type a part number or a name; the shop's own items come up with their stock. */
 function AddPart({
+  text,
+  qty,
+  onText,
+  onQty,
+  find,
+  active,
+  pageCount,
+  pageLabel,
+  onStep,
+  onGoToHit,
+  onAddFound,
+  onClearFind,
   busy,
   estimate,
   building,
@@ -451,6 +519,19 @@ function AddPart({
   onAlsoEstimate,
   onAdd,
 }: {
+  text: string
+  qty: number
+  onText: (text: string) => void
+  onQty: (qty: number) => void
+  /** Where what is typed turns up in the book. */
+  find: FindState
+  active: number | null
+  pageCount: number
+  pageLabel: (page: number) => string
+  onStep: (by: 1 | -1) => void
+  onGoToHit: (index: number) => void
+  onAddFound: (hit: SearchHit) => void
+  onClearFind: () => boolean
   busy: boolean
   estimate: boolean
   /** A build is open: what is added goes into it. */
@@ -459,8 +540,6 @@ function AddPart({
   onAlsoEstimate: (on: boolean) => void
   onAdd: (part: PickedPart) => void
 }) {
-  const [text, setText] = useState('')
-  const [qty, setQty] = useState(1)
   const [debounced, setDebounced] = useState('')
 
   useEffect(() => {
@@ -481,16 +560,16 @@ function AddPart({
     onAdd(item
       ? { catalog_item_id: item.id, qty }
       : /\d/.test(typed) ? { part_number: typed, qty } : { description: typed, qty })
-    setText('')
+    onText('')
     setDebounced('')
-    setQty(1)
+    onQty(1)
   }
 
   const matches = debounced.length >= 2 ? (found.data ?? []) : []
   const exact = matches.find((m) => m.exact)
 
   return (
-    <div className="border-b border-slate-100 px-3 py-2">
+    <div data-tour="book-order-add" className="border-b border-slate-100 px-3 py-2">
       <form
         className="flex items-center gap-1.5"
         onSubmit={(e) => {
@@ -500,7 +579,18 @@ function AddPart({
       >
         <input
           value={text}
-          onChange={(e) => setText(e.target.value)}
+          onChange={(e) => onText(e.target.value)}
+          onKeyDown={(e) => {
+            // Enter steps through the matches in the book; Shift+Enter goes back. Ctrl+Enter still adds.
+            if (e.key === 'Enter' && !e.ctrlKey && !e.metaKey && find.hits.length > 0) {
+              e.preventDefault()
+              onStep(e.shiftKey ? -1 : 1)
+            } else if (e.key === 'Escape' && onClearFind()) {
+              // Only the search: the book stays open.
+              e.preventDefault()
+              e.stopPropagation()
+            }
+          }}
           placeholder={building ? 'A code for the build…' : 'Part number or name…'}
           aria-label="Part number or name"
           className="min-w-0 flex-1 rounded border border-slate-300 px-2 py-1 font-mono text-sm placeholder:font-sans"
@@ -509,7 +599,7 @@ function AddPart({
           type="number"
           min={1}
           value={qty}
-          onChange={(e) => setQty(Math.max(1, Number(e.target.value) || 1))}
+          onChange={(e) => onQty(Math.max(1, Number(e.target.value) || 1))}
           aria-label="How many"
           className="w-14 rounded border border-slate-300 px-1.5 py-1 text-sm tabular-nums"
         />
@@ -518,6 +608,19 @@ function AddPart({
           Add
         </button>
       </form>
+
+      <FoundStrip
+        text={text}
+        find={find}
+        active={active}
+        qty={qty}
+        busy={busy}
+        pageCount={pageCount}
+        pageLabel={pageLabel}
+        onStep={onStep}
+        onGoToHit={onGoToHit}
+        onAddFound={onAddFound}
+      />
 
       {estimate && (
         <label className="mt-1.5 flex items-center gap-1.5 text-xs text-slate-600">
@@ -551,154 +654,147 @@ function AddPart({
   )
 }
 
-function Line({
-  line,
-  editable,
-  busy,
-  here,
-  canMakeItem,
-  pageLabel,
-  onGoToPage,
-  onQty,
-  onRemove,
-  onMakeItem,
-}: {
-  line: OrderLine
-  editable: boolean
-  busy: boolean
-  here: boolean
-  canMakeItem: boolean
-  pageLabel: (page: number) => string
-  onGoToPage: (page: number) => void
-  onQty: (qty: number) => void
-  onRemove: () => void
-  onMakeItem: (body: { name: string; customer_cost_cents?: number }) => Promise<CatalogOrder | null> | null | false | undefined
-}) {
-  const [making, setMaking] = useState(false)
+/** "Add CU10", or "Add 3 × CU10" when more than one is wanted. */
+const addLabel = (code: string, qty: number) => (qty > 1 ? `Add ${count(qty)} × ${code}` : `Add ${code}`)
 
-  return (
-    <li className="border-b border-slate-100 px-3 py-2">
-      <div className="flex items-start gap-2">
-        <div className="min-w-0 flex-1">
-          <p className="truncate text-sm text-slate-900" title={line.description}>{line.description}</p>
-          {line.components && line.components.length > 0 && (
-            <ul className="my-0.5 list-none p-0 text-[11.5px] text-slate-600">
-              {line.components.map((piece, i) => (
-                <li key={i} className="truncate">
-                  {piece.part_number && <span className="font-mono text-slate-800">{piece.part_number} </span>}
-                  {piece.description && piece.description !== piece.part_number ? piece.description : ''}
-                  {piece.list_price_cents ? <span className="tabular-nums text-slate-500"> · {money(piece.list_price_cents)}</span> : null}
-                </li>
-              ))}
-            </ul>
-          )}
-          <p className="flex flex-wrap items-center gap-x-2 text-xs text-slate-500">
-            {line.part_number && <span className="font-mono">{line.part_number}</span>}
-            {line.list_price_cents ? <span className="tabular-nums" title="The price printed in the catalog">List {money(line.list_price_cents)}</span> : null}
-            {line.source_page && (here ? (
-              <button type="button" onClick={() => onGoToPage(line.source_page as number)} className="text-sky-700 hover:underline">
-                p. {pageLabel(line.source_page)}
-              </button>
-            ) : (
-              <span>p. {line.source_page_label ?? line.source_page}</span>
-            ))}
-            {line.estimate_line_item_id && <span className="text-sky-700">on the estimate</span>}
-          </p>
-        </div>
-        <div className="flex shrink-0 items-center gap-1">
-          {editable ? (
-            <>
-              <button type="button" aria-label="One fewer" disabled={busy || line.qty <= 1} onClick={() => onQty(line.qty - 1)}
-                className="rounded p-0.5 text-slate-500 hover:bg-slate-100 disabled:opacity-30"><IconMinus size={14} /></button>
-              <span className="w-7 text-center text-sm tabular-nums">{count(line.qty)}</span>
-              <button type="button" aria-label="One more" disabled={busy} onClick={() => onQty(line.qty + 1)}
-                className="rounded p-0.5 text-slate-500 hover:bg-slate-100 disabled:opacity-30"><IconPlus size={14} /></button>
-            </>
-          ) : (
-            <span className="text-sm tabular-nums">× {count(line.qty)}</span>
-          )}
-        </div>
-        <span className="w-16 shrink-0 text-right text-sm tabular-nums">{money(line.line_total_cents)}</span>
-        {editable && (
-          <button type="button" aria-label={`Take ${line.description} off the order`} disabled={busy} onClick={onRemove}
-            className="rounded p-0.5 text-slate-400 hover:bg-slate-100 hover:text-red-700"><IconX size={14} /></button>
-        )}
-      </div>
-      <div className="mt-1">
-        {line.components && line.components.length > 0 ? (
-          <p className="text-xs text-slate-500">A build, ordered as one line.</p>
-        ) : line.catalog_item && line.stock ? (
-          <StockLine stock={line.stock} wanted={line.qty} />
-        ) : making ? (
-          <MakeItem
-            line={line}
-            busy={busy}
-            onCancel={() => setMaking(false)}
-            onMake={async (body) => {
-              const done = await onMakeItem(body)
-              if (done) setMaking(false)
-            }}
-          />
-        ) : (
-          <p className="flex items-center gap-2 text-xs text-slate-500">
-            Not in your catalog.
-            {canMakeItem && (
-              <button type="button" disabled={busy} onClick={() => setMaking(true)} className="font-medium text-sky-700 hover:underline">
-                Make it an item
-              </button>
-            )}
-          </p>
-        )}
-      </div>
-    </li>
-  )
+/** "3 matches · page 12 of 40": how many, and where the one lit up is. */
+function foundSummary(find: FindState, active: number | null, pageCount: number, pageLabel: (page: number) => string) {
+  const n = find.hits.length
+  const many = `${n}${n >= FIND_MAX ? '+' : ''} ${n === 1 ? 'match' : 'matches'}`
+  const hit = active !== null ? find.hits[active] : undefined
+  return hit ? `${many} · page ${pageLabel(hit.page)} of ${pageLabel(pageCount)}` : many
 }
 
 /**
- * A part the shop does not carry, made into one of its items: the name
- * it will go by (the words off the page are often only the row of a
- * table) and what it sells for. The part number, cost and vendor come
- * from the line.
+ * Under the search box: where what is typed turns up in the book. The
+ * best match is open on the page; the arrows (or Enter and Shift+Enter)
+ * step through the rest, and a part number at the match goes in the cart
+ * in one press.
  */
-function MakeItem({
-  line,
+function FoundStrip({
+  text,
+  find,
+  active,
+  qty,
   busy,
-  onCancel,
-  onMake,
+  pageCount,
+  pageLabel,
+  onStep,
+  onGoToHit,
+  onAddFound,
 }: {
-  line: OrderLine
+  text: string
+  find: FindState
+  active: number | null
+  qty: number
   busy: boolean
-  onCancel: () => void
-  onMake: (body: { name: string; customer_cost_cents?: number }) => void
+  pageCount: number
+  pageLabel: (page: number) => string
+  onStep: (by: 1 | -1) => void
+  onGoToHit: (index: number) => void
+  onAddFound: (hit: SearchHit) => void
 }) {
-  const [name, setName] = useState(/[A-Za-z]{3}/.test(line.description) ? line.description.slice(0, 120) : '')
-  // The book's price is the customer's: the sell price to start from.
-  const [price, setPrice] = useState(line.list_price_cents ? (line.list_price_cents / 100).toFixed(2) : '')
+  const list = useRef<HTMLOListElement>(null)
+
+  // Keep the open match in sight in the list as Enter steps through them.
+  useEffect(() => {
+    if (active === null) return
+    list.current?.querySelector('[aria-current="true"]')?.scrollIntoView({ block: 'nearest' })
+  }, [active])
+
+  if (text.trim().length < 2) return null
+  const hit = active !== null ? find.hits[active] : undefined
+
+  if (find.hits.length === 0) {
+    return (
+      <p data-tour="book-order-find" data-find-state={find.running ? 'reading' : 'none'} className="mt-1.5 text-xs text-slate-500" aria-live="polite">
+        {find.running || find.query !== text.trim()
+          ? `Looking through the book${find.readTo ? `, page ${find.readTo} of ${pageCount}` : ''}…`
+          : 'Not on any page of this book.'}
+      </p>
+    )
+  }
 
   return (
-    <form
-      className="mt-1 space-y-1.5 rounded border border-slate-200 bg-slate-50 p-2"
-      onSubmit={(e) => {
-        e.preventDefault()
-        const cents = Math.round(Number(price.replace(/[$,\s]/g, '')) * 100)
-        onMake({ name: name.trim(), customer_cost_cents: Number.isFinite(cents) && cents > 0 ? cents : undefined })
-      }}
-    >
-      <input value={name} onChange={(e) => setName(e.target.value)} autoFocus required maxLength={255}
-        placeholder={`What to call ${line.part_number ?? 'it'}`} aria-label="Item name"
-        className="w-full rounded border border-slate-300 px-2 py-1 text-sm" />
-      <div className="flex items-center gap-1.5">
-        <input value={price} onChange={(e) => setPrice(e.target.value)} inputMode="decimal"
-          placeholder="Sells for" aria-label="Sells for"
-          className="w-24 rounded border border-slate-300 px-2 py-1 text-sm tabular-nums" />
-        <span className="grow text-[11px] text-slate-500">Cost {money(line.unit_cost_cents)}</span>
-        <button type="button" onClick={onCancel} className="rounded px-2 py-1 text-xs text-slate-600 hover:bg-slate-100">Cancel</button>
-        <button type="submit" disabled={busy || !name.trim()}
-          className="rounded bg-sky-600 px-2 py-1 text-xs font-medium text-white hover:bg-sky-700 disabled:opacity-40">
-          Make item
-        </button>
+    <div data-tour="book-order-find" data-find-state="found" className="mt-1.5 overflow-hidden rounded border border-amber-200 bg-amber-50/50">
+      <div className="flex items-center gap-1 px-1.5 py-1">
+        <button type="button" onClick={() => onStep(-1)} aria-label="The match before" title="The match before (Shift+Enter)"
+          className="rounded p-0.5 text-slate-600 hover:bg-amber-100"><IconChevronLeft size={15} /></button>
+        <button type="button" onClick={() => onStep(1)} aria-label="The next match" title="The next match (Enter)"
+          className="rounded p-0.5 text-slate-600 hover:bg-amber-100"><IconChevronRight size={15} /></button>
+        <span className="min-w-0 flex-1 truncate text-xs tabular-nums text-slate-700" aria-live="polite">
+          {foundSummary(find, active, pageCount, pageLabel)}
+          {find.running && <span className="text-slate-400"> · still looking</span>}
+        </span>
+        {hit?.part && (
+          <button type="button" disabled={busy} onClick={() => onAddFound(hit)}
+            title={`Put ${count(qty)} of ${hit.part.text} in the cart, as if you pressed it on the page`}
+            className="shrink-0 rounded bg-amber-500 px-2 py-0.5 font-mono text-xs font-semibold text-white hover:bg-amber-600 disabled:opacity-40">
+            {addLabel(hit.part.text, qty)}
+          </button>
+        )}
       </div>
-    </form>
+      <ol ref={list} className="m-0 max-h-32 list-none overflow-y-auto border-t border-amber-100 bg-white p-0">
+        {find.hits.map((h, i) => (
+          <li key={`${h.page}-${i}`}>
+            <button
+              type="button"
+              onClick={() => onGoToHit(i)}
+              aria-current={i === active ? 'true' : undefined}
+              className={'flex w-full items-baseline gap-2 border-b border-slate-100 px-2 py-1 text-left text-xs last:border-0 hover:bg-amber-50 '
+                + (i === active ? 'bg-amber-100/70' : '')}
+            >
+              <span className="w-11 shrink-0 tabular-nums text-slate-400">p. {pageLabel(h.page)}</span>
+              <span className="min-w-0 flex-1 truncate text-slate-800" title={h.text}>{h.text}</span>
+              {h.part && <span className="shrink-0 font-mono text-[11px] text-amber-800">{h.part.text}</span>}
+            </button>
+          </li>
+        ))}
+      </ol>
+    </div>
+  )
+}
+
+/** The cart folded down on a phone to show a match: step through them, or add it, without opening the cart. */
+function FoundBar({
+  find,
+  active,
+  hit,
+  qty,
+  pageCount,
+  pageLabel,
+  busy,
+  onStep,
+  onAdd,
+  onClear,
+}: {
+  find: FindState
+  active: number
+  hit: SearchHit
+  qty: number
+  pageCount: number
+  pageLabel: (page: number) => string
+  busy: boolean
+  onStep: (by: 1 | -1) => void
+  onAdd: () => void
+  onClear: () => void
+}) {
+  return (
+    <div data-tour="book-order-find-bar" className="pointer-events-auto flex max-w-full items-center gap-1 rounded-full bg-white py-1 pl-1.5 pr-1.5 text-sm text-slate-800 shadow-[0_8px_24px_rgba(0,0,0,0.45)]">
+      <button type="button" onClick={() => onStep(-1)} aria-label="The match before"
+        className="rounded-full p-1 text-slate-600 hover:bg-slate-100"><IconChevronLeft size={16} /></button>
+      <span className="min-w-0 truncate text-xs tabular-nums">{foundSummary(find, active, pageCount, pageLabel)}</span>
+      <button type="button" onClick={() => onStep(1)} aria-label="The next match"
+        className="rounded-full p-1 text-slate-600 hover:bg-slate-100"><IconChevronRight size={16} /></button>
+      {hit.part && (
+        <button type="button" disabled={busy} onClick={onAdd}
+          className="shrink-0 rounded-full bg-amber-500 px-2.5 py-0.5 font-mono text-xs font-semibold text-white hover:bg-amber-600 disabled:opacity-40">
+          {addLabel(hit.part.text, qty)}
+        </button>
+      )}
+      <button type="button" onClick={onClear} aria-label="Clear the search"
+        className="rounded-full p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700"><IconX size={14} /></button>
+    </div>
   )
 }
 
@@ -816,72 +912,6 @@ function BuildCard({
   )
 }
 
-/**
- * What the shop pays this vendor, as a percent off the printed list price.
- * Set once, it turns every catalog price from this vendor into a cost.
- */
-function DiscountRow({
-  vendorId,
-  vendorName,
-  pct,
-  canEdit,
-  onSaved,
-}: {
-  vendorId: string
-  vendorName: string
-  pct: number | null
-  canEdit: boolean
-  onSaved: () => void
-}) {
-  const [editing, setEditing] = useState(false)
-  const [text, setText] = useState(pct !== null ? String(pct) : '')
-  const [error, setError] = useState<string | null>(null)
-
-  if (!editing) {
-    return (
-      <p className="flex items-center gap-2 border-b border-slate-100 px-3 py-1.5 text-xs text-slate-500">
-        {pct !== null ? `Your cost: list less ${pct}%.` : `Catalog prices are list prices.`}
-        {canEdit && (
-          <button type="button" onClick={() => { setText(pct !== null ? String(pct) : ''); setEditing(true) }}
-            className="font-medium text-sky-700 hover:underline">
-            {pct !== null ? 'Change' : `Set your discount from ${vendorName}`}
-          </button>
-        )}
-      </p>
-    )
-  }
-
-  return (
-    <form
-      className="flex items-center gap-1.5 border-b border-slate-100 px-3 py-1.5 text-xs"
-      onSubmit={async (e) => {
-        e.preventDefault()
-        setError(null)
-        const value = text.trim() === '' ? null : Number(text)
-        if (value !== null && (!Number.isFinite(value) || value < 0 || value > 95)) {
-          setError('Between 0 and 95.')
-          return
-        }
-        try {
-          await setVendorDiscount(vendorId, value)
-          setEditing(false)
-          onSaved()
-        } catch (err) {
-          setError(err instanceof Error ? err.message : 'It did not save.')
-        }
-      }}
-    >
-      <span className="text-slate-600">{vendorName}: list less</span>
-      <input value={text} onChange={(e) => setText(e.target.value)} inputMode="decimal" autoFocus aria-label="Discount off list, percent"
-        className="w-14 rounded border border-slate-300 px-1.5 py-0.5 tabular-nums" />
-      <span className="text-slate-600">%</span>
-      <button type="submit" className="rounded bg-slate-900 px-2 py-0.5 font-medium text-white">Save</button>
-      <button type="button" onClick={() => setEditing(false)} className="rounded px-1.5 py-0.5 text-slate-500 hover:bg-slate-100">Cancel</button>
-      {error && <span className="text-red-700">{error}</span>}
-    </form>
-  )
-}
-
 /** "2 available · 3 on hand · 4 on order", with where they are on hover. */
 function StockLine({ stock, wanted, compact = false }: { stock: PartStock; wanted?: number; compact?: boolean }) {
   const where = [
@@ -913,97 +943,3 @@ function StockLine({ stock, wanted, compact = false }: { stock: PartStock; wante
   )
 }
 
-/** A note the order picked up by itself, and the choice it leaves a person. */
-function StatusNote({ state, busy, canSend, onKeep }: { state: CatalogOrder; busy: boolean; canSend: boolean; onKeep: () => void }) {
-  const decide = state.order.kind === 'estimate' && state.order.status !== 'draft' && state.order.status !== 'cancelled'
-  return (
-    <div className="border-b border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
-      <p>{state.order.status_note}</p>
-      {decide && canSend && (
-        <div className="mt-1.5 flex flex-wrap gap-2">
-          <button type="button" disabled={busy} onClick={onKeep}
-            className="rounded border border-amber-300 bg-white px-2 py-0.5 font-medium hover:bg-amber-100">
-            Keep the parts as stock
-          </button>
-          {!onConnect() && (
-            <Link to={`/purchase-orders/${state.order.id}`} className="rounded px-2 py-0.5 font-medium underline">
-              Cancel it on the order
-            </Link>
-          )}
-        </div>
-      )}
-    </div>
-  )
-}
-
-/** The total, and sending it. An estimate's order waits for approval unless somebody says why not. */
-function SendBar({
-  state,
-  busy,
-  onSend,
-  onNew,
-}: {
-  state: CatalogOrder
-  busy: boolean
-  onSend: (body: { reason?: string; vendor_order_number?: string }) => Promise<CatalogOrder | null>
-  onNew: () => void
-}) {
-  const [asking, setAsking] = useState(false)
-  const [reason, setReason] = useState('')
-  const draft = state.order.status === 'draft'
-  const early = state.order.stage === 'waiting_on_approval'
-  const lines = state.lines.length
-
-  return (
-    <div className="space-y-2 border-t border-slate-200 px-3 py-2.5">
-      <div className="flex items-baseline justify-between text-sm">
-        <span className="text-slate-500">{lines} {lines === 1 ? 'line' : 'lines'}</span>
-        <span className="font-semibold tabular-nums">{money(state.order.subtotal_cents)}</span>
-      </div>
-
-      {asking && (
-        <div className="space-y-1.5">
-          <label className="block text-xs text-slate-600" htmlFor="order-early-reason">
-            The customer has not approved yet. Why order now?
-          </label>
-          <input id="order-early-reason" value={reason} onChange={(e) => setReason(e.target.value)} autoFocus
-            placeholder="Long lead time, customer said yes by phone…"
-            className="w-full rounded border border-slate-300 px-2 py-1 text-sm" />
-        </div>
-      )}
-
-      <div className="flex flex-wrap items-center gap-2">
-        {!onConnect() && (
-          <Link to={`/purchase-orders/${state.order.id}`} className="text-xs font-medium text-sky-700 hover:underline">
-            Open the order
-          </Link>
-        )}
-        <span className="grow" />
-        {!draft || state.order.status === 'cancelled' ? (
-          <button type="button" onClick={onNew}
-            className="rounded border border-slate-300 px-2.5 py-1 text-sm text-slate-700 hover:bg-slate-50">
-            Start a new order
-          </button>
-        ) : state.can_send ? (
-          <button
-            type="button"
-            disabled={busy || lines === 0 || (asking && !reason.trim())}
-            onClick={async () => {
-              if (early && !asking) {
-                setAsking(true)
-                return
-              }
-              const done = await onSend(early ? { reason: reason.trim() } : {})
-              if (done) setAsking(false)
-            }}
-            className="rounded bg-slate-900 px-3 py-1 text-sm font-medium text-white hover:bg-slate-800 disabled:opacity-40"
-          >
-            {early ? (asking ? 'Order anyway' : 'Order before approval…') : 'Mark as ordered'}
-          </button>
-        ) : (
-          <span className="text-xs text-slate-500">Saved as a draft for the office to send.</span>
-        )}
-      </div>
-    </div>
-  )
-}

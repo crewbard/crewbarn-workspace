@@ -349,12 +349,12 @@ function DispatchBoard() {
   }, [jobs, techsQ.data])
 
   return (
-    <div className="flex h-full overflow-hidden">
+    <div data-tour="dash-dispatch" className="flex h-full overflow-hidden">
       {/* Timeline board */}
-      <div className="flex-1 overflow-auto">
+      <div data-tour="dash-dispatch-board" className="flex-1 overflow-auto">
         <div style={{ minWidth: 820 }}>
           {/* Legend */}
-          <div className="flex items-center gap-4 px-4 py-2 bg-white border-b border-slate-200 text-[10px] text-slate-500">
+          <div data-tour="dash-dispatch-legend" className="flex items-center gap-4 px-4 py-2 bg-white border-b border-slate-200 text-[10px] text-slate-500">
             <span className="flex items-center gap-1.5">
               <span className="inline-block w-2.5 h-2.5 rounded-sm bg-emerald-200 border-l-2 border-emerald-500" />
               Done
@@ -414,11 +414,11 @@ function DispatchBoard() {
         </div>
       </div>
 
-      {/* Unassigned sidebar */}
-      <div className="w-52 flex-shrink-0 border-l border-slate-200 bg-white overflow-y-auto">
+      {/* Unscheduled sidebar — jobs with no date yet */}
+      <div data-tour="dash-unscheduled" className="w-52 flex-shrink-0 border-l border-slate-200 bg-white overflow-y-auto">
         <div className="px-3 py-2.5 border-b border-slate-200 flex items-center gap-2">
           <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
-            Unassigned
+            Unscheduled
           </span>
           {unscheduled.length > 0 && (
             <span className="text-[10px] font-bold text-red-500 bg-red-50 rounded-full px-1.5 py-0.5 leading-none">
@@ -428,7 +428,7 @@ function DispatchBoard() {
         </div>
         <div className="p-2 space-y-1.5">
           {unscheduled.length === 0 ? (
-            <p className="text-[11px] text-slate-400 py-4 text-center">All jobs assigned</p>
+            <p className="text-[11px] text-slate-400 py-4 text-center">Every job has a date</p>
           ) : (
             // Same card as the Dispatch page's unassigned list: job-type chip,
             // title, customer · address, bill-to stamp, and the amber
@@ -497,6 +497,15 @@ function DispatchBoard() {
                 </button>
               ),
             )
+          )}
+          {unscheduled.length > 25 && (
+            <button
+              type="button"
+              onClick={() => navigate('/schedule')}
+              className="w-full py-2 text-center text-[11px] font-semibold text-amber-700 hover:underline"
+            >
+              +{unscheduled.length - 25} more on the Schedule →
+            </button>
           )}
         </div>
       </div>
@@ -669,10 +678,10 @@ function MySchedule() {
   const doneCount = jobs.filter(isDone).length
 
   return (
-    <div className="px-4 sm:px-6 py-5 space-y-4 max-w-3xl">
+    <div data-tour="dash-dispatch" className="px-4 sm:px-6 py-5 space-y-4 max-w-3xl">
       <StickyNoteStrip />
       {/* Mini timeline overview */}
-      <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm">
+      <div data-tour="dash-myday" className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm">
         <div className="px-4 py-2.5 border-b border-slate-100 flex items-center justify-between">
           <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider">
             My day
@@ -754,7 +763,7 @@ function MySchedule() {
           No jobs scheduled for today.
         </div>
       ) : (
-        <div className="space-y-2">
+        <div data-tour="dash-myday-list" className="space-y-2">
           {jobs.map((job) => (
             <MyJobCard key={job.id} job={job} navigate={navigate} />
           ))}

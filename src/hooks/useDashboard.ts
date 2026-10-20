@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { apiRequest } from '@/lib/api'
+import { ApiError, apiRequest } from '@/lib/api'
 import { listConversations, type CommsConversation } from '@/lib/comms'
 import type { WorkOrder } from '@/types/workOrder'
 import type { TodayStats, AttentionItem } from '@/types/dashboard'
@@ -74,6 +74,19 @@ export interface DashboardSpotlightJob {
   } | null
 }// ---------- Hooks ----------
 
+/**
+ * For a dashboard load that some roles can't see: a 403 (a dispatcher
+ * without invoices, say) quietly counts as nothing, as before. Any other
+ * failure is rethrown so the query's isError fires, instead of a broken
+ * load reading as "$0" or "all caught up".
+ */
+function emptyIfForbidden<T>(empty: T) {
+  return (error: unknown): T => {
+    if (error instanceof ApiError && error.status === 403) return empty
+    throw error
+  }
+}
+
 /** Today's scheduled jobs (drives the Now strip, Next bar, schedule list). */
 export function useTodayJobs() {
   return useQuery({
@@ -139,7 +152,8 @@ export function useStaleSnapshot() {
   return useQuery({
     queryKey: ['dashboard', 'stale-snapshot'],
     queryFn: () =>
-      apiRequest<{ data: StaleSnapshot }>('/v1/work-orders/stale-snapshot').catch(() => ({
+      // jobs.view only.
+      apiRequest<{ data: StaleSnapshot }>('/v1/work-orders/stale-snapshot').catch(emptyIfForbidden({
         data: {
           unbilled_completed: { count: 0, total_dollars: 0 },
           past_scheduled_open: { count: 0 },
@@ -160,8 +174,9 @@ export function useReceivables() {
   return useQuery({
     queryKey: ['dashboard', 'receivables'],
     queryFn: () =>
-      apiRequest<{ data: Receivables }>('/v1/dashboard/receivables').catch(() => ({
-        data: { total_open_cents: 0, open_count: 0, aging: [] },
+      // invoices only.
+      apiRequest<{ data: Receivables }>('/v1/dashboard/receivables').catch(emptyIfForbidden({
+        data: { total_open_cents: 0, open_count: 0, aging: [] } as Receivables,
       })),
     staleTime: 5 * 60_000,
     select: (r) => r.data,
@@ -173,7 +188,8 @@ export function usePendingTimeOffRequests(enabled = true) {
   return useQuery({
     queryKey: ['dashboard', 'pending-time-off'],
     queryFn: () =>
-      apiRequest<{ data: DashboardTimeOffRequest[] }>('/v1/time-off-requests?status=pending').catch(() => ({
+      // staff.view only (the caller also gates on it).
+      apiRequest<{ data: DashboardTimeOffRequest[] }>('/v1/time-off-requests?status=pending').catch(emptyIfForbidden({
         data: [] as DashboardTimeOffRequest[],
       })),
     enabled,
@@ -187,7 +203,8 @@ export function usePendingTimeOffRequests(enabled = true) {
 export function useUnansweredCalls() {
   return useQuery({
     queryKey: ['dashboard', 'unanswered-calls'],
-    queryFn: () => listConversations({ channel: 'call' }).catch(() => [] as CommsConversation[]),
+    // customers.view only.
+    queryFn: () => listConversations({ channel: 'call' }).catch(emptyIfForbidden([] as CommsConversation[])),
     staleTime: 60_000,
     refetchInterval: 2 * 60_000,
     select: (rows) =>

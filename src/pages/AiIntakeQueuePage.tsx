@@ -1,12 +1,14 @@
+import { IntakePriceSuggestion } from '@/components/comms/IntakePriceSuggestion'
 import { useEffect, useMemo, useState } from 'react'
 import type { ReactNode } from 'react'
 import { Link } from 'react-router-dom'
 import { ToastPrefToggle } from '@/components/ToastPrefToggle'
-import { PERM, usePermissions } from '@/hooks/usePermissions'
+import { usePermissions } from '@/hooks/usePermissions'
 import { IconRefresh } from '@tabler/icons-react'
 import { IntakePhotos } from '@/components/ai/IntakePhotos'
 import { VehicleKeyLink } from '@/components/VehicleKeyOverlay'
 import { ReferencedText } from '@/components/ReferencedText'
+import { PartsMentioned } from '@/components/flash/PartsMentioned'
 import { IntakeFollowUp } from '@/components/ai/IntakeFollowUp'
 import { IntakeReplies } from '@/components/ai/IntakeReplies'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
@@ -26,6 +28,15 @@ import {
   type AiIntakeDraft,
 } from '@/lib/comms'
 import { relativeTime } from '@/components/comms/ConversationThread'
+import { useOnboardingStatus } from '@/hooks/useOnboarding'
+
+/** True when this workspace picked the locksmith trade pack at sign-up
+ *  (the trade can't change later). False while loading. */
+function useIsLocksmithTrade(): boolean {
+  const { data } = useOnboardingStatus()
+  const status = data?.data
+  return (status?.seed_state?.vertical || status?.tenant?.vertical || null) === 'locksmith'
+}
 
 type DraftStatus = 'pending' | 'reviewed' | 'approved' | 'failed' | 'dismissed' | 'all'
 
@@ -85,8 +96,8 @@ export function AiIntakeQueuePage({ embedded = false }: { embedded?: boolean }) 
   })
 
   return (
-    <div className={embedded ? 'flex min-w-0 flex-col overflow-hidden rounded-2xl border border-slate-200 bg-slate-50' : 'flex h-[calc(100vh-5rem)] flex-col bg-slate-50'}>
-      <div className="border-b border-slate-200 bg-white px-6 py-4">
+    <div data-focus-page={embedded ? undefined : 'intake'} className={embedded ? 'flex min-w-0 flex-col overflow-hidden rounded-2xl border border-slate-200 bg-slate-50' : 'flex h-[calc(100vh-5rem)] flex-col bg-slate-50'}>
+      <div data-tour="intake-header" className="border-b border-slate-200 bg-white px-6 py-4">
         <div className="flex flex-wrap items-end justify-between gap-3">
           <div>
             <h1 className="text-2xl font-semibold text-navy-900">{embedded ? 'Hands-on intake training' : 'Intake Queue'}</h1>
@@ -94,7 +105,7 @@ export function AiIntakeQueuePage({ embedded = false }: { embedded?: boolean }) 
               Review AI-extracted service intake messages before creating jobs or estimates.
             </p>
           </div>
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-3" data-tour="intake-alerts">
             <ToastPrefToggle area="intake" label="New intake" />
             <div className="text-xs text-slate-400">
               {query.isSuccess ? (query.data?.total ?? drafts.length) : '—'} draft{(query.data?.total ?? drafts.length) === 1 ? '' : 's'}
@@ -105,13 +116,14 @@ export function AiIntakeQueuePage({ embedded = false }: { embedded?: boolean }) 
 
       <div className={`min-h-0 flex-1 grid grid-cols-1 ${embedded ? '' : 'lg:grid-cols-[25rem_1fr]'}`}>
         <aside className={`${selectedId && !query.isError ? (embedded ? 'hidden' : 'hidden lg:block') : ''} min-h-0 border-r border-slate-200 bg-white`}>
-          <div className="border-b border-slate-100 p-3">
+          <div data-tour="intake-status" className="border-b border-slate-100 p-3">
             <div className="grid grid-cols-3 gap-1 rounded-lg bg-slate-100 p-1 sm:grid-cols-6">
               {STATUS_FILTERS.map((item) => (
                 <button
                   key={item.id}
                   type="button"
                   aria-pressed={status === item.id}
+                  data-tour={`intake-status-${item.id}`}
                   data-easy-view-option
                   onClick={() => {
                     setStatus(item.id)
@@ -130,13 +142,13 @@ export function AiIntakeQueuePage({ embedded = false }: { embedded?: boolean }) 
             </div>
           </div>
 
-          <div className={embedded ? 'max-h-[36rem] overflow-y-auto' : 'h-[calc(100%-8rem)] overflow-y-auto'}>
+          <div data-tour="intake-list" className={embedded ? 'max-h-[36rem] overflow-y-auto' : 'h-[calc(100%-8rem)] overflow-y-auto'}>
             {query.isLoading ? (
               <ListSkeleton />
             ) : query.isError ? (
               <div role="alert" className="p-4 text-sm text-red-700">Intake drafts could not be loaded. <button type="button" onClick={() => { void query.refetch() }} disabled={query.isFetching} className="underline disabled:opacity-50">Retry</button></div>
             ) : drafts.length === 0 ? (
-              <div className="p-6 text-center text-sm text-slate-400">
+              <div data-tour="intake-empty" className="p-6 text-center text-sm text-slate-400">
                 No {status === 'all' ? 'intake' : status} drafts right now.
               </div>
             ) : (
@@ -150,7 +162,7 @@ export function AiIntakeQueuePage({ embedded = false }: { embedded?: boolean }) 
               ))
             )}
           </div>
-          {query.data && <nav aria-label="Intake queue pages" className="flex flex-wrap items-center justify-between gap-2 border-t border-slate-200 p-3 text-xs"><button type="button" disabled={page <= 1 || query.isFetching} onClick={() => { setPage(value => value - 1); setSelectedId(null) }} className="rounded-lg border border-slate-300 px-3 py-2 font-semibold disabled:opacity-40">← Previous</button><span role="status">Page {page} of {Math.max(1, query.data.last_page)} · {query.data.total} drafts</span><button type="button" disabled={page >= query.data.last_page || query.isFetching} onClick={() => { setPage(value => value + 1); setSelectedId(null) }} className="rounded-lg border border-slate-300 px-3 py-2 font-semibold disabled:opacity-40">Next →</button></nav>}
+          {query.data && <nav data-tour="intake-pages" aria-label="Intake queue pages" className="flex flex-wrap items-center justify-between gap-2 border-t border-slate-200 p-3 text-xs"><button type="button" disabled={page <= 1 || query.isFetching} onClick={() => { setPage(value => value - 1); setSelectedId(null) }} className="rounded-lg border border-slate-300 px-3 py-2 font-semibold disabled:opacity-40">← Previous</button><span role="status">Page {page} of {Math.max(1, query.data.last_page)} · {query.data.total} drafts</span><button type="button" disabled={page >= query.data.last_page || query.isFetching} onClick={() => { setPage(value => value + 1); setSelectedId(null) }} className="rounded-lg border border-slate-300 px-3 py-2 font-semibold disabled:opacity-40">Next →</button></nav>}
         </aside>
 
         <main className={`${selectedId && !query.isError ? '' : 'hidden'} min-w-0 overflow-y-auto ${embedded ? '' : 'lg:block'}`}>
@@ -203,6 +215,8 @@ function DraftRow({
   return (
     <button
       type="button"
+      data-tour="intake-row"
+      data-status={draft.status}
       onClick={onClick}
       aria-pressed={active}
       className={`w-full border-b border-slate-100 px-4 py-3 text-left transition-colors hover:bg-slate-50 ${
@@ -271,6 +285,12 @@ function DraftDetail({
     ? extracted.warnings.filter((warning): warning is string => typeof warning === 'string')
     : []
   const converted = draft.status === 'approved' || Boolean(draft.created_work_order_id)
+  // Vehicle / key / dealer fields are for the locksmith (automotive) trade
+  // pack. Other trades only see them when the AI actually captured some.
+  const isLocksmith = useIsLocksmithTrade()
+  const hasData = (o: Record<string, unknown>) => Object.values(o).some((v) => v !== null && v !== undefined && v !== '')
+  const showVehicle = isLocksmith || hasData(vehicle) || hasData(keyFob)
+  const showDealer = isLocksmith || hasData(dealer) || hasData(billing)
   const createPath = draft.classification === 'estimate'
     ? `/estimates/new?ai_intake_draft_id=${encodeURIComponent(draft.id)}`
     : `/jobs/new?ai_intake_draft_id=${encodeURIComponent(draft.id)}`
@@ -278,7 +298,7 @@ function DraftDetail({
   return (
     <div className="mx-auto max-w-6xl px-6 py-5">
       <div className="flex flex-wrap items-start justify-between gap-3 border-b border-slate-200 pb-4">
-        <div>
+        <div data-tour="intake-detail-head" data-status={draft.status}>
           <div className="flex flex-wrap items-center gap-2">
             <h2 className="text-xl font-semibold text-navy-900">{detailTitle(draft)}</h2>
             <StatusBadge status={draft.status} />
@@ -289,9 +309,10 @@ function DraftDetail({
             {sourceLine(draft)}
           </div>
         </div>
-        <div className="flex flex-wrap items-center gap-2">
+        <div data-tour="intake-actions" className="flex flex-wrap items-center gap-2">
           {draft.comms_message?.conversation_id && (
             <Link
+              data-tour="intake-open-thread"
               to={`/communications?conversation=${encodeURIComponent(draft.comms_message.conversation_id)}`}
               className="rounded-md border border-slate-300 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-white"
             >
@@ -310,6 +331,7 @@ function DraftDetail({
           ) : (
             <button
               type="button"
+              data-tour="intake-dismiss"
               onClick={onDismiss}
               disabled={dismissing}
               className="rounded-md border border-slate-300 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-white disabled:opacity-60"
@@ -329,6 +351,7 @@ function DraftDetail({
             </button>
           ) : draft.status === 'pending' || draft.status === 'reviewed' ? (
             <Link
+              data-tour="intake-create"
               to={createPath}
               className="rounded-md bg-amber-500 px-3.5 py-2 text-sm font-semibold text-white shadow-sm hover:bg-amber-600"
             >
@@ -338,8 +361,16 @@ function DraftDetail({
         </div>
       </div>
 
-      <IntakeTrainingReview draft={draft} />
-      <IntakeFollowUp key={draft.id} draft={draft} />
+      {/* The parts the caller named, with stock, before anything else. */}
+      <PartsMentioned
+        key={`parts:${draft.id}`}
+        sourceType="ai_intake_draft"
+        sourceId={draft.id}
+        tour="intake-parts"
+        className="mt-4 rounded-lg border border-amber-200 bg-amber-50/50 px-3 py-2"
+      />
+      <div data-tour="intake-review"><IntakeTrainingReview draft={draft} /></div>
+      <div data-tour="intake-follow-up"><IntakeFollowUp key={draft.id} draft={draft} /></div>
       <IntakeReplies key={`replies:${draft.id}`} draft={draft} />
 
       {draft.error && (
@@ -357,16 +388,19 @@ function DraftDetail({
         </div>
       )}
 
-      <div className="mt-5 grid gap-5 xl:grid-cols-[1fr_1fr]">
+      <IntakePriceSuggestion key={draft.id} draftId={draft.id} fetchOnMount />
+
+      <div data-tour="intake-details" className="mt-5 grid gap-5 xl:grid-cols-[1fr_1fr]">
         <section className="space-y-5">
-          <InfoSection title="Customer">
+          <InfoSection title="Customer" tour="intake-customer">
             <Field label="Name" value={stringValue(customer.display_name) || personName(customer)} />
             <Field label="Business" value={stringValue(customer.business_name)} />
             <Field label="Phone" value={formatPhone(stringValue(customer.phone))} />
             <Field label="Email" value={stringValue(customer.email)} />
           </InfoSection>
 
-          <InfoSection title="Asset / Equipment">
+          <InfoSection title="Asset / Equipment" tour="intake-equipment">
+            {showVehicle && <>
             <Field label="VIN" value={stringValue(vehicle.vin)} mono />
             {/* A VIN read off a photo that fails its own check digit was
                 misread. Saying so beside the number is the difference between
@@ -394,11 +428,12 @@ function DraftDetail({
             <Field label="Stock" value={stringValue(vehicle.stock_number)} />
             <Field label="Plate" value={stringValue(vehicle.license_plate)} />
             <Field label="Key / fob" value={keyFobSummary(keyFob)} multiline />
+            </>}
             <Field label="Equipment" value={equipmentSummary(equipment, asset)} multiline />
-            <Field label="NHTSA" value={nhtsaSummary(vehicle)} />
+            {showVehicle && <Field label="NHTSA" value={nhtsaSummary(vehicle)} />}
           </InfoSection>
 
-          <InfoSection title="Part Guess">
+          <InfoSection title="Part Guess" tour="intake-part">
             <Field label="Best guess" value={stringValue(parts.best_guess)} />
             <Field label="Confidence" value={percentValue(parts.confidence)} />
             <Field label="Alternates" value={partCandidates(parts)} multiline />
@@ -406,18 +441,18 @@ function DraftDetail({
             <PartCorrection key={draft.id} draft={draft} />
           </InfoSection>
 
-          <InfoSection title="Dealer / Billing">
+          {showDealer && <InfoSection title="Dealer / Billing">
             <Field label="Dealer" value={stringValue(dealer.name)} />
             <Field label="Contact" value={stringValue(dealer.contact_name)} />
             <Field label="RO / PO" value={stringValue(dealer.po_or_ro_number)} />
             <Field label="Bill to" value={stringValue(billing.bill_to)} />
             <Field label="Dealer auth" value={stringValue(billing.dealer_authorized_amount)} />
             <Field label="Customer part" value={stringValue(billing.customer_responsibility)} />
-          </InfoSection>
+          </InfoSection>}
         </section>
 
         <section className="space-y-5">
-          <InfoSection title={draft.classification === 'estimate' ? 'Estimate Draft' : 'Job Draft'}>
+          <InfoSection title={draft.classification === 'estimate' ? 'Estimate Draft' : 'Job Draft'} tour="intake-job">
             <Field label="Title" value={stringValue(job.title) || stringValue(estimate.title)} />
             <Field label="Service" value={stringValue(job.requested_service)} />
             <Field label="Priority" value={stringValue(job.priority)} />
@@ -427,17 +462,19 @@ function DraftDetail({
             </Field>
           </InfoSection>
 
-          <InfoSection title="Service Address">
+          <InfoSection title="Service Address" tour="intake-address">
             <Field label="Address" value={addressLine(location)} multiline />
             <Field label="Entry notes" value={stringValue(location.entry_notes)} multiline />
-            <Field label="Vehicle notes" value={stringValue(location.vehicle_location_notes)} multiline />
+            {(showVehicle || Boolean(stringValue(location.vehicle_location_notes))) && <Field label="Vehicle notes" value={stringValue(location.vehicle_location_notes)} multiline />}
           </InfoSection>
 
 
           <IntakePhotos key={draft.id} draftId={draft.id} />
-          <InfoSection title="Transcript">
+          <InfoSection title="Transcript" tour="intake-transcript">
             <div className="whitespace-pre-wrap text-sm leading-6 text-slate-700">
-              {draft.transcript_text || 'No transcript text.'}
+              {draft.transcript_text
+                ? <ReferencedText text={draft.transcript_text} source={draft.source === 'call' || draft.source === 'voicemail' ? 'transcript' : 'message'} />
+                : 'No transcript text.'}
             </div>
           </InfoSection>
         </section>
@@ -483,7 +520,7 @@ function IntakeTrainingReview({ draft }: { draft: AiIntakeDraft }) {
   }
   const date = typeof review.reviewed_at === 'string' ? new Date(review.reviewed_at) : null
   const recordedAt = date && !Number.isNaN(date.getTime()) ? date.toLocaleString() : null
-  return <section aria-label="Intake training review" className="my-5 overflow-hidden rounded-2xl border border-slate-200 bg-white">
+  return <section aria-label="Intake training review" data-intake-training-review className="my-5 overflow-hidden rounded-2xl border border-slate-200 bg-white">
     <div className="flex flex-wrap items-start justify-between gap-3 bg-navy-900 p-5 text-white">
       <div><p className="text-xs font-semibold uppercase tracking-wide text-amber-300">Teach CBI · Intake</p><h3 className="mt-1 text-lg font-bold">{approved ? 'Approved by your team' : draft.status === 'dismissed' ? 'Set aside by your team' : 'Your review comes first'}</h3><p className="mt-2 max-w-2xl text-sm leading-relaxed text-slate-300">Check the original message, correct the details, then choose whether to create the job. Extraction confidence is not permission to act.</p></div>
       <span className="rounded-full border border-white/20 px-3 py-1 text-xs font-semibold">Human-controlled workflow</span>
@@ -496,7 +533,7 @@ function IntakeTrainingReview({ draft }: { draft: AiIntakeDraft }) {
     <div className="border-t border-slate-100 px-5 py-4">
       <p className="text-sm font-semibold text-navy-900">{recordedAt ? `Latest recorded review · ${recordedAt}` : 'No review evidence recorded yet'}</p>
       {fields.length > 0 && <div className="mt-2 flex flex-wrap gap-2">{fields.map(field => <span key={field} className="rounded-full bg-amber-50 px-3 py-1 text-xs font-semibold text-amber-800">{labels[field] ?? field.replaceAll('_', ' ')}</span>)}</div>}
-      <p className="mt-2 text-xs leading-relaxed text-slate-500">{fields.length ? 'These areas were edited during review. ' : ''}Recent history retains up to 50 events, starting when history recording was deployed. It is not a permanent audit trail or an agreement score.</p>
+      <p className="mt-2 text-xs leading-relaxed text-slate-500">{fields.length ? 'These areas were edited during review. ' : ''}Recent history keeps up to 50 events. It is not a permanent audit trail or an agreement score.</p>
       {history.length > 0 && <details className="mt-4 rounded-xl border border-slate-200 p-4">
         <summary className="cursor-pointer text-sm font-semibold text-navy-900">Recent review history · {history.length} recorded events</summary>
         <ol className="mt-3 max-h-80 space-y-3 overflow-y-auto">
@@ -513,7 +550,8 @@ function IntakeTrainingReview({ draft }: { draft: AiIntakeDraft }) {
 
 function PartCorrection({ draft }: { draft: AiIntakeDraft }) {
   const permissions = usePermissions()
-  const canTeach = permissions.has(PERM.AI_TRAIN)
+  const canTeach = permissions.has('ai.learn.suggest')
+  const isLocksmith = useIsLocksmithTrade()
   const [remember, setRemember] = useState(false)
   const queryClient = useQueryClient()
   const parts = objectValue(objectValue(draft.extracted_json ?? {}).parts)
@@ -919,7 +957,7 @@ function PartCorrection({ draft }: { draft: AiIntakeDraft }) {
             autoComplete="off"
             value={decider}
             onChange={(event) => setDecider(event.target.value)}
-            placeholder="e.g. ignition type — match the FCC ID on the customer's key"
+            placeholder={isLocksmith ? "e.g. ignition type — match the FCC ID on the customer's key" : 'e.g. model or part number on the existing unit'}
             className="mt-1 w-full rounded-md border border-slate-300 px-2 py-1.5 text-sm"
           />
           <div className="mt-1 text-xs text-slate-500">
@@ -1089,9 +1127,9 @@ function PartAvailability({ draft }: { draft: AiIntakeDraft }) {
   )
 }
 
-function InfoSection({ title, children }: { title: string; children: ReactNode }) {
+function InfoSection({ title, children, tour }: { title: string; children: ReactNode; tour?: string }) {
   return (
-    <section className="rounded-md border border-slate-200 bg-white p-4 shadow-sm">
+    <section data-tour={tour} className="rounded-md border border-slate-200 bg-white p-4 shadow-sm">
       <h3 className="text-sm font-semibold text-navy-900">{title}</h3>
       <div className="mt-3 space-y-2">{children}</div>
     </section>

@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react'
 import { useTheme } from '@/hooks/useTheme'
 import { useQuery } from '@tanstack/react-query'
 import { apiRequest } from '@/lib/api'
+import { listCallOuts } from '@/lib/callOuts'
 import type {
   WorkOrder,
   WorkOrderNteExtension,
@@ -20,6 +21,7 @@ import type {
  *   - NTE extension requests + decisions
  *   - Attachments added
  *   - Portal request acceptance / decline
+ *   - CBI's calls about the job (running late, to the tech or customer) and how each went
  *
  * Field-level edits aren't tracked yet (would need an audit log table).
  */
@@ -68,6 +70,10 @@ export function WorkOrderHistoryPanel({ wo }: { wo: WorkOrder }) {
   const attachQ = useQuery({
     queryKey: ['wo-attachments', wo.id],
     queryFn: () => apiRequest<{ data: AttachmentRow[] }>(`/v1/work-orders/${wo.id}/attachments`),
+  })
+  const callOutsQ = useQuery({
+    queryKey: ['wo-call-outs', wo.id],
+    queryFn: () => listCallOuts(wo.id),
   })
 
   const entries: TimelineEntry[] = useMemo(() => {
@@ -191,11 +197,25 @@ export function WorkOrderHistoryPanel({ wo }: { wo: WorkOrder }) {
       })
     }
 
+    for (const c of callOutsQ.data ?? []) {
+      if (!c.created_at) continue
+      const answered = c.answered_at !== null
+      out.push({
+        at: c.created_at,
+        kind: 'call-out',
+        icon: '📞',
+        title: `CBI called ${c.audience === 'customer' ? 'the customer' : c.account_name ?? 'the tech'}${c.kind === 'late_alert' ? ': running late' : ''}`,
+        detail: c.message ?? undefined,
+        meta: [c.outcome, c.pressed, c.started_by_name ? `started by ${c.started_by_name}` : null, c.voice === 'ai' ? 'AI voice' : null, c.to_number || null].filter(Boolean).join(' · '),
+        color: answered ? 'border-l-emerald-500' : c.status === 'failed' || c.status === 'no-answer' || c.status === 'busy' ? 'border-l-rose-400' : 'border-l-slate-300',
+      })
+    }
+
     // Newest first
     return out.sort((a, b) => new Date(b.at).getTime() - new Date(a.at).getTime())
-  }, [wo, visitsQ.data, sigsQ.data, extQ.data, attachQ.data])
+  }, [wo, visitsQ.data, sigsQ.data, extQ.data, attachQ.data, callOutsQ.data])
 
-  const sources = [visitsQ, sigsQ, extQ, attachQ]
+  const sources = [visitsQ, sigsQ, extQ, attachQ, callOutsQ]
   const loading = sources.some(query => query.isLoading)
   const failed = sources.filter(query => query.isError)
   const filters = [
@@ -204,6 +224,7 @@ export function WorkOrderHistoryPanel({ wo }: { wo: WorkOrder }) {
     { key: 'signature', label: 'Signatures', kinds: ['signature'] },
     { key: 'billing', label: 'Billing approvals', kinds: ['nte-requested', 'nte-reviewed'] },
     { key: 'attachment', label: 'Files', kinds: ['attachment'] },
+    { key: 'call-out', label: 'CBI calls', kinds: ['call-out'] },
   ]
   const selected = filters.find(item => item.key === filter) ?? filters[0]
   const visibleEntries = easy ? entries.filter(entry =>
@@ -212,7 +233,7 @@ export function WorkOrderHistoryPanel({ wo }: { wo: WorkOrder }) {
   ) : entries
 
   return (
-    <section className="bg-white border border-slate-200 rounded-xl p-5">
+    <section data-tour="job-history-panel" className="bg-white border border-slate-200 rounded-xl p-5">
       <h3 className="text-sm font-semibold text-slate-700 uppercase tracking-wider mb-1">
         Timeline
       </h3>

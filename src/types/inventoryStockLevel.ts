@@ -24,6 +24,8 @@ export interface InventoryStockLevelQuantities {
 export interface InventoryStockLevelLocationMini {
   id: string
   name: string
+  /** Sent by the server: warehouse, truck (a van) or other. */
+  type?: 'warehouse' | 'truck' | 'other'
 }
 
 export interface InventoryStockLevelBinMini {
@@ -68,6 +70,8 @@ export interface InventoryStockLevelInput {
   /** null CLEARS the par; 0 sets a real par of none. */
   par_qty?: number | null
   last_counted_at?: string | null
+  /** PO-only override: why it comes in without a purchase order (lib/poOverride.ts). */
+  override_reason?: string
 }
 
 export type InventoryStockLevelUpdateInput = Partial<InventoryStockLevelInput>
@@ -78,6 +82,8 @@ export interface InventoryStockLevelListParams {
   /** That bin AND everything under it — scan a rack, see the whole rack. */
   in_bin_subtree?: string
   catalog_item_id?: string
+  /** Items whose name, SKU or barcode contains this (Bins: search by item). */
+  item_q?: string
   has_stock?: boolean
   per_page?: number
   page?: number

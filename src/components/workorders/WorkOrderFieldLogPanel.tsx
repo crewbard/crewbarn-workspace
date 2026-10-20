@@ -110,7 +110,7 @@ export function WorkOrderFieldLogPanel({ wo }: { wo: WorkOrder }) {
       <WorkOrderTemplateUpload workOrderId={wo.id} />
 
       {/* Policy header */}
-      <section className="bg-slate-50 border border-slate-200 rounded-lg p-4">
+      <section data-tour="job-field-requirements" className="bg-slate-50 border border-slate-200 rounded-lg p-4">
         <div className="text-xs font-semibold text-slate-600 uppercase tracking-wider mb-2">
           Field requirements (snapshotted at job creation)
         </div>
@@ -179,7 +179,7 @@ export function WorkOrderFieldLogPanel({ wo }: { wo: WorkOrder }) {
       )}
 
       {/* Visit timeline */}
-      <section>
+      <section data-tour="job-visit-log">
         <h3 className="text-sm font-semibold text-slate-700 uppercase tracking-wider mb-2">
           Visit log
         </h3>

@@ -2,8 +2,10 @@ import { useEffect, useMemo, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link } from 'react-router-dom'
 import { useTheme } from '@/hooks/useTheme'
+import { usePermissions } from '@/hooks/usePermissions'
 import { EasyPageHeading } from '@/components/easy/EasyPageHeading'
 import { API_URL, apiRequest, getActingTenant, getFranchiseActAs, getStoredToken } from '@/lib/api'
+import { assertFileResponse } from '@/lib/fileResponse'
 import {
   SalesTaxDetailOverlay,
   type SalesTaxInvoiceRow,
@@ -13,8 +15,8 @@ import {
  * Sales Tax Report — for filing season.
  *
  * Shows gross / taxable / non-taxable sales + total tax collected for
- * a date range, with a per-jurisdiction breakdown (FL State 6 %,
- * Brevard County 1 %, etc.). The state filing form usually asks for
+ * a date range, with a per-jurisdiction breakdown (state 6 %,
+ * county 1 %, etc.). The state filing form usually asks for
  * the totals plus the split, so we print both.
  *
  * Date basis: invoice issued_at. Drafts and cancelled / voided
@@ -92,6 +94,7 @@ async function downloadReport(path: string, filename: string) {
 
   const response = await fetch(`${API_URL}${path}`, { headers })
   if (!response.ok) throw new Error(`Report download failed (${response.status})`)
+  assertFileResponse(response)
   const blob = await response.blob()
   const href = URL.createObjectURL(blob)
   const link = document.createElement('a')
@@ -184,8 +187,8 @@ export function SalesTaxReportView({
   const { theme } = useTheme()
   const easy = !embedded && (theme === 'easy-side' || theme === 'easy-top')
   const queryClient = useQueryClient()
-  // Default to last month — common filing cadence is monthly in
-  // Florida for small businesses.
+  // Default to last month — monthly is a common filing cadence for small
+  // businesses.
   const [from, setFrom] = useState<string>(presets.last_month.from)
   const [to, setTo] = useState<string>(presets.last_month.to)
   const [paidOn, setPaidOn] = useState<string>(isoDay(new Date()))
@@ -194,6 +197,11 @@ export function SalesTaxReportView({
   const [jumpYear, setJumpYear] = useState<number>(new Date().getFullYear())
   const [showFilingForm, setShowFilingForm] = useState(false)
   const [showDetail, setShowDetail] = useState(false)
+  const [detailDownloadError, setDetailDownloadError] = useState<string | null>(null)
+  // Posting a payment writes a journal entry; the server requires
+  // invoices.edit for it, so view-only users don't get the form.
+  const { has } = usePermissions()
+  const canPostPayment = has('invoices.edit')
 
   const query = useQuery({
     queryKey: ['sales-tax-report', from, to],
@@ -268,7 +276,7 @@ export function SalesTaxReportView({
       {/* Header — print:hidden so the printed page is just the report.
           No action buttons: downloading belongs with the detail you are
           downloading, which is the review overlay below. */}
-      <div className="print:hidden">
+      <div className="print:hidden" data-tour="sales-tax-header">
         <div>
           <div className="text-xs text-slate-500 mb-1">
             {embedded ? (
@@ -298,7 +306,7 @@ export function SalesTaxReportView({
       </div>
 
       {/* Range controls */}
-      <div className="bg-white border border-slate-200 rounded-xl p-4 space-y-3 print:hidden">
+      <div className="bg-white border border-slate-200 rounded-xl p-4 space-y-3 print:hidden" data-tour="sales-tax-range">
         <div className="flex flex-wrap gap-2">
           {Object.entries(presets).map(([key, p]) => {
             const isActive = p.from === from && p.to === to
@@ -410,6 +418,8 @@ export function SalesTaxReportView({
 
       {report && filing && (
         <div
+          data-tour="sales-tax-filing"
+          data-status={filing.status}
           className={`rounded-xl border p-4 print:hidden ${
             filing.status === 'filed'
               ? 'border-emerald-200 bg-emerald-50/70'
@@ -501,7 +511,7 @@ export function SalesTaxReportView({
               )}
             </div>
 
-            {(filing.status === 'filed' || filing.status === 'overpaid') && !showFilingForm && (
+            {canPostPayment && (filing.status === 'filed' || filing.status === 'overpaid') && !showFilingForm && (
               <button
                 type="button"
                 onClick={() => setShowFilingForm(true)}
@@ -512,7 +522,14 @@ export function SalesTaxReportView({
             )}
           </div>
 
-          {(showFilingForm || filing.status === 'unfiled' || filing.status === 'short') && (
+          {!canPostPayment && (filing.status === 'unfiled' || filing.status === 'short') && (
+            <p className="mt-4 border-t border-slate-200/70 pt-4 text-sm text-slate-600">
+              Someone with permission to edit invoices can record the sales tax payment here.
+            </p>
+          )}
+
+          {canPostPayment && (showFilingForm || filing.status === 'unfiled' || filing.status === 'short') && (
+            <div data-tour="sales-tax-payment">
             <div className="mt-4 border-t border-slate-200/70 pt-4">
               <p className="mb-2 text-sm text-slate-600">
                 Posts a journal entry: debit Sales Tax Payable and credit Checking.
@@ -559,7 +576,15 @@ export function SalesTaxReportView({
                 <button
                   type="button"
                   disabled={paymentMutation.isPending || !paidOn || Number(paymentAmount || 0) <= 0}
-                  onClick={() => paymentMutation.mutate()}
+                  onClick={() => {
+                    const amountCents = Math.round(Number(paymentAmount || 0) * 100)
+                    if (
+                      !window.confirm(
+                        `Post a sales tax payment of $${dollars(amountCents)} for ${from} to ${to}, paid on ${paidOn}?\n\nThis posts a journal entry: debit Sales Tax Payable and credit Checking (account 1010).`,
+                      )
+                    ) return
+                    paymentMutation.mutate()
+                  }}
                   className="rounded-md bg-slate-950 px-4 py-2 text-sm font-semibold text-white shadow-sm disabled:cursor-not-allowed disabled:bg-slate-400"
                 >
                   {paymentMutation.isPending ? 'Posting...' : 'Post payment'}
@@ -570,6 +595,7 @@ export function SalesTaxReportView({
                 range above before posting if you filed a different window.
               </p>
             </div>
+            </div>
           )}
 
           {/* Under the payment controls on purpose: check the invoices, then
@@ -577,6 +603,7 @@ export function SalesTaxReportView({
           <div className="mt-4 border-t border-slate-200/70 pt-4">
             <button
               type="button"
+              data-tour="sales-tax-review"
               onClick={() => setShowDetail(true)}
               className="rounded-md border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 shadow-sm hover:bg-slate-50"
             >
@@ -595,20 +622,25 @@ export function SalesTaxReportView({
           to={to}
           rows={report.invoices ?? []}
           taxTotalCents={report.totals.tax_collected_cents}
-          onClose={() => setShowDetail(false)}
-          onDownload={(format) =>
+          onClose={() => {
+            setShowDetail(false)
+            setDetailDownloadError(null)
+          }}
+          downloadError={detailDownloadError}
+          onDownload={(format) => {
+            setDetailDownloadError(null)
             downloadReport(
               `${reportBase}&detail=1&format=${format}`,
               `sales-tax-detail-${from}-${to}.${format}`,
             ).catch((error) =>
-              window.alert(error instanceof Error ? error.message : 'Could not download report.'),
+              setDetailDownloadError(error instanceof Error ? error.message : 'Could not download report.'),
             )
-          }
+          }}
         />
       )}
 
       {/* The actual report — visible AND prints cleanly */}
-      <div className="bg-white border border-slate-200 rounded-xl p-6 print:border-0 print:shadow-none print:p-0">
+      <div data-tour="sales-tax-report" className="bg-white border border-slate-200 rounded-xl p-6 print:border-0 print:shadow-none print:p-0">
         <div className="border-b border-slate-200 pb-3 mb-4">
           <h2 className="text-lg font-semibold text-slate-900">
             Sales Tax Report · {from} to {to}

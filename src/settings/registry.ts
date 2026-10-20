@@ -3,15 +3,17 @@ import { PERM } from '@/hooks/usePermissions'
 import type { SettingDefinition } from '@/settings/types'
 import { aiProvider } from '@/settings/ai'
 import { settingsLocation } from '@/settings/workspace'
+import { contractAutoIssue } from '@/settings/contracts'
 import {
   autoCheckIn,
   codCollection,
   dormantDays,
   jobReminders,
+  lateTechFlash,
   maxVideoClip,
 } from '@/settings/shopRules'
 
-export { autoCheckIn, codCollection, dormantDays, jobReminders, maxVideoClip }
+export { autoCheckIn, codCollection, dormantDays, jobReminders, lateTechFlash, maxVideoClip }
 export { contractAutoIssue } from '@/settings/contracts'
 export { aiProvider } from '@/settings/ai'
 export { settingsLocation } from '@/settings/workspace'
@@ -45,7 +47,7 @@ interface ProcessorData {
 
 export const cardProcessor: SettingDefinition<'stripe' | 'godaddy', ProcessorData> = {
   key: 'money.card-processor',
-  route: '/tool-shed/payments',
+  route: '/tool-shed/payments/card-processor',
   section: 'money',
 
   title: 'Where card payments go',
@@ -76,14 +78,16 @@ export const cardProcessor: SettingDefinition<'stripe' | 'godaddy', ProcessorDat
     ],
   },
 
+  // The choice is read from the payments status (the same one the Payments
+  // page shows); /v1/payments/processor only takes the PATCH that changes it.
   load: async () => {
     const res = await apiRequest<{
-      data: { card_processor: 'stripe' | 'godaddy' | null; connected?: boolean; stripe_ready?: boolean }
-    }>('/v1/payments/processor')
+      data: { card_processor: 'stripe' | 'godaddy' | null; connected?: boolean; stripe_connected?: boolean }
+    }>('/v1/payments/godaddy/status')
     return {
       value: res.data.card_processor ?? 'stripe',
       data: {
-        stripe_ready: res.data.stripe_ready ?? true,
+        stripe_ready: res.data.stripe_connected ?? false,
         godaddy_connected: res.data.connected ?? false,
       },
     }
@@ -109,13 +113,19 @@ export const cardProcessor: SettingDefinition<'stripe' | 'godaddy', ProcessorDat
 
   attention: (_v, d) =>
     d && !d.stripe_ready && !d.godaddy_connected ? 'No way to take a card payment yet' : null,
+
+  // Connecting a processor happens on the full Payments page.
+  next: (_value, d) =>
+    !d?.stripe_ready || !d?.godaddy_connected
+      ? { to: '/tool-shed/payments', label: 'connecting a card processor' }
+      : null,
 }
 
 // ── when a warranty counts as expiring ───────────────────────────────────────
 
 export const warrantyExpiringSoon: SettingDefinition<number, unknown> = {
   key: 'workflow.warranty-expiring',
-  route: '/tool-shed/warranty-settings',
+  route: '/tool-shed/warranty-settings/expiring',
   section: 'workflow',
 
   title: 'When to warn you a warranty is running out',
@@ -139,10 +149,10 @@ export const warrantyExpiringSoon: SettingDefinition<number, unknown> = {
       : [
           `A warranty shows as "expiring soon" ${value} days before it ends.`,
           'Those jobs appear on the dashboard panel so somebody can act on them.',
-          'Nothing is sent to the customer automatically.',
+          'This setting sends nothing itself. If you turn on the "Warranty expiring reminder" automation, the customer is emailed when their warranty enters this window.',
         ],
 
-  scopeNote: 'Changes what is highlighted, not the warranties themselves. No cover is shortened or extended.',
+  scopeNote: 'Changes what is highlighted, not the warranties themselves. No cover is shortened or extended. This is the same number as "Expiring soon threshold" on the Warranty rules page.',
 
   summary: (value) => (value === 0 ? 'No early warning' : `${value} days`),
 }
@@ -156,20 +166,24 @@ interface TwilioData {
 
 export const twilioTexting: SettingDefinition<boolean, TwilioData> = {
   key: 'connections.twilio',
-  route: '/tool-shed/communication',
+  route: '/tool-shed/communication/twilio',
   section: 'connections',
 
-  title: 'Communications',
+  title: 'Texting from your own Twilio number',
   blurb:
     'By default CrewBarn sends texts for you. If you already have a Twilio account, your texts can come from your own number instead. Twilio is a company that sends texts — you would have an account with them, not with us.',
   keywords: ['twilio', 'sms', 'text', 'byo', 'number'],
   permission: PERM.SETTINGS_EDIT,
 
-  control: { kind: 'wizard', cta: 'Set up my Twilio number' },
+  control: { kind: 'wizard', cta: 'Set up my Twilio number', to: '/tool-shed/communication/twilio/setup' },
 
   load: async () => {
     const res = await apiRequest<{
-      data: { twilio_enabled?: boolean; twilio_account_sid_present?: boolean; twilio_from_number?: string | null }
+      data: {
+        twilio_enabled?: boolean
+        twilio_account_sid_present?: boolean
+        twilio_from_number?: string | null
+      }
     }>('/v1/settings/communication')
     const configured = Boolean(res.data.twilio_account_sid_present && res.data.twilio_from_number)
     return { value: Boolean(res.data.twilio_enabled), data: { configured, live: Boolean(res.data.twilio_enabled) } }
@@ -183,11 +197,11 @@ export const twilioTexting: SettingDefinition<boolean, TwilioData> = {
         ? [
             'Texts to customers come from your Twilio number.',
             'Twilio bills you for them directly, not CrewBarn.',
-            'You can switch back to CrewBarn Hosted at any time.',
+            'You can switch it off again on the Phone, SMS & email page, under BYO Twilio.',
           ]
         : [
             'Texts to customers come from CrewBarn as before.',
-            'Your Twilio details stay saved, so turning this back on takes one click.',
+            'Your Twilio details stay saved. Run the setup again to test and switch them on.',
           ],
 
   scopeNote: 'Only affects texts to customers. Sign-in codes and staff messages are unchanged.',
@@ -209,4 +223,6 @@ export const SETTINGS: Array<SettingDefinition<never, never>> = [
   dormantDays,
   maxVideoClip,
   autoCheckIn,
+  lateTechFlash,
+  contractAutoIssue,
 ] as unknown as Array<SettingDefinition<never, never>>

@@ -8,7 +8,7 @@ interface GuideInput {
   links?: Array<{ label: string; route: string }>
 }
 
-function guide(input: GuideInput): string {
+export function guide(input: GuideInput): string {
   const section = (heading: string, items: string[], ordered = false) =>
     `## ${heading}\n\n${items.map((item, index) => ordered ? `${index + 1}. ${item}` : `- ${item}`).join('\n')}`
   const links = input.links?.length
@@ -339,29 +339,5 @@ export const EXPANDED_HELP_GUIDES: Record<string, string> = {
     example: '“Inventory → Transfer: from Warehouse/A1 to Truck 2/Drawer 1, item CYL-100, quantity 3. Submit returned 422 ‘insufficient stock’; A1 displayed quantity 5. Repeats after refresh.”',
     effects: ['Specific feedback can be reproduced and triaged faster.', 'Feedback itself does not undo test data, so note any cleanup needed.'],
     watchFor: ['“It does not work” is not enough to reproduce.', 'Remove passwords, API secrets, payment data, and customer-sensitive information.'],
-  }),
-  'acting-as-tenant': guide({
-    summary: 'Acting as a tenant gives a platform administrator tenant context for support and testing while preserving platform-level identity and audit boundaries.',
-    useWhen: ['Investigating a tenant-specific issue.', 'Verifying onboarding or configuration.', 'Testing permissions and behavior with the tenant’s data context.'],
-    steps: ['Select the intended tenant from the acting-as control.', 'Confirm the visible banner before reading or changing records.', 'Use the least invasive action needed to investigate.', 'Record support-relevant findings and avoid changing unrelated configuration.', 'Exit or switch tenant context immediately when finished.'],
-    example: 'A platform admin acts as Tenant A to inspect its status mapping, then exits before opening Tenant B’s support request.',
-    effects: ['Tenant-scoped API calls and pages use the selected tenant context.', 'Writes may be attributed to the platform actor while affecting tenant data.'],
-    watchFor: ['Never assume tenant context from the previous page; read the banner.', 'Do not use acting-as for personal 2FA setup.', 'Without a tenant context, tenant writes should fail rather than guess.'],
-  }),
-  'admin-portal': guide({
-    summary: 'The platform admin area manages tenants, testers, platform inbox activity, and support operations that are not available to tenant users.',
-    useWhen: ['Provisioning or reviewing a tenant.', 'Monitoring tester progress.', 'Handling messages routed to the platform inbox.'],
-    steps: ['Open the platform-admin menu from the authorized account.', 'Choose Tenants, Testers, Inbox, or the relevant platform function.', 'Confirm whether an action is platform-wide or tenant-scoped.', 'Use acting-as only when tenant context is required.', 'Record sensitive changes and return to platform context when finished.'],
-    example: 'Create a tester tenant, verify its owner invitation, then monitor walkthrough notes without granting tenant-owner access to platform administration.',
-    effects: ['Platform actions can provision accounts and influence many tenants.', 'Role gates prevent ordinary tenant users from seeing these functions.'],
-    watchFor: ['Platform permissions are high impact; do not use shared accounts.', 'Confirm tenant and recipient before provisioning or emailing credentials.'],
-  }),
-  'tester-email-workflow': guide({
-    summary: 'CrewBarn test addresses can route generated product mail into the platform inbox so the team can verify content and delivery without using a tester’s personal mailbox.',
-    useWhen: ['Provisioning a controlled tester account.', 'Testing invitations, estimates, reminders, or replies.', 'Reviewing end-to-end platform email behavior.'],
-    steps: ['Create the approved `@crewbarn.com` test address using the tenant/tester naming convention.', 'Assign it only to the intended test account or test customer contact.', 'Trigger the email from the real workflow.', 'Open the platform inbox and verify sender, recipient, subject, content, links, and reply routing.', 'Deliver login credentials through the approved separate channel.', 'Remove or retire test addresses when the test is complete.'],
-    example: 'Send an estimate to `customer_alice@crewbarn.com`, verify it arrives in the platform inbox, open the approval link, and confirm the resulting estimate activity.',
-    effects: ['Messages exercise the actual outbound and inbound routing path.', 'Replies can return to the platform inbox for inspection.'],
-    watchFor: ['Do not use test addresses for real customers.', 'Never email passwords in the same message as the username/invitation.', 'Confirm DNS/routing configuration before treating missing mail as an application defect.'],
   }),
 }

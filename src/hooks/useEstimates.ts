@@ -17,6 +17,9 @@ import {
   supersedeEstimate,
   convertEstimate,
   reorderLineItems,
+  addEstimateOption,
+  updateEstimateOption,
+  removeEstimateOption,
   type SupersedeEstimateInput,
   type ConvertEstimateInput,
   type ConvertedWorkOrder,
@@ -26,6 +29,8 @@ import type {
   EstimateInput,
   EstimateUpdateInput,
   EstimateListParams,
+  EstimateOptionCreateInput,
+  EstimateOptionUpdateInput,
 } from '@/types/estimate'
 import type {
   EstimateLineItem,
@@ -133,7 +138,9 @@ export function useMarkEstimateSent() {
 export function useApproveEstimate() {
   const queryClient = useQueryClient()
   return useMutation({
-    mutationFn: (id: string) => approveEstimate(id),
+    // Good / better / best: { id, optionId } says which option the customer chose.
+    mutationFn: (vars: string | { id: string; optionId?: string | null }) =>
+      typeof vars === 'string' ? approveEstimate(vars) : approveEstimate(vars.id, vars.optionId),
     onSuccess: (estimate) => {
       queryClient.setQueryData(estimateKeys.detail(estimate.id), estimate)
       queryClient.invalidateQueries({ queryKey: estimateKeys.lists() })
@@ -149,6 +156,49 @@ export function useRejectEstimate() {
       queryClient.setQueryData(estimateKeys.detail(estimate.id), estimate)
       queryClient.invalidateQueries({ queryKey: estimateKeys.lists() })
     },
+  })
+}
+
+// ---------- Good / better / best options ----------
+
+/**
+ * Each option call returns the whole estimate: prime its cache, and
+ * refetch the lines (a new option brings copies; removing one takes its
+ * lines with it).
+ */
+function useAfterOptionChange() {
+  const queryClient = useQueryClient()
+  return (estimate: Estimate) => {
+    queryClient.setQueryData(estimateKeys.detail(estimate.id), estimate)
+    queryClient.invalidateQueries({ queryKey: estimateKeys.lineItems(estimate.id) })
+    queryClient.invalidateQueries({ queryKey: estimateKeys.lists() })
+  }
+}
+
+export function useAddEstimateOption() {
+  const after = useAfterOptionChange()
+  return useMutation({
+    mutationFn: ({ estimateId, input }: { estimateId: string; input?: EstimateOptionCreateInput }) =>
+      addEstimateOption(estimateId, input),
+    onSuccess: after,
+  })
+}
+
+export function useUpdateEstimateOption() {
+  const after = useAfterOptionChange()
+  return useMutation({
+    mutationFn: ({ estimateId, optionId, input }: { estimateId: string; optionId: string; input: EstimateOptionUpdateInput }) =>
+      updateEstimateOption(estimateId, optionId, input),
+    onSuccess: after,
+  })
+}
+
+export function useRemoveEstimateOption() {
+  const after = useAfterOptionChange()
+  return useMutation({
+    mutationFn: ({ estimateId, optionId }: { estimateId: string; optionId: string }) =>
+      removeEstimateOption(estimateId, optionId),
+    onSuccess: after,
   })
 }
 
@@ -304,6 +354,8 @@ export function useUpdateEstimateLineItem() {
       return { previousLines }
     },
 
+    // Rolls back only. Declaring it silences the app-wide error banner, so
+    // the caller must say what failed (EstimateLineItemEditorLive does).
     onError: (_err, { estimateId }, context) => {
       if (context?.previousLines) {
         queryClient.setQueryData(estimateKeys.lineItems(estimateId), context.previousLines)
@@ -358,6 +410,7 @@ export function useReorderEstimateLineItems() {
       return { previousLines }
     },
 
+    // Rolls back only — the caller reports the failure, as above.
     onError: (_err, { estimateId }, context) => {
       if (context?.previousLines) {
         queryClient.setQueryData(estimateKeys.lineItems(estimateId), context.previousLines)

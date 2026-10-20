@@ -34,6 +34,12 @@ interface LocationPickerModalProps {
   initialView?: 'list' | 'add' | 'edit'
   /** Location id to edit on open — pairs with initialView='edit' */
   initialEditId?: string
+  /**
+   * Manage mode (customer Locations tab): there is nothing to "use" the
+   * location for, so Back/Cancel closes the modal and the save button
+   * reads "Save location" instead of "Save & Use".
+   */
+  manageOnly?: boolean
 }
 
 type View = 'list' | 'add' | 'edit'
@@ -84,6 +90,7 @@ export function LocationPickerModal({
   onSelect,
   initialView,
   initialEditId,
+  manageOnly = false,
 }: LocationPickerModalProps) {
   const [view, setView] = useState<View>('list')
   const [draft, setDraft] = useState<CustomerServiceLocationInput>(blankNewLocation())
@@ -385,7 +392,7 @@ export function LocationPickerModal({
                   type="text"
                   value={draft.nickname ?? ''}
                   onChange={(e) => updateDraft({ nickname: e.target.value })}
-                  placeholder='e.g., "Rental — Cocoa Beach"'
+                  placeholder='e.g., "Rental — Main St"'
                   className={inputClass()}
                 />
               </Field>
@@ -436,7 +443,7 @@ export function LocationPickerModal({
                     value={draft.state ?? ''}
                     onChange={(e) => updateDraft({ state: e.target.value })}
                     maxLength={2}
-                    placeholder="FL"
+                    placeholder="ST"
                     className={inputClass(fieldError('state'))}
                   />
                 </Field>
@@ -499,7 +506,7 @@ export function LocationPickerModal({
             <button
               type="button"
               onClick={() => {
-                if (view === 'add' && locations.length === 0) {
+                if (manageOnly || (view === 'add' && locations.length === 0)) {
                   onClose()
                 } else {
                   setView('list')
@@ -512,7 +519,7 @@ export function LocationPickerModal({
               disabled={createLocation.isPending || updateLocation.isPending}
               className="px-4 py-2 text-sm font-medium text-slate-700 hover:text-slate-900 disabled:opacity-50"
             >
-              {view === 'add' && locations.length === 0 ? 'Cancel' : '← Back'}
+              {manageOnly || (view === 'add' && locations.length === 0) ? 'Cancel' : '← Back'}
             </button>
             <button
               type="button"
@@ -522,7 +529,7 @@ export function LocationPickerModal({
             >
               {view === 'edit'
                 ? (updateLocation.isPending ? 'Updating…' : 'Save changes')
-                : (createLocation.isPending ? 'Saving…' : 'Save & Use')}
+                : (createLocation.isPending ? 'Saving…' : manageOnly ? 'Save location' : 'Save & Use')}
             </button>
           </Modal.Footer>
         </>

@@ -25,6 +25,7 @@ import { CatalogItemPickerModal } from '@/components/CatalogItemPickerModal'
 import { CatalogDescriptionInput } from '@/components/CatalogDescriptionInput'
 import type { LineType } from '@/types/workOrderLineItem'
 import { ScanToAddLineItem } from '@/components/ScanToAddLineItem'
+import { useTaxClasses } from '@/hooks/useTaxClasses'
 
 /**
  * Unified row shape for the editor — either a server line item OR a draft.
@@ -141,6 +142,7 @@ export interface WorkOrderLineItemEditorCoreProps {
   /** Optional: renders a "+ Search catalog" button. Parent turns the picked
    *  CatalogItem into a real line. Omit to hide. */
   onPickFromCatalog?: (item: import('@/types/catalogItem').CatalogItem) => void
+  onOpenPdf?: () => void
 
   /** Assets available for per-line tagging from the parent job's covered assets. */
   availableAssets?: WorkOrderLineEditorAvailableAsset[]
@@ -170,6 +172,7 @@ export function WorkOrderLineItemEditorCore({
   onDelete,
   onReorder,
   onPickFromCatalog,
+  onOpenPdf,
   availableAssets = [],
   disabled = false,
   saving = false,
@@ -258,7 +261,7 @@ export function WorkOrderLineItemEditorCore({
       {/* Lines */}
       {lines.length === 0 ? (
         <div className="text-sm text-slate-500 italic px-2 py-4">
-          No line items yet. Click "Add line item" to start.
+          No line items yet. Click "+ Add blank line" or "+ Search catalog" to start.
         </div>
       ) : (
         <DndContext
@@ -313,6 +316,11 @@ export function WorkOrderLineItemEditorCore({
             className="text-sm font-medium px-3 py-1.5 rounded border border-amber-500 text-amber-700 hover:bg-amber-50 disabled:opacity-50"
           >
             + Search catalog
+          </button>
+        )}
+        {onOpenPdf && (
+          <button type="button" onClick={onOpenPdf} disabled={disabled} className="rounded border border-slate-300 px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50">
+            + Pick from PDF book
           </button>
         )}
         {onPickFromCatalog && (
@@ -404,6 +412,9 @@ interface LineRowProps {
 }
 
 const LineRow = memo(function LineRow({ line, onChange, onDelete, availableAssets, disabled }: LineRowProps) {
+  // Tenant tax classes (cached 5 min) — default first.
+  const { data: taxClassesData } = useTaxClasses({ active: true })
+  const taxClasses = [...(taxClassesData?.data ?? [])].sort((a, b) => Number(b.is_default) - Number(a.is_default))
   const money = isDraft(line) ? line : line.money
   const isTrackingOnly = !!line.asset_id && money.subtotal_cents === 0
   const isFee = lineTypeOf(line) === 'fee'
@@ -609,48 +620,69 @@ const LineRow = memo(function LineRow({ line, onChange, onDelete, availableAsset
         )}
       </div>
 
-      {/* Tax class dropdown — placeholder UI, real backend lands in Session 7 */}
+      {/* Tax — No tax, one of the tenant's tax classes (Catalog › Tax classes;
+          the default class is listed first), or a custom rate. No rate is
+          invented here: if no tax classes exist, only No tax / Custom show. */}
       <div className="col-span-2 flex flex-col items-stretch gap-1">
-        <select
-          value={
-            !money.is_taxable || money.tax_rate_pct === 0
-              ? 'none'
-              : money.tax_rate_pct === 7
-              ? 'standard'
-              : 'custom'
-          }
-          onChange={(e) => {
-            const v = e.target.value
-            if (v === 'none') {
-              onChange({ is_taxable: false, tax_rate_pct: 0 })
-            } else if (v === 'standard') {
-              onChange({ is_taxable: true, tax_rate_pct: 7 })
-            } else if (v === 'custom') {
-              // Switching to custom: keep existing rate or default to a non-zero placeholder
-              onChange({ is_taxable: true, tax_rate_pct: money.tax_rate_pct > 0 ? money.tax_rate_pct : 1 })
-            }
-          }}
-          disabled={disabled}
-          className="w-full px-2 py-1 text-xs border border-slate-300 rounded bg-white focus:ring-1 focus:ring-amber-500 focus:border-amber-500"
-          title="Tax class — managed in Tool Shed → Tax Classes (coming soon)"
-        >
-          <option value="none">No tax</option>
-          <option value="standard">Standard (7%)</option>
-          <option value="custom">Custom rate...</option>
-        </select>
-        {money.is_taxable && money.tax_rate_pct !== 7 && money.tax_rate_pct !== 0 && (
-          <input
-            type="number"
-            step="0.001"
-            min="0"
-            max="100"
-            value={money.tax_rate_pct}
-            onChange={(e) => onChange({ tax_rate_pct: parseFloat(e.target.value) || 0 })}
-            disabled={disabled}
-            placeholder="%"
-            className="w-full px-1 py-0.5 text-xs text-right border border-slate-300 rounded tabular-nums focus:ring-1 focus:ring-amber-500 focus:border-amber-500"
-          />
-        )}
+        {(() => {
+          const lineClassId = line.tax_class_id ?? null
+          const value = !money.is_taxable
+            ? 'none'
+            : lineClassId
+              ? lineClassId
+              : money.tax_rate_pct > 0
+                ? 'custom'
+                : 'none'
+          const knownClass = !lineClassId || taxClasses.some((tc) => tc.id === lineClassId)
+          return (
+            <>
+              <select
+                value={value}
+                onChange={(e) => {
+                  const v = e.target.value
+                  if (v === 'none') {
+                    onChange({ is_taxable: false, tax_rate_pct: 0, tax_class_id: null })
+                  } else if (v === 'custom') {
+                    // Keep an existing rate, or start from a non-zero placeholder.
+                    onChange({ is_taxable: true, tax_class_id: null, tax_rate_pct: money.tax_rate_pct > 0 ? money.tax_rate_pct : 1 })
+                  } else {
+                    const tc = taxClasses.find((c) => c.id === v)
+                    if (tc) onChange({ is_taxable: true, tax_class_id: tc.id, tax_rate_pct: tc.rate_pct })
+                  }
+                }}
+                disabled={disabled}
+                className="w-full px-2 py-1 text-xs border border-slate-300 rounded bg-white focus:ring-1 focus:ring-amber-500 focus:border-amber-500"
+                title={taxClasses.length > 0
+                  ? 'Tax for this line — your tax classes are managed under Catalog › Tax classes'
+                  : 'No tax classes yet — add one under Catalog › Tax classes, or use a custom rate'}
+              >
+                <option value="none">No tax</option>
+                {taxClasses.map((tc) => (
+                  <option key={tc.id} value={tc.id}>
+                    {tc.name} ({tc.rate_pct}%){tc.is_default ? ' · default' : ''}
+                  </option>
+                ))}
+                {!knownClass && lineClassId && (
+                  <option value={lineClassId}>Tax class ({money.tax_rate_pct}%)</option>
+                )}
+                <option value="custom">Custom rate...</option>
+              </select>
+              {value === 'custom' && (
+                <input
+                  type="number"
+                  step="0.001"
+                  min="0"
+                  max="100"
+                  value={money.tax_rate_pct}
+                  onChange={(e) => onChange({ tax_rate_pct: parseFloat(e.target.value) || 0 })}
+                  disabled={disabled}
+                  placeholder="%"
+                  className="w-full px-1 py-0.5 text-xs text-right border border-slate-300 rounded tabular-nums focus:ring-1 focus:ring-amber-500 focus:border-amber-500"
+                />
+              )}
+            </>
+          )
+        })()}
       </div>
 
       {/* Total — line subtotal (Qty × Rate), no tax. Tax is summed in footer. */}

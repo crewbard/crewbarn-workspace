@@ -28,11 +28,19 @@ export function DeleteConfirmProvider({ children }: { children: React.ReactNode 
       setReason('')
       setError(request.code === 'reason_required' ? 'A reason is required.' : null)
       setOpen(true)
+      // apiRequest shares one prompt, so this shouldn't happen; if it does,
+      // the earlier one is cancelled rather than left waiting forever.
+      resolverRef.current?.(null)
       return new Promise((resolve) => {
         resolverRef.current = resolve
       })
     })
-    return () => setDeleteConfirmHandler(null)
+    return () => {
+      setDeleteConfirmHandler(null)
+      // Unmounted with a prompt open: cancel it so its request finishes.
+      resolverRef.current?.(null)
+      resolverRef.current = null
+    }
   }, [])
 
   function finish(value: { password: string; reason: string } | null) {

@@ -57,7 +57,7 @@ export function MyAccountPage() {
 
   return (
     <div className="max-w-xl mx-auto px-4 py-6 space-y-6">
-      <div>
+      <div data-tour="my-account-details">
         <h1 className="text-2xl font-bold text-navy-900">My account</h1>
         <p className="text-sm text-slate-500 mt-0.5">
           Your sign-in details. Email can't be changed here — contact support if it needs to change.
@@ -65,7 +65,7 @@ export function MyAccountPage() {
       </div>
 
       {/* Read-only profile */}
-      <div className="bg-white border border-slate-200 rounded-xl p-5 space-y-3">
+      <div className="bg-white border border-slate-200 rounded-xl p-5 space-y-3" data-tour="my-account-rows">
         <Row label="Name" value={name} />
         <Row label="Email" value={account?.email ?? '—'} />
         <Row label="Role" value={role} />
@@ -79,7 +79,7 @@ export function MyAccountPage() {
       />
 
       {/* Change password */}
-      <form onSubmit={submit} className="bg-white border border-slate-200 rounded-xl p-5 space-y-4">
+      <form onSubmit={submit} className="bg-white border border-slate-200 rounded-xl p-5 space-y-4" data-tour="my-account-password">
         <h2 className="text-base font-semibold text-navy-900">Change password</h2>
         {msg && (
           <div
@@ -110,6 +110,7 @@ export function MyAccountPage() {
             value={next}
             onChange={(e) => setNext(e.target.value)}
           />
+          <span className="mt-1 block text-xs text-slate-500">At least 8 characters.</span>
         </Field>
         <Field label="Confirm new password">
           <input
@@ -132,12 +133,13 @@ export function MyAccountPage() {
       </form>
 
       {/* 2FA shortcut */}
-      <div className="bg-white border border-slate-200 rounded-xl p-5 flex items-center justify-between gap-4">
+      <div className="bg-white border border-slate-200 rounded-xl p-5 flex items-center justify-between gap-4" data-tour="my-account-2fa">
         <div>
           <div className="text-sm font-semibold text-navy-900">Two-factor authentication</div>
           <div className="text-xs text-slate-500">Add an authenticator app or SMS/email codes.</div>
         </div>
-        <Link to="/me/security" className="text-sm font-medium text-amber-700 hover:text-amber-900 whitespace-nowrap">
+        {/* Company staff set up 2FA under Security & 2FA; platform admins at /me/security. */}
+        <Link to={account?.is_platform_admin ? '/me/security' : '/tool-shed/security'} className="text-sm font-medium text-amber-700 hover:text-amber-900 whitespace-nowrap">
           Manage 2FA →
         </Link>
       </div>
@@ -193,10 +195,10 @@ function ProfilePhotoCard({
   }
 
   return (
-    <div className="bg-white border border-slate-200 rounded-xl p-5">
+    <div className="bg-white border border-slate-200 rounded-xl p-5" data-tour="my-account-photo">
       <h2 className="text-base font-semibold text-navy-900">Profile photo</h2>
       <p className="text-xs text-slate-500 mt-0.5">
-        Shows on the dispatch map, the top bar, and the mobile app. JPG/PNG up to 5&nbsp;MB.
+        Shows on the dispatch map, the top bar, and the mobile app. JPG, PNG or WebP; you crop it to a square before it's saved.
       </p>
       {err && (
         <div className="mt-3 text-sm rounded-md px-3 py-2 bg-red-50 text-red-800 border border-red-200">

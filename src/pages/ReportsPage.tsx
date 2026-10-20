@@ -2,6 +2,7 @@ import { type DragEvent, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { API_URL, apiRequest, getActingTenant, getFranchiseActAs, getStoredToken } from '@/lib/api'
+import { assertFileResponse } from '@/lib/fileResponse'
 import { useTheme } from '@/hooks/useTheme'
 import { EasyPageHeading } from '@/components/easy/EasyPageHeading'
 
@@ -893,9 +894,9 @@ function readReportOrder(): ReportPanelId[] {
 function readReportLayout(): ReportLayout {
   try {
     const stored = localStorage.getItem(reportLayoutKey)
-    return stored === 'dense' || stored === 'single' || stored === 'balanced' || stored === 'browser' ? stored : 'balanced'
+    return stored === 'dense' || stored === 'single' || stored === 'balanced' || stored === 'browser' ? stored : 'browser'
   } catch {
-    return 'balanced'
+    return 'browser'
   }
 }
 
@@ -1091,6 +1092,7 @@ async function downloadReportFile(path: string, filename: string) {
     }
     throw new Error(message)
   }
+  assertFileResponse(response)
   const blob = await response.blob()
   const url = URL.createObjectURL(blob)
   const a = document.createElement('a')
@@ -1364,7 +1366,7 @@ export function ReportsPage() {
 
   const resetReportLayout = () => {
     persistReportOrder([...reportPanelIds])
-    setReportLayoutPreference('balanced')
+    setReportLayoutPreference('browser')
   }
 
   const reportDragProps = (id: ReportPanelId) => ({
@@ -1866,7 +1868,7 @@ export function ReportsPage() {
   }
 
   return (
-    <div data-tour="reports-root" className="mx-auto w-full max-w-none space-y-6 px-4 py-4 sm:px-6 sm:py-6 2xl:px-8">
+    <div data-tour="reports-root" data-focus-page="reports" className="mx-auto w-full max-w-none space-y-6 px-4 py-4 sm:px-6 sm:py-6 2xl:px-8">
       {easy && <EasyPageHeading title="Report browser" description="Choose a report, review its filters and dates, then use the existing download tools for your records or bookkeeper." />}
       <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
         <div>
@@ -1878,7 +1880,7 @@ export function ReportsPage() {
           </Link>
           {!easy && <h1 className="mt-1 text-2xl font-semibold text-slate-900">Reports</h1>}
           <p className="text-sm text-slate-500 mt-1">
-            Download PDF and spreadsheet reports. Visual graphs stay in Accounting.
+            Download PDF and spreadsheet reports. Visual graphs are in Overview &amp; charts.
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
@@ -1889,8 +1891,8 @@ export function ReportsPage() {
           >
             {showGridPreviews ? 'Hide grid previews' : 'Show grid previews'}
           </button>
-          <Link className="rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50" to="/accounting">
-            Accounting
+          <Link className="rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50" to="/accounting/overview">
+            Overview &amp; charts
           </Link>
           <Link className="rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50" to="/accounting/sales-tax">
             Sales tax
@@ -1901,12 +1903,12 @@ export function ReportsPage() {
         </div>
       </div>
 
-      <section className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+      <section data-tour="reports-note" className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
         Reports are for pulling files you can send, save, or give to a bookkeeper.
-        Use <Link to="/accounting" className="font-semibold underline">Accounting</Link> for visual graphs, cash drawer, receivables charts, and payment method charts.
+        Use <Link to="/accounting/overview" className="font-semibold underline">Overview &amp; charts</Link> for visual graphs, receivables charts and payment method charts, and the <Link to="/accounting/cash-drawer" className="font-semibold underline">Cash register</Link> for the cash drawer.
       </section>
 
-      <section className="rounded-xl border border-slate-200 bg-white p-4">
+      <section data-tour="reports-saved-views" className="rounded-xl border border-slate-200 bg-white p-4">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
           <div>
             <h2 className="text-base font-semibold text-slate-900">Saved report views</h2>
@@ -1968,7 +1970,7 @@ export function ReportsPage() {
         )}
       </section>
 
-      <section className="rounded-xl border border-slate-200 bg-white p-4">
+      <section data-tour="reports-controls" className="rounded-xl border border-slate-200 bg-white p-4">
         <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
           <div>
             <h2 className="text-base font-semibold text-slate-900">Report controls</h2>
@@ -2013,6 +2015,20 @@ export function ReportsPage() {
                 className="ml-2 rounded-md border border-slate-300 px-2 py-1.5 text-sm text-slate-900 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-400"
               />
             </label>
+            {reportPanelMeta[selectedReport].dateMode === 'asOf' ? (
+              <label className="text-xs font-medium text-slate-500">
+                As of
+                <input
+                  type="date"
+                  value={asOf}
+                  onChange={(e) => {
+                    setAsOf(e.target.value)
+                    resetReportPage()
+                  }}
+                  className="ml-2 rounded-md border border-slate-300 px-2 py-1.5 text-sm text-slate-900"
+                />
+              </label>
+            ) : null}
             <button
               type="button"
               onClick={() => setReportDragPreference(!reportDragMode)}
@@ -2050,7 +2066,7 @@ export function ReportsPage() {
         </div>
       </section>
 
-      <section className="rounded-xl border border-slate-200 bg-white p-4">
+      <section data-tour="reports-filters" className="rounded-xl border border-slate-200 bg-white p-4">
         <div className="grid grid-cols-1 gap-3 lg:grid-cols-7">
           <label className="lg:col-span-2">
             <span className="text-xs font-semibold text-slate-600">Search</span>
@@ -2215,7 +2231,7 @@ export function ReportsPage() {
         </div>
       </section>
 
-      <section className="rounded-xl border border-slate-200 bg-white p-4">
+      <section data-tour="reports-guide" className="rounded-xl border border-slate-200 bg-white p-4">
         <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
           <div>
             <div className="text-xs font-semibold uppercase tracking-wide text-amber-700">Report guide</div>
@@ -2228,9 +2244,33 @@ export function ReportsPage() {
         </div>
       </section>
 
-      <section className={reportGridClass(reportLayout)}>
+      {reportLayout !== 'browser' && !showGridPreviews ? (
+        <div role="status" className="flex flex-col gap-3 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700 sm:flex-row sm:items-center sm:justify-between">
+          <span>
+            Pick a report to see its numbers. In this layout the panels only show figures when grid previews are on. The downloads below still work.
+          </span>
+          <span className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={() => setReportLayoutPreference('browser')}
+              className="rounded-md bg-slate-900 px-3 py-2 text-xs font-semibold text-white hover:bg-slate-800"
+            >
+              Pick a report (Left menu)
+            </button>
+            <button
+              type="button"
+              onClick={() => setGridPreference(true)}
+              className="rounded-md border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+            >
+              Show grid previews
+            </button>
+          </span>
+        </div>
+      ) : null}
+
+      <section data-tour="reports-panels" className={reportGridClass(reportLayout)}>
         {reportLayout === 'browser' && (
-          <aside className="rounded-xl border border-slate-200 bg-white p-3 xl:sticky xl:top-4 xl:max-h-[calc(100vh-7rem)] xl:overflow-y-auto">
+          <aside data-tour="reports-list" className="rounded-xl border border-slate-200 bg-white p-3 xl:sticky xl:top-4 xl:max-h-[calc(100vh-7rem)] xl:overflow-y-auto">
             <div className="mb-3">
               <h2 className="text-sm font-semibold text-slate-900">Reports</h2>
               <p className="text-xs text-slate-500">Choose one report, then filter, review, and export it.</p>
@@ -2815,7 +2855,7 @@ export function ReportsPage() {
                     {pageReportRows(filterReportRows(purchaseOrderRegister?.rows ?? [])).map((row) => (
                       <tr key={row.purchase_order_id} className="border-b border-slate-100 last:border-0">
                         <td className="py-2 pr-3">
-                          <Link to={`/inventory/purchase-orders/${row.purchase_order_id}`} className="font-medium text-amber-700 hover:underline">
+                          <Link to={`/purchase-orders/${row.purchase_order_id}`} className="font-medium text-amber-700 hover:underline">
                             {row.po_number}
                           </Link>
                           <div className="text-xs text-slate-500">Expected {row.expected_delivery ?? '-'}</div>

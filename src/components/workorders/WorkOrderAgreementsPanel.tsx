@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { apiRequest, API_URL, getStoredToken, getActingTenant } from '@/lib/api'
 import type { ApiError } from '@/lib/api'
+import { assertFileResponse } from '@/lib/fileResponse'
 import { SignaturePad, type SignaturePadHandle } from '@/components/SignaturePad'
 import { useTheme } from '@/hooks/useTheme'
 
@@ -134,13 +135,14 @@ function AgreementListView({
 
   return (
     <div className="space-y-4">
-      <section className="bg-white border border-slate-200 rounded-xl shadow-sm p-5">
+      <section data-tour="job-agreements" className="bg-white border border-slate-200 rounded-xl shadow-sm p-5">
         <div className="flex items-center justify-between gap-3 flex-wrap mb-3">
           <h2 className="text-sm font-semibold text-navy-900 uppercase tracking-wider">
             Service agreements ({rows.length})
           </h2>
           <button
             type="button"
+            data-tour="job-agreement-add"
             onClick={() => setShowCreate(true)}
             className="text-xs px-3 py-1.5 rounded bg-amber-500 hover:bg-amber-600 text-white font-semibold"
           >
@@ -890,6 +892,7 @@ function DownloadAgreementPdfButton({
         try { msg = JSON.parse(text).message ?? msg } catch { /* ignore */ }
         throw new Error(msg)
       }
+      assertFileResponse(res, 'application/pdf')
       const blob = await res.blob()
       const url = URL.createObjectURL(blob)
       window.open(url, '_blank')

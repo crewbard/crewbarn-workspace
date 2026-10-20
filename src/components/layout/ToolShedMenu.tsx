@@ -10,7 +10,7 @@ import { openHelpTopic } from '@/lib/helpTopics'
 import { settingsHelpForRoute, settingsHelpTopicId } from '@/lib/settingsHelp'
 import { useSettingsInWorkspace } from '@/hooks/useSettingsInWorkspace'
 import { CONNECT_URL, isCompanySetting } from '@/lib/workspaceScope'
-import { canViewSetting } from '@/lib/settingAccess'
+import { canViewSetting, cbiLearningAccess } from '@/lib/settingAccess'
 
 const EasySettingsDirectory = lazy(() => import('./EasySettingsDirectory'))
 
@@ -74,6 +74,7 @@ export const TOOL_SHED_SECTIONS: ToolShedSection[] = [
     title: 'Customers & Workflow',
     items: [
       { label: 'Job Types', to: '/tool-shed/job-types', requires: PERM.SETTINGS_VIEW },
+      { label: 'Task Groups', to: '/tool-shed/task-groups', requires: PERM.SETTINGS_VIEW },
       { label: 'Job Statuses', to: '/tool-shed/job-statuses', requires: PERM.SETTINGS_VIEW },
       { label: 'Tags', to: '/tool-shed/tags', requires: PERM.SETTINGS_VIEW },
       { label: 'Customer Types', to: '/tool-shed/customer-types', requires: PERM.CUSTOMERS_VIEW },
@@ -90,6 +91,8 @@ export const TOOL_SHED_SECTIONS: ToolShedSection[] = [
       { label: 'Subcontractors', to: '/tool-shed/subcontractors', requires: PERM.JOBS_VIEW },
       { label: 'Roles & Permissions', to: '/tool-shed/roles', requires: PERM.STAFF_VIEW },
       { label: 'Time Off', to: '/tool-shed/time-off', requires: PERM.STAFF_VIEW },
+      // Who owns each area of the office's daily duties, and the board to oversee it.
+      { label: 'Responsibilities', to: '/tool-shed/responsibilities', requires: PERM.STAFF_VIEW },
       // Tenant Security & 2FA: a real tenant user's own enrollment + the tenant
       // 2FA policy. The page itself hides the PERSONAL section for platform
       // admins (acting-as-tenant) and shows only the policy — so an admin never
@@ -110,13 +113,14 @@ export const TOOL_SHED_SECTIONS: ToolShedSection[] = [
       { label: 'Integrations', to: '/tool-shed/integrations', requires: PERM.SETTINGS_VIEW },
       { label: 'Phone, SMS & Email', to: '/tool-shed/communication', requires: PERM.SETTINGS_VIEW },
       { label: 'Call transcription', to: '/tool-shed/communication/transcription', requires: PERM.SETTINGS_VIEW },
-      { label: 'Where your email comes from', to: '/tool-shed/communication/email', requires: PERM.SETTINGS_EDIT },
+      { label: 'Where your email comes from', to: '/tool-shed/communication/email', requires: PERM.SETTINGS_VIEW },
       // The old single AI page is fully sliced now. It stays routed, so links
       // and bookmarks still work; the menu lists the pages it became.
       // One row, not seven. Every one of these settings is on the CBI AI
       // page, which also links the focused one-at-a-time versions — so the
       // cluster keeps its way in without burying the rest of Connections.
       { label: 'CBI AI', to: '/tool-shed/ai', requires: PERM.SETTINGS_EDIT },
+      { label: 'CBI lesson review', to: '/tool-shed/ai/memory' },
       { label: 'Storage & Maps', to: '/tool-shed/storage-maps', requires: PERM.SETTINGS_VIEW },
       { label: 'GPS Devices', to: '/tool-shed/gps', requires: PERM.JOBS_VIEW },
       { label: 'Label Printer', to: '/tool-shed/label-printer', requires: PERM.SETTINGS_VIEW },
@@ -145,8 +149,8 @@ export const TOOL_SHED_SECTIONS: ToolShedSection[] = [
       { label: 'Payment Terms', to: '/tool-shed/payment-terms', requires: PERM.INVOICES_VIEW },
       { label: 'Payment Types', to: '/tool-shed/payment-types', requires: PERM.SETTINGS_VIEW },
       { label: 'Payments', to: '/tool-shed/payments', requires: PERM.SETTINGS_EDIT },
-      { label: 'Let customers pay by bank transfer', to: '/tool-shed/payments/bank-transfer', requires: PERM.SETTINGS_EDIT },
-      { label: 'Watch your bank for payments', to: '/tool-shed/payments/watch-bank', requires: PERM.SETTINGS_EDIT },
+      { label: 'Let customers pay by bank transfer', to: '/tool-shed/payments/bank-transfer', requires: PERM.SETTINGS_VIEW },
+      { label: 'Watch your bank for payments', to: '/tool-shed/payments/watch-bank', requires: PERM.SETTINGS_VIEW },
       { label: 'Connect Cloudflare', to: '/tool-shed/cloudflare', requires: PERM.SETTINGS_EDIT },
       { label: 'Modules', to: '/tool-shed/modules', requires: 'settings_modules.view' },
       // App Layout is not here on purpose. It is a per-person, per-browser
@@ -165,6 +169,11 @@ export const TOOL_SHED_SECTIONS: ToolShedSection[] = [
     ],
   },
 ]
+
+/** Guided-tour marker name for a Tool Shed group ("Create & Send" -> "create-send"). */
+export function toolShedSectionSlug(title: string): string {
+  return title.toLowerCase().replace(/[^a-z]+/g, '-').replace(/^-|-$/g, '')
+}
 
 interface ToolShedMenuProps {
   onClose: () => void
@@ -185,7 +194,7 @@ export function useVisibleToolShedSections(): {
   isLoading: boolean
 } {
   const { has, isLoading, isPlatformAdmin } = usePermissions()
-  const { isRouteVisible } = useModuleVisibility()
+  const { isRouteVisibleInWork: isRouteVisible, isRouteVisible: isEnabledRoute } = useModuleVisibility()
   const { isFranchise } = useFranchiseFeature()
   const { show: showCompanySettings } = useSettingsInWorkspace()
   const canViewSettings = !isLoading && has(PERM.SETTINGS_VIEW)
@@ -203,14 +212,16 @@ export function useVisibleToolShedSections(): {
     : TOOL_SHED_SECTIONS.map((section) => ({
         ...section,
         items: section.items.filter((item) => {
+          const learning = cbiLearningAccess(item.to, has)
           if (item.to === '/onboarding' && hideOnboarding) return false
           if (item.hideForPlatformAdmin && isPlatformAdmin) return false
           if (item.franchiseOnly && !isFranchise) return false
-          if (!isRouteVisible(item.to)) return false
+          if (!(learning === undefined ? isRouteVisible(item.to) : isEnabledRoute(item.to))) return false
           if (!canViewSetting(item.to, has)) return false
           // Company settings are run from connect.crewbarn.com unless this
           // workspace has asked for them here too. App layout is exempt: it
           // is a per-browser preference about the screen you are looking at.
+          if (learning !== undefined) return learning
           if (!showCompanySettings && isCompanySetting(item.to)) return false
           return !item.requires || has(item.requires)
         }),
@@ -281,6 +292,7 @@ export function ToolShedMenu({ onClose, triggerRef }: ToolShedMenuProps) {
   return (
     <div
       style={pos}
+      data-tour="toolshed-menu"
       className="z-40 overflow-y-auto overscroll-contain
                  bg-white border border-slate-200 rounded-xl shadow-2xl"
     >
@@ -291,6 +303,7 @@ export function ToolShedMenu({ onClose, triggerRef }: ToolShedMenuProps) {
         {filtered.map((section) => (
           <div
             key={section.title}
+            data-tour={`toolshed-section-${toolShedSectionSlug(section.title)}`}
             className="mb-3 break-inside-avoid rounded-lg border border-slate-200 bg-white p-2.5 shadow-sm"
           >
             <div className="mb-1.5">
@@ -338,7 +351,7 @@ export function ToolShedMenu({ onClose, triggerRef }: ToolShedMenuProps) {
           </div>
         ))}
       </div>
-      <div className="sticky bottom-0 flex items-center justify-between gap-3 border-t border-slate-100 px-6 py-3 bg-slate-50 rounded-b-xl">
+      <div data-tour="toolshed-menu-footer" className="sticky bottom-0 flex items-center justify-between gap-3 border-t border-slate-100 px-6 py-3 bg-slate-50 rounded-b-xl">
         <p className="text-xs text-slate-500">
           {showCompanySettings ? (
             <>Items visible per your role. Owner sees everything; ask the shop owner if you&apos;re missing something.</>
@@ -360,6 +373,7 @@ export function ToolShedMenu({ onClose, triggerRef }: ToolShedMenuProps) {
         <Link
           to="/tool-shed"
           onClick={onClose}
+          data-tour="toolshed-open-full"
           className="shrink-0 text-xs font-semibold text-amber-700 hover:text-amber-800"
         >
           Open full Tool Shed →

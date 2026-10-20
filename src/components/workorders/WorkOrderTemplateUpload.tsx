@@ -74,7 +74,7 @@ export function WorkOrderTemplateUpload({ workOrderId }: { workOrderId: string }
   const existing = q.data?.data ?? null
 
   return (
-    <section className="bg-white border border-slate-200 rounded-lg p-4">
+    <section data-tour="job-template-upload" className="bg-white border border-slate-200 rounded-lg p-4">
       <div className="text-xs font-semibold text-slate-600 uppercase tracking-wider mb-2">
         Customer's WO / PO template
       </div>

@@ -1,7 +1,10 @@
 import { AuthedAudio } from '@/components/comms/AuthedAudio'
-import { useEffect, useRef, useState } from 'react'
+import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from 'react'
 import { useMutation, useQuery } from '@tanstack/react-query'
-import { Link, useLocation } from 'react-router-dom'
+import { Link, useLocation, useNavigate } from 'react-router-dom'
+import { startWorkPageTour } from '@/components/guides/TutorialControls'
+import { hasPageTour } from '@/lib/pageTours/available'
+import { guidedTourForPath } from '@/lib/guidedTours'
 import { API_URL, apiRequest, getActingTenant, getFranchiseActAs, getStoredToken } from '@/lib/api'
 import {
   setAiHelpOpener,
@@ -17,6 +20,20 @@ import {
   type ReadbackVoice,
 } from '@/lib/aiHelp'
 import { useAuth } from '@/hooks/useAuth'
+import { FOCUS_CBI_EVENT } from '@/lib/shortcutBus'
+import { cbiPageContext, type CbiApplication } from '@/lib/cbiContext'
+import { ReferencedText } from '@/components/ReferencedText'
+import { resolveCbiNavigation, type CbiNavigationContext } from '@/lib/cbiNavigation'
+import type { SubscriptionSummary } from '@/types/subscription'
+
+const CbiNavigation = createContext<CbiNavigationContext>({ application: 'work', currentOrigin: '' })
+
+function CbiLink({ to, children, ...props }: { to: string; children: ReactNode; className?: string; onClick?: () => void }) {
+  const context = useContext(CbiNavigation)
+  const href = resolveCbiNavigation(to, context)
+  if (!href) return <span className={props.className} title="The Work workspace is not available yet.">{children}</span>
+  return href.startsWith('/') ? <Link to={href} {...props}>{children}</Link> : <a href={href} {...props}>{children}</a>
+}
 
 interface AiStatus {
   ai_provider: string | null
@@ -36,6 +53,34 @@ interface ChatResp {
   call_recordings?: CallRecording[]
   navigation_links?: NavigationLink[]
   resource_links?: NavigationLink[]
+  proposals?: Proposal[]
+  /** start_walkthrough: open a page and walk it. */
+  action?: { type?: string; path?: string; title?: string } | null
+  walkthroughs?: Walkthrough[]
+  form?: DoItForm | null
+}
+
+/** A page CBI explained, which a "Walk me through it" button opens and walks. */
+interface Walkthrough {
+  path: string
+  title: string
+}
+
+/** "Or I can do it for you": what CBI needs to know, and a Go button (DoItForYou on the server). */
+interface DoItForm {
+  task: string
+  title: string
+  lead: string
+  submit_label: string
+  fields: { key: string; label: string; placeholder: string; required: boolean }[]
+}
+
+/** A change CBI proposed: it happens only when the person presses Confirm. */
+interface Proposal {
+  id: string
+  tool: string
+  summary: string
+  expires_at: string
 }
 
 interface NavigationLink {
@@ -64,7 +109,24 @@ interface ChatMessage {
   call_recordings?: CallRecording[]
   navigation_links?: NavigationLink[]
   resource_links?: NavigationLink[]
+  proposals?: Proposal[]
+  /** Photos sent with this question, as data URLs, shown in its bubble. */
+  photos?: string[]
+  walkthroughs?: Walkthrough[]
+  form?: DoItForm | null
+  /** Already read aloud while it was being written (streamed). */
+  spoken?: boolean
 }
+
+/** A photo waiting to go with the next question. */
+interface ChatPhoto {
+  data: string
+  media_type: string
+  preview: string
+}
+
+/** Photos with one question (the server's AiChatController::MAX_PHOTOS). */
+const MAX_PHOTOS = 3
 
 interface AiLearningCorrectionResp {
   data: {
@@ -102,7 +164,9 @@ const SUGGESTIONS: { label: string; prompt: string }[] = [
   { label: 'Dormant jobs', prompt: 'What jobs are sitting dormant — open or in-progress with no update in over a week?' },
   { label: 'Past-due scheduled jobs', prompt: "Show me jobs scheduled in the past that aren't marked complete." },
   { label: 'Pending signatures', prompt: "What signature requests are still pending? Show me anything waiting more than a few days." },
-  { label: 'Recent extracted docs', prompt: 'Show me the documents I extracted with AI recently.' },
+  { label: 'Find a company file', prompt: 'Search the current files I can access. Show the source and tell me if any file is not indexed.' },
+  { label: 'Find a business address', prompt: 'Help me find a public business address. Ask for the business name, road and city, and let me choose if there is more than one match.' },
+  { label: 'Research a part', prompt: 'Help research a replacement part. Ask for its manufacturer, model or markings, check our permitted catalog and cite public manufacturer evidence.' },
 ]
 
 const READBACK_VOICES: { value: ReadbackVoice; label: string }[] = [
@@ -135,8 +199,27 @@ const READBACK_SPEEDS: { value: ReadbackSpeed; label: string }[] = [
  *
  * Hidden entirely when AI is disabled / unconfigured / keyless.
  */
-export function HeaderAiInput() {
+export function HeaderAiInput({ application = 'work' }: { application?: CbiApplication }) {
+  const { account } = useAuth()
+  const scope = [application, account?.id, account?.tenant?.id, getActingTenant(), getFranchiseActAs()?.id].join(':')
+  const subscription = useQuery({
+    queryKey: ['cbi-workspace', scope],
+    queryFn: () => apiRequest<{ data: SubscriptionSummary }>('/v1/tenant-settings/subscription'),
+    enabled: application === 'connect' && !!(account?.tenant?.id || getActingTenant()),
+    staleTime: 5 * 60_000, retry: false,
+  })
+  return <CbiNavigation.Provider value={{ application, workspaceUrl: subscription.data?.data.workspace_url,
+    currentOrigin: window.location.origin, connectUrl: import.meta.env.VITE_CONNECT_URL || 'https://connect.crewbarn.com' }}>
+    <ScopedHeaderAiInput key={scope} application={application} scope={scope} />
+  </CbiNavigation.Provider>
+}
+
+function ScopedHeaderAiInput({ application, scope }: { application: CbiApplication; scope: string }) {
   const [open, setOpen] = useState(false)
+  // Out of the way while a walkthrough plays; the chat is kept for when they come back.
+  const [tucked, setTucked] = useState(false)
+  // CBI is working on an answer: its button glows (index.css .cbi-working).
+  const [working, setWorking] = useState(false)
   // Seed prompt set when opened externally (the floating AI Help bubble).
   // null = opened normally (no auto-send). A bumping key forces a fresh
   // overlay so a new seed re-sends even if the panel was already open.
@@ -150,7 +233,7 @@ export function HeaderAiInput() {
   const hasTenantContext = !!(account?.tenant?.id || getActingTenant())
 
   const { data, isLoading } = useQuery({
-    queryKey: ['settings', 'ai'],
+    queryKey: ['settings', 'ai', scope],
     queryFn: () => apiRequest<{ data: AiStatus }>('/v1/settings/ai'),
     staleTime: 60_000,
     refetchOnWindowFocus: false,
@@ -178,9 +261,9 @@ export function HeaderAiInput() {
   // Publish open/closed so the floating AI Help bubble can hide while the
   // panel is up (otherwise the bubble overlaps the panel's send button).
   useEffect(() => {
-    setAiHelpPanelOpen(open)
+    setAiHelpPanelOpen(open && !tucked)
     return () => setAiHelpPanelOpen(false)
-  }, [open])
+  }, [open, tucked])
 
   if (isLoading || !data) return null
   if (!visible) return null
@@ -190,22 +273,37 @@ export function HeaderAiInput() {
       <button
         type="button"
         onClick={() => {
+          // Tucked away for a walkthrough: bring the same chat back.
+          if (open && tucked) {
+            setTucked(false)
+            return
+          }
           setSeed(null)
           setOpen(true)
         }}
-        className="relative ml-3 mr-1 flex items-center justify-center w-9 h-9 rounded-full bg-amber-500 hover:bg-amber-600 shadow-sm transition-colors"
-        title="Open CBI — CrewBarn Intelligence"
+        className={`relative ml-3 mr-1 flex items-center justify-center w-9 h-9 rounded-full bg-amber-500 hover:bg-amber-600 shadow-sm transition-colors ${open && working ? 'cbi-working' : ''}`}
+        title={open && working ? 'CBI is working on it…' : open && tucked ? 'Back to your CBI chat' : 'Open CBI — CrewBarn Intelligence'}
+        aria-busy={open && working}
       >
         <span className="text-[11px] font-extrabold tracking-tight text-[#0B1220]">CBI</span>
         <span className="absolute -top-0.5 right-0.5 text-[10px] font-bold leading-none text-[#FDE9C8]">✦</span>
+        {open && tucked && <span aria-hidden className="absolute -bottom-0.5 -right-0.5 h-2.5 w-2.5 rounded-full border-2 border-white bg-emerald-500" />}
       </button>
 
       {open && (
         <ChatOverlay
           key={seed?.key ?? 'manual'}
+          application={application}
           seedPrompt={seed?.prompt ?? null}
           seedDisplay={seed?.display ?? null}
-          onClose={() => setOpen(false)}
+          tucked={tucked}
+          onTuck={() => setTucked(true)}
+          onWorking={setWorking}
+          onClose={() => {
+            setOpen(false)
+            setTucked(false)
+            setWorking(false)
+          }}
         />
       )}
     </>
@@ -215,11 +313,21 @@ export function HeaderAiInput() {
 // ---------- Chat overlay ----------
 
 function ChatOverlay({
+  application,
   onClose,
+  onTuck,
+  onWorking,
+  tucked = false,
   seedPrompt = null,
   seedDisplay = null,
 }: {
+  application: CbiApplication
   onClose: () => void
+  /** Get out of the way of a walkthrough, keeping the chat. */
+  onTuck: () => void
+  /** Tells the CBI button when an answer is being worked on (it pulses). */
+  onWorking?: (working: boolean) => void
+  tucked?: boolean
   /** When set (opened from the help bubble), auto-send this on mount. */
   seedPrompt?: string | null
   /** Clean text to SHOW as the user's bubble instead of the raw seedPrompt. */
@@ -232,12 +340,22 @@ function ChatOverlay({
   const [teachContent, setTeachContent] = useState('')
   const [teachCategory, setTeachCategory] = useState('shop_policy')
   const inputRef = useRef<HTMLTextAreaElement>(null)
+  const photoInputRef = useRef<HTMLInputElement>(null)
+  const [photos, setPhotos] = useState<ChatPhoto[]>([])
+  const [photoError, setPhotoError] = useState<string | null>(null)
+  // The answer so far while it streams in (null when nothing is streaming).
+  const [streamText, setStreamText] = useState<string | null>(null)
   const scrollRef = useRef<HTMLDivElement>(null)
+  const panelRef = useRef<HTMLDivElement>(null)
   const seededRef = useRef(false)
   // Stable id for THIS conversation, reset on "New chat". Sent with each turn
   // so passive learning debounces to one extraction per conversation.
   const sessionIdRef = useRef<string>(newSessionId())
+  // The page beside the panel: it stays open while you browse, and a
+  // question goes with whatever is open then.
   const location = useLocation()
+  const navigate = useNavigate()
+  const navigation = useContext(CbiNavigation)
   // Read-back: when on, CBI speaks each new answer aloud.
   const [speakOn, setSpeakOn] = useState(getReadbackEnabled())
   const [readbackSettingsOpen, setReadbackSettingsOpen] = useState(false)
@@ -245,34 +363,98 @@ function ChatOverlay({
   const [readbackVoice, setReadbackVoiceState] = useState<ReadbackVoice>(getReadbackVoice())
   const [readbackSpeed, setReadbackSpeedState] = useState<ReadbackSpeed>(getReadbackSpeed())
   const spokenCountRef = useRef(0)
+  const mounted = useRef(true)
+  const requestScope = useRef(browserCbiScope())
+  const isCurrent = () => mounted.current && requestScope.current === browserCbiScope()
+  const streamAbort = useRef<AbortController | null>(null)
+  useEffect(() => {
+    mounted.current = true
+    return () => {
+      mounted.current = false
+      // StrictMode replays effects on the same mounted chat in development.
+      // Only abort when it really left, preserving a seeded first question.
+      queueMicrotask(() => { if (!mounted.current) streamAbort.current?.abort() })
+    }
+  }, [])
 
   const send = useMutation({
-    mutationFn: (text: string) => {
+    mutationFn: async ({ text, images }: { text: string; images: ChatPhoto[] }): Promise<{ data: ChatResp; spoken: boolean }> => {
+      if (!isCurrent()) throw new Error('Company or session changed. Open a new CBI chat.')
+      const controller = new AbortController()
+      streamAbort.current = controller
       // Replay prior text turns as history. Tool blocks aren't carried —
-      // each turn re-runs tools fresh against current data.
+      // each turn re-runs tools fresh against current data. Photos go with
+      // their own question only.
       const history = messages
         .filter((m) => m.content.trim() !== '')
         .map((m) => ({ role: m.role, content: m.content }))
-      return apiRequest<{ data: ChatResp }>('/v1/ai/chat', {
-        method: 'POST',
-        body: { prompt: text, history, context: { session_id: sessionIdRef.current } },
-      })
+      const body = {
+        prompt: text,
+        history,
+        context: { session_id: sessionIdRef.current, client: 'web', ...cbiPageContext(application, location.pathname, location.search, location.hash) },
+        ...(images.length > 0 ? { images: images.map(({ data, media_type }) => ({ data, media_type })) } : {}),
+      }
+      // The answer as it is written: shown as it comes, and read aloud from
+      // the first sentence. Anything wrong with the stream before a word
+      // arrives falls back to the plain request.
+      const speaker = speakOn ? new StreamSpeaker(readbackVoice, readbackSpeed) : null
+      let written = ''
+      const streamed = await streamChat(body, {
+        onText: (piece) => {
+          if (!isCurrent()) { controller.abort(); speaker?.stop(); return }
+          written += piece
+          setStreamText(written)
+          speaker?.push(written)
+        },
+        onReset: () => {
+          if (!isCurrent()) return
+          written = ''
+          setStreamText('')
+          speaker?.reset()
+        },
+      }, controller.signal)
+      if (!isCurrent() || controller.signal.aborted) {
+        speaker?.stop()
+        throw new Error('Company or session changed. Open a new CBI chat.')
+      }
+      setStreamText(null)
+      if (streamed) {
+        if (speaker) {
+          if (streamed.data.ok) speaker.push(written, true)
+          else speaker.stop()
+        }
+        return { data: streamed.data, spoken: !!speaker && streamed.data.ok }
+      }
+      speaker?.stop()
+      const plain = await apiRequest<{ data: ChatResp }>('/v1/ai/chat', { method: 'POST', body })
+      return { data: plain.data, spoken: false }
     },
     onSuccess: (resp) => {
+      if (!isCurrent()) return
       setMessages((prev) => [
         ...prev,
         {
           role: 'assistant',
+          spoken: resp.spoken,
           content: resp.data.ok ? resp.data.text : '',
           tools_used: resp.data.tools_used,
           error: resp.data.ok ? null : (resp.data.error ?? 'AI call failed.'),
           call_recordings: resp.data.call_recordings,
           navigation_links: resp.data.navigation_links,
           resource_links: resp.data.resource_links,
+          proposals: resp.data.proposals,
+          walkthroughs: resp.data.walkthroughs,
+          form: resp.data.form,
         },
       ])
+      // "Yes, walk me through it" in words: CBI started one.
+      if (resp.data.action?.type === 'start_walkthrough' && resp.data.action.path) {
+        void walkThrough(resp.data.action.path)
+      }
     },
     onError: (e: Error) => {
+      if (!isCurrent()) return
+      setStreamText(null)
       setMessages((prev) => [
         ...prev,
         { role: 'assistant', content: '', error: e.message },
@@ -280,8 +462,15 @@ function ChatOverlay({
     },
   })
 
+  // While an answer is on its way, the CBI button pulses.
+  useEffect(() => {
+    onWorking?.(send.isPending)
+  }, [send.isPending, onWorking])
+  useEffect(() => () => onWorking?.(false), [onWorking])
+
   const teach = useMutation({
     mutationFn: () => {
+      if (!isCurrent()) throw new Error('Company or session changed. Open a new CBI chat.')
       const sourceExcerpt = messages
         .slice(-6)
         .map((m) => `${m.role}: ${m.content}`)
@@ -308,6 +497,7 @@ function ChatOverlay({
       })
     },
     onSuccess: (resp) => {
+      if (!isCurrent()) return
       setTeachOpen(false)
       setTeachTitle('')
       setTeachContent('')
@@ -320,6 +510,7 @@ function ChatOverlay({
       ])
     },
     onError: (e: Error) => {
+      if (!isCurrent()) return
       setMessages((prev) => [
         ...prev,
         {
@@ -332,13 +523,65 @@ function ChatOverlay({
   })
 
   function submit(text?: string, display?: string) {
-    const value = (text ?? prompt).trim()
+    // Photos go with what's typed (not with a suggestion or a retry).
+    const images = text === undefined ? photos : []
+    const value = (text ?? prompt).trim() || (images.length > 0 ? 'What is this?' : '')
     if (!value || send.isPending) return
     // Show `display` (a clean question) when provided, but send `value`
     // (which may carry internal tool directives) to the AI.
-    setMessages((prev) => [...prev, { role: 'user', content: (display ?? value).trim() }])
+    setMessages((prev) => [...prev, {
+      role: 'user',
+      content: (display ?? value).trim(),
+      ...(images.length > 0 ? { photos: images.map((p) => p.preview) } : {}),
+    }])
     setPrompt('')
-    send.mutate(value)
+    if (images.length > 0) setPhotos([])
+    send.mutate({ text: value, images })
+  }
+
+  /**
+   * Open the page and walk it (the same tour as Help's "Show me this page"),
+   * with CBI tucked out of the way until the CBI button brings it back.
+   */
+  async function walkThrough(path: string) {
+    const destination = resolveCbiNavigation(path, navigation)
+    if (!destination) {
+      setMessages((previous) => [...previous, { role: 'assistant', content: 'The Work workspace is not available yet. Open Connect to finish setting up the workspace.' }])
+      return
+    }
+    if (!destination.startsWith('/')) {
+      window.location.assign(destination)
+      return
+    }
+    path = destination
+    stopSpeech()
+    onTuck()
+    if (window.location.pathname !== path) navigate(path)
+    // Wait for that page to draw (its own first walkthrough part, not the
+    // page being left) before the tour looks for its parts.
+    const marker = guidedTourForPath(path)?.steps.find((step) => step.selector)?.selector ?? 'main [data-tour]'
+    for (let waited = 0; waited < 6000; waited += 150) {
+      await new Promise((resolve) => window.setTimeout(resolve, 150))
+      if (window.location.pathname === path && document.querySelector(marker)) break
+    }
+    await new Promise((resolve) => window.setTimeout(resolve, 250))
+    void startWorkPageTour()
+  }
+
+  async function addPhotos(files: FileList | File[]) {
+    setPhotoError(null)
+    const room = MAX_PHOTOS - photos.length
+    const picked = Array.from(files).filter((f) => f.type.startsWith('image/'))
+    if (picked.length > room) setPhotoError(`Up to ${MAX_PHOTOS} photos with one question.`)
+    const added: ChatPhoto[] = []
+    for (const file of picked.slice(0, Math.max(0, room))) {
+      try {
+        added.push(await shrinkPhoto(file))
+      } catch {
+        setPhotoError("That photo couldn't be read.")
+      }
+    }
+    if (added.length > 0) setPhotos((prev) => [...prev, ...added].slice(0, MAX_PHOTOS))
   }
 
   function resetChat() {
@@ -348,14 +591,17 @@ function ChatOverlay({
     inputRef.current?.focus()
   }
 
-  // Esc closes.
+  // Esc closes, when it was pressed in CBI (or nowhere in particular): Esc
+  // in a dialog on the page beside it is that dialog's.
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
-      if (e.key === 'Escape') onClose()
+      if (e.key !== 'Escape' || tucked) return
+      const at = document.activeElement
+      if (!at || at === document.body || panelRef.current?.contains(at)) onClose()
     }
     document.addEventListener('keydown', onKey)
     return () => document.removeEventListener('keydown', onKey)
-  }, [onClose])
+  }, [onClose, tucked])
 
   // Auto-scroll to bottom when messages change.
   useEffect(() => {
@@ -368,6 +614,21 @@ function ChatOverlay({
   useEffect(() => {
     inputRef.current?.focus()
   }, [])
+
+  // Alt Space (the CBI shortcut) with the panel already open: back to the box.
+  useEffect(() => {
+    const focusBox = () => inputRef.current?.focus()
+    window.addEventListener(FOCUS_CBI_EVENT, focusBox)
+    return () => window.removeEventListener(FOCUS_CBI_EVENT, focusBox)
+  }, [])
+
+  // While open, wide screens make room for the panel (index.css), so the
+  // page beside it isn't hidden underneath.
+  useEffect(() => {
+    if (tucked) return
+    document.documentElement.setAttribute('data-cbi-open', '')
+    return () => document.documentElement.removeAttribute('data-cbi-open')
+  }, [tucked])
 
   // If opened with a seed (from the CBI launcher), auto-send it once.
   useEffect(() => {
@@ -386,7 +647,7 @@ function ChatOverlay({
     spokenCountRef.current = messages.length
     if (!speakOn) return
     const last = messages[messages.length - 1]
-    if (last?.role === 'assistant' && last.content) speak(last.content, readbackVoice, readbackSpeed)
+    if (last?.role === 'assistant' && last.content && !last.spoken) speak(last.content, readbackVoice, readbackSpeed)
   }, [messages, speakOn, readbackVoice, readbackSpeed])
 
   // Turning read-back off — or closing the panel — stops speech in progress.
@@ -398,10 +659,10 @@ function ChatOverlay({
   const isEmpty = messages.length === 0
 
   return (
-    <div className="fixed inset-0 z-50 flex justify-end">
-      <div className="absolute inset-0 bg-black/20" aria-hidden />
-
-      <div className="relative w-full max-w-md bg-white shadow-2xl flex flex-col h-full">
+    // A side panel, not a modal: the page beside it stays usable, so a job
+    // or customer CBI links to opens there while CBI stays open.
+    <aside aria-label="CBI" hidden={tucked} className={`fixed inset-y-0 right-0 z-50 w-full max-w-md ${tucked ? 'hidden' : 'flex'}`}>
+      <div ref={panelRef} className="relative w-full bg-white shadow-2xl border-l border-slate-200 flex flex-col h-full">
         {/* Header */}
         <div className="px-5 py-3 border-b border-slate-200 flex items-center justify-between bg-white">
           <div className="flex items-center gap-2">
@@ -557,6 +818,9 @@ function ChatOverlay({
               key={i}
               message={m}
               onLinkClick={() => undefined}
+              onWalk={(path) => void walkThrough(path)}
+              onGo={(text) => submit(text)}
+              busy={send.isPending}
               onRetry={() => {
                 const prior = [...messages.slice(0, i)].reverse().find((item) => item.role === 'user')
                 if (prior) submit(prior.content)
@@ -569,12 +833,18 @@ function ChatOverlay({
             />
           ))}
 
-          {send.isPending && (
+          {send.isPending && streamText ? (
+            // The answer so far, as CBI writes it.
+            <div className="mb-3 rounded-lg bg-slate-100 px-3 py-2 text-sm text-slate-800 whitespace-pre-wrap">
+              <RenderWithLinks text={streamText} onLinkClick={() => undefined} />
+              <span aria-hidden className="ml-0.5 inline-block h-3.5 w-1.5 animate-pulse bg-amber-400 align-middle" />
+            </div>
+          ) : send.isPending ? (
             <div className="text-sm text-slate-500 flex items-center gap-2 px-1 py-2">
               <span className="inline-block w-2 h-2 rounded-full bg-amber-400 animate-pulse" />
               Thinking…
             </div>
-          )}
+          ) : null}
         </div>
 
         {/* Input */}
@@ -636,11 +906,57 @@ function ChatOverlay({
               </div>
             </div>
           )}
+          {photos.length > 0 && (
+            <div className="mb-2 flex flex-wrap gap-2">
+              {photos.map((p, i) => (
+                <div key={i} className="relative">
+                  <img src={p.preview} alt={`Photo ${i + 1} to send`} className="h-14 w-14 rounded-md border border-slate-200 object-cover" />
+                  <button
+                    type="button"
+                    onClick={() => setPhotos((prev) => prev.filter((_, j) => j !== i))}
+                    className="absolute -right-1.5 -top-1.5 flex h-5 w-5 items-center justify-center rounded-full bg-slate-700 text-[11px] leading-none text-white hover:bg-slate-900"
+                    aria-label={`Remove photo ${i + 1}`}
+                  >
+                    ×
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+          {photoError && <p className="mb-1.5 text-[11px] text-red-700">{photoError}</p>}
           <div className="flex items-end gap-2">
+            <input
+              ref={photoInputRef}
+              type="file"
+              accept="image/*"
+              multiple
+              className="hidden"
+              onChange={(e) => {
+                if (e.target.files) void addPhotos(e.target.files)
+                e.target.value = ''
+              }}
+            />
+            <button
+              type="button"
+              onClick={() => photoInputRef.current?.click()}
+              disabled={photos.length >= MAX_PHOTOS || send.isPending}
+              className="flex items-center justify-center w-9 h-9 rounded-full text-slate-500 hover:text-amber-700 hover:bg-amber-50 disabled:opacity-40 shrink-0"
+              title="Add a photo for CBI to look at"
+              aria-label="Add a photo"
+            >
+              <CameraIcon />
+            </button>
             <textarea
               ref={inputRef}
               value={prompt}
               onChange={(e) => setPrompt(e.target.value)}
+              onPaste={(e) => {
+                const pasted = Array.from(e.clipboardData.files).filter((f) => f.type.startsWith('image/'))
+                if (pasted.length > 0) {
+                  e.preventDefault()
+                  void addPhotos(pasted)
+                }
+              }}
               onKeyDown={(e) => {
                 if (e.key === 'Enter' && !e.shiftKey) {
                   e.preventDefault()
@@ -654,7 +970,7 @@ function ChatOverlay({
             <button
               type="button"
               onClick={() => submit()}
-              disabled={!prompt.trim() || send.isPending}
+              disabled={(!prompt.trim() && photos.length === 0) || send.isPending}
               className="flex items-center justify-center w-9 h-9 rounded-full bg-amber-500 hover:bg-amber-600 text-white disabled:opacity-40 disabled:hover:bg-amber-500 transition-colors shrink-0"
               title="Send (Enter)"
               aria-label="Send"
@@ -663,11 +979,11 @@ function ChatOverlay({
             </button>
           </div>
           <p className="text-[10px] text-slate-400 mt-1.5">
-            Enter to send · Shift+Enter for newline · Esc to close
+            Enter to send · Shift+Enter for newline · paste or add a photo · Esc to close
           </p>
         </div>
       </div>
-    </div>
+    </aside>
   )
 }
 
@@ -676,11 +992,17 @@ function MessageBubble({
   onLinkClick,
   onRetry,
   onCorrect,
+  onWalk,
+  onGo,
+  busy,
 }: {
   message: ChatMessage
   onLinkClick: () => void
   onRetry: () => void
   onCorrect: () => void
+  onWalk: (path: string) => void
+  onGo: (text: string) => void
+  busy: boolean
 }) {
   const isUser = message.role === 'user'
   return (
@@ -696,22 +1018,43 @@ function MessageBubble({
               : 'bg-slate-100 text-slate-800',
           ].join(' ')}
         >
+          {message.photos && message.photos.length > 0 && (
+            <div className="mb-1.5 flex flex-wrap gap-1.5">
+              {message.photos.map((src, i) => (
+                <img key={i} src={src} alt={`Photo ${i + 1} sent to CBI`} className="h-20 w-20 rounded object-cover" />
+              ))}
+            </div>
+          )}
           {message.error ? (
             <span>✗ {message.error}</span>
           ) : message.call_recordings && message.call_recordings.length > 0 ? (
             <CallSummaryWithRecordings text={message.content} calls={message.call_recordings} onLinkClick={onLinkClick} />
           ) : (
-            <RenderWithLinks text={message.content} onLinkClick={onLinkClick} />
+            <RenderWithLinks text={message.content} onLinkClick={onLinkClick} references={!isUser} />
           )}
           {!isUser && message.navigation_links?.map((link) => (
             <NavigationAction key={link.to} link={link} />
           ))}
+          {!isUser && message.proposals?.map((proposal) => (
+            <ProposalCard key={proposal.id} proposal={proposal} />
+          ))}
+          {!isUser && message.walkthroughs?.filter((w) => hasPageTour(w.path)).map((w) => (
+            <button
+              key={w.path}
+              type="button"
+              onClick={() => onWalk(w.path)}
+              className="mt-2 mr-1.5 inline-flex items-center gap-1.5 rounded-md bg-navy-900 px-3 py-1.5 text-xs font-bold text-white hover:bg-navy-800"
+            >
+              ▶ Walk me through it{w.title ? <span className="font-medium text-white/70">· {w.title}</span> : null}
+            </button>
+          ))}
+          {!isUser && message.form && <DoItFormCard form={message.form} onGo={onGo} busy={busy} />}
           {!isUser && message.resource_links && message.resource_links.length > 0 && (
             <div className="mt-2 flex flex-wrap gap-1.5">
               {message.resource_links.map((link) => (
-                <Link key={link.to} to={link.to} className="rounded border border-amber-200 bg-white px-2 py-1 text-[11px] font-medium text-amber-700 hover:bg-amber-50">
+                <CbiLink key={link.to} to={link.to} className="rounded border border-amber-200 bg-white px-2 py-1 text-[11px] font-medium text-amber-700 hover:bg-amber-50">
                   {link.label}
-                </Link>
+                </CbiLink>
               ))}
             </div>
           )}
@@ -747,6 +1090,68 @@ function MessageBubble({
   )
 }
 
+/**
+ * A change CBI proposed -- a status, a booking, a rule to remember. The server
+ * will not make it until the person presses Confirm here; nothing typed in
+ * the chat, and nothing CBI reads, can stand in for this press.
+ */
+function ProposalCard({ proposal }: { proposal: Proposal }) {
+  const scope = useRef(browserCbiScope())
+  const [state, setState] = useState<'waiting' | 'working' | 'done' | 'cancelled' | 'failed'>('waiting')
+  const [result, setResult] = useState<string | null>(null)
+
+  async function decide(confirm: boolean) {
+    if (state !== 'waiting') return
+    if (scope.current !== browserCbiScope()) {
+      setResult('Company or session changed. Ask CBI for a new proposal.')
+      setState('failed')
+      return
+    }
+    setState('working')
+    try {
+      const resp = await apiRequest<{ data: { ok?: boolean; message?: string } }>(
+        `/v1/ai/proposals/${encodeURIComponent(proposal.id)}/${confirm ? 'confirm' : 'cancel'}`,
+        { method: 'POST' },
+      )
+      setResult(confirm ? (resp.data.message ?? 'Done.') : null)
+      setState(confirm ? 'done' : 'cancelled')
+    } catch (e) {
+      setResult(e instanceof Error ? e.message : 'That did not go through.')
+      setState('failed')
+    }
+  }
+
+  return (
+    <div className="mt-2 whitespace-normal rounded-lg border border-amber-300 bg-white p-2.5" role="group" aria-label="Change waiting for your confirmation">
+      <p className="text-xs font-semibold text-slate-800">{proposal.summary}</p>
+      {state === 'waiting' || state === 'working' ? (
+        <div className="mt-2 flex gap-2">
+          <button
+            type="button"
+            onClick={() => void decide(true)}
+            disabled={state === 'working'}
+            className="rounded-md bg-amber-600 px-3 py-1 text-xs font-semibold text-white hover:bg-amber-700 disabled:opacity-60"
+          >
+            {state === 'working' ? 'Working…' : 'Confirm'}
+          </button>
+          <button
+            type="button"
+            onClick={() => void decide(false)}
+            disabled={state === 'working'}
+            className="rounded-md border border-slate-300 px-3 py-1 text-xs font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-60"
+          >
+            Cancel
+          </button>
+        </div>
+      ) : (
+        <p className={`mt-1 text-xs ${state === 'failed' ? 'text-red-700' : 'text-slate-600'}`} role="status">
+          {state === 'cancelled' ? 'Cancelled. Nothing was changed.' : result}
+        </p>
+      )}
+    </div>
+  )
+}
+
 function NavigationAction({ link }: { link: NavigationLink }) {
   const [status, setStatus] = useState<'idle' | 'sending' | 'sent' | 'failed'>('idle')
 
@@ -763,9 +1168,9 @@ function NavigationAction({ link }: { link: NavigationLink }) {
 
   return (
     <div className="mt-2 flex flex-wrap items-center gap-2">
-      <Link to={link.to} className="text-xs font-medium text-amber-700 hover:underline">
+      <CbiLink to={link.to} className="text-xs font-medium text-amber-700 hover:underline">
         {link.label}
-      </Link>
+      </CbiLink>
       {link.action_url && (
         <button
           type="button"
@@ -810,9 +1215,9 @@ function CallSummaryWithRecordings({ text, calls, onLinkClick }: { text: string;
 
 function CallRecordingCard({ call, onLinkClick, compact = false }: { call: CallRecording; onLinkClick: () => void; compact?: boolean }) {
   const action = call.customer_link
-    ? <Link to={call.customer_link} onClick={onLinkClick} className="text-amber-700 hover:underline">Customer</Link>
+    ? <CbiLink to={call.customer_link} onClick={onLinkClick} className="text-amber-700 hover:underline">Customer</CbiLink>
     : call.create_job_link
-      ? <Link to={call.create_job_link} onClick={onLinkClick} className="text-amber-700 hover:underline">Create job</Link>
+      ? <CbiLink to={call.create_job_link} onClick={onLinkClick} className="text-amber-700 hover:underline">Create job</CbiLink>
       : null
 
   return (
@@ -904,23 +1309,191 @@ async function speak(text: string, voice: ReadbackVoice, speed: ReadbackSpeed): 
       return 'device'
     }
 
-    const firstBlob = await response.blob()
-    const remaining = Promise.all(requests.slice(1).map(async (request) => {
-      const next = await request
-      if (!next.ok) throw new Error('Speech continuation failed')
-      return next.blob()
-    }))
+    // The rest are being made while the first sentence plays; each plays
+    // when the one before it ends.
+    const later = requests.slice(1).map((request) => request.then((r) => (r.ok ? r.blob() : null)).catch(() => null))
+    const playLater = async (i: number): Promise<void> => {
+      if (controller.signal.aborted || i >= later.length) return
+      const blob = await later[i]
+      if (blob && !controller.signal.aborted) await playSpeechBlob(blob, controller, () => playLater(i + 1))
+    }
 
-    await playSpeechBlob(firstBlob, controller, async () => {
-      const rest = await remaining
-      if (!controller.signal.aborted && rest[0]) await playSpeechBlob(rest[0], controller)
-    })
+    await playSpeechBlob(await response.blob(), controller, () => playLater(0))
     return 'server'
   } catch (error) {
     if (controller.signal.aborted || (error as Error).name === 'AbortError') return 'cancelled'
     fallbackSpeak(clean, speed)
     return 'device'
   }
+}
+
+/**
+ * POST /v1/ai/chat/stream: the answer as server-sent events (delta, reset,
+ * done, error). Returns the finished response, or null when the stream
+ * couldn't be used before any of the answer arrived (then the caller asks
+ * the plain way). A failure after words arrived is thrown, so the answer is
+ * never asked for twice.
+ */
+async function streamChat(
+  body: unknown,
+  on: { onText: (piece: string) => void; onReset: () => void },
+  signal?: AbortSignal,
+): Promise<{ data: ChatResp } | null> {
+  const headers: Record<string, string> = { Accept: 'text/event-stream', 'Content-Type': 'application/json' }
+  const token = getStoredToken()
+  if (token) headers.Authorization = 'Bearer ' + token
+  const actingTenant = getActingTenant()
+  if (actingTenant) headers['X-Act-As-Tenant'] = actingTenant
+  const franchiseActAs = getFranchiseActAs()
+  if (franchiseActAs) headers['X-Franchise-Act-As'] = franchiseActAs.id
+
+  let response: Response
+  try {
+    response = await fetch(API_URL + '/v1/ai/chat/stream', { method: 'POST', headers, body: JSON.stringify(body), signal })
+  } catch {
+    return null
+  }
+  if (!response.ok || !response.body || !(response.headers.get('content-type') ?? '').includes('text/event-stream')) return null
+
+  const reader = response.body.getReader()
+  const decoder = new TextDecoder()
+  let buffer = ''
+  let heard = false
+  let finished: { data: ChatResp } | null = null
+  const handle = (chunk: string) => {
+    let event = 'message'
+    let data = ''
+    for (const line of chunk.split('\n')) {
+      if (line.startsWith('event:')) event = line.slice(6).trim()
+      else if (line.startsWith('data:')) data += line.slice(5).trim()
+    }
+    let payload: Record<string, unknown>
+    try {
+      payload = data ? (JSON.parse(data) as Record<string, unknown>) : {}
+    } catch {
+      return
+    }
+    if (event === 'delta' && typeof payload.text === 'string') {
+      heard = true
+      on.onText(payload.text)
+    } else if (event === 'reset') {
+      on.onReset()
+    } else if (event === 'done') {
+      finished = { data: (payload.data ?? payload) as ChatResp }
+    } else if (event === 'error') {
+      throw new Error(typeof payload.message === 'string' ? payload.message : 'CBI could not answer.')
+    }
+  }
+  try {
+    for (;;) {
+      const { value, done } = await reader.read()
+      if (done) break
+      buffer += decoder.decode(value, { stream: true }).replace(/\r\n/g, '\n')
+      let at = buffer.indexOf('\n\n')
+      while (at !== -1) {
+        handle(buffer.slice(0, at))
+        buffer = buffer.slice(at + 2)
+        at = buffer.indexOf('\n\n')
+      }
+    }
+    if (buffer.trim()) handle(buffer)
+  } catch (error) {
+    if (!heard) return null
+    throw error
+  }
+  if (finished) return finished
+  if (!heard) return null
+  throw new Error('The answer was cut off. Try again.')
+}
+
+/**
+ * Read-back while the answer is still being written: the first sentence is
+ * sent to the voice as soon as it is complete, then larger pieces as they
+ * fill up, each played when the one before ends. Shares stopSpeech() with
+ * speak(), so Stop and closing the panel stop it too.
+ */
+class StreamSpeaker {
+  private said = 0
+  private queue: Promise<Blob | null>[] = []
+  private playing = false
+  private controller = new AbortController()
+  private voice: ReadbackVoice
+  private speed: ReadbackSpeed
+
+  constructor(voice: ReadbackVoice, speed: ReadbackSpeed) {
+    this.voice = voice
+    this.speed = speed
+    stopSpeech()
+    activeSpeechRequest = this.controller
+  }
+
+  /** `text` is the whole answer so far; `final` sends whatever is left. */
+  push(text: string, final = false) {
+    if (this.controller.signal.aborted) return
+    const fresh = text.slice(this.said)
+    const cut = final ? fresh.length : nextSpeechCut(fresh, this.said === 0)
+    if (cut <= 0) return
+    this.said += cut
+    const piece = cleanSpeechText(fresh.slice(0, cut))
+    if (!piece) return
+    this.queue.push(this.fetchVoice(piece))
+    void this.playNext()
+  }
+
+  /** The answer started over (CBI went to a tool): what comes next is new. */
+  reset() {
+    this.said = 0
+  }
+
+  stop() {
+    this.controller.abort()
+  }
+
+  private fetchVoice(text: string): Promise<Blob | null> {
+    const headers: Record<string, string> = { Accept: 'audio/*', 'Content-Type': 'application/json' }
+    const token = getStoredToken()
+    if (token) headers.Authorization = 'Bearer ' + token
+    const actingTenant = getActingTenant()
+    if (actingTenant) headers['X-Act-As-Tenant'] = actingTenant
+    const franchiseActAs = getFranchiseActAs()
+    if (franchiseActAs) headers['X-Franchise-Act-As'] = franchiseActAs.id
+    return fetch(API_URL + '/v1/ai/speech', {
+      method: 'POST',
+      headers,
+      signal: this.controller.signal,
+      body: JSON.stringify({ text, voice: this.voice, speed: this.speed }),
+    })
+      .then((r) => (r.ok ? r.blob() : null))
+      .catch(() => null)
+  }
+
+  private async playNext(): Promise<void> {
+    if (this.playing || this.queue.length === 0 || this.controller.signal.aborted) return
+    this.playing = true
+    const blob = await this.queue.shift()!
+    if (this.controller.signal.aborted) return
+    if (!blob) {
+      this.playing = false
+      void this.playNext()
+      return
+    }
+    try {
+      await playSpeechBlob(blob, this.controller, async () => {
+        this.playing = false
+        await this.playNext()
+      })
+    } catch {
+      this.playing = false
+    }
+  }
+}
+
+/** Where the next spoken piece ends: the first sentence, then roughly 200-character runs of sentences; 0 = not yet. */
+function nextSpeechCut(fresh: string, first: boolean): number {
+  if (!first && fresh.length < 200) return 0
+  const ends = [...fresh.matchAll(/[.!?](?=\s)/g)].map((m) => (m.index ?? 0) + 1).filter((i) => i >= (first ? 12 : 0))
+  if (ends.length === 0) return 0
+  return first ? ends[0] : ends[ends.length - 1]
 }
 
 async function playSpeechBlob(blob: Blob, controller: AbortController, onEnded?: () => Promise<void>) {
@@ -938,13 +1511,33 @@ async function playSpeechBlob(blob: Blob, controller: AbortController, onEnded?:
   await audio.play()
 }
 
+/**
+ * The answer in pieces for read-back: the first sentence alone, so its audio
+ * comes back quickly and CBI starts talking, then larger pieces, each made
+ * while the one before plays. At most four requests an answer.
+ */
 function splitSpeechForFastStart(text: string): string[] {
-  if (text.length <= 320) return [text]
-  const candidate = text.slice(80, 320)
-  const sentenceEnd = candidate.search(/[.!?]\s/)
-  const splitAt = sentenceEnd >= 0 ? 80 + sentenceEnd + 1 : text.lastIndexOf(' ', 240)
-  if (splitAt < 80) return [text]
-  return [text.slice(0, splitAt).trim(), text.slice(splitAt).trim()].filter(Boolean)
+  const chunks: string[] = []
+  let rest = text.trim()
+  while (chunks.length < 3) {
+    const first = chunks.length === 0
+    if (rest.length <= (first ? 160 : 700)) break
+    const at = speechCut(rest, first ? 220 : 700, first)
+    if (at < 0) break
+    chunks.push(rest.slice(0, at).trim())
+    rest = rest.slice(at).trim()
+  }
+  if (rest) chunks.push(rest)
+  return chunks
+}
+
+/** Where to cut within max characters: a sentence end (the first, or the last), else a space; -1 if neither. */
+function speechCut(text: string, max: number, earliest: boolean): number {
+  const head = text.slice(0, max)
+  const ends = [...head.matchAll(/[.!?](?=\s)/g)].map((m) => (m.index ?? 0) + 1).filter((i) => i >= 20)
+  if (ends.length) return earliest ? ends[0] : ends[ends.length - 1]
+  const space = head.lastIndexOf(' ')
+  return space >= 20 ? space : -1
 }
 function fallbackSpeak(clean: string, speed: ReadbackSpeed) {
   try {
@@ -1003,6 +1596,196 @@ function SparkleIcon() {
   )
 }
 
+/**
+ * "Or I can do it for you": CBI's questions as a short form. Go sends the
+ * answers to CBI as one message; it does the task from there, asking for
+ * anything still missing.
+ */
+function DoItFormCard({ form, onGo, busy }: { form: DoItForm; onGo: (text: string) => void; busy: boolean }) {
+  const [values, setValues] = useState<Record<string, string>>({})
+  const [sent, setSent] = useState(false)
+  const missing = form.fields.filter((f) => f.required && !(values[f.key] ?? '').trim())
+  return (
+    <form
+      onSubmit={(e) => {
+        e.preventDefault()
+        if (missing.length > 0 || sent || busy) return
+        setSent(true)
+        const answers = form.fields
+          .filter((f) => (values[f.key] ?? '').trim() !== '')
+          .map((f) => `- ${f.label}: ${values[f.key].trim()}`)
+        onGo([form.lead, ...answers].join('\n'))
+      }}
+      className="mt-2 space-y-2 rounded-lg border border-amber-200 bg-white p-3 whitespace-normal"
+    >
+      <p className="text-xs font-bold text-navy-900">{form.title}</p>
+      {form.fields.map((f) => (
+        <label key={f.key} className="block">
+          <span className="text-[11px] font-semibold text-slate-600">
+            {f.label}
+            {!f.required && <span className="font-normal text-slate-400"> (optional)</span>}
+          </span>
+          {f.key === 'address' ? (
+            <AddressSuggestInput
+              value={values[f.key] ?? ''}
+              onChange={(v) => setValues((prev) => ({ ...prev, [f.key]: v }))}
+              placeholder={f.placeholder}
+              disabled={sent}
+            />
+          ) : (
+            <input
+              value={values[f.key] ?? ''}
+              onChange={(e) => setValues((prev) => ({ ...prev, [f.key]: e.target.value }))}
+              placeholder={f.placeholder}
+              disabled={sent}
+              className="mt-0.5 w-full rounded-md border border-slate-300 bg-white px-2 py-1.5 text-xs focus:border-amber-500 focus:outline-none focus:ring-1 focus:ring-amber-500 disabled:bg-slate-50"
+            />
+          )}
+        </label>
+      ))}
+      <button
+        type="submit"
+        disabled={missing.length > 0 || sent || busy}
+        className="rounded-md bg-amber-500 px-4 py-1.5 text-xs font-bold text-white hover:bg-amber-600 disabled:opacity-40"
+      >
+        {sent ? 'Sent' : form.submit_label}
+      </button>
+    </form>
+  )
+}
+
+interface AddressSuggestion {
+  place_id: string
+  label: string
+  sublabel?: string | null
+  description?: string | null
+}
+
+/**
+ * An address box that suggests real addresses as you type (Google Places,
+ * through /v1/geo/address-autocomplete, as the phone's new-customer form).
+ * Picking one fills the whole address; what was typed stays if none is
+ * picked, so a partial address still reaches CBI.
+ */
+function AddressSuggestInput({ value, onChange, placeholder, disabled }: { value: string; onChange: (v: string) => void; placeholder: string; disabled: boolean }) {
+  const [open, setOpen] = useState(false)
+  const [items, setItems] = useState<AddressSuggestion[]>([])
+  // One Google billing session per address picked; made on first use.
+  const session = useRef('')
+  const query = value.trim()
+
+  useEffect(() => {
+    if (!open || query.length < 3) return
+    let cancelled = false
+    const timer = window.setTimeout(async () => {
+      if (!session.current) session.current = newAddressSession()
+      try {
+        const res = await apiRequest<{ data: AddressSuggestion[] }>(
+          `/v1/geo/address-autocomplete?q=${encodeURIComponent(query)}&session_token=${encodeURIComponent(session.current)}`,
+        )
+        if (!cancelled) setItems(res.data ?? [])
+      } catch {
+        if (!cancelled) setItems([])
+      }
+    }, 250)
+    return () => {
+      cancelled = true
+      window.clearTimeout(timer)
+    }
+  }, [query, open])
+
+  const showing = open && query.length >= 3 && items.length > 0
+  return (
+    <div className="relative">
+      <input
+        value={value}
+        onChange={(e) => {
+          onChange(e.target.value)
+          setOpen(true)
+        }}
+        onFocus={() => setOpen(true)}
+        onBlur={() => window.setTimeout(() => setOpen(false), 150)}
+        placeholder={placeholder}
+        disabled={disabled}
+        autoComplete="off"
+        role="combobox"
+        aria-expanded={showing}
+        aria-autocomplete="list"
+        className="mt-0.5 w-full rounded-md border border-slate-300 bg-white px-2 py-1.5 text-xs focus:border-amber-500 focus:outline-none focus:ring-1 focus:ring-amber-500 disabled:bg-slate-50"
+      />
+      {showing && (
+        <ul role="listbox" className="absolute z-10 mt-1 max-h-48 w-full overflow-y-auto rounded-md border border-slate-200 bg-white shadow-lg">
+          {items.map((it) => (
+            <li key={it.place_id} role="option" aria-selected={false}>
+              <button
+                type="button"
+                // Keep focus in the box so the click lands before blur closes the list.
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={() => {
+                  onChange(it.description || [it.label, it.sublabel].filter(Boolean).join(', '))
+                  setOpen(false)
+                  setItems([])
+                  session.current = ''
+                }}
+                className="block w-full px-2 py-1.5 text-left hover:bg-amber-50 focus:bg-amber-50 focus:outline-none"
+              >
+                <span className="block text-xs font-semibold text-navy-900">{it.label}</span>
+                {it.sublabel && <span className="block text-[11px] text-slate-500">{it.sublabel}</span>}
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  )
+}
+
+function newAddressSession(): string {
+  return `addr_${Date.now()}_${Math.random().toString(36).slice(2)}`
+}
+
+function CameraIcon() {
+  return (
+    <svg viewBox="0 0 16 16" className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+      <path d="M2 5.5A1.5 1.5 0 0 1 3.5 4h1.3l1-1.5h4.4l1 1.5h1.3A1.5 1.5 0 0 1 14 5.5v6A1.5 1.5 0 0 1 12.5 13h-9A1.5 1.5 0 0 1 2 11.5z" />
+      <circle cx="8" cy="8.5" r="2.5" />
+    </svg>
+  )
+}
+
+/**
+ * A photo made ready to send: at most 1568 px on the long side (as large as
+ * the AI looks at; bigger is only a slower upload) and a JPEG.
+ */
+async function shrinkPhoto(file: File): Promise<ChatPhoto> {
+  const url = URL.createObjectURL(file)
+  try {
+    const img = await new Promise<HTMLImageElement>((resolve, reject) => {
+      const el = new Image()
+      el.onload = () => resolve(el)
+      el.onerror = reject
+      el.src = url
+    })
+    const scale = Math.min(1, 1568 / Math.max(img.naturalWidth, img.naturalHeight))
+    const canvas = document.createElement('canvas')
+    canvas.width = Math.max(1, Math.round(img.naturalWidth * scale))
+    canvas.height = Math.max(1, Math.round(img.naturalHeight * scale))
+    const ctx = canvas.getContext('2d')
+    if (!ctx) throw new Error('No canvas')
+    ctx.drawImage(img, 0, 0, canvas.width, canvas.height)
+    const preview = canvas.toDataURL('image/jpeg', 0.85)
+    return { data: preview.slice(preview.indexOf(',') + 1), media_type: 'image/jpeg', preview }
+  } finally {
+    URL.revokeObjectURL(url)
+  }
+}
+
+/** Detect a changed browser identity even before the shell re-renders. */
+function browserCbiScope(): string {
+  // Kept in memory only; never sent as context or exposed in a route.
+  return JSON.stringify([getStoredToken(), getActingTenant(), getFranchiseActAs()?.id])
+}
+
 function SendIcon() {
   return (
     <svg viewBox="0 0 16 16" className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -1016,7 +1799,7 @@ function SendIcon() {
  * or null if it isn't one we should render as an internal link.
  *
  * Tolerates common model quirks:
- *   - angle-bracket wrapping: <​/customers/abc>
+ *   - angle-bracket wrapping: </customers/abc>
  *   - trailing punctuation:  /customers/abc).  → strips ).,;:!?
  *   - absolute same-origin URLs: https://app.crewbarn.com/customers/abc
  *   - protocol-relative //evil.com is rejected (not internal)
@@ -1035,17 +1818,16 @@ function toInternalPath(raw: string): string | null {
     .replace(/[.,;:!?]+$/, '')
     .trim()
 
-  // Absolute same-origin URL → relative path.
+  // Preserve valid public sources and cross-workspace links; CbiLink resolves
+  // application routes against the current company's configured workspace.
   if (/^https?:\/\//i.test(u)) {
     try {
       const parsed = new URL(u)
-      if (parsed.origin === window.location.origin) {
-        return parsed.pathname + parsed.search + parsed.hash
-      }
+      if (['http:', 'https:'].includes(parsed.protocol) && !parsed.username && !parsed.password) return parsed.href
     } catch {
       /* fall through */
     }
-    return null // external URL — not an internal link
+    return null
   }
 
   // Relative in-app path (reject protocol-relative //host).
@@ -1055,13 +1837,13 @@ function toInternalPath(raw: string): string | null {
 
 /**
  * Render AI text with light markdown:
- *   - `[label](url)`  → React Router <Link> for in-app paths
+ *   - `[label](url)`  → React Router <CbiLink> for in-app paths
  *   - `**bold**`      → <strong>
  *
  * Order matters: links first so a bold span can't swallow a `[..](..)`.
  * Allows optional whitespace between `]` and `(` (some models add it).
  */
-function RenderWithLinks({ text, onLinkClick }: { text: string; onLinkClick?: () => void }) {
+function RenderWithLinks({ text, onLinkClick, references = false }: { text: string; onLinkClick?: () => void; references?: boolean }) {
   const linkRegex = /\[([^\]]+)\]\s*\(\s*([^)]+?)\s*\)/g
   const parts: React.ReactNode[] = []
   let lastIndex = 0
@@ -1070,7 +1852,7 @@ function RenderWithLinks({ text, onLinkClick }: { text: string; onLinkClick?: ()
 
   function pushText(chunk: string) {
     if (!chunk) return
-    parts.push(...renderTextChunk(chunk, () => key++, onLinkClick))
+    parts.push(...renderTextChunk(chunk, () => key++, onLinkClick, references))
   }
 
   while ((match = linkRegex.exec(text)) !== null) {
@@ -1081,14 +1863,14 @@ function RenderWithLinks({ text, onLinkClick }: { text: string; onLinkClick?: ()
     const path = toInternalPath(url)
     if (path) {
       parts.push(
-        <Link
+        <CbiLink
           key={key++}
           to={path}
           onClick={onLinkClick}
           className="text-amber-700 hover:text-amber-900 underline decoration-amber-300 hover:decoration-amber-600 underline-offset-2"
         >
           {label}
-        </Link>,
+        </CbiLink>,
       )
     } else {
       // Not an in-app link — render just the label (drop the raw URL noise)
@@ -1114,16 +1896,17 @@ function renderTextChunk(
   chunk: string,
   nextKey: () => number,
   onLinkClick?: () => void,
+  references = false,
 ): React.ReactNode[] {
   const out: React.ReactNode[] = []
   // boundary (start / whitespace / "(") + an http(s) URL or a /rooted path
-  const re = /(^|[\s(])((?:https?:\/\/[^\s)]+)|(?:\/[A-Za-z][\w/-]*))/g
+  const re = /(^|[\s(])((?:https?:\/\/[^\s)<>]+)|(?:\/[A-Za-z][^\s)<>]*))/g
   let last = 0
   let m: RegExpExecArray | null
   while ((m = re.exec(chunk)) !== null) {
     const boundary = m[1]
     const rawToken = m[2]
-    if (m.index > last) out.push(...renderBold(chunk.slice(last, m.index), nextKey))
+    if (m.index > last) out.push(...renderBold(chunk.slice(last, m.index), nextKey, references))
     if (boundary) out.push(boundary)
     // Strip trailing sentence punctuation off the token before resolving.
     const trail = (rawToken.match(/[.,;:!?]+$/) || [''])[0]
@@ -1131,35 +1914,45 @@ function renderTextChunk(
     const path = toInternalPath(core)
     if (path) {
       out.push(
-        <Link
+        <CbiLink
           key={nextKey()}
           to={path}
           onClick={onLinkClick}
           className="text-amber-700 hover:text-amber-900 underline decoration-amber-300 hover:decoration-amber-600 underline-offset-2"
         >
           {path}
-        </Link>,
+        </CbiLink>,
       )
       if (trail) out.push(trail)
     } else {
-      out.push(...renderBold(rawToken, nextKey))
+      out.push(...renderBold(rawToken, nextKey, references))
     }
     last = m.index + m[0].length
   }
-  if (last < chunk.length) out.push(...renderBold(chunk.slice(last), nextKey))
+  if (last < chunk.length) out.push(...renderBold(chunk.slice(last), nextKey, references))
   return out
 }
 
-function renderBold(chunk: string, nextKey: () => number): React.ReactNode[] {
+/**
+ * Plain words of a CBI answer go through ReferencedText, so the parts, cards
+ * and vehicles it names (a fitment answer's "Ford remote head key (KEY-R8)",
+ * "2016 Ford F-150") link the way they do in notes and messages. The words
+ * never change; when nothing is found they show as they came.
+ */
+function plain(text: string, nextKey: () => number, references: boolean): React.ReactNode {
+  return references && text.trim() !== '' ? <ReferencedText key={nextKey()} text={text} /> : text
+}
+
+function renderBold(chunk: string, nextKey: () => number, references = false): React.ReactNode[] {
   const out: React.ReactNode[] = []
   const re = /\*\*([^*]+)\*\*/g
   let last = 0
   let m: RegExpExecArray | null
   while ((m = re.exec(chunk)) !== null) {
-    if (m.index > last) out.push(chunk.slice(last, m.index))
-    out.push(<strong key={nextKey()} className="font-semibold text-slate-900">{m[1]}</strong>)
+    if (m.index > last) out.push(plain(chunk.slice(last, m.index), nextKey, references))
+    out.push(<strong key={nextKey()} className="font-semibold text-slate-900">{plain(m[1], nextKey, references)}</strong>)
     last = m.index + m[0].length
   }
-  if (last < chunk.length) out.push(chunk.slice(last))
+  if (last < chunk.length) out.push(plain(chunk.slice(last), nextKey, references))
   return out
 }

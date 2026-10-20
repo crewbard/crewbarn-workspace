@@ -74,6 +74,7 @@ const ROUTE_HELP_TOPICS: Array<{ prefix: string; topicId: string }> = [
   { prefix: '/franchise-support', topicId: 'franchise-workspace-overview' },
   { prefix: '/feedback', topicId: 'help-and-feedback' },
   { prefix: '/me', topicId: 'account-security-overview' },
+  { prefix: '/me/keyboard-shortcuts', topicId: 'keyboard-shortcuts' },
   { prefix: '/oauth', topicId: 'account-security-overview' },
   { prefix: '/onboarding', topicId: 'settings-overview' },
   { prefix: '/settings', topicId: 'settings-overview' },
@@ -213,7 +214,33 @@ The **top bar** is where you switch between core sections (Customers, Jobs, Inve
 
 Most pages have a **list view** with filters and a **detail view** when you click into a row.
 
-Press \`?\` anywhere to open this help panel.
+Press \`?\` anywhere to open this help panel, and \`Ctrl K\` (\`⌘K\` on a Mac) to search for anything. See **Keyboard shortcuts** for the rest.
+`.trim(),
+  },
+  {
+    id: 'keyboard-shortcuts',
+    category: 'Getting Started',
+    title: 'Keyboard shortcuts',
+    body: `
+Keyboard shortcuts get you around CrewBarn without reaching for the mouse. Your own list, with the keys you have right now, is below.
+
+## The ones to know first
+
+- **Ctrl K** (**⌘K** on a Mac) searches everything: jobs, customers, estimates, invoices, pages and settings. Type a question and pick **Ask CBI** to hand it to CBI instead.
+- **Alt Space** (**⌥ Space** on a Mac) opens CBI, ready for you to type.
+- **G**, then a letter, goes to a page: **G** then **J** for Jobs, **G** then **S** for the Schedule, **G** then **C** for Customers.
+- **N**, then a letter, starts something new: **N** then **J** for a job, **N** then **E** for an estimate.
+- On a job, estimate, customer or invoice: **E** edits it, **M** opens its messages, and **[** and **]** step to the previous or next one in the list you came from.
+- **Ctrl Enter** (**⌘ Enter**) saves the form you're in.
+- **/** jumps to the page's search box, and **?** opens Help.
+
+Shortcuts never fire while you're typing in a box, except search, CBI and save. **Esc** closes whatever is open.
+
+## Make them yours
+
+Open **Keyboard shortcuts** from your account menu (your picture or initials, top right) to turn them off, change any key, or print a cheat sheet. Your keys follow you to any computer you sign in on.
+
+[Open Keyboard shortcuts](/me/keyboard-shortcuts)
 `.trim(),
   },
   {
@@ -887,55 +914,8 @@ If something's broken, paste the error message verbatim if you can. Screenshots 
     audience: 'tester',
   },
 
-  // ---- Platform Admin ----
-  {
-    id: 'acting-as-tenant',
-    category: 'Platform Admin',
-    title: 'The "Acting as" banner',
-    body: `
-Platform admins can act-as any tenant. The banner at the top of the app shows which tenant context you're currently in.
-
-Without a selected tenant, **writes will fail** — the BelongsToTenant trait can't infer a tenant_id, so most create/update operations 422.
-
-Switch tenants from the banner's dropdown. The selection persists across reloads via localStorage.
-`.trim(),
-    audience: 'platform_admin',
-  },
-  {
-    id: 'admin-portal',
-    category: 'Platform Admin',
-    title: 'Admin portal',
-    body: `
-Your avatar menu has a **Tenants / Testers / Inbox** section gated to platform admins.
-
-- **Tenants** — list, create, edit tenants. The New form is where you provision tester accounts with auto-generated passwords + invitation emails.
-- **Testers** — list every tester account, see their walkthrough progress and notes timeline.
-- **Inbox** — the @crewbarn.com platform email inbox. Replies are sent through the platform mail provider (Resend).
-`.trim(),
-    audience: 'platform_admin',
-  },
-  {
-    id: 'tester-email-workflow',
-    category: 'Platform Admin',
-    title: 'Tester emails: use @crewbarn.com addresses',
-    body: `
-When provisioning a tester tenant, **use a \`*@crewbarn.com\` email** for the owner account (e.g. \`tester_jane@crewbarn.com\`).
-
-The New Tenant form has an "Auto-fill @crewbarn.com" button that fills in a clean address based on the tenant slug — click it after picking the role.
-
-**Why this works:** \`*@crewbarn.com\` MX records route through the Cloudflare Email Worker into your admin inbox. The auto-generated invitation email + walkthrough lands in your own inbox. You then **text or call the tester** with the password.
-
-**Benefits:**
-
-- Testers don't need to give you a real email address (low friction)
-- You see every system email that gets sent (great for debugging)
-- Testers replying to system mail loops back to your admin inbox automatically
-- One inbox to monitor instead of N tester mailboxes
-
-The tester logs in with the \`@crewbarn.com\` address as their username — they never need to actually receive mail at it.
-`.trim(),
-    audience: 'platform_admin',
-  },
+  // Platform admin topics live in src/admin/helpTopics.ts and are added by
+  // the full app only (src/lib/appExtensions.ts).
 ]
 
 export const HELP_TOPICS: HelpTopic[] = HELP_TOPIC_DEFINITIONS.map((topic) => ({

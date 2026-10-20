@@ -26,6 +26,8 @@ interface SubInvoiceRow {
   paid_via: string | null
   paid_reference: string | null
   pdf_url: string | null
+  /** Sent from the sub's own CrewBarn: read it as the sub rendered it. */
+  has_document?: boolean
   subcontractor: { id: string; business_name: string } | null
 }
 
@@ -85,6 +87,7 @@ export function WorkOrderSubInvoicePanel({ workOrderId }: { workOrderId: string 
   const [paidVia, setPaidVia] = useState('ach')
   const [paidRef, setPaidRef] = useState('')
   const [showPdfOverlay, setShowPdfOverlay] = useState(false)
+  const [showDocument, setShowDocument] = useState(false)
 
   if (q.isLoading) return <div className="text-sm text-slate-500">Loading invoice…</div>
   if (q.isError) return <div className="text-sm text-red-700">{(q.error as Error).message}</div>
@@ -153,6 +156,15 @@ export function WorkOrderSubInvoicePanel({ workOrderId }: { workOrderId: string 
               className="text-xs font-semibold border border-slate-300 text-slate-700 hover:bg-slate-50 rounded-md px-3 py-1.5"
             >
               View PDF
+            </button>
+          )}
+          {inv.has_document && (
+            <button
+              type="button"
+              onClick={() => setShowDocument(true)}
+              className="text-xs font-semibold border border-slate-300 text-slate-700 hover:bg-slate-50 rounded-md px-3 py-1.5"
+            >
+              View invoice
             </button>
           )}
           {inv.status === 'submitted' && (
@@ -259,6 +271,10 @@ export function WorkOrderSubInvoicePanel({ workOrderId }: { workOrderId: string 
         )}
       </section>
 
+      {showDocument && (
+        <SubInvoiceDocument workOrderId={workOrderId} invoiceNumber={inv.invoice_number} onClose={() => setShowDocument(false)} />
+      )}
+
       {showPdfOverlay && inv.pdf_url && (
         <AttachmentOverlay
           url={inv.pdf_url}
@@ -267,6 +283,33 @@ export function WorkOrderSubInvoicePanel({ workOrderId }: { workOrderId: string 
           onClose={() => setShowPdfOverlay(false)}
         />
       )}
+    </div>
+  )
+}
+
+/**
+ * The invoice a sub company sent from its own CrewBarn, as it rendered it.
+ * Shown in a sandboxed frame: the markup is the other company's template,
+ * so nothing in it runs or reaches this page.
+ */
+function SubInvoiceDocument({ workOrderId, invoiceNumber, onClose }: { workOrderId: string; invoiceNumber: string; onClose: () => void }) {
+  const doc = useQuery({
+    queryKey: ['wo-sub-invoice-document', workOrderId],
+    queryFn: () => apiRequest<{ data: { html: string } }>(`/v1/work-orders/${workOrderId}/sub-invoice/document`),
+    retry: false,
+  })
+
+  return (
+    <div className="fixed inset-0 z-50 flex overflow-y-auto bg-black/40 p-4" role="dialog" aria-modal="true" aria-labelledby="sub-invoice-doc-title" onKeyDown={(e) => e.key === 'Escape' && onClose()}>
+      <div className="m-auto flex h-[85vh] w-full max-w-3xl flex-col rounded-xl bg-white shadow-xl">
+        <div className="flex items-center justify-between border-b border-slate-200 px-4 py-3">
+          <h2 id="sub-invoice-doc-title" className="text-sm font-semibold text-navy-900">Invoice {invoiceNumber}</h2>
+          <button type="button" autoFocus onClick={onClose} className="rounded-md px-2 py-1 text-sm text-slate-600 hover:text-navy-900">Close</button>
+        </div>
+        {doc.isLoading && <p className="p-4 text-sm text-slate-500" role="status">Loading…</p>}
+        {doc.isError && <p role="alert" className="p-4 text-sm text-red-700">{(doc.error as Error).message}</p>}
+        {doc.data && <iframe title={`Invoice ${invoiceNumber}`} sandbox="" srcDoc={doc.data.data.html} className="w-full flex-1 rounded-b-xl" />}
+      </div>
     </div>
   )
 }

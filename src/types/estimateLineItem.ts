@@ -34,6 +34,8 @@ export interface EstimateLineItem {
   id: string
   tenant_id: string
   estimate_id: string
+  /** Good / better / best: the option this line is in; null when in every option. */
+  estimate_option_id?: string | null
   display_order: number
 
   type: EstimateLineItemType
@@ -50,6 +52,10 @@ export interface EstimateLineItem {
    *  PDFs (via the merge tag image variants). Toggled globally for
    *  all lines from the editor's section-level switch. */
   show_image_on_doc: boolean
+
+  /** The customer's answer when they approved part of the estimate in the portal. */
+  customer_decision?: 'approved' | 'declined' | null
+  customer_decided_at?: string | null
 
   money: EstimateLineItemMoney
 
@@ -81,6 +87,9 @@ export interface EstimateLineItemInput {
   discount_id?: string | null
   discount_kind?: 'percent' | 'fixed' | null
   discount_value?: number
+
+  /** Good / better / best: the option this line goes in; null for every option. */
+  estimate_option_id?: string | null
 }
 
 /**
@@ -120,4 +129,16 @@ export interface EstimateLineItemDraft {
   tax_amount_cents: number
   total_cents: number
   discount_amount_cents: number
+
+  /** Good / better / best on the create form: the key of the option this
+   *  line is in (EstimateOptionDraft.key); null or missing for every option. */
+  option_key?: string | null
+}
+
+/** An option on the create form, before the estimate exists. */
+export interface EstimateOptionDraft {
+  key: string
+  name: string
+  highlights: string
+  is_recommended: boolean
 }

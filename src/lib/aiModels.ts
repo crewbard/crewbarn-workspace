@@ -16,9 +16,12 @@ export interface AiModelOption {
 const BASE_MODEL_OPTIONS: Record<AiProvider, AiModelOption[]> = {
   anthropic: [
     { value: 'claude-sonnet-5', label: 'Claude Sonnet 5', note: 'Recommended' },
-    { value: 'claude-opus-5', label: 'Claude Opus 5', note: 'Most capable' },
+    { value: 'claude-sonnet-5-5', label: 'Claude Sonnet 5.5', note: 'Newest Sonnet' },
+    { value: 'claude-opus-5-5', label: 'Claude Opus 5.5', note: 'Most capable' },
+    { value: 'claude-haiku-5-5', label: 'Claude Haiku 5.5', note: 'Fastest' },
+    { value: 'claude-opus-5', label: 'Claude Opus 5' },
     { value: 'claude-fable-5-1', label: 'Claude Fable 5.1' },
-    { value: 'claude-haiku-4-5', label: 'Claude Haiku 4.5', note: 'Fastest, cheapest' },
+    { value: 'claude-haiku-4-5', label: 'Claude Haiku 4.5', note: 'Previous generation' },
     { value: 'claude-sonnet-4-5', label: 'Claude Sonnet 4.5', note: 'Previous generation' },
     { value: 'claude-opus-4-1', label: 'Claude Opus 4.1', note: 'Previous generation' },
   ],

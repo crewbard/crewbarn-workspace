@@ -3,7 +3,8 @@ import { createPortal } from 'react-dom'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { apiRequest, type ApiError } from '@/lib/api'
 import { Button } from '@/components/ui/Button'
-import { ReferenceCardFiles } from '@/components/ReferenceCardFiles'
+import { CardCatalogLinks, CardPicture, NameList } from '@/components/ReferenceCardParts'
+import { sendImage } from '@/lib/referenceCardDocuments'
 import {
   LIMITS,
   nextKey,
@@ -24,12 +25,24 @@ import {
  * number.
  */
 
-export function ReferenceCardEditor({ draft, onClose }: { draft: Draft; onClose: () => void }) {
+export function ReferenceCardEditor({
+  draft,
+  onClose,
+  onSaved,
+  layer,
+}: {
+  draft: Draft
+  onClose: () => void
+  onSaved?: (id: string) => void
+  /** Opened from an open catalog: above the book rather than under it. */
+  layer?: 'over-book'
+}) {
   const qc = useQueryClient()
   const [d, setD] = useState<Draft>(draft)
   const [triggerText, setTriggerText] = useState('')
   const [error, setError] = useState<string | null>(null)
-  const [justCreated, setJustCreated] = useState(false)
+  // The saved picture, cleared here: removed with the save rather than at once.
+  const [dropPicture, setDropPicture] = useState(false)
 
   /*
    * A tab is a name on each section, not a box holding them, so the
@@ -178,31 +191,38 @@ export function ReferenceCardEditor({ draft, onClose }: { draft: Draft; onClose:
         triggers: d.triggers,
         sections,
         propose_to_platform: d.propose,
+        part_numbers: d.partNumbers,
+        aliases: d.aliases,
+        // A new card's catalog pages go with it; a saved card links them as they are picked.
+        ...(d.id === null
+          ? { catalog_links: d.links.map((l) => ({ document_id: l.document_id, page: l.page, page_label: l.page_label })) }
+          : {}),
       }
 
-      return d.id === null
-        ? apiRequest<{ card: { id: string } }>('/v1/reference-cards', { method: 'POST', body })
-        : apiRequest<{ card: { id: string } }>(`/v1/reference-cards/${d.id}`, { method: 'PUT', body })
+      const res = d.id === null
+        ? await apiRequest<{ card: { id: string } }>('/v1/reference-cards', { method: 'POST', body })
+        : await apiRequest<{ card?: { id: string } }>(`/v1/reference-cards/${d.id}`, { method: 'PUT', body })
+      const id = d.id ?? res?.card?.id ?? null
+
+      // The picture goes after the card exists. A card without it is still a card.
+      if (id && d.picture) {
+        await sendImage(`/v1/reference-cards/${id}/picture`, 'picture', d.picture).catch(() => undefined)
+      } else if (id && dropPicture) {
+        await apiRequest(`/v1/reference-cards/${id}/picture`, { method: 'DELETE' }).catch(() => undefined)
+      }
+
+      return id
     },
-    onSuccess: (res) => {
+    onSuccess: (id) => {
       void qc.invalidateQueries({ queryKey: ['reference-cards'] })
-      if (d.id) void qc.invalidateQueries({ queryKey: ['reference-card', d.id] })
+      if (id) void qc.invalidateQueries({ queryKey: ['reference-card', id] })
+      void qc.invalidateQueries({ queryKey: ['reference-card-picture'] })
+      void qc.invalidateQueries({ queryKey: ['catalogs'] })
       // The words that open cards have changed, so every piece of text
       // on screen is now answering from a stale list.
       void qc.invalidateQueries({ queryKey: ['text-references'] })
 
-      /*
-       * A new card stays open, now as itself, so its manual can go on
-       * straight away. Closing it sent people looking for where files are
-       * added -- the answer was "open it again", which nobody guesses.
-       */
-      if (d.id === null && res?.card?.id) {
-        setD((p) => ({ ...p, id: res.card.id }))
-        setJustCreated(true)
-        setError(null)
-        return
-      }
-
+      if (id) onSaved?.(id)
       onClose()
     },
     onError: (e) => setError((e as ApiError)?.message ?? 'That did not save.'),
@@ -228,8 +248,13 @@ export function ReferenceCardEditor({ draft, onClose }: { draft: Draft; onClose:
   // Into the body: this can open from a card that opened from a
   // sentence, and a dialog inside a <p> breaks the paragraph.
   return createPortal(
-    <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-slate-900/60 px-4 py-8">
-      <div className="my-auto w-full max-w-3xl rounded-2xl bg-white shadow-xl">
+    <div
+      className={
+        'fixed inset-0 flex items-start justify-center overflow-y-auto bg-slate-900/60 px-4 py-8 '
+        + (layer === 'over-book' ? 'z-[80] text-slate-900' : 'z-50')
+      }
+    >
+      <div data-tour="refcards-editor" data-card-saved={d.id === null ? 'no' : 'yes'} className="my-auto w-full max-w-3xl rounded-2xl bg-white shadow-xl">
         <div className="sticky top-0 flex items-center justify-between gap-3 rounded-t-2xl border-b border-slate-200 bg-white px-5 py-3">
           <h2 className="text-base font-semibold text-slate-900">
             {d.id === null ? 'New reference card' : 'Edit reference card'}
@@ -251,13 +276,8 @@ export function ReferenceCardEditor({ draft, onClose }: { draft: Draft; onClose:
             </p>
           )}
 
-          {justCreated && (
-            <p className="rounded border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-900">
-              Saved. Add a manual or catalogue under Files below, or close when you are done.
-            </p>
-          )}
 
-          <label className="block">
+          <label data-tour="refcards-ed-title" className="block">
             <span className="text-xs font-semibold uppercase tracking-wide text-slate-500">
               Title
             </span>
@@ -270,13 +290,13 @@ export function ReferenceCardEditor({ draft, onClose }: { draft: Draft; onClose:
             />
           </label>
 
-          <div>
+          <div data-tour="refcards-ed-words">
             <span className="text-xs font-semibold uppercase tracking-wide text-slate-500">
               Words that open it
             </span>
             <p className="mt-0.5 text-xs text-slate-500">
-              Spelling is forgiving: write it once and HU-101 finds HU101, SmartKey
-              finds smart key. It is not fuzzy past that, and a word never opens a
+              Spelling is forgiving: write it once and RV-200 finds RV200, AirFlow
+              finds air flow. It is not fuzzy past that, and a word never opens a
               card from inside a longer word.
             </p>
 
@@ -321,7 +341,7 @@ export function ReferenceCardEditor({ draft, onClose }: { draft: Draft; onClose:
             </div>
           </div>
 
-          <div>
+          <div data-tour="refcards-ed-sections">
             <div className="flex items-end justify-between gap-3 border-b border-slate-200">
               <div className="-mb-px flex flex-wrap items-center gap-1">
                 <TabButton
@@ -477,18 +497,47 @@ export function ReferenceCardEditor({ draft, onClose }: { draft: Draft; onClose:
             </div>
           </div>
 
-          {d.id === null ? (
-            <div>
-              <span className="text-xs font-semibold uppercase tracking-wide text-slate-500">Files</span>
-              <p className="mt-0.5 text-xs text-slate-500">
-                Manuals and catalogues go here. Save the card and the button to add one appears.
-              </p>
-            </div>
-          ) : (
-            <ReferenceCardFiles cardId={d.id} />
-          )}
+          <div data-tour="refcards-ed-names" className="grid gap-4 sm:grid-cols-2">
+            <NameList
+              label="Part numbers"
+              hint="The numbers it goes by. Looked up when someone asks for it by number."
+              names={d.partNumbers}
+              placeholder="Add a number, then Enter"
+              onChange={(partNumbers) => setD((p) => ({ ...p, partNumbers }))}
+              onError={setError}
+            />
+            <NameList
+              label="Other names"
+              hint="What customers and suppliers call it."
+              names={d.aliases}
+              placeholder="Add a name, then Enter"
+              onChange={(aliases) => setD((p) => ({ ...p, aliases }))}
+              onError={setError}
+            />
+          </div>
 
-          <label className="flex items-start gap-2 text-sm text-slate-700">
+          <CardPicture
+            cardId={d.id}
+            pending={d.picture}
+            dropped={dropPicture}
+            onPending={(picture) => {
+              setD((p) => ({ ...p, picture }))
+              setDropPicture(false)
+            }}
+            onDrop={() => {
+              setD((p) => ({ ...p, picture: null }))
+              setDropPicture(true)
+            }}
+          />
+
+          <CardCatalogLinks
+            cardId={d.id}
+            pending={d.links}
+            onPending={(links) => setD((p) => ({ ...p, links }))}
+            onError={setError}
+          />
+
+          <label data-tour="refcards-ed-share" className="flex items-start gap-2 text-sm text-slate-700">
             <input
               type="checkbox"
               checked={d.propose}
@@ -502,12 +551,14 @@ export function ReferenceCardEditor({ draft, onClose }: { draft: Draft; onClose:
           </label>
         </div>
 
-        <div className="flex items-center justify-between gap-3 border-t border-slate-200 px-5 py-3">
+        <div data-tour="refcards-ed-save" className="flex items-center justify-between gap-3 border-t border-slate-200 px-5 py-3">
           <div>
             {d.id !== null && (
               <button
                 type="button"
-                onClick={() => retire.mutate()}
+                onClick={() => {
+                  if (window.confirm('Retire this card? It stops opening anywhere. You can bring it back from the Retired list.')) retire.mutate()
+                }}
                 disabled={retire.isPending}
                 className="text-sm text-slate-500 hover:text-red-700"
               >

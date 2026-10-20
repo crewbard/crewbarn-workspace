@@ -38,6 +38,16 @@ export interface CatalogItemInventory {
   reorder_quantity: number | null
   supplier_name: string | null
   supplier_sku: string | null
+  /** Total on hand across every bin and location. Filled by the list endpoint
+   *  only; null on a single-item read. */
+  current_stock?: number | null
+}
+
+/** Where a product sits, on list responses called with ?with_stock=1. */
+export interface CatalogItemStockSummary {
+  my_truck_qty: number
+  /** The caller's truck first, then the biggest piles; at most three. */
+  locations: Array<{ location: string; bin: string | null; qty: number; is_my_truck: boolean }>
 }
 
 export interface CatalogItemSnTracking {
@@ -110,6 +120,7 @@ export interface CatalogItem {
   active: boolean
   show_stock_in_catalog: boolean
   is_stocked_item: boolean
+  stock_summary?: CatalogItemStockSummary
   service_category: CatalogCategory | null    // eager-loaded by controller (only populated for type=service items)
   product_category: ProductCatalogCategory | null  // eager-loaded by controller (only populated for type=product items)
   tax_class: TaxClass | null         // eager-loaded by controller
@@ -172,7 +183,29 @@ export interface CatalogItemListParams {
   active?: boolean
   per_page?: number
   page?: number
+  /** 1 adds stock_summary (top places) to each product. */
+  with_stock?: 1
+  /** Product catalog quick filter. */
+  attention?: CatalogAttentionKey
+  /** Fits filter: {subject: 'vehicle', make: 'Ford', model: 'F-150', years: '2016'}. */
+  fits?: Record<string, string>
+}
+
+/** The Product catalog's quick filters (GET /v1/catalog-items?attention=). */
+export type CatalogAttentionKey = 'no_price' | 'no_photo' | 'no_supplier' | 'low' | 'out' | 'not_stocked'
+
+/** GET /v1/catalog-items/attention — counts for the strip and the chips. */
+export interface CatalogAttentionCounts extends Record<CatalogAttentionKey, number> {
+  total: number
+  inactive: number
 }
 
 
 
+
+/** One product after POST /v1/catalog-items/prices, with the price it had before. */
+export interface BulkPriceChange {
+  id: string
+  customer_cost_cents: number
+  previous_customer_cost_cents: number
+}

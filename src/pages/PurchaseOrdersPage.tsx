@@ -6,6 +6,7 @@ import { formatDateValue } from '@/hooks/useTenantTime'
 import { useTheme } from '@/hooks/useTheme'
 import { EasyPageHeading } from '@/components/easy/EasyPageHeading'
 import { EasyActionCards } from '@/components/easy/EasyActionCards'
+import { PERM, usePermissions } from '@/hooks/usePermissions'
 
 const STATUS_OPTIONS: { value: PurchaseOrderStatus | ''; label: string }[] = [
   { value: '', label: 'All statuses' },
@@ -44,6 +45,10 @@ export function PurchaseOrdersPage() {
   const [status, setStatus] = useState<PurchaseOrderStatus | ''>('')
   const [includeArchived, setIncludeArchived] = useState(false)
   const [page, setPage] = useState(1)
+  // /purchase-orders/new needs inventory.edit, so only offer it to them.
+  const { has } = usePermissions()
+  const canEdit = has(PERM.INVENTORY_EDIT)
+  const canOrderParts = has(PERM.INVENTORY_ORDER)
 
   const query = usePurchaseOrders({
     q: q || undefined,
@@ -57,10 +62,13 @@ export function PurchaseOrdersPage() {
   const meta = query.data?.meta
 
   return (
-    <div className={easy ? 'w-full min-w-0 px-4 py-6 sm:px-6' : 'max-w-7xl mx-auto px-6 py-6'}>
+    <div data-focus-page="purchase-orders" className={easy ? 'w-full min-w-0 px-4 py-6 sm:px-6' : 'max-w-7xl mx-auto px-6 py-6'}>
+      <div data-tour="po-header">
       {easy ? <EasyPageHeading title="Purchase orders" description="Track supplies from draft to delivery. Open an order to review its items, vendor, and receiving details." actions={<>
-        <Link to="/purchase-orders/needs-ordered" className="rounded-xl border border-emerald-500 px-4 py-3 text-sm font-semibold text-white hover:bg-emerald-900">Needs ordering</Link>
-        <Link to="/purchase-orders/new" className="rounded-xl bg-amber-400 px-4 py-3 text-sm font-semibold text-slate-950 hover:bg-amber-300">+ New PO</Link>
+        {canOrderParts && <Link to="/order-parts" data-tour="po-order-parts-link" className="rounded-xl border border-emerald-500 px-4 py-3 text-sm font-semibold text-white hover:bg-emerald-900">Order parts</Link>}
+        <Link to="/purchase-orders/needs-ordered" data-tour="po-needs-link" className="rounded-xl border border-emerald-500 px-4 py-3 text-sm font-semibold text-white hover:bg-emerald-900">Needs ordering</Link>
+        {canEdit && <Link to="/purchase-orders/blueprints" data-tour="po-blueprint-link" className="rounded-xl border border-emerald-500 px-4 py-3 text-sm font-semibold text-white hover:bg-emerald-900">From a blueprint</Link>}
+        {canEdit && <Link to="/purchase-orders/new" data-tour="po-new-link" className="rounded-xl bg-amber-400 px-4 py-3 text-sm font-semibold text-slate-950 hover:bg-amber-300">+ New PO</Link>}
       </>} /> : <div className="flex flex-wrap items-center justify-between gap-3 mb-6">
         <div>
           <h1 className="text-2xl font-semibold text-slate-900">Purchase Orders</h1>
@@ -69,22 +77,45 @@ export function PurchaseOrdersPage() {
           </p>
         </div>
         <div className="flex items-center gap-2">
+          {canOrderParts && (
+            <Link
+              to="/order-parts"
+              data-tour="po-order-parts-link"
+              className="px-4 py-2 text-sm font-medium bg-white border border-slate-300 text-slate-700 hover:bg-slate-50 rounded-md"
+            >
+              Order parts
+            </Link>
+          )}
           <Link
             to="/purchase-orders/needs-ordered"
+            data-tour="po-needs-link"
             className="px-4 py-2 text-sm font-medium bg-white border border-amber-300 text-amber-700 hover:bg-amber-50 rounded-md"
           >
             ⚠ Needs Ordered
           </Link>
-          <Link
-            to="/purchase-orders/new"
-            className="px-4 py-2 text-sm font-medium bg-amber-600 hover:bg-amber-700 text-white rounded-md"
-          >
-            + New PO
-          </Link>
+          {canEdit && (
+            <Link
+              to="/purchase-orders/blueprints"
+              data-tour="po-blueprint-link"
+              className="px-4 py-2 text-sm font-medium bg-white border border-slate-300 text-slate-700 hover:bg-slate-50 rounded-md"
+            >
+              From a blueprint
+            </Link>
+          )}
+          {canEdit && (
+            <Link
+              to="/purchase-orders/new"
+              data-tour="po-new-link"
+              className="px-4 py-2 text-sm font-medium bg-amber-600 hover:bg-amber-700 text-white rounded-md"
+            >
+              + New PO
+            </Link>
+          )}
         </div>
       </div>}
+      </div>
 
-      {easy && <EasyActionCards label="Find orders" actions={[
+      {easy && <div data-tour="po-easy-views"><EasyActionCards label="Find orders" actions={[
         { key: 'draft', title: 'Draft orders', description: 'Review orders still being prepared.' },
         { key: 'ordered', title: 'Waiting for delivery', description: 'See orders placed with vendors.' },
         { key: 'partially_received', title: 'Partly delivered', description: 'Find orders with items still outstanding.' },
@@ -92,9 +123,9 @@ export function PurchaseOrdersPage() {
       ].map(action => ({ ...action, active: status === action.key, onClick: () => {
         setStatus(status === action.key ? '' : action.key as PurchaseOrderStatus)
         setPage(1)
-      } }))} />}
+      } }))} /></div>}
 
-      <div data-easy-list-toolbar className="flex flex-wrap items-center gap-3 mb-4">
+      <div data-easy-list-toolbar data-tour="po-filters" className="flex flex-wrap items-center gap-3 mb-4">
         <input
           type="search"
           aria-label="Search purchase orders"
@@ -139,16 +170,16 @@ export function PurchaseOrdersPage() {
         <button type="button" data-easy-view-option aria-pressed={cards} onClick={() => setCards(true)} className="rounded-lg border px-4 py-2">Order cards</button>
         <button type="button" data-easy-view-option aria-pressed={!cards} onClick={() => setCards(false)} className="rounded-lg border px-4 py-2">Detailed table</button>
       </div>}
-      {easy && cards && query.isSuccess && items.length > 0 && <section aria-label="Purchase orders on this page" className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-        {items.map(po => <Link key={po.id} to={`/purchase-orders/${po.id}`} className="min-w-0 rounded-xl border border-slate-200 bg-white p-5 hover:border-amber-500">
+      {easy && cards && query.isSuccess && items.length > 0 && <section data-tour="po-cards" aria-label="Purchase orders on this page" className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+        {items.map(po => <Link key={po.id} to={`/purchase-orders/${po.id}`} data-tour="po-row" data-vendor={po.vendor ? 'set' : 'none'} className="min-w-0 rounded-xl border border-slate-200 bg-white p-5 hover:border-amber-500">
           <div className="flex flex-wrap items-center justify-between gap-2"><h2 className="font-semibold">{po.po_number}</h2><span className={`rounded px-2 py-1 text-xs ${(STATUS_PALETTE[po.status] ?? STATUS_PALETTE.draft).bg}`}>{STATUS_LABELS[po.status] ?? po.status}</span></div>
-          <p className="mt-3 break-words">{po.vendor?.label ?? 'No vendor'}</p>
+          <p className="mt-3 break-words">{po.vendor?.label ?? <span className="text-amber-800">Vendor not chosen yet</span>}</p>
           <p className="mt-2 text-sm text-slate-500">Expected: {po.expected_delivery ? formatDateValue(po.expected_delivery, { month: 'short', day: 'numeric', year: 'numeric' }, 'en-US') : 'Not set'}</p>
           <p className="mt-3 font-semibold">{po.money?.total_formatted ?? 'Total unavailable'}</p>
           <span className="mt-4 block text-sm text-amber-800">{po.status === 'draft' ? 'Review draft' : po.status === 'ordered' || po.status === 'partially_received' ? 'Review delivery & receiving' : 'Review order'} →</span>
         </Link>)}
       </section>}
-      <div hidden={easy && cards && query.isSuccess && items.length > 0} className="bg-white border border-slate-200 rounded-lg overflow-x-auto">
+      <div data-tour="po-table" hidden={easy && cards && query.isSuccess && items.length > 0} className="bg-white border border-slate-200 rounded-lg overflow-x-auto">
         <table className="w-full text-sm min-w-[680px]">
           <thead className="bg-slate-50 border-b border-slate-200">
             <tr>
@@ -175,10 +206,10 @@ export function PurchaseOrdersPage() {
               </td></tr>
             ) : items.length === 0 ? (
               <tr>
-                <td colSpan={6} className="px-4 py-8 text-center text-slate-500">
+                <td colSpan={6} data-tour="po-empty" data-filtered={q || status ? 'yes' : 'no'} className="px-4 py-8 text-center text-slate-500">
                   {q || status
                     ? 'No purchase orders match your filters.'
-                    : 'No purchase orders yet. Click "New PO" to create one.'}
+                    : canEdit ? 'No purchase orders yet. Click "New PO" to create one.' : 'No purchase orders yet.'}
                 </td>
               </tr>
             ) : (
@@ -187,10 +218,12 @@ export function PurchaseOrdersPage() {
                 return (
                   <tr
                     key={po.id}
+                    data-tour="po-row"
+                    data-vendor={po.vendor ? 'set' : 'none'}
                     onClick={() => navigate(`/purchase-orders/${po.id}`)}
                     className="border-b border-slate-100 last:border-0 cursor-pointer hover:bg-slate-50"
                   >
-                    <Td className="font-mono text-xs text-slate-600"><Link to={`/purchase-orders/${po.id}`} onClick={event => event.stopPropagation()} className="underline underline-offset-2">{po.po_number}</Link></Td>
+                    <Td className="font-mono text-xs text-slate-600"><Link to={`/purchase-orders/${po.id}`} onClick={event => event.stopPropagation()} className="underline underline-offset-2">{po.po_number}</Link>{po.auto_reorder && <span className="ml-2 rounded bg-sky-100 px-1.5 py-0.5 font-sans text-[11px] text-sky-800" title="Started by CrewBarn when stock ran low">Low-stock reorder</span>}{po.source_call && <span className="ml-2 rounded bg-violet-100 px-1.5 py-0.5 font-sans text-[11px] text-violet-800" title="Written from a call with the vendor: check it against the call">From a call</span>}{po.source_takeoff_id && <span className="ml-2 rounded bg-teal-100 px-1.5 py-0.5 font-sans text-[11px] text-teal-800" title="Parts read off a blueprint: check them against the drawing">From a blueprint</span>}</Td>
                     <Td>
                       <span
                         className={`inline-block px-2 py-0.5 text-xs font-medium rounded ${palette.bg} ${palette.text}`}
@@ -199,7 +232,7 @@ export function PurchaseOrdersPage() {
                       </span>
                     </Td>
                     <Td className="text-slate-700">
-                      {po.vendor?.label ?? <span className="text-slate-300">—</span>}
+                      {po.vendor?.label ?? <span className="text-amber-700">Not chosen yet</span>}
                     </Td>
                     <Td className="text-slate-700">
                       {po.order_date

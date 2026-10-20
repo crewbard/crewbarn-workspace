@@ -12,8 +12,18 @@ import { printLabelPdf, type PdfLabel } from '@/lib/pdfLabels'
 import { LabelStudio } from '@/components/labels/LabelStudio'
 import type { LabelFaceData } from '@/components/labels/LabelFace'
 import { downloadLabelPng } from '@/lib/pngLabels'
-import { printLabelsViaBluetooth } from '@/lib/escposBluetooth'
+import { printLabelsViaBluetooth } from '@/lib/bluetoothPrint'
 import type { Asset } from '@/types/asset'
+import { assetScanUrl } from '@/components/assets/scanUrl'
+
+/**
+ * The sticker encodes the full public scan URL (same shape as the group
+ * placard), so a plain phone camera opens the scan page. In-app scanners
+ * read the code back out of the URL.
+ */
+function assetQrValue(asset: Asset): string {
+  return assetScanUrl(asset.tenant_id, asset.asset_code || asset.id)
+}
 
 /**
  * Print-friendly QR sticker for an Asset.
@@ -23,8 +33,7 @@ import type { Asset } from '@/types/asset'
  *   - thermal=2x1     — pick a thermal label preset (Sheet by default)
  *   - copies=N        — print N copies of the sticker (default 1)
  *
- * QR encodes the asset_code (the public scan target). Existing public
- * /scan/{tenantId}/{code} resolves it. Stickered onto the physical
+ * QR encodes the public scan URL /scan/{tenantId}/{asset_code}. Stickered onto the physical
  * asset (door, extinguisher, panel) for inspection lookup.
  */
 export function AssetLabelsPage() {
@@ -67,7 +76,7 @@ export function AssetLabelsPage() {
       asset.service_location?.street_address ??
       ''
     return {
-      qrValue: asset.asset_code || asset.id,
+      qrValue: assetQrValue(asset),
       title: asset.name,
       subtitle: asset.asset_type?.name ?? undefined,
       details: [
@@ -100,8 +109,9 @@ export function AssetLabelsPage() {
     <div className="bg-white min-h-screen">
       <style>{thermalPrintCss(thermal, multiUp)}</style>
 
+      <div data-tour="labels-studio">
       <LabelStudio
-        backTo={{ href: `/assets/${asset.id}`, label: asset.name }}
+        backTo={{ href: `/assets?id=${encodeURIComponent(asset.id)}`, label: asset.name }}
         faces={faces}
         size={thermal}
         onSize={(next) => setParam('thermal', next === 'sheet' ? null : next)}
@@ -131,6 +141,7 @@ export function AssetLabelsPage() {
           }
         }}
       />
+      </div>
       <div className={`print-stage ${isThermal ? 'p-0' : isMini ? 'p-2' : 'p-4'}`}>
         <div
           className={
@@ -164,7 +175,7 @@ function AssetLabelCard({
   mini: boolean
   thermal: ThermalSizeKey
 }) {
-  const qrValue = asset.asset_code || asset.id
+  const qrValue = assetQrValue(asset)
   const name = asset.name
   const typeName = asset.asset_type?.name ?? null
   const locationText =

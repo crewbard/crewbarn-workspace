@@ -6,6 +6,7 @@ import type { FormEvent } from 'react'
 import { Link } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { API_URL, apiRequest, getActingTenant, getFranchiseActAs, getStoredToken } from '@/lib/api'
+import { assertFileResponse } from '@/lib/fileResponse'
 
 type WorkspaceAction = {
   label: string
@@ -521,6 +522,7 @@ async function downloadReport(path: string, filename: string) {
     }
     throw new Error(message)
   }
+  assertFileResponse(response)
   const blob = await response.blob()
   const href = URL.createObjectURL(blob)
   const link = document.createElement('a')
@@ -546,7 +548,6 @@ const payrollCards: WorkspaceCard[] = [
     text: 'Vacation, sick, holiday, unpaid, and PTO hours separated from revenue-producing labor.',
     actions: [
       { label: 'Open time off', to: '/tool-shed/time-off' },
-      { label: 'Payroll balances', to: '/accounting/payroll' },
     ],
   },
   {
@@ -561,8 +562,8 @@ const payrollCards: WorkspaceCard[] = [
     title: 'Tech profitability',
     text: 'Revenue minus wages, salary allocation, commission, paid time off, expenses, fuel, callbacks, parts cost, and overhead.',
     actions: [
-      { label: 'Tech report', to: '/reports?layout=browser&report=tech-performance' },
-      { label: 'Payroll review', to: '/accounting/payroll' },
+      { label: 'Tech report', to: '/accounting/reports/browse?layout=browser&report=tech-performance' },
+      { label: 'Job profit report', to: '/accounting/reports/browse?layout=browser&report=job-profitability' },
     ],
   },
 ]
@@ -574,8 +575,8 @@ const expenseCards: WorkspaceCard[] = [
     actions: [
       { label: 'Vendors', to: '/vendors' },
       { label: 'Open bills', to: '/accounting/expenses/bills' },
-      { label: 'AP aging', to: '/reports?layout=browser&report=ap-aging' },
-      { label: 'Bill report', to: '/reports?layout=browser&report=vendor-bill-register' },
+      { label: 'AP aging', to: '/accounting/reports/browse?layout=browser&report=ap-aging' },
+      { label: 'Bill report', to: '/accounting/reports/browse?layout=browser&report=vendor-bill-register' },
     ],
   },
   {
@@ -584,7 +585,7 @@ const expenseCards: WorkspaceCard[] = [
     actions: [
       { label: 'Cost model', to: '/tool-shed/cost-model' },
       { label: 'Open register', to: '/accounting/expenses/register' },
-      { label: 'Expense report', to: '/reports?layout=browser&report=expense-register' },
+      { label: 'Expense report', to: '/accounting/reports/browse?layout=browser&report=expense-register' },
     ],
   },
   {
@@ -603,8 +604,8 @@ const inventoryCostCards: WorkspaceCard[] = [
     text: 'Spend by PO #, vendor, order date, received date, item, category, unit cost, and total cost.',
     actions: [
       { label: 'Purchase orders', to: '/purchase-orders' },
-      { label: 'Spend report', to: '/reports?layout=browser&report=inventory-spend' },
-      { label: 'PO report', to: '/reports?layout=browser&report=purchase-order-register' },
+      { label: 'Spend report', to: '/accounting/reports/browse?layout=browser&report=inventory-spend' },
+      { label: 'PO report', to: '/accounting/reports/browse?layout=browser&report=purchase-order-register' },
     ],
   },
   {
@@ -612,7 +613,7 @@ const inventoryCostCards: WorkspaceCard[] = [
     text: 'Current on-hand quantity and extended value by warehouse, bin, truck, item, and category.',
     actions: [
       { label: 'Inventory', to: '/inventory' },
-      { label: 'Valuation report', to: '/reports?layout=browser&report=inventory-valuation' },
+      { label: 'Valuation report', to: '/accounting/reports/browse?layout=browser&report=inventory-valuation' },
     ],
   },
   {
@@ -647,7 +648,7 @@ const bankMatchCards: WorkspaceCard[] = [
     text: 'Filter bank rows by date, status, and type, then export the visible reconciliation queue for bookkeeping.',
     actions: [
       { label: 'Export rows', to: '/accounting/bank-match/review' },
-      { label: 'Report browser', to: '/reports?layout=browser&report=bank-reconciliation' },
+      { label: 'Report browser', to: '/accounting/reports/browse?layout=browser&report=bank-reconciliation' },
     ],
   },
 ]
@@ -718,7 +719,7 @@ export function CustomerCreditsWorkspacePage() {
 
   return (
     <div className="mx-auto w-full max-w-none space-y-6 px-4 py-4 sm:px-6 sm:py-6 2xl:px-8">
-<div data-easy-accounting-header={easy || undefined} className={easy ? 'flex min-w-0 w-full flex-col items-stretch gap-4' : 'flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between'}>
+<div data-tour="credits-header" data-easy-accounting-header={easy || undefined} className={easy ? 'flex min-w-0 w-full flex-col items-stretch gap-4' : 'flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between'}>
         <div className={easy ? 'min-w-0 w-full' : undefined}>
           {easy ? <EasyPageHeading title="Customer credits & deposits" description="Review money held for customers, where it was applied, and what remains. Use the filters to find a customer or payment reference." /> : <>
           <div className="text-xs font-semibold uppercase tracking-wide text-amber-700">Credits & deposits</div>
@@ -729,14 +730,14 @@ export function CustomerCreditsWorkspacePage() {
           </>}
         </div>
         <Link
-          to="/accounting"
+          to="/accounting/overview"
           className="rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
         >
           Accounting overview
         </Link>
       </div>
 
-      <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+      <section data-tour="credits-filters" className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
         <div className="flex flex-col gap-4">
           <div>
             {easy && <EasyActionCards label="Choose a credit view" actions={[
@@ -800,7 +801,7 @@ export function CustomerCreditsWorkspacePage() {
         ) : null}
       </section>
 
-      <section className="grid grid-cols-2 gap-3 lg:grid-cols-5">
+      <section data-tour="credits-totals" className="grid grid-cols-2 gap-3 lg:grid-cols-5">
         {reportQ.isError && <div role="alert" className="col-span-full rounded-xl border border-amber-300 bg-amber-50 p-4 text-sm text-amber-900">
           The credit report could not be loaded. Displayed records may be incomplete.
           <button type="button" disabled={reportQ.isFetching} onClick={() => void reportQ.refetch()} className="ml-2 underline disabled:opacity-50">Retry</button>
@@ -812,7 +813,7 @@ export function CustomerCreditsWorkspacePage() {
         <PayrollMetric label="Balance" value={reportQ.isError ? 'Unavailable' : reportQ.isLoading ? '...' : exactMoney(totals?.balance_cents ?? 0)} tone="amber" />
       </section>
 
-      <section className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+      <section data-tour="credits-table" data-count={filteredRows.length} className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
         <div className="flex flex-col gap-3 border-b border-slate-200 bg-white px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
           <div className="text-sm text-slate-600">{reportQ.isError ? 'Credit report unavailable' : reportQ.isLoading ? 'Loading credits…' : pageLabel}</div>
           <div className="flex flex-wrap items-center gap-2">
@@ -1076,6 +1077,9 @@ export function PayrollWorkspacePage() {
     (totals?.parts_commission_cost_cents ?? 0) +
     (totals?.vacation_accrual_cents ?? 0) +
     paidLeaveCostForCloseout
+  // The closeout confirm and "Total to post" must show the same figure, so
+  // both read the server preview (the same calculation the post uses).
+  const closeoutTotalCents = preview?.totals.payroll_cost_cents ?? 0
   const manualLeaveHoursNeedingCloseoutReview = ptoBalances?.totals.other_hours_used ?? 0
   const unpaidLeaveHoursNeedingCloseoutReview = ptoBalances?.totals.unpaid_hours_used ?? 0
   const hasTimeOffCloseoutReview =
@@ -1142,7 +1146,15 @@ export function PayrollWorkspacePage() {
         method: 'PATCH',
         body: { reimbursement_status: reimbursementStatus, status },
       }),
-    onSuccess: () => {
+    onMutate: () => {
+      setActionError(null)
+      setActionMessage(null)
+    },
+    onError: (error) => {
+      setActionError(error instanceof Error ? error.message : 'Could not update that reimbursement.')
+    },
+    onSuccess: (_data, variables) => {
+      setActionMessage(variables.reimbursementStatus === 'reimbursed' ? 'Reimbursement marked paid.' : 'Reimbursement approved.')
       queryClient.invalidateQueries({ queryKey: ['accounting'] })
       queryClient.invalidateQueries({ queryKey: ['expenses'] })
       queryClient.invalidateQueries({ queryKey: ['reports'] })
@@ -1224,7 +1236,7 @@ export function PayrollWorkspacePage() {
     },
   })
   async function postPayrollCloseout() {
-    if (payrollCost <= 0) return
+    if (!preview || closeoutTotalCents <= 0) return
 
     setActionError(null)
     setActionMessage(null)
@@ -1235,7 +1247,7 @@ export function PayrollWorkspacePage() {
       ? `\n\nManual time-off review: ${manualLeaveHoursNeedingCloseoutReview}h other leave and ${unpaidLeaveHoursNeedingCloseoutReview}h unpaid leave are approved in this period and are not paid automatically.`
       : ''
     const confirmed = window.confirm(
-      `Post payroll closeout for ${from} to ${to} for ${exactMoney(payrollCost)}? Reimbursements stay separate and are not included.${paidLeaveNotice}${timeOffNotice}`,
+      `Post payroll closeout for ${from} to ${to} for ${exactMoney(closeoutTotalCents)} (the "Total to post" below)? Reimbursements stay separate and are not included.${paidLeaveNotice}${timeOffNotice}`,
     )
     if (!confirmed) return
 
@@ -1732,7 +1744,7 @@ export function PayrollWorkspacePage() {
 
   return (
     <div className="mx-auto w-full max-w-none space-y-6 px-4 py-4 sm:px-6 sm:py-6 2xl:px-8">
-<div data-easy-accounting-header={easy || undefined} className={easy ? 'flex min-w-0 w-full flex-col items-stretch gap-4' : 'flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between'}>
+<div data-tour="payroll-header" data-easy-accounting-header={easy || undefined} className={easy ? 'flex min-w-0 w-full flex-col items-stretch gap-4' : 'flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between'}>
         <div className={easy ? 'min-w-0 w-full' : undefined}>
           {easy ? <EasyPageHeading title="Payroll & tech profit" description="Review the period, check leave and reimbursements, then post payroll when the numbers are ready." /> : <>
           <div className="text-xs font-semibold uppercase tracking-wide text-amber-700">Payroll review</div>
@@ -1742,7 +1754,7 @@ export function PayrollWorkspacePage() {
           </p>
           </>}
         </div>
-        <div className="flex flex-wrap gap-2">
+        <div className="flex flex-wrap gap-2" data-tour="payroll-actions">
           <Link
             to="/accounting/payroll/profiles"
             className="rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
@@ -1760,7 +1772,7 @@ export function PayrollWorkspacePage() {
           <button
             type="button"
             onClick={postPayrollCloseout}
-            disabled={reportQ.isLoading || payrollCost <= 0 || closeoutPayroll.isPending}
+            disabled={previewQ.isLoading || !preview || closeoutTotalCents <= 0 || closeoutPayroll.isPending}
             className="rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-sm font-semibold text-amber-800 hover:bg-amber-100 disabled:cursor-not-allowed disabled:opacity-50"
           >
             {closeoutPayroll.isPending ? 'Posting...' : 'Post payroll closeout'}
@@ -1782,7 +1794,7 @@ export function PayrollWorkspacePage() {
         </div>
       </div>
       {easy && (
-        <nav aria-label="Payroll sections" className="grid grid-cols-2 gap-2 lg:grid-cols-4">
+        <nav aria-label="Payroll sections" data-tour="payroll-jump" className="grid grid-cols-2 gap-2 lg:grid-cols-4">
           {[
             ['payroll-preview', 'Check before posting', 'What this run pays, and what is not billed yet.'],
             ['payroll-leave', 'Review leave', 'Check PTO balances for the selected period.'],
@@ -1813,7 +1825,7 @@ export function PayrollWorkspacePage() {
         </div>
       ) : null}
       {hasTimeOffCloseoutReview ? (
-        <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+        <div data-tour="payroll-timeoff-warning" className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
           <div className="font-semibold">Review time off before posting payroll</div>
           <div className="mt-1 text-xs leading-5">
             Paid leave included in closeout: {paidLeaveHoursForCloseout}h for {exactMoney(paidLeaveCostForCloseout)}.
@@ -1823,7 +1835,7 @@ export function PayrollWorkspacePage() {
         </div>
       ) : null}
 
-      <section className="grid grid-cols-2 gap-3 lg:grid-cols-9">
+      <section data-tour="payroll-metrics" className="grid grid-cols-2 gap-3 lg:grid-cols-9">
         <PayrollMetric label="Techs" value={reportQ.isError ? 'Unavailable' : reportQ.isLoading ? '...' : String(totals?.tech_count ?? 0)} />
         <PayrollMetric label="Jobs" value={reportQ.isError ? 'Unavailable' : reportQ.isLoading ? '...' : String(totals?.job_count ?? 0)} />
         <PayrollMetric label="Revenue" value={reportQ.isError ? 'Unavailable' : reportQ.isLoading ? '...' : money(totals?.revenue_cents ?? 0)} tone="green" />
@@ -1849,7 +1861,7 @@ export function PayrollWorkspacePage() {
         <PayrollMetric label="Margin" value={reportQ.isError ? 'Unavailable' : reportQ.isLoading ? '...' : money(totals?.margin_cents ?? 0)} tone={(totals?.margin_cents ?? 0) >= 0 ? 'green' : 'red'} />
       </section>
 
-      <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+      <section data-tour="payroll-filters" className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
         <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
           <label className="space-y-1 text-sm font-semibold text-slate-700">
             <span>From</span>
@@ -1902,7 +1914,7 @@ export function PayrollWorkspacePage() {
         so the one warning designed to be read first could only be read
         afterwards.
       */}
-      <section className="rounded-xl border border-slate-200 bg-white shadow-sm">
+      <section data-tour="payroll-preview" data-count={preview?.rows.length ?? 0} className="rounded-xl border border-slate-200 bg-white shadow-sm">
         <div className="flex flex-col gap-3 border-b border-slate-200 p-4 lg:flex-row lg:items-center lg:justify-between">
           <div>
             <h2 id="payroll-preview" tabIndex={-1} className="scroll-mt-24 text-base font-semibold text-slate-900">Check before posting</h2>
@@ -1919,7 +1931,7 @@ export function PayrollWorkspacePage() {
           It WARNS. A bookkeeping gap must not be why somebody is paid late.
         */}
         {unbilled && unbilled.count > 0 ? (
-          <div className="border-b border-amber-200 bg-amber-50 p-4">
+          <div data-tour="payroll-unbilled" className="border-b border-amber-200 bg-amber-50 p-4">
             <p className="text-sm font-semibold text-amber-900">
               {unbilled.count === 1
                 ? '1 job finished in this period has never been invoiced.'
@@ -1963,7 +1975,7 @@ export function PayrollWorkspacePage() {
           <PayrollMetric label="Tips" value={previewQ.isLoading ? '...' : (preview?.totals.dollars?.tips ?? '$0.00')} />
           <PayrollMetric
             label="Total to post"
-            value={previewQ.isLoading ? '...' : (preview?.totals.dollars?.total_pay ?? '$0.00')}
+            value={previewQ.isLoading ? '...' : exactMoney(closeoutTotalCents)}
             tone="green"
           />
         </div>
@@ -2030,7 +2042,7 @@ export function PayrollWorkspacePage() {
         </div>
       </section>
 
-      <section className="rounded-xl border border-slate-200 bg-white shadow-sm">
+      <section data-tour="payroll-leave" className="rounded-xl border border-slate-200 bg-white shadow-sm">
         <div className="flex flex-col gap-3 border-b border-slate-200 p-4 lg:flex-row lg:items-center lg:justify-between">
           <div>
             <h2 id="payroll-leave" tabIndex={-1} className="scroll-mt-24 text-base font-semibold text-slate-900">PTO balances</h2>
@@ -2127,7 +2139,7 @@ export function PayrollWorkspacePage() {
         </div>
       </section>
 
-      <section className="rounded-xl border border-slate-200 bg-white shadow-sm">
+      <section data-tour="payroll-closeouts" data-count={payrollRuns.length} className="rounded-xl border border-slate-200 bg-white shadow-sm">
         <div className="flex flex-col gap-2 border-b border-slate-200 p-4 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <h2 id="payroll-closeouts" tabIndex={-1} className="scroll-mt-24 text-base font-semibold text-slate-900">Posted payroll closeouts</h2>
@@ -2404,7 +2416,7 @@ export function PayrollWorkspacePage() {
         ) : null}
       </section>
 
-      <section className="rounded-xl border border-slate-200 bg-white shadow-sm">
+      <section data-tour="payroll-profit" className="rounded-xl border border-slate-200 bg-white shadow-sm">
         <div className="flex flex-col gap-3 border-b border-slate-200 p-4 lg:flex-row lg:items-center lg:justify-between">
           <div>
             <h2 id="payroll-profit" tabIndex={-1} className="scroll-mt-24 text-base font-semibold text-slate-900">Technician profitability</h2>
@@ -2487,7 +2499,7 @@ export function PayrollWorkspacePage() {
         </div>
       </section>
 
-      <section className="rounded-xl border border-slate-200 bg-white shadow-sm">
+      <section data-tour="payroll-reimbursements" data-count={visibleReimbursements.length} className="rounded-xl border border-slate-200 bg-white shadow-sm">
         <div className="flex flex-col gap-3 border-b border-slate-200 p-4 lg:flex-row lg:items-center lg:justify-between">
           <div>
             <h2 id="payroll-reimbursements" tabIndex={-1} className="scroll-mt-24 text-base font-semibold text-slate-900">Tech reimbursements</h2>
@@ -2621,13 +2633,17 @@ export function PayrollWorkspacePage() {
                         <button
                           type="button"
                           disabled={updateReimbursementStatus.isPending}
-                          onClick={() =>
+                          onClick={() => {
+                            if (
+                              action.reimbursementStatus === 'reimbursed' &&
+                              !window.confirm(`Mark ${exactMoney(expense.amount_cents + expense.tax_cents)} for ${expense.employee?.name ?? expense.employee?.email ?? 'this person'} as reimbursed/paid?`)
+                            ) return
                             updateReimbursementStatus.mutate({
                               expenseId: expense.id,
                               reimbursementStatus: action.reimbursementStatus,
                               status: action.status,
                             })
-                          }
+                          }}
                           className="rounded-md bg-slate-900 px-3 py-2 text-xs font-semibold text-white hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-400"
                         >
                           {action.label}
@@ -2667,7 +2683,7 @@ export function PayrollWorkspacePage() {
         </div>
       </section>
 
-      <section className="grid grid-cols-1 gap-4 lg:grid-cols-3">
+      <section data-tour="payroll-shortcuts" className="grid grid-cols-1 gap-4 lg:grid-cols-3">
         {payrollCards.map((card) => (
           <WorkspaceModuleCard key={card.title} card={card} />
         ))}
@@ -2725,7 +2741,7 @@ export function ExpensesWorkspacePage() {
 
   return (
     <div className="mx-auto w-full max-w-none space-y-6 px-4 py-4 sm:px-6 sm:py-6 2xl:px-8">
-<div data-easy-accounting-header={easy || undefined} className={easy ? 'flex min-w-0 w-full flex-col items-stretch gap-4' : 'flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between'}>
+<div data-tour="expenses-header" data-easy-accounting-header={easy || undefined} className={easy ? 'flex min-w-0 w-full flex-col items-stretch gap-4' : 'flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between'}>
         <div className={easy ? 'min-w-0 w-full' : undefined}>
           {easy ? <EasyPageHeading title="Bills, expenses & receipts" description="Review business costs for the selected dates. Open the register to work with individual bills, expenses, receipts, and reimbursements." /> : <>
           <div className="text-xs font-semibold uppercase tracking-wide text-amber-700">Money out</div>
@@ -2756,6 +2772,7 @@ export function ExpensesWorkspacePage() {
           </label>
           <Link
             to="/accounting/expenses/register"
+            data-tour="expenses-open-register"
             className="self-end rounded-md bg-slate-900 px-3 py-2 text-sm font-semibold text-white hover:bg-slate-800"
           >
             Open register
@@ -2763,7 +2780,7 @@ export function ExpensesWorkspacePage() {
         </div>
       </div>
 
-      <section className="grid grid-cols-2 gap-3 lg:grid-cols-6">
+      <section data-tour="expenses-metrics" className="grid grid-cols-2 gap-3 lg:grid-cols-6">
         {easy && [expenseQ, apQ, contractor1099Q].some(query => query.isError) && <div role="alert" className="col-span-full rounded-xl border border-amber-300 bg-amber-50 p-4 text-sm text-amber-900">
           Some expense reports could not be loaded. Totals and lists may be incomplete; do not interpret missing data as zero.
           <button type="button" onClick={() => { for (const query of [expenseQ, apQ, contractor1099Q]) if (query.isError) void query.refetch() }} className="ml-2 underline">Retry failed reports</button>
@@ -2777,13 +2794,13 @@ export function ExpensesWorkspacePage() {
       </section>
 
       <section className="grid grid-cols-1 gap-4 xl:grid-cols-3">
-        <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm xl:col-span-2">
+        <div data-tour="expenses-categories" className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm xl:col-span-2">
           <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
             <div>
               <h2 className="text-base font-semibold text-slate-900">Spend by category</h2>
               <p className="mt-1 text-sm text-slate-500">Top expense categories in this date range.</p>
             </div>
-            <Link to="/reports?layout=browser&report=expense-register" className="text-sm font-semibold text-amber-700 hover:text-amber-800">
+            <Link to="/accounting/reports/browse?layout=browser&report=expense-register" className="text-sm font-semibold text-amber-700 hover:text-amber-800">
               Expense report
             </Link>
           </div>
@@ -2810,13 +2827,13 @@ export function ExpensesWorkspacePage() {
           </div>
         </div>
 
-        <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+        <div data-tour="expenses-ap" className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
           <div className="flex items-start justify-between gap-3">
             <div>
               <h2 className="text-base font-semibold text-slate-900">AP aging</h2>
               <p className="mt-1 text-sm text-slate-500">Open vendor bills as of {to}.</p>
             </div>
-            <Link to="/reports?layout=browser&report=ap-aging" className="text-sm font-semibold text-amber-700 hover:text-amber-800">
+            <Link to="/accounting/reports/browse?layout=browser&report=ap-aging" className="text-sm font-semibold text-amber-700 hover:text-amber-800">
               AP report
             </Link>
           </div>
@@ -2840,7 +2857,7 @@ export function ExpensesWorkspacePage() {
       </section>
 
       <section className="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1.6fr)_minmax(320px,0.9fr)]">
-        <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+        <div data-tour="expenses-recent" data-count={recentRows.length} className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
           <div className="flex flex-col gap-2 border-b border-slate-200 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
             <div>
               <h2 className="text-base font-semibold text-slate-900">Recent expenses</h2>
@@ -2901,7 +2918,7 @@ export function ExpensesWorkspacePage() {
         </div>
 
         <div className="space-y-4">
-          <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+          <div data-tour="expenses-reimb" className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
             <h2 className="text-base font-semibold text-slate-900">Reimbursements</h2>
             <p className="mt-1 text-sm text-slate-500">Tech receipts waiting on approval or payment.</p>
             <div className="mt-4 space-y-2">
@@ -2928,7 +2945,7 @@ export function ExpensesWorkspacePage() {
             </Link>
           </div>
 
-          <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+          <div data-tour="expenses-1099" className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
             <div className="flex items-start justify-between gap-3">
               <div>
                 <h2 className="text-base font-semibold text-slate-900">1099 readiness</h2>
@@ -2936,7 +2953,7 @@ export function ExpensesWorkspacePage() {
                   Paid subcontractor totals for tax year {contractor1099Year}. Filing still goes through your accountant or 1099 provider.
                 </p>
               </div>
-              <Link to={`/reports?layout=browser&report=contractor-1099`} className="text-sm font-semibold text-amber-700 hover:text-amber-800">
+              <Link to={`/accounting/reports/browse?layout=browser&report=contractor-1099`} className="text-sm font-semibold text-amber-700 hover:text-amber-800">
                 1099 report
               </Link>
             </div>
@@ -2968,7 +2985,7 @@ export function ExpensesWorkspacePage() {
             </div>
           </div>
 
-          <div className="grid grid-cols-1 gap-3">
+          <div data-tour="expenses-shortcuts" className="grid grid-cols-1 gap-3">
             {expenseCards.map((card) => (
               <WorkspaceModuleCard key={card.title} card={card} />
             ))}
@@ -3025,7 +3042,7 @@ export function InventoryCostWorkspacePage() {
 
   return (
     <div className="mx-auto w-full max-w-none space-y-6 px-4 py-4 sm:px-6 sm:py-6 2xl:px-8">
-<div data-easy-accounting-header={easy || undefined} className={easy ? 'flex min-w-0 w-full flex-col items-stretch gap-4' : 'flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between'}>
+<div data-tour="inv-cost-header" data-easy-accounting-header={easy || undefined} className={easy ? 'flex min-w-0 w-full flex-col items-stretch gap-4' : 'flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between'}>
         <div className={easy ? 'min-w-0 w-full' : undefined}>
           {easy ? <EasyPageHeading title="Inventory & purchasing costs" description="Review stock value and purchasing spend. Use the date range for period-based reports, and open purchase orders to review individual deliveries." /> : <>
           <div className="text-xs font-semibold uppercase tracking-wide text-amber-700">Inventory cost</div>
@@ -3063,7 +3080,7 @@ export function InventoryCostWorkspacePage() {
         </div>
       </div>
 
-      <section className="grid grid-cols-2 gap-3 lg:grid-cols-6">
+      <section data-tour="inv-cost-metrics" className="grid grid-cols-2 gap-3 lg:grid-cols-6">
         {easy && [valuationQ, spendQ, poQ].some(query => query.isError) && <div role="alert" className="col-span-full rounded-xl border border-amber-300 bg-amber-50 p-4 text-sm text-amber-900">
           Some inventory reports could not be loaded. Values and lists may be incomplete; do not interpret missing data as zero.
           <button type="button" onClick={() => { for (const query of [valuationQ, spendQ, poQ]) if (query.isError) void query.refetch() }} className="ml-2 underline">Retry failed reports</button>
@@ -3077,7 +3094,7 @@ export function InventoryCostWorkspacePage() {
       </section>
 
       <section className="grid grid-cols-1 gap-4 xl:grid-cols-3">
-        <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm xl:col-span-2">
+        <div data-tour="inv-cost-spend" className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm xl:col-span-2">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
             <div>
               <h2 className="text-base font-semibold text-slate-900">PO spend</h2>
@@ -3094,7 +3111,7 @@ export function InventoryCostWorkspacePage() {
                 <option value="category">By category</option>
                 <option value="po">By PO</option>
               </select>
-              <Link to="/reports?layout=browser&report=inventory-spend" className="rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50">
+              <Link to="/accounting/reports/browse?layout=browser&report=inventory-spend" className="rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50">
                 Spend report
               </Link>
             </div>
@@ -3125,13 +3142,13 @@ export function InventoryCostWorkspacePage() {
           </div>
         </div>
 
-        <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+        <div data-tour="inv-cost-locations" className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
           <div className="flex items-start justify-between gap-3">
             <div>
               <h2 className="text-base font-semibold text-slate-900">Value by location</h2>
               <p className="mt-1 text-sm text-slate-500">On-hand cost value by warehouse or truck.</p>
             </div>
-            <Link to="/reports?layout=browser&report=inventory-valuation" className="text-sm font-semibold text-amber-700 hover:text-amber-800">
+            <Link to="/accounting/reports/browse?layout=browser&report=inventory-valuation" className="text-sm font-semibold text-amber-700 hover:text-amber-800">
               Valuation
             </Link>
           </div>
@@ -3155,13 +3172,13 @@ export function InventoryCostWorkspacePage() {
       </section>
 
       <section className="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1.5fr)_minmax(320px,0.9fr)]">
-        <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+        <div data-tour="inv-cost-pos" data-count={recentPurchaseOrders.length} className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
           <div className="flex flex-col gap-2 border-b border-slate-200 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
             <div>
               <h2 className="text-base font-semibold text-slate-900">Recent purchase orders</h2>
               <p className="text-sm text-slate-500">Latest PO cost records in this date range.</p>
             </div>
-            <Link to="/reports?layout=browser&report=purchase-order-register" className="text-sm font-semibold text-amber-700 hover:text-amber-800">
+            <Link to="/accounting/reports/browse?layout=browser&report=purchase-order-register" className="text-sm font-semibold text-amber-700 hover:text-amber-800">
               PO report
             </Link>
           </div>
@@ -3180,7 +3197,7 @@ export function InventoryCostWorkspacePage() {
                 {recentPurchaseOrders.map((po) => (
                   <tr key={po.purchase_order_id} className="border-t border-slate-100">
                     <td className="px-4 py-3">
-                      <div className="font-semibold text-slate-900">{po.po_number}</div>
+                      <Link to={`/purchase-orders/${po.purchase_order_id}`} className="font-semibold text-slate-900 hover:text-amber-700 hover:underline">{po.po_number}</Link>
                       <div className="text-xs text-slate-500">{po.order_date ?? 'No order date'}</div>
                     </td>
                     <td className="px-4 py-3 text-slate-600">{po.vendor_name || '-'}</td>
@@ -3204,7 +3221,7 @@ export function InventoryCostWorkspacePage() {
         </div>
 
         <div className="space-y-4">
-          <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+          <div data-tour="inv-cost-status" className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
             <h2 className="text-base font-semibold text-slate-900">PO status</h2>
             <p className="mt-1 text-sm text-slate-500">Order totals grouped by current status.</p>
             <div className="mt-4 space-y-2">
@@ -3225,7 +3242,7 @@ export function InventoryCostWorkspacePage() {
             </div>
           </div>
 
-          <div className="grid grid-cols-1 gap-3">
+          <div data-tour="inv-cost-shortcuts" className="grid grid-cols-1 gap-3">
             {inventoryCostCards.map((card) => (
               <WorkspaceModuleCard key={card.title} card={card} />
             ))}
@@ -3312,7 +3329,7 @@ export function BankMatchWorkspacePage() {
 
   return (
     <div className="mx-auto w-full max-w-none space-y-6 px-4 py-4 sm:px-6 sm:py-6 2xl:px-8">
-<div data-easy-accounting-header={easy || undefined} className={easy ? 'flex min-w-0 w-full flex-col items-stretch gap-4' : 'flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between'}>
+<div data-tour="bank-ws-header" data-easy-accounting-header={easy || undefined} className={easy ? 'flex min-w-0 w-full flex-col items-stretch gap-4' : 'flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between'}>
         <div className={easy ? 'min-w-0 w-full' : undefined}>
           {easy ? <EasyPageHeading title="Bank match" description="Choose the statement dates and account, review unmatched rows, then start a statement review. Opening a section does not match or approve transactions." /> : <>
           <div className="text-xs font-semibold uppercase tracking-wide text-amber-700">Bank reconciliation</div>
@@ -3343,6 +3360,7 @@ export function BankMatchWorkspacePage() {
           </label>
           <Link
             to="/accounting/bank-match/review"
+            data-tour="bank-ws-open-review"
             className="self-end rounded-md bg-slate-900 px-3 py-2 text-sm font-semibold text-white hover:bg-slate-800"
           >
             Open review
@@ -3350,7 +3368,7 @@ export function BankMatchWorkspacePage() {
         </div>
       </div>
 
-      <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+      <section data-tour="bank-ws-account" className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
         <div className={easy ? 'flex min-w-0 flex-col gap-3' : 'flex flex-col gap-3 xl:flex-row xl:items-end xl:justify-between'}>
           <div>
             <h2 className="text-base font-semibold text-slate-900">Statement account filter</h2>
@@ -3399,7 +3417,7 @@ export function BankMatchWorkspacePage() {
         </div>
       </section>
 
-      <section className="grid grid-cols-2 gap-3 lg:grid-cols-6">
+      <section data-tour="bank-ws-metrics" className="grid grid-cols-2 gap-3 lg:grid-cols-6">
         {(reportQ.isError || runsQ.isError) && <div role="alert" className="col-span-full rounded-xl border border-amber-300 bg-amber-50 p-4 text-sm text-amber-900">
           Bank reports or saved reviews could not be loaded. This view may be incomplete.
           <button type="button" onClick={() => { if (reportQ.isError) void reportQ.refetch(); if (runsQ.isError) void runsQ.refetch() }} className="ml-2 underline">Retry failed sections</button>
@@ -3413,7 +3431,7 @@ export function BankMatchWorkspacePage() {
       </section>
 
       <section className="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1.4fr)_minmax(340px,0.8fr)]">
-        <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+        <div data-tour="bank-ws-unmatched" data-count={unmatchedRows.length} className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
           <div className="flex flex-col gap-2 border-b border-slate-200 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
             <div>
               <h2 className="text-base font-semibold text-slate-900">Rows needing review</h2>
@@ -3468,8 +3486,12 @@ export function BankMatchWorkspacePage() {
           <form
             onSubmit={(event) => {
               event.preventDefault()
+              const ending = reconciliationForm.statement_ending_balance.trim()
+              if (ending === '' || !Number.isFinite(Number(ending))) return
+              if (!window.confirm(`Save a statement review for ${accountFilterLabel}, ${from} to ${to}, with an ending balance of ${exactMoney(Math.round(Number(ending) * 100))}?`)) return
               createReconciliationRun.mutate()
             }}
+            data-tour="bank-ws-review"
             className="rounded-xl border border-amber-200 bg-white p-4 shadow-sm"
           >
             <div className="flex items-start justify-between gap-3">
@@ -3508,7 +3530,8 @@ export function BankMatchWorkspacePage() {
                 <input
                   value={reconciliationForm.statement_ending_balance}
                   onChange={(event) => setReconciliationForm((current) => ({ ...current, statement_ending_balance: event.target.value }))}
-                  placeholder="1520.00"
+                  placeholder="0.00"
+                  required
                   inputMode="decimal"
                   className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 font-normal text-slate-900"
                 />
@@ -3564,7 +3587,7 @@ export function BankMatchWorkspacePage() {
             </div>
           </form>
 
-          <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+          <div data-tour="bank-ws-runs" className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
             <h2 className="text-base font-semibold text-slate-900">Match status</h2>
             <p className="mt-1 text-sm text-slate-500">Bank row totals grouped by current reconciliation status.</p>
             <div className="mt-4 space-y-2">
@@ -3612,12 +3635,12 @@ export function BankMatchWorkspacePage() {
         </div>
       </section>
 
-      <section className="grid grid-cols-1 gap-4 xl:grid-cols-2">
+      <section data-tour="bank-ws-flows" className="grid grid-cols-1 gap-4 xl:grid-cols-2">
         <BankFlowPanel title="Recent deposits" rows={deposits} empty="No deposits in this date range." />
         <BankFlowPanel title="Recent withdrawals" rows={withdrawals} empty="No withdrawals in this date range." />
       </section>
 
-      <section className="grid grid-cols-1 gap-3 md:grid-cols-3">
+      <section data-tour="bank-ws-shortcuts" className="grid grid-cols-1 gap-3 md:grid-cols-3">
         {bankMatchCards.map((card) => (
           <WorkspaceModuleCard key={card.title} card={card} />
         ))}

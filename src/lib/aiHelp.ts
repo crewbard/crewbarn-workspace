@@ -21,6 +21,11 @@ export function setAiHelpOpener(fn: AiHelpOpener | null): void {
   opener = fn
 }
 
+/** True when CBI is set up and its panel can be opened. */
+export function aiHelpAvailable(): boolean {
+  return opener !== null
+}
+
 export function openAiHelp(seedPrompt?: string, seedDisplay?: string): boolean {
   if (!opener) return false
   opener(seedPrompt, seedDisplay)
@@ -67,6 +72,7 @@ export function describePage(pathname: string): { name: string; path: string } {
     '/inventory': 'Inventory',
     '/assets': 'Assets',
     '/vendors': 'Vendors',
+    '/order-parts': 'Order parts',
     '/purchase-orders': 'Purchase Orders',
     '/warranties': 'Warranties',
     '/custom-documents': 'Templates & Forms',

@@ -28,7 +28,12 @@ export type VehicleMention = {
   model: string | null
   year: number | null
   matched_on: string
-  lookup: { make: string; model?: string; year?: number }
+  /** A range said ("15-18 Tacoma"): year is its start, year_to its end. Null for one year. */
+  year_from?: number | null
+  year_to?: number | null
+  /** library: the key library; company: a model from this company's own vehicle fits. */
+  source?: 'library' | 'company'
+  lookup: { make: string; model?: string; year?: number; year_to?: number }
 }
 
 export type CardMention = {

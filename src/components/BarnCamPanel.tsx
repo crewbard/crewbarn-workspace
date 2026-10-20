@@ -1,3 +1,4 @@
+import { asPicture } from '@/lib/rasterizeIfSvg'
 import { useState } from 'react'
 import { useMutation, useQuery, useQueryClient, type QueryKey } from '@tanstack/react-query'
 import {
@@ -5,6 +6,7 @@ import {
   API_URL,
   getStoredToken,
   getActingTenant,
+  isDeleteCancelled,
 } from '@/lib/api'
 import { AttachmentOverlay } from '@/components/ui/AttachmentOverlay'
 
@@ -104,9 +106,12 @@ function authHeaders(): Record<string, string> {
 export function BarnCamPanel({
   basePath,
   cacheKey,
+  canEdit = true,
 }: {
   basePath: string
   cacheKey: QueryKey
+  /** False for view-only users: hides Capture, share toggles and delete. */
+  canEdit?: boolean
 }) {
   const qc = useQueryClient()
   const attachmentsPath = `${basePath}/attachments`
@@ -123,8 +128,9 @@ export function BarnCamPanel({
 
   const refresh = () => qc.invalidateQueries({ queryKey: cacheKey })
 
-  async function handleCapture(files: File[]) {
-    if (files.length === 0) return
+  async function handleCapture(picked: File[]) {
+    if (picked.length === 0) return
+    const files = await Promise.all(picked.map(asPicture))
     setBusy(true)
     setError(null)
 
@@ -192,9 +198,14 @@ export function BarnCamPanel({
     }
   }
 
+  // The global delete confirmation (password + reason) runs inside apiRequest.
   const remove = useMutation({
     mutationFn: (id: string) => apiRequest(`${attachmentsPath}/${id}`, { method: 'DELETE' }),
-    onSuccess: refresh,
+    onSuccess: () => { setError(null); refresh() },
+    onError: (e) => {
+      if (isDeleteCancelled(e)) return
+      setError(e instanceof Error ? e.message : 'Delete failed.')
+    },
   })
 
   const toggleShare = useMutation({
@@ -203,7 +214,8 @@ export function BarnCamPanel({
         method: 'PATCH',
         body: { share_with_customer: share },
       }),
-    onSuccess: refresh,
+    onSuccess: () => { setError(null); refresh() },
+    onError: (e) => setError(e instanceof Error ? e.message : 'Could not change sharing.'),
   })
 
   const items = q.data?.data ?? []
@@ -211,7 +223,7 @@ export function BarnCamPanel({
 
   return (
     <div className="space-y-6">
-      <section className="bg-white border border-slate-200 rounded-xl p-4">
+      <section data-tour="barncam" data-media-count={media.length} className="bg-white border border-slate-200 rounded-xl p-4">
         <div className="flex items-center justify-between gap-3 flex-wrap">
           <div>
             <h3 className="text-sm font-semibold text-navy-900">BarnCam</h3>
@@ -221,8 +233,8 @@ export function BarnCamPanel({
                 : `${media.length} media item${media.length === 1 ? '' : 's'} captured.`}
             </p>
           </div>
-          <div className="flex items-center gap-3">
-            <label className="inline-flex items-center gap-1.5 text-xs text-slate-600 cursor-pointer select-none">
+          {canEdit && <div className="flex items-center gap-3">
+            <label data-tour="barncam-share" className="inline-flex items-center gap-1.5 text-xs text-slate-600 cursor-pointer select-none">
               <input
                 type="checkbox"
                 checked={shareNew}
@@ -231,7 +243,7 @@ export function BarnCamPanel({
               />
               Share new with customer
             </label>
-            <label className="inline-flex items-center gap-2 cursor-pointer text-sm px-4 py-2 rounded-md bg-amber-500 hover:bg-amber-600 text-white font-semibold">
+            <label data-tour="barncam-capture" className="inline-flex items-center gap-2 cursor-pointer text-sm px-4 py-2 rounded-md bg-amber-500 hover:bg-amber-600 text-white font-semibold">
               <input
                 type="file"
                 accept="image/*,video/*"
@@ -247,7 +259,7 @@ export function BarnCamPanel({
               />
               <span>{busy ? status ?? 'Working...' : 'Capture'}</span>
             </label>
-          </div>
+          </div>}
         </div>
         {error && (
           <div className="text-xs bg-red-50 border border-red-200 text-red-800 rounded px-3 py-2 mt-3">
@@ -257,7 +269,7 @@ export function BarnCamPanel({
       </section>
 
       {media.length > 0 && (
-        <section>
+        <section data-tour="barncam-gallery">
           <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3">
             {media.map((a) => (
               <div
@@ -308,7 +320,7 @@ export function BarnCamPanel({
                   </div>
                 )}
 
-                <button
+                {canEdit && <button
                   type="button"
                   onClick={() => toggleShare.mutate({ id: a.id, share: !a.share_with_customer })}
                   disabled={toggleShare.isPending}
@@ -321,9 +333,12 @@ export function BarnCamPanel({
                   aria-label="Toggle customer sharing"
                 >
                   {a.share_with_customer ? 'Shared' : 'Share'}
-                </button>
+                </button>}
+                {!canEdit && a.share_with_customer && (
+                  <span className="absolute top-1.5 left-1.5 h-7 rounded-full bg-emerald-500 px-2 text-xs text-white flex items-center">Shared</span>
+                )}
 
-                <button
+                {canEdit && <button
                   type="button"
                   onClick={() => remove.mutate(a.id)}
                   disabled={remove.isPending}
@@ -331,7 +346,7 @@ export function BarnCamPanel({
                   aria-label="Delete"
                 >
                   x
-                </button>
+                </button>}
               </div>
             ))}
           </div>
@@ -340,7 +355,7 @@ export function BarnCamPanel({
 
       {q.isSuccess && media.length === 0 && (
         <div className="bg-white border border-dashed border-slate-300 rounded-xl p-8 text-center text-sm text-slate-500">
-          Nothing yet. Use <strong>Capture</strong> to add on-site photos or video.
+          {canEdit ? <>Nothing yet. Use <strong>Capture</strong> to add on-site photos or video.</> : 'Nothing yet.'}
         </div>
       )}
 

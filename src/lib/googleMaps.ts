@@ -18,6 +18,14 @@ import { apiRequest } from '@/lib/api'
 
 let loadPromise: Promise<typeof google> | null = null
 let cachedKey: string | null | undefined = undefined
+// The key this page loaded Google Maps with. Google loads once per page, so
+// a key saved afterwards is not in use here until the page reloads.
+let loadedKey: string | null = null
+
+/** The key Google Maps was loaded with on this page, if this loader loaded it. */
+export function googleMapsLoadedKey(): string | null {
+  return loadedKey
+}
 
 async function fetchKey(): Promise<string | null> {
   if (cachedKey !== undefined) return cachedKey
@@ -133,10 +141,14 @@ export function loadGoogleMaps(): Promise<typeof google> {
         reject(new Error('Failed to load Google Maps script.'))
       }
       ;(w as unknown as { gm_authFailure?: () => void }).gm_authFailure = () => {
+        // Remember it as well: this handler replaces the one above, and
+        // googleMapsAuthFailed() is how anything after the load finds out.
+        authFailed = true
         delete w[cbName]
         loadPromise = null
         reject(new Error('Google Maps auth failure — referrer not whitelisted or APIs not enabled.'))
       }
+      loadedKey = key
       document.head.appendChild(script)
     })
   })()

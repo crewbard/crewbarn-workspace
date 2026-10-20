@@ -20,6 +20,11 @@ export interface Task {
   completed_at: string | null
   completed_by_account_id: string | null
   sort_order: number
+  /** A daily duty (Responsibilities): its area and check, and where to deal with it. */
+  duty_area?: string | null
+  duty_key?: string | null
+  link_path?: string | null
+  auto_closed_at?: string | null
   created_at: string | null
   updated_at: string | null
 }
@@ -51,6 +56,9 @@ export interface TaskFilters {
   /** Due-date window (yyyy-MM-dd or ISO) — used by the calendar views. */
   due_from?: string
   due_to?: string
+  /** Daily duties only (or none), or one area's. */
+  duties?: 'only' | 'none'
+  duty_area?: string
 }
 
 export const TASK_PRIORITIES: TaskPriority[] = ['low', 'normal', 'high', 'urgent']
@@ -80,6 +88,8 @@ export async function listTasks(filters: TaskFilters = {}): Promise<Task[]> {
   if (filters.view) p.set('view', filters.view)
   if (filters.due_from) p.set('due_from', filters.due_from)
   if (filters.due_to) p.set('due_to', filters.due_to)
+  if (filters.duties) p.set('duties', filters.duties)
+  if (filters.duty_area) p.set('duty_area', filters.duty_area)
   const qs = p.toString()
   const res = await apiRequest<{ data: Task[] }>(`/v1/tasks${qs ? `?${qs}` : ''}`)
   return res.data
@@ -99,6 +109,25 @@ export async function completeTask(id: string, done: boolean): Promise<Task> {
   const res = await apiRequest<{ data: Task }>(`/v1/tasks/${id}/complete`, {
     method: 'POST',
     body: { done },
+  })
+  return res.data
+}
+
+export interface TaskNote {
+  id: string
+  body: string
+  author_name: string
+  created_at: string
+}
+
+export async function listTaskNotes(id: string): Promise<TaskNote[]> {
+  const res = await apiRequest<{ data: TaskNote[] }>(`/v1/tasks/${encodeURIComponent(id)}/notes`)
+  return res.data
+}
+
+export async function addTaskNote(id: string, body: string): Promise<TaskNote> {
+  const res = await apiRequest<{ data: TaskNote }>(`/v1/tasks/${encodeURIComponent(id)}/notes`, {
+    method: 'POST', body: { body },
   })
   return res.data
 }

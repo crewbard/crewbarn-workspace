@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query'
-import { apiRequest } from '@/lib/api'
+import { apiRequest, getStoredToken } from '@/lib/api'
 import { readSnapshot, writeSnapshot } from '@/lib/snapshots'
 
 /**
@@ -37,6 +37,11 @@ export interface PermissionsResponse {
 export function usePermissions() {
   const { data, isLoading } = useQuery({
     queryKey: ['me', 'permissions'],
+    // Signed out, there is nobody to ask about. Fetching anyway answers 401,
+    // and the API client takes a 401 as "session ended" and sends the page to
+    // /login, so a provider that wraps every page (CompletionRequirementsProvider)
+    // threw visitors off /beta, /sign-up and the public scan pages.
+    enabled: !!getStoredToken(),
     queryFn: async () => {
       const res = await apiRequest<PermissionsResponse>('/v1/me/permissions')
       writeSnapshot('permissions', res)
@@ -132,6 +137,8 @@ export const PERM = {
   COMPANY_SECURE_FILES_MANAGE: 'company.secure_files.manage',
   JOBS_VIEW: 'jobs.view',
   JOBS_EDIT: 'jobs.edit',
+  JOBS_AUTOMATION: 'jobs.automation',
+  JOBS_OVERRIDE_REQUIREMENTS: 'jobs.override_requirements',
   TASKS_VIEW: 'tasks.view',
   TASKS_EDIT: 'tasks.edit',
   INVOICES_VIEW: 'invoices.view',
@@ -157,5 +164,15 @@ export const PERM = {
   SETTINGS_EDIT: 'settings.edit',
   AI_USE: 'ai.use',
   AI_TRAIN: 'ai.train',
+  AI_WORK_OWN: 'ai.work.own',
+  AI_WORK_OTHERS: 'ai.work.others',
+  AI_DISPATCH_LOCATIONS: 'ai.dispatch.locations',
+  AI_BILLING_READ: 'ai.billing.read',
+  AI_ACCOUNTING_READ: 'ai.accounting.read',
+  AI_ACTIONS_PROPOSE: 'ai.actions.propose',
+  AI_RESEARCH_PUBLIC: 'ai.research.public',
+  AI_LEARN_SUGGEST: 'ai.learn.suggest',
+  AI_LEARN_REVIEW: 'ai.learn.review',
+  AI_LEARN_MANAGE: 'ai.learn.manage',
   MOBILE_ACCESS: 'mobile.access',
 } as const

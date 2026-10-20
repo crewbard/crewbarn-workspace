@@ -20,6 +20,7 @@ import { apiRequest } from '@/lib/api'
 
 interface DrawerItem {
   id: string
+  receipt_number: string | null
   amount_cents: number
   payment_method: string | null
   reference: string | null
@@ -46,6 +47,7 @@ interface DepositRow {
   reference: string | null
   total_cents: number
   item_count: number
+  receipt_numbers: string[]
 }
 
 function money(cents: number): string {
@@ -197,7 +199,7 @@ export function OfficeDrawer() {
       )}
 
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-[1.2fr_1fr]">
-        <div className="rounded-[13px] border border-slate-200 bg-white p-6">
+        <div className="rounded-[13px] border border-slate-200 bg-white p-6" data-tour="drawer-total">
           <p className="text-[10.5px] font-bold uppercase tracking-[0.06em] text-slate-500">
             In the drawer right now
           </p>
@@ -225,7 +227,7 @@ export function OfficeDrawer() {
           </div>
         </div>
 
-        <div className="rounded-[13px] border border-slate-200 bg-white p-5">
+        <div className="rounded-[13px] border border-slate-200 bg-white p-5" data-tour="drawer-add">
           <p className="text-[14px] font-bold text-[#0A1220]">Add money to the drawer</p>
           <p className="mt-1 text-[12.5px] leading-relaxed text-slate-500">
             Anything physical that lands in the office — a net-30 check in the mail, a customer
@@ -246,7 +248,7 @@ export function OfficeDrawer() {
       </div>
 
       {/* waiting to be deposited */}
-      <div className="mt-4 overflow-hidden rounded-[13px] border border-slate-200 bg-white">
+      <div className="mt-4 overflow-hidden rounded-[13px] border border-slate-200 bg-white" data-tour="drawer-waiting" data-count={items.length}>
         <div className="flex flex-wrap items-center gap-3 px-5 py-3.5">
           <span className="text-[14px] font-extrabold text-[#0A1220]">Waiting to be deposited</span>
           <span className="flex-1 text-[12.5px] text-slate-500">
@@ -313,9 +315,11 @@ export function OfficeDrawer() {
                 <span className="block truncate text-[13.5px] font-bold text-[#0A1220]">
                   {i.customer_name ?? 'Payment'}
                 </span>
-                {i.reference && (
+                {(i.receipt_number || i.reference) && (
                   <span className="block truncate text-[12px] text-slate-500">
-                    {i.payment_method === 'check' ? `check #${i.reference}` : i.reference}
+                    {i.receipt_number && <span className="font-mono">{i.receipt_number}</span>}
+                    {i.receipt_number && i.reference && ' · '}
+                    {i.reference && (i.payment_method === 'check' ? `check #${i.reference}` : i.reference)}
                   </span>
                 )}
               </span>
@@ -350,7 +354,7 @@ export function OfficeDrawer() {
       </div>
 
       {/* deposits */}
-      <div className="mt-4 overflow-hidden rounded-[13px] border border-slate-200 bg-white">
+      <div className="mt-4 overflow-hidden rounded-[13px] border border-slate-200 bg-white" data-tour="drawer-deposits">
         <div className="flex flex-wrap items-baseline gap-2 px-5 py-3.5">
           <span className="text-[14px] font-extrabold text-[#0A1220]">Deposits</span>
           <span className="text-[12.5px] text-slate-500">
@@ -384,8 +388,15 @@ export function OfficeDrawer() {
                 <span className="font-normal text-slate-500"> — {d.bank_account_label}</span>
               )}
             </span>
-            <span className="shrink-0 text-[12.5px] text-slate-500">
+            <span className="shrink-0 text-[12.5px] text-slate-500" title={d.receipt_numbers?.join(', ') || undefined}>
               {d.item_count} item{d.item_count === 1 ? '' : 's'}
+              {d.receipt_numbers?.length > 0 && (
+                <span className="ml-1 font-mono text-[11px] text-slate-400">
+                  {d.receipt_numbers.length <= 3
+                    ? d.receipt_numbers.join(', ')
+                    : `${d.receipt_numbers[0]} … ${d.receipt_numbers[d.receipt_numbers.length - 1]}`}
+                </span>
+              )}
             </span>
             <span className="tnum w-24 shrink-0 text-right text-[14px] font-bold text-[#0A1220]">
               {money(d.total_cents)}
@@ -406,8 +417,8 @@ export function OfficeDrawer() {
           ties a deposit to a bank_transactions row yet, and a green "Matched"
           badge that means nothing is worse on this page than no badge. */}
       <p className="mt-3 text-[12px] leading-relaxed text-slate-500">
-        Matching a deposit against the bank statement isn't wired up yet — deposits are recorded
-        here, but bank reconciliation still works payment by payment.
+        Deposits are recorded here, but Bank match doesn't match a whole deposit to a statement
+        line yet. On the Bank match page you match it payment by payment.
       </p>
     </div>
   )

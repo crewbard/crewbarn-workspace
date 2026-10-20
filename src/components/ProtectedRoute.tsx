@@ -4,6 +4,8 @@ import { useAuth } from '@/hooks/useAuth'
 import { TenantBanner } from '@/components/TenantBanner'
 import { OnboardingGate } from '@/components/OnboardingGate'
 import { TwoFactorGate } from '@/components/TwoFactorGate'
+import { SubDocumentsGate } from '@/components/SubDocumentsGate'
+import { PlanUpgradeSheet } from '@/components/SubPlan'
 
 interface ProtectedRouteProps {
   children: ReactNode
@@ -29,7 +31,10 @@ export function ProtectedRoute({ children }: ProtectedRouteProps) {
     <>
       <TenantBanner />
       <TwoFactorGate>
-        <OnboardingGate>{children}</OnboardingGate>
+        <SubDocumentsGate>
+          <OnboardingGate>{children}</OnboardingGate>
+        </SubDocumentsGate>
+        <PlanUpgradeSheet />
       </TwoFactorGate>
     </>
   )

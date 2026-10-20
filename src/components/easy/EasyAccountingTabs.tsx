@@ -21,13 +21,13 @@ const tabs = [
 export function EasyAccountingTabs() {
   const { pathname } = useLocation()
   const { has } = usePermissions()
-  const { isRouteVisible } = useModuleVisibility()
+  const { isRouteVisibleInWork: isRouteVisible } = useModuleVisibility()
   if (!(pathname === '/accounting' || pathname.startsWith('/accounting/') || pathname.startsWith('/invoices/'))) return null
   return (
-    <nav data-easy-section-tabs aria-label="Accounting sections" className="border-b border-slate-200 bg-white px-3 sm:px-6">
+    <nav data-tour="easy-section-tabs" data-easy-section-tabs aria-label="Accounting sections" className="border-b border-slate-200 bg-white px-3 sm:px-6">
       <div className="flex flex-wrap gap-x-1">
         {tabs.filter(([, to, permission]) => has(permission) && isRouteVisible(to)).map(([label, to]) => (
-          <NavLink key={to} to={to} end={to === '/accounting' || to === '/accounting/expenses'}
+          <NavLink key={to} to={to} data-tour={`easy-tab-${to.slice(1).replace(/\//g, '-')}`} end={to === '/accounting' || to === '/accounting/expenses'}
             className={({ isActive }) => `border-b-2 px-3 py-3 text-sm font-semibold focus-visible:outline focus-visible:outline-2 focus-visible:outline-amber-500 ${isActive ? 'border-amber-500 text-slate-950' : 'border-transparent text-slate-600 hover:border-amber-300 hover:text-slate-950'}`}>
             {label}
           </NavLink>

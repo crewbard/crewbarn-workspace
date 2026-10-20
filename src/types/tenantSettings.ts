@@ -55,6 +55,20 @@ export interface InventorySettings {
   inventory_require_po_for_stock_add: boolean
 
   /**
+   * With PO-only on: raising an existing count (a count correction) needs only
+   * a written reason, not a purchase order or an override. Logged. Off by default.
+   */
+  inventory_allow_count_corrections?: boolean
+
+  /**
+   * Read-only, per person: may this person change these settings (owner,
+   * admin or platform admin), and if not, whom to ask (owners first).
+   * Never sent back on PATCH.
+   */
+  can_change?: boolean
+  ask?: { name: string; role: string }[]
+
+  /**
    * Owner switch for the write-in workflow (Day 21). When on, a tech may write
    * in an item bought on a job; the system mints a tracked unit under a seeded
    * "Write In" catalog item and files a reconciliation row. Off by default.
@@ -69,6 +83,15 @@ export interface InventorySettings {
    */
   inventory_require_van_stock_for_job_use: boolean
   inventory_locked_to_controllers: boolean
+
+  /**
+   * A stocked item at its reorder threshold goes on a draft purchase order
+   * to its vendor, for someone to check and mark ordered. Off by default.
+   */
+  inventory_auto_reorder?: boolean
+
+  /** A van under its par gets a transfer request from the shop. Off by default. */
+  inventory_auto_van_restock?: boolean
 
   /**
    * Tenant-wide visibility for SN-tracking UI. When false (default),

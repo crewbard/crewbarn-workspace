@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { type AiProvider } from '@/lib/aiModels'
 import { type StepProps } from '@/components/onboarding/steps/shared'
+import { GetKeyLink, KeyCostNote } from '@/components/onboarding/ApiKeyLinks'
 
 /**
  * Let AI help, or do it yourself.
@@ -28,14 +29,6 @@ const PROVIDERS: Array<{ value: AiProvider; label: string; detail: string }> = [
   { value: 'google', label: 'Gemini', detail: 'Cheapest if you use AI heavily. Reads and writes, but will not act for you.' },
   { value: 'azure', label: 'Azure', detail: 'Only if your company already runs on Microsoft Azure.' },
 ]
-
-/** Where the key comes from, per provider. The question everybody asks. */
-const WHERE: Record<AiProvider, string> = {
-  anthropic: 'console.anthropic.com → Settings → API keys → Create key. Copy it — they only show it once.',
-  openai: 'platform.openai.com → API keys → Create new secret key. Copy it — they only show it once.',
-  google: 'aistudio.google.com → Get API key → Create API key.',
-  azure: 'Your Azure OpenAI resource → Keys and Endpoint. Your IT team usually has this.',
-}
 
 export function AiSetupStep({ onManualSetup, onMarkStep, saving }: StepProps) {
   const [aiProvider, setAiProvider] = useState<AiProvider>('anthropic')
@@ -67,18 +60,20 @@ export function AiSetupStep({ onManualSetup, onMarkStep, saving }: StepProps) {
 
   return (
     <div className="space-y-6">
-      <div>
+      <div data-tour="onboarding-ai-which">
         <h3 className="text-sm font-bold text-navy-900">Which AI does the thinking</h3>
         <p className="mt-1 text-sm leading-relaxed text-slate-600">
           You bring an account from one of these. What it costs goes to them, never to us.
         </p>
-        <div className="mt-3 grid gap-2 sm:grid-cols-2">
+        <KeyCostNote className="mt-1 font-semibold" />
+        <div className="mt-3 grid gap-2 sm:grid-cols-2" data-guide="ai-providers" data-tour="onboarding-ai-providers">
           {PROVIDERS.map((p) => {
             const picked = aiProvider === p.value
             return (
               <button
                 key={p.value}
                 type="button"
+                data-tour={`onboarding-ai-provider-${p.value}`}
                 role="radio"
                 aria-checked={picked}
                 onClick={() => setAiProvider(p.value)}
@@ -105,10 +100,10 @@ export function AiSetupStep({ onManualSetup, onMarkStep, saving }: StepProps) {
         </div>
       </div>
 
-      <div>
-        <label className="block">
+      <div data-guide="ai-key-field" data-guide-provider={aiProvider} data-tour="onboarding-ai-key">
+        <GetKeyLink provider={aiProvider} className="mb-2" />
+        <label className="block" data-tour="onboarding-ai-key-box">
           <span className="text-sm font-bold text-navy-900">Your {name} key</span>
-          <span className="mt-0.5 block text-[13px] leading-snug text-slate-500">{WHERE[aiProvider]}</span>
           <input
             type="password"
             value={aiKey}
@@ -129,6 +124,7 @@ export function AiSetupStep({ onManualSetup, onMarkStep, saving }: StepProps) {
         is a question with no right answer.
       */}
       {aiProvider !== 'openai' && (
+        <div data-guide="ai-openai-field" data-tour="onboarding-ai-openai">
         <label className="block">
           <span className="text-sm font-bold text-navy-900">
             An OpenAI key as well <span className="font-normal text-slate-400">— optional</span>
@@ -148,9 +144,11 @@ export function AiSetupStep({ onManualSetup, onMarkStep, saving }: StepProps) {
             className="mt-2 min-h-11 w-full rounded-lg border border-slate-300 bg-white px-3 font-mono text-sm focus:border-amber-500 focus:outline-none focus:ring-1 focus:ring-amber-500"
           />
         </label>
+        <GetKeyLink provider="openai" className="mt-2" />
+        </div>
       )}
 
-      <details>
+      <details data-tour="onboarding-ai-model">
         <summary className="cursor-pointer text-sm font-semibold text-slate-600 hover:text-navy-900">
           Choose a specific model
         </summary>
@@ -178,6 +176,8 @@ export function AiSetupStep({ onManualSetup, onMarkStep, saving }: StepProps) {
         <button
           type="button"
           onClick={saveAiGate}
+          data-guide="step-save"
+          data-tour="onboarding-ai-save"
           disabled={saving}
           className="rounded-lg bg-amber-500 px-5 py-3 text-base font-bold text-white hover:bg-amber-600 disabled:bg-slate-200 disabled:text-slate-500"
         >
@@ -186,6 +186,7 @@ export function AiSetupStep({ onManualSetup, onMarkStep, saving }: StepProps) {
         <button
           type="button"
           onClick={onManualSetup}
+          data-tour="onboarding-ai-manual"
           disabled={saving}
           className="text-sm font-semibold text-slate-500 underline hover:text-navy-900 disabled:opacity-50"
         >

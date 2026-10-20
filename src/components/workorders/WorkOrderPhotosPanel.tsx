@@ -5,9 +5,10 @@ import { BarnCamPanel } from '@/components/BarnCamPanel'
  * {@link BarnCamPanel} (the same gallery is reused on estimates).
  * Keeps its original export name + props so existing imports don't break.
  */
-export function WorkOrderPhotosPanel({ workOrderId }: { workOrderId: string }) {
+export function WorkOrderPhotosPanel({ workOrderId, canEdit = true }: { workOrderId: string; canEdit?: boolean }) {
   return (
     <BarnCamPanel
+      canEdit={canEdit}
       basePath={`/v1/work-orders/${workOrderId}`}
       cacheKey={['wo-attachments', workOrderId]}
     />

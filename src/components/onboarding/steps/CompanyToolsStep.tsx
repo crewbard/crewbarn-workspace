@@ -76,7 +76,7 @@ export function CompanyToolsStep({ complete, onGateSaved, onboarding, saving }: 
       }))
 
     if (assets.length === 0) {
-      setAssetError('Nothing is ticked. Tick at least one, or use Skip for now at the bottom.')
+      setAssetError('Nothing is ticked. Tick at least one, or skip this step for now.')
       return
     }
 
@@ -88,7 +88,7 @@ export function CompanyToolsStep({ complete, onGateSaved, onboarding, saving }: 
   }
 
   return (
-    <div className="space-y-5">
+    <div className="space-y-5" data-guide="tools-picker" data-tour="onboarding-tools">
       {complete && (
         <p className="rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-sm leading-relaxed text-emerald-900">
           <span className="font-bold">Saved.</span> Your tools are in Company Tools, where you can add more any time.
@@ -142,6 +142,7 @@ export function CompanyToolsStep({ complete, onGateSaved, onboarding, saving }: 
         <button
           type="button"
           onClick={saveCompanyAssets}
+          data-tour="onboarding-tools-save"
           disabled={assetSaving}
           className="rounded-lg bg-amber-500 px-5 py-3 text-base font-bold text-white hover:bg-amber-600 disabled:bg-slate-200 disabled:text-slate-500"
         >

@@ -162,14 +162,14 @@ export function CrewRightNowPanel() {
   ), [rows])
 
   return (
-    <section className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+    <section data-tour="dash-crew" className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
       <header className="flex flex-wrap items-center gap-3 border-b border-slate-200 px-4 py-3">
         <span className="h-2.5 w-2.5 rounded-full bg-emerald-500" />
         <h2 className="text-sm font-bold text-navy-900">Crew right now</h2>
         <span className="text-xs font-medium text-slate-400">
           {boardQ.isError || positionsQ.isError ? 'Refresh failed · showing last known GPS' : `GPS checked · ${positionsQ.dataUpdatedAt ? new Date(positionsQ.dataUpdatedAt).toLocaleTimeString() : 'checking…'}`}
         </span>
-        <div className="ml-auto flex flex-wrap gap-2 text-[11px] font-semibold">
+        <div data-tour="dash-crew-counts" className="ml-auto flex flex-wrap gap-2 text-[11px] font-semibold">
           <span className="rounded-full bg-emerald-100 px-2 py-1 text-emerald-700">{counts.on_site} on site</span>
           <span className="rounded-full bg-blue-100 px-2 py-1 text-blue-700">{counts.driving} driving</span>
           <span className="rounded-full bg-amber-100 px-2 py-1 text-amber-700">{counts.idle} idle</span>

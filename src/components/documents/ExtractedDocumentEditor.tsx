@@ -78,27 +78,33 @@ export function ExtractedDocumentEditor({ id, onClose }: Props) {
    * role→PNG-data-url map for the PDF renderer to composite in.
    */
   async function fetchSignatureMap(docId: string): Promise<Record<string, string>> {
+    // Throws on failure. Returning {} here used to build — and, via Update PDF,
+    // overwrite the stored PDF with — a copy missing signatures already collected.
     const token = getStoredToken()
     const actingTenant = getActingTenant()
+    let resp: Response
     try {
-      const resp = await fetch(`${API_URL}/v1/extracted-documents/${docId}/signature-requests`, {
+      resp = await fetch(`${API_URL}/v1/extracted-documents/${docId}/signature-requests`, {
         headers: {
           Accept: 'application/json',
           ...(token ? { Authorization: `Bearer ${token}` } : {}),
           ...(actingTenant ? { 'X-Act-As-Tenant': actingTenant } : {}),
         },
       })
-      if (!resp.ok) return {}
-      const body = await resp.json().catch(() => ({}))
-      const rows: Array<{ role: string; status: string; signature_data_url: string | null }> = body?.data ?? []
-      const map: Record<string, string> = {}
-      for (const r of rows) {
-        if (r.status === 'signed' && r.signature_data_url) map[r.role] = r.signature_data_url
-      }
-      return map
     } catch {
-      return {}
+      throw new Error("Couldn't load signatures (network error). PDF not generated so signatures aren't lost.")
     }
+    const body = await resp.json().catch(() => null)
+    if (!resp.ok || !body) {
+      const detail = body?.message ?? `HTTP ${resp.status}`
+      throw new Error(`Couldn't load signatures (${detail}). PDF not generated so signatures aren't lost.`)
+    }
+    const rows: Array<{ role: string; status: string; signature_data_url: string | null }> = body.data ?? []
+    const map: Record<string, string> = {}
+    for (const r of rows) {
+      if (r.status === 'signed' && r.signature_data_url) map[r.role] = r.signature_data_url
+    }
+    return map
   }
 
   async function handleDownloadPdf() {
@@ -392,6 +398,8 @@ function AskAboutDocPane({ docId }: { docId: string }) {
       } else {
         setMessages((prev) => [...prev, { role: 'assistant', content: body.data.text }])
       }
+    } catch {
+      setMessages((prev) => [...prev, { role: 'assistant', content: '', error: 'Network error — the question was not sent.' }])
     } finally {
       setBusy(false)
     }
@@ -472,9 +480,11 @@ function SignaturesPane({
   const [email, setEmail] = useState('')
   const [createResult, setCreateResult] = useState<{ sign_url: string; role: string; email_sent?: boolean; email_error?: string | null } | null>(null)
   const [createError, setCreateError] = useState<string | null>(null)
+  const [listError, setListError] = useState<string | null>(null)
 
   async function load() {
     setLoading(true)
+    setListError(null)
     try {
       const token = getStoredToken()
       const actingTenant = getActingTenant()
@@ -486,7 +496,13 @@ function SignaturesPane({
         },
       })
       const body = await resp.json().catch(() => ({}))
+      if (!resp.ok) {
+        setListError(`Couldn't load signature requests: ${body?.message ?? `HTTP ${resp.status}`}`)
+        return
+      }
       setReqs(body?.data ?? [])
+    } catch {
+      setListError("Couldn't load signature requests (network error).")
     } finally {
       setLoading(false)
     }
@@ -528,32 +544,55 @@ function SignaturesPane({
   }
 
   async function revoke(id: string) {
+    setListError(null)
     const token = getStoredToken()
     const actingTenant = getActingTenant()
-    await fetch(`${API_URL}/v1/signature-requests/${id}`, {
-      method: 'DELETE',
-      headers: {
-        Accept: 'application/json',
-        ...(token ? { Authorization: `Bearer ${token}` } : {}),
-        ...(actingTenant ? { 'X-Act-As-Tenant': actingTenant } : {}),
-      },
-    })
+    try {
+      const resp = await fetch(`${API_URL}/v1/signature-requests/${id}`, {
+        method: 'DELETE',
+        headers: {
+          Accept: 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          ...(actingTenant ? { 'X-Act-As-Tenant': actingTenant } : {}),
+        },
+      })
+      if (!resp.ok) {
+        const body = await resp.json().catch(() => ({}))
+        await load()
+        setListError(`Revoke failed — the signing link is still active: ${body?.message ?? `HTTP ${resp.status}`}`)
+        return
+      }
+    } catch {
+      setListError('Revoke failed (network error) — the signing link is still active.')
+      return
+    }
     load()
   }
 
   async function resend(id: string) {
     const token = getStoredToken()
     const actingTenant = getActingTenant()
-    const resp = await fetch(`${API_URL}/v1/signature-requests/${id}/resend`, {
-      method: 'POST',
-      headers: {
-        Accept: 'application/json',
-        ...(token ? { Authorization: `Bearer ${token}` } : {}),
-        ...(actingTenant ? { 'X-Act-As-Tenant': actingTenant } : {}),
-      },
-    })
+    setListError(null)
+    let resp: Response
+    try {
+      resp = await fetch(`${API_URL}/v1/signature-requests/${id}/resend`, {
+        method: 'POST',
+        headers: {
+          Accept: 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          ...(actingTenant ? { 'X-Act-As-Tenant': actingTenant } : {}),
+        },
+      })
+    } catch {
+      setListError('Resend failed (network error). The signer was not emailed.')
+      return
+    }
     const body = await resp.json().catch(() => ({}))
-    if (resp.ok && body?.data) {
+    if (!resp.ok) {
+      setListError(`Resend failed: ${body?.message ?? `HTTP ${resp.status}`}. The signer was not emailed.`)
+      return
+    }
+    if (body?.data) {
       setCreateResult({
         sign_url: body.data.sign_url,
         role: '',
@@ -657,7 +696,8 @@ function SignaturesPane({
       <div>
         <div className="text-xs font-semibold text-slate-700 mb-1.5 px-1">Outstanding + signed</div>
         {loading && <div className="text-xs text-slate-500 px-1">Loading…</div>}
-        {!loading && reqs.length === 0 && <div className="text-xs text-slate-500 italic px-1">No signature requests yet.</div>}
+        {listError && <div className="text-[11px] text-red-700 px-1">{listError}</div>}
+        {!loading && !listError && reqs.length === 0 && <div className="text-xs text-slate-500 italic px-1">No signature requests yet.</div>}
         <ul className="space-y-1.5">
           {reqs.map((r) => (
             <li key={r.id} className="bg-white border border-slate-200 rounded p-2 text-xs">

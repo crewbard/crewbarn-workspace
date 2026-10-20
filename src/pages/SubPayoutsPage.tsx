@@ -66,13 +66,13 @@ export function SubPayoutsPage() {
 
   return (
     <div className={easy ? 'w-full min-w-0 px-3 py-4 sm:px-6 sm:py-6' : 'max-w-6xl mx-auto px-6 py-6'}>
-      <div className="mb-6">
+      <div className="mb-6" data-tour="sub-payouts-header">
         <Link to="/jobs" className="inline-flex items-center text-sm font-medium text-amber-700 hover:text-amber-800 hover:underline mb-3">
           ← Back to Jobs
         </Link>
         {easy ? <EasyPageHeading title="Subcontractor payouts" description="Review paid and outstanding amounts. Open Sub reviews to approve invoices or record payment." /> : <h1 className="text-2xl font-semibold text-slate-900">Sub payouts</h1>}
         <p className="text-sm text-slate-500 mt-1">
-          What you've paid (and still owe) to subcontractors. Approve + mark paid happens on the
+          What you've paid (and still owe) to subcontractors. You approve invoices and mark them paid on the
           {' '}<Link to="/sub-reviews" className="text-amber-700 hover:underline">Sub reviews</Link> page.
         </p>
       </div>
@@ -91,7 +91,7 @@ export function SubPayoutsPage() {
       {data && !error && (
         <div className="space-y-6">
           {/* Big-number tiles */}
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4" data-tour="sub-payouts-tiles" data-outstanding={data.data.totals.outstanding_cents > 0 ? 'yes' : 'no'}>
             <Tile
               label="Paid · lifetime"
               value={`$${money(data.data.totals.paid_lifetime_cents)}`}
@@ -113,7 +113,7 @@ export function SubPayoutsPage() {
           </div>
 
           {/* Per-sub breakdown */}
-          <section>
+          <section data-tour="sub-payouts-by-sub">
             <h2 className="text-base font-semibold text-slate-900 mb-3">By subcontractor</h2>
             {data.data.per_sub.length === 0 ? (
               <div className="bg-white border border-slate-200 rounded-lg p-6 text-sm text-slate-500 text-center">
@@ -156,13 +156,13 @@ export function SubPayoutsPage() {
           {/* Monthly breakdown — last 12 months. Bar = paid total
               that month; tiny bar means quiet month, no bar means
               nothing paid. */}
-          <section>
+          <section data-tour="sub-payouts-by-month">
             <h2 className="text-base font-semibold text-slate-900 mb-3">By month</h2>
             <MonthlyBars rows={data.data.per_month} />
           </section>
 
           {/* Invoice history */}
-          <section>
+          <section data-tour="sub-payouts-invoices" data-count={data.data.invoices.length}>
             <h2 className="text-base font-semibold text-slate-900 mb-3">All invoices</h2>
             {data.data.invoices.length === 0 ? (
               <div className="bg-white border border-slate-200 rounded-lg p-6 text-sm text-slate-500 text-center">
@@ -173,7 +173,7 @@ export function SubPayoutsPage() {
                 <table className="w-full text-sm">
                   <thead className="bg-slate-50 border-b border-slate-200">
                     <tr>
-                      <th className="text-left px-4 py-2 text-xs font-medium text-slate-600">WO</th>
+                      <th className="text-left px-4 py-2 text-xs font-medium text-slate-600">Job</th>
                       <th className="text-left px-4 py-2 text-xs font-medium text-slate-600">Subcontractor</th>
                       <th className="text-left px-4 py-2 text-xs font-medium text-slate-600">Their inv #</th>
                       <th className="text-right px-4 py-2 text-xs font-medium text-slate-600">Total</th>

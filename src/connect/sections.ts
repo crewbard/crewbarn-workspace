@@ -2,10 +2,10 @@ import { TOOL_SHED_SECTIONS } from '@/components/layout/ToolShedMenu'
 import { SETTINGS } from '@/settings/registry'
 import { SECTIONS, type SectionKey } from '@/settings/types'
 import { MENU_ITEMS, SETTINGS_MENU, type MenuItem } from '@/connect/settingsMenu'
-import { canViewSetting } from '@/lib/settingAccess'
+import { canViewSetting, cbiLearningAccess } from '@/lib/settingAccess'
 
 /**
- * Connect's eight sections, and what is in each.
+ * Connect's ten sections, and what is in each.
  *
  * The section map in docs/design/connect/README.md is the source of truth for
  * where a setting belongs. It is written as route paths here rather than
@@ -61,6 +61,7 @@ const ROUTE_SECTION: Array<[string, SectionKey]> = [
 
   // Jobs & workflow
   ['/tool-shed/job-types', 'workflow'],
+  ['/tool-shed/task-groups', 'workflow'],
   ['/tool-shed/job-statuses', 'workflow'],
   ['/tool-shed/automations', 'workflow'],
   ['/custom-documents', 'workflow'],
@@ -91,12 +92,15 @@ const ROUTE_SECTION: Array<[string, SectionKey]> = [
   ['/tool-shed/security', 'team'],
   ['/tool-shed/delete-permissions', 'team'],
   ['/tool-shed/time-off', 'team'],
+  ['/tool-shed/responsibilities', 'team'],
+  ['/tool-shed/employee-settings', 'team'],
   ['/tool-shed/hiring', 'team'],
   ['/tool-shed/subcontractors', 'team'],
 
   // Connections
   ['/tool-shed/integrations', 'connections'],
   ['/tool-shed/communication', 'connections'],
+  ['/tool-shed/call-scripts', 'ai'],
   ['/tool-shed/storage-maps', 'connections'],
   ['/tool-shed/shop-tv', 'connections'],
   ['/tool-shed/connected-apps', 'connections'],
@@ -115,9 +119,10 @@ const ROUTE_SECTION: Array<[string, SectionKey]> = [
   ['/tool-shed/import', 'account'],
   ['/tool-shed/data-export', 'account'],
   ['/tool-shed/encryption', 'account'],
-  // Filed beside encryption on purpose: these are the files that setting
-  // protects, and "your data" is the section a person looks in for both.
-  ['/tool-shed/company-files', 'account'],
+  // Company files are deliberately NOT filed here. They are listed in the
+  // Connect menu beside encryption (the files that setting protects), but
+  // they are a work surface people open mid-job, so the workspace Tool Shed
+  // keeps them too. "Where your settings live" promises exactly that.
   ['/tool-shed/audit-log', 'account'],
   ['/onboarding', 'account'],
 ]
@@ -225,6 +230,8 @@ function requiresFor(to: string): string | undefined {
 
 /** Whether this person should see an entry: the setting's scope, and the page's gate. */
 export function canSeeEntry(entry: Pick<SectionEntry, 'to' | 'requires'>, has: (permission: string) => boolean): boolean {
+  const cbi = cbiLearningAccess(entry.to, has)
+  if (cbi !== undefined) return cbi
   return canViewSetting(entry.to, has) && (!entry.requires || has(entry.requires))
 }
 

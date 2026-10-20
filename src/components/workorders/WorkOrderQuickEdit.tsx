@@ -28,6 +28,7 @@ interface JobStatusRow {
   id: string
   name: string
   color: string | null
+  active?: boolean
 }
 
 interface CrewRow {
@@ -51,12 +52,13 @@ type WorkOrderQuickEditProps = {
   wo: WorkOrder
   onStateChange?: (state: WorkOrderQuickEditState) => void
   showInlineSave?: boolean
+  visible?: boolean
 }
 
 export const WorkOrderQuickEdit = forwardRef<
   WorkOrderQuickEditHandle,
   WorkOrderQuickEditProps
->(function WorkOrderQuickEdit({ wo, onStateChange, showInlineSave = true }, ref) {
+>(function WorkOrderQuickEdit({ wo, onStateChange, showInlineSave = true, visible = true }, ref) {
   const qc = useQueryClient()
 
   const techsQ = useTenantAccounts('', 100, true)
@@ -231,7 +233,7 @@ export const WorkOrderQuickEdit = forwardRef<
   ])
 
   return (
-    <section className="bg-white border border-slate-200 rounded-xl shadow-sm p-5">
+    <section data-tour="job-quick-edit" className="bg-white border border-slate-200 rounded-xl shadow-sm p-5">
       <div className="flex items-baseline justify-between mb-3">
         <h2 className="text-sm font-semibold text-navy-900 uppercase tracking-wider">
           Quick edit
@@ -251,7 +253,7 @@ export const WorkOrderQuickEdit = forwardRef<
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <div className="md:col-span-2">
-          <Field label="Title">
+          <Field label="Title" tour="job-qe-title">
             <input
               type="text"
               value={title}
@@ -266,13 +268,14 @@ export const WorkOrderQuickEdit = forwardRef<
             <AutoTextarea
               value={description}
               onChange={(e) => setDescription(e.target.value)}
-              minRows={4}
+              minRows={6}
+              visible={visible}
               className="w-full text-sm rounded border border-slate-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-amber-500"
             />
           </Field>
         </div>
         <div className="md:col-span-2">
-          <Field label="Bill to (Send invoice to)">
+          <Field label="Bill to (Send invoice to)" tour="job-qe-billto">
             <CustomerPicker
               value={billTo}
               onChange={setBillTo}
@@ -295,14 +298,14 @@ export const WorkOrderQuickEdit = forwardRef<
             <option value="emergency">Emergency</option>
           </select>
         </Field>
-        <Field label="Status">
+        <Field label="Status" tour="job-qe-status">
           <select
             value={statusId}
             onChange={(e) => onStatusChange(e.target.value)}
             disabled={statusSave.isPending}
             className="w-full text-sm rounded border border-slate-300 px-3 py-2 bg-white focus:outline-none focus:ring-2 focus:ring-amber-500 disabled:opacity-60"
           >
-            {statuses.map((s) => (
+            {statuses.filter((s) => s.active !== false || s.id === wo.status_id).map((s) => (
               <option key={s.id} value={s.id}>
                 {s.name}
               </option>
@@ -320,7 +323,7 @@ export const WorkOrderQuickEdit = forwardRef<
             <span className="block text-[11px] text-slate-400 mt-1">Saves automatically</span>
           )}
         </Field>
-        <Field label="Lead tech">
+        <Field label="Lead tech" tour="job-qe-tech">
           <select
             value={leadTechId}
             onChange={(e) => setLeadTechId(e.target.value)}
@@ -334,7 +337,7 @@ export const WorkOrderQuickEdit = forwardRef<
             ))}
           </select>
         </Field>
-        <Field label="Crew (for multi-tech jobs)">
+        <Field label="Saved crew (a team set up under Staff › Crews)" tour="job-qe-crew">
           <select
             value={crewId}
             onChange={(e) => setCrewId(e.target.value)}
@@ -347,6 +350,11 @@ export const WorkOrderQuickEdit = forwardRef<
               </option>
             ))}
           </select>
+          {(wo.crew_members?.length ?? 0) > 0 && (
+            <span className="mt-1 block text-[11px] text-slate-500">
+              Helpers picked when the job was created: {wo.crew_members!.map((m) => m.name || m.email).filter(Boolean).join(', ')}
+            </span>
+          )}
         </Field>
         <Field label="Their WO #">
           <input
@@ -368,7 +376,7 @@ export const WorkOrderQuickEdit = forwardRef<
             className="w-full text-sm rounded border border-slate-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-amber-500"
           />
         </Field>
-        <Field label="Schedule date">
+        <Field label="Schedule date" tour="job-qe-date">
           <input
             type="date"
             value={date}
@@ -424,9 +432,9 @@ export const WorkOrderQuickEdit = forwardRef<
   )
 })
 
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
+function Field({ label, children, tour }: { label: string; children: React.ReactNode; tour?: string }) {
   return (
-    <label className="block">
+    <label data-tour={tour} className="block">
       <span className="block text-xs font-medium text-slate-600 mb-1">{label}</span>
       {children}
     </label>

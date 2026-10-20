@@ -28,7 +28,7 @@ interface AiPayload {
   ai_model: string | null
   ai_enabled: boolean
   ai_tasks: {
-    tasks: Array<{ key: string; label: string; kind: 'text' | 'tools' | 'vision' | 'speech'; ready: boolean }>
+    tasks: Array<{ key: string; label: string; kind: 'text' | 'tools' | 'vision' | 'speech' | 'voice'; ready: boolean }>
     recommendation: { provider: AiProvider; model: string; label: string; current_matches: boolean }
   }
 }
@@ -46,25 +46,25 @@ interface AiPayload {
 const PROVIDERS: Array<{ value: AiProvider; label: string; detail: string }> = [
   {
     value: 'anthropic',
-    label: 'Claude',
+    label: 'Anthropic (Claude)',
     detail:
-      'What we recommend. Best at reading a key code off a photo or pulling details out of a messy note, and it can do things for you — book a job, draft a text.',
+      'What we recommend. Best at reading a model number off a photo or pulling details out of a messy note, and it can do things for you — book a job, draft a text.',
   },
   {
     value: 'openai',
-    label: 'ChatGPT',
+    label: 'OpenAI (ChatGPT)',
     detail:
       'The one most shops already have an account with. It can also do things for you, and it is the only one that turns recorded calls into text on its own.',
   },
   {
     value: 'google',
-    label: 'Gemini',
+    label: 'Google (Gemini)',
     detail:
       'The cheapest if you use AI heavily. It can read and write, but it cannot do things for you — no booking a job or sending a text on your say-so.',
   },
   {
     value: 'azure',
-    label: 'Azure',
+    label: 'Azure OpenAI',
     detail:
       'Only if your company already runs on Microsoft Azure and your IT wants AI billed there. Same limits as Gemini: it reads and writes, it does not act.',
   },
@@ -170,6 +170,8 @@ export const aiProvider: SettingDefinition<AiProvider | null, AiPayload> = {
 
     return (
       <div
+        data-tour="ai-provider-next"
+        data-key={needsKey ? 'needed' : 'in-place'}
         className={`rounded-xl border p-4 ${needsKey ? 'border-amber-200 bg-amber-50/60' : 'border-emerald-200 bg-emerald-50/60'}`}
       >
         <p className={`text-[15px] font-bold ${needsKey ? 'text-amber-900' : 'text-emerald-900'}`}>

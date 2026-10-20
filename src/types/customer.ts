@@ -7,14 +7,8 @@ export type { PaginatedResponse, ResourceResponse }
 
 export type CustomerType = 'residential' | 'commercial' | 'government'
 
-export type CustomerTag =
-  | 'vip'
-  | 'commercial'
-  | 'recurring'
-  | 'warning'
-  | 'do-not-call'
-  | 'referred'
-  | 'priority'
+/** A name from the company's Tags library (Tool Shed → Tags). */
+export type CustomerTag = string
 
 // ---------- Nested sub-resource: Contact ----------
 
@@ -59,6 +53,10 @@ export interface CustomerContact {
   // kept in sync with a portal customer's profile
   linked_platform_customer_id: string | null
   is_managed_by_portal: boolean
+  /** The email this person signs in to the portal with (null when not linked). */
+  portal_login_email?: string | null
+  /** Their portal access to this customer: active, removed, or never linked (null). */
+  portal_access?: 'active' | 'removed' | null
   created_at: string | null
   updated_at: string | null
 }
@@ -168,11 +166,16 @@ export interface Customer {
   lifetime_value: number
   last_contact_at: string | null
 
-  // Field-service policy (snapshotted onto every WO at creation)
+  // Field-service policy. Check-in is snapshotted onto every WO at creation.
   requires_check_in_out: boolean
-  requires_signature: boolean
-  min_photos_required: number
-  requires_before_after_photos: boolean
+  // Proof before Complete, read live: this account's own rule, or null =
+  // Default (the parent account's, then the job type's, then the company's).
+  requires_signature: boolean | null
+  min_photos_required: number | null
+  requires_before_after_photos: boolean | null
+  requires_line_items?: boolean | null
+  requires_client_wo_number?: boolean | null
+  requires_client_wo_document?: boolean | null
   geofence_radius_m: number | null
   default_nte_cents: number | null
   wo_template_id: string | null
@@ -317,6 +320,8 @@ export interface CustomerListParams {
   has_tag?: CustomerTag
   vip?: boolean
   active?: boolean
+  /** Only accounts responsible for a positive unpaid invoice balance. */
+  outstanding?: boolean
   sort?: 'display_name' | 'account_number' | 'last_contact_at' | 'lifetime_value_cents' | 'created_at' | 'updated_at'
   direction?: 'asc' | 'desc'
   per_page?: number

@@ -1,15 +1,21 @@
+import { HealthInsuranceEditor } from '@/components/staff/HealthInsuranceEditor'
+import { PayScheduleFields, SalaryAmountFields } from '@/components/staff/PayScheduleFields'
+import type { PaySchedule, SalaryPeriod } from '@/lib/paySchedule'
+import { insuranceForm, insurancePatch, insurancePreview, type HealthInsurance, type HealthInsuranceForm } from '@/lib/healthInsurance'
 import { useState } from 'react'
 import type { FormEvent } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link, useSearchParams } from 'react-router-dom'
 import { apiRequest } from '@/lib/api'
 import { useTheme } from '@/hooks/useTheme'
+import { usePermissions } from '@/hooks/usePermissions'
 import { EasyPageHeading } from '@/components/easy/EasyPageHeading'
 
 type DayKey = 'monday' | 'tuesday' | 'wednesday' | 'thursday' | 'friday' | 'saturday' | 'sunday'
 type WeeklyTimeSchedule = Record<DayKey, boolean[]>
 
 type PayrollProfile = {
+  health_insurance?: HealthInsurance | null
   id?: string
   account_id: string
   account: {
@@ -22,6 +28,8 @@ type PayrollProfile = {
   pay_type: 'hourly' | 'salary' | 'commission' | 'hybrid'
   hourly_rate_cents: number
   annual_salary_cents: number
+  salary_period?: SalaryPeriod
+  pay_schedule?: PaySchedule
   commission_percent: number
   commission_basis: 'paid_revenue' | 'gross_revenue' | 'gross_margin'
   parts_commission_percent: number
@@ -41,9 +49,13 @@ type PayrollProfile = {
 }
 
 type ProfileForm = {
+  health_insurance: HealthInsuranceForm
   pay_type: PayrollProfile['pay_type']
   hourly_rate: string
   annual_salary: string
+  salary_period?: SalaryPeriod
+  salary_amount?: string
+  pay_schedule?: PaySchedule
   commission_percent: string
   commission_basis: PayrollProfile['commission_basis']
   parts_commission_percent: string
@@ -196,15 +208,21 @@ function calculatePayrollPreview(form: ProfileForm, inputs: PayrollCalculatorInp
     sickHours,
     vacationAccrual,
     vacationHours,
-    totalPayrollCost: laborCost + commissionCost + partsCommissionCost,
+    // Vacation accrual is part of payroll cost in the Payroll preview too.
+    // The territory bonus depends on other people's jobs, so it can't be
+    // worked out from one profile; the label says so.
+    totalPayrollCost: laborCost + commissionCost + partsCommissionCost + vacationAccrual,
   }
 }
 
 function formFromProfile(profile: PayrollProfile): ProfileForm {
   return {
+    health_insurance: insuranceForm(profile.health_insurance),
     pay_type: profile.pay_type,
     hourly_rate: String((profile.hourly_rate_cents ?? 0) / 100),
     annual_salary: String((profile.annual_salary_cents ?? 0) / 100),
+    salary_period: profile.salary_period ?? 'annual',
+    pay_schedule: profile.pay_schedule ?? { frequency: 'unspecified' },
     commission_percent: String(profile.commission_percent ?? 0),
     commission_basis: profile.commission_basis,
     parts_commission_percent: String(profile.parts_commission_percent ?? 0),
@@ -343,9 +361,12 @@ export function PayrollProfilesPage() {
       apiRequest<{ data: PayrollProfile }>(`/v1/payroll-profiles/${encodeURIComponent(accountId)}`, {
         method: 'PATCH',
         body: {
+          ...insurancePatch(payload.health_insurance),
           pay_type: payload.pay_type,
           hourly_rate: Number(payload.hourly_rate || 0),
           annual_salary: Number(payload.annual_salary || 0),
+          salary_period: payload.salary_period ?? 'annual',
+          ...(payload.pay_schedule ? { pay_schedule: payload.pay_schedule } : {}),
           commission_percent: Number(payload.commission_percent || 0),
           commission_basis: payload.commission_basis,
           parts_commission_percent: Number(payload.parts_commission_percent || 0),
@@ -368,26 +389,29 @@ export function PayrollProfilesPage() {
       queryClient.invalidateQueries({ queryKey: ['payroll-profiles'] })
     },
   })
+  const { has } = usePermissions()
+  const canEdit = has('staff.edit')
 
   const editorForm = form ?? (selected ? formFromProfile(selected) : null)
   const calculatorPreview = editorForm ? calculatePayrollPreview(editorForm, calculator) : null
 
   function choose(profile: PayrollProfile) {
     setSelectedId(profile.account_id)
+    saveProfile.reset()
     setActiveEditorTab('pay')
     setForm(formFromProfile(profile))
   }
 
   function submit(event: FormEvent) {
     event.preventDefault()
-    if (!selected || !editorForm) return
+    if (!selected || !editorForm || !canEdit || (editorForm.health_insurance.changed && insurancePreview(editorForm.health_insurance).error)) return
     saveProfile.mutate({ accountId: selected.account_id, payload: editorForm })
   }
 
   return (
     <div className="min-h-screen bg-slate-100 px-4 py-4 text-slate-950 sm:px-6 sm:py-6 2xl:px-8">
       <div className="mx-auto w-full max-w-none space-y-6">
-<header data-easy-accounting-header={easy || undefined} className={easy ? 'flex min-w-0 w-full flex-col items-stretch gap-4' : 'flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between'}>
+<header data-tour="pay-profiles-header" data-easy-accounting-header={easy || undefined} className={easy ? 'flex min-w-0 w-full flex-col items-stretch gap-4' : 'flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between'}>
           <div className={easy ? 'min-w-0 w-full' : undefined}>
             {easy ? <EasyPageHeading title="Payroll profiles" description="Choose a team member, review their pay rules and work schedule, then save when ready. The calculator previews the rules without posting payroll." /> : <>
             <p className="text-xs font-semibold uppercase tracking-wide text-amber-700">Accounting</p>
@@ -401,18 +425,18 @@ export function PayrollProfilesPage() {
             <Link className="rounded-md border border-slate-300 bg-white px-4 py-2 font-semibold text-slate-700 shadow-sm" to="/accounting/payroll">
               Payroll workspace
             </Link>
-            <Link className="rounded-md border border-slate-300 bg-white px-4 py-2 font-semibold text-slate-700 shadow-sm" to="/accounting/reports">
+            <Link className="rounded-md border border-slate-300 bg-white px-4 py-2 font-semibold text-slate-700 shadow-sm" to="/accounting/reports/browse?layout=browser&report=tech-performance">
               Tech reports
             </Link>
           </div>
         </header>
 
         <div className="grid gap-4 lg:grid-cols-[360px_minmax(0,1fr)]">
-          <section className="rounded-lg border border-slate-200 bg-white shadow-sm">
+          <section data-tour="pay-profiles-staff" className="rounded-lg border border-slate-200 bg-white shadow-sm">
             <div className="border-b border-slate-200 p-4">
               <h2 className="font-bold">Staff</h2>
               <p className="text-sm text-slate-500">Select a staff member to edit pay rules.</p>
-              <div className="mt-4 space-y-2">
+              <div className="mt-4 space-y-2" data-tour="pay-profiles-filters">
                 <input
                   type="search"
                   aria-label="Search payroll staff"
@@ -477,6 +501,7 @@ export function PayrollProfilesPage() {
                   <button
                     className={`block w-full px-4 py-3 text-left transition ${active ? 'bg-amber-50' : 'hover:bg-slate-50'}`}
                     key={profile.account_id}
+                    data-tour="pay-profiles-person"
                     aria-pressed={active}
                     onClick={() => choose(profile)}
                     type="button"
@@ -487,7 +512,7 @@ export function PayrollProfilesPage() {
                         <div className="text-xs text-slate-500">{profile.account?.role_slug ?? 'staff'} · {profile.pay_type}</div>
                       </div>
                       <span className={`rounded-full px-2 py-1 text-xs font-bold ${profile.active ? 'bg-emerald-100 text-emerald-800' : 'bg-slate-100 text-slate-500'}`}>
-                        {profile.active ? 'Active' : 'Off'}
+                        {profile.active ? 'Included' : 'Excluded'}
                       </span>
                     </div>
                   </button>
@@ -498,17 +523,18 @@ export function PayrollProfilesPage() {
 
           <section className="rounded-lg border border-slate-200 bg-white shadow-sm">
             {!selected || !editorForm ? (
-              <div className="p-8 text-center text-slate-500">Select staff to edit payroll settings.</div>
+              <div data-tour="pay-profiles-none" className="p-8 text-center text-slate-500">Select staff to edit payroll settings.</div>
             ) : (
               <form onSubmit={submit}>
-                <div className="border-b border-slate-200 p-4">
+                <div data-tour="pay-profiles-tabs" className="border-b border-slate-200 p-4">
                   <h2 className="text-xl font-black">{selected.account?.name ?? selected.account?.email ?? 'Staff member'}</h2>
                   <p className="text-sm text-slate-500">
-                    Current rate: {money(selected.hourly_rate_cents)}/hr · Salary {money(selected.annual_salary_cents)} · {selected.commission_percent}% commission · {selected.parts_commission_percent ?? 0}% parts commission
+                    Current rate: {money(selected.hourly_rate_cents)}/hr · Salary {money(selected.annual_salary_cents)}/year · {selected.commission_percent}% commission · {selected.parts_commission_percent ?? 0}% parts commission
                   </p>
                   <div className="mt-4 flex flex-wrap gap-2">
                     <button
                       className={`rounded-md px-4 py-2 text-sm font-bold ${activeEditorTab === 'pay' ? 'bg-slate-950 text-white' : 'border border-slate-300 bg-white text-slate-700'}`}
+                      data-tour="pay-profiles-tab-pay"
                       onClick={() => setActiveEditorTab('pay')}
                       aria-pressed={activeEditorTab === 'pay'}
                       type="button"
@@ -517,6 +543,7 @@ export function PayrollProfilesPage() {
                     </button>
                     <button
                       className={`rounded-md px-4 py-2 text-sm font-bold ${activeEditorTab === 'schedule' ? 'bg-slate-950 text-white' : 'border border-slate-300 bg-white text-slate-700'}`}
+                      data-tour="pay-profiles-tab-schedule"
                       onClick={() => setActiveEditorTab('schedule')}
                       aria-pressed={activeEditorTab === 'schedule'}
                       type="button"
@@ -527,8 +554,9 @@ export function PayrollProfilesPage() {
                 </div>
 
                 {activeEditorTab === 'pay' ? (
-                  <div className="grid gap-4 p-4 md:grid-cols-2 xl:grid-cols-3">
-                  <label className="grid gap-1 text-sm font-semibold text-slate-700">
+                  <div data-tour="pay-profiles-rules" className="grid gap-4 p-4 md:grid-cols-2 xl:grid-cols-3">
+                  <div className="md:col-span-2 xl:col-span-3"><HealthInsuranceEditor value={editorForm.health_insurance} onChange={value => setForm({ ...editorForm, health_insurance: value })} /></div>
+                  <label className="grid gap-1 text-sm font-semibold text-slate-700" data-tour="pay-profiles-pay-type">
                     Pay type
                     <select className="rounded-md border border-slate-300 px-3 py-2" value={editorForm.pay_type} onChange={(e) => setForm({ ...editorForm, pay_type: e.target.value as PayrollProfile['pay_type'] })}>
                       <option value="hourly">Hourly</option>
@@ -541,10 +569,8 @@ export function PayrollProfilesPage() {
                     Hourly rate
                     <input className="rounded-md border border-slate-300 px-3 py-2" inputMode="decimal" value={editorForm.hourly_rate} onChange={(e) => setForm({ ...editorForm, hourly_rate: e.target.value })} />
                   </label>
-                  <label className="grid gap-1 text-sm font-semibold text-slate-700">
-                    Annual salary
-                    <input className="rounded-md border border-slate-300 px-3 py-2" inputMode="decimal" value={editorForm.annual_salary} onChange={(e) => setForm({ ...editorForm, annual_salary: e.target.value })} />
-                  </label>
+                  {editorForm.pay_type === 'salary' && <SalaryAmountFields value={editorForm} onChange={patch => setForm({ ...editorForm, ...patch })} />}
+                  <PayScheduleFields value={editorForm.pay_schedule} onChange={pay_schedule => setForm({ ...editorForm, pay_schedule })} />
                   <label className="grid gap-1 text-sm font-semibold text-slate-700">
                     Commission %
                     <input className="rounded-md border border-slate-300 px-3 py-2" inputMode="decimal" value={editorForm.commission_percent} onChange={(e) => setForm({ ...editorForm, commission_percent: e.target.value })} />
@@ -561,7 +587,7 @@ export function PayrollProfilesPage() {
                     Target margin %
                     <input className="rounded-md border border-slate-300 px-3 py-2" inputMode="decimal" value={editorForm.target_margin_percent} onChange={(e) => setForm({ ...editorForm, target_margin_percent: e.target.value })} />
                   </label>
-                  <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 md:col-span-2 xl:col-span-3">
+                  <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 md:col-span-2 xl:col-span-3" data-tour="pay-profiles-parts">
                     <div className="text-sm font-bold text-slate-900">Parts commission rule</div>
                     <p className="mt-1 text-xs leading-5 text-slate-600">
                       Optional per-tech rule. Example: salary plus parts commission only when a job&apos;s parts cost is under $500.
@@ -615,7 +641,7 @@ export function PayrollProfilesPage() {
                     Vacation accrual %
                     <input className="rounded-md border border-slate-300 px-3 py-2" inputMode="decimal" value={editorForm.vacation_accrual_percent} onChange={(e) => setForm({ ...editorForm, vacation_accrual_percent: e.target.value })} />
                   </label>
-                  <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm text-slate-600 md:col-span-2 xl:col-span-3">
+                  <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm text-slate-600 md:col-span-2 xl:col-span-3" data-tour="pay-profiles-calculator">
                     <div className="flex flex-wrap items-start justify-between gap-2">
                       <div>
                         <div className="font-bold text-slate-900">Tech calculator</div>
@@ -656,11 +682,11 @@ export function PayrollProfilesPage() {
                         <PayrollPreviewMetric label="Parts commission" value={money(calculatorPreview.partsCommissionCost)} />
                         <PayrollPreviewMetric label="Sick earned" value={`${calculatorPreview.sickHours}h`} />
                         <PayrollPreviewMetric label="Vacation" value={`${calculatorPreview.vacationHours}h / ${money(calculatorPreview.vacationAccrual)}`} />
-                        <PayrollPreviewMetric label="Total payroll" value={money(calculatorPreview.totalPayrollCost)} strong />
+                        <PayrollPreviewMetric label="Total payroll (before territory bonus)" value={money(calculatorPreview.totalPayrollCost)} strong />
                       </div>
                     )}
                   </div>
-                  <label className="grid gap-1 text-sm font-semibold text-slate-700">
+                  <label className="grid gap-1 text-sm font-semibold text-slate-700" data-tour="pay-profiles-balances">
                     PTO hours
                     <input className="rounded-md border border-slate-300 px-3 py-2" inputMode="decimal" value={editorForm.pto_hours_available} onChange={(e) => setForm({ ...editorForm, pto_hours_available: e.target.value })} />
                   </label>
@@ -676,7 +702,7 @@ export function PayrollProfilesPage() {
                     <input type="checkbox" checked={editorForm.expense_reimbursement_enabled} onChange={(e) => setForm({ ...editorForm, expense_reimbursement_enabled: e.target.checked })} />
                     Reimburse expenses
                   </label>
-                  <label className="flex items-center gap-2 rounded-md border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-700">
+                  <label className="flex items-center gap-2 rounded-md border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-700" data-tour="pay-profiles-include">
                     <input type="checkbox" checked={editorForm.active} onChange={(e) => setForm({ ...editorForm, active: e.target.checked })} />
                     Include in payroll reports
                   </label>
@@ -686,7 +712,7 @@ export function PayrollProfilesPage() {
                   </label>
                   </div>
                 ) : (
-                  <div className="p-4">
+                  <div data-tour="pay-profiles-schedule" className="p-4">
                     <StaffTimeScheduleEditor
                       schedule={editorForm.weekly_time_schedule}
                       onChange={(nextSchedule) => setForm({
@@ -698,11 +724,27 @@ export function PayrollProfilesPage() {
                   </div>
                 )}
 
-                <div className="flex items-center justify-between border-t border-slate-200 p-4">
-                  <p className="text-sm text-slate-500">Changes affect future payroll and profitability reports.</p>
-                  <button className="rounded-md bg-slate-950 px-5 py-2 font-bold text-white disabled:opacity-60" disabled={saveProfile.isPending}>
-                    {saveProfile.isPending ? 'Saving...' : 'Save profile'}
-                  </button>
+                <div data-tour="pay-profiles-save" className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-200 p-4">
+                  <div>
+                    <p className="text-sm text-slate-500">
+                      {canEdit
+                        ? 'Changes affect future payroll and profitability reports.'
+                        : 'You can view pay profiles. Saving changes needs permission to edit staff.'}
+                    </p>
+                    {saveProfile.isSuccess ? (
+                      <p role="status" className="mt-1 text-sm font-semibold text-emerald-700">Profile saved.</p>
+                    ) : null}
+                    {saveProfile.isError ? (
+                      <p role="alert" className="mt-1 text-sm font-semibold text-red-700">
+                        {saveProfile.error instanceof Error && saveProfile.error.message ? saveProfile.error.message : 'Could not save this profile.'}
+                      </p>
+                    ) : null}
+                  </div>
+                  {canEdit ? (
+                    <button className="rounded-md bg-slate-950 px-5 py-2 font-bold text-white disabled:opacity-60" disabled={saveProfile.isPending || Boolean(editorForm.health_insurance.changed && insurancePreview(editorForm.health_insurance).error)}>
+                      {saveProfile.isPending ? 'Saving...' : 'Save profile'}
+                    </button>
+                  ) : null}
                 </div>
               </form>
             )}

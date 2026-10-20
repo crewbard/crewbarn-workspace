@@ -234,12 +234,17 @@ export function SignDocumentPage() {
   return (
     <div className="min-h-screen bg-slate-50 py-8 px-4">
       <div className="max-w-3xl mx-auto bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
-        <div className="px-6 py-4 border-b border-slate-200 flex items-baseline justify-between">
+        <div data-tour="sign-doc-header" className="px-6 py-4 border-b border-slate-200 flex items-baseline justify-between">
           <div>
             <h1 className="text-lg font-semibold text-navy-900">{preview.doc_title}</h1>
             <p className="text-xs text-slate-500 mt-0.5">
               You&apos;ve been asked to sign as <strong>{preview.signer_label ?? preview.role}</strong>.
             </p>
+            {preview.expires_at && (
+              <p className="text-xs text-slate-500 mt-0.5">
+                This link works until {new Date(preview.expires_at).toLocaleDateString(undefined, { month: 'long', day: 'numeric', year: 'numeric' })}.
+              </p>
+            )}
           </div>
           <div className="text-lg font-bold text-amber-600">
             Crew<span className="text-navy-800">Barn</span>
@@ -247,11 +252,12 @@ export function SignDocumentPage() {
         </div>
 
         <div
+          data-tour="sign-doc-body"
           className="px-6 py-5 prose prose-sm max-w-none border-b border-slate-200"
           dangerouslySetInnerHTML={{ __html: markdownToHtml(highlightedText) }}
         />
 
-        <div className="px-6 py-5">
+        <div data-tour="sign-doc-signature" className="px-6 py-5">
           <h2 className="text-sm font-semibold text-navy-900 mb-2">Your signature</h2>
           <div className="border-2 border-slate-300 rounded bg-white">
             <canvas
@@ -280,6 +286,7 @@ export function SignDocumentPage() {
 
           <button
             type="button"
+            data-tour="sign-doc-submit"
             onClick={submit}
             disabled={!hasDrawn || submitting}
             className="mt-4 w-full text-sm px-4 py-2.5 rounded-md bg-amber-500 hover:bg-amber-600 text-white font-medium disabled:opacity-50"
@@ -289,6 +296,7 @@ export function SignDocumentPage() {
 
           <button
             type="button"
+            data-tour="sign-doc-decline"
             onClick={() => setShowDecline(true)}
             disabled={submitting}
             className="mt-2 w-full text-xs text-slate-500 hover:text-slate-800 underline"

@@ -14,6 +14,16 @@
 
 export type SmtpEncryption = 'tls' | 'ssl' | 'none'
 export type CommsProvider = 'none' | 'twilio_hosted' | 'twilio_byo' | 'net2phone'
+
+/** GET /users/@me with a line's Net2Phone key, when it was saved. `admin` is null when Net2Phone didn't say. */
+export interface Net2PhoneKeyCheck {
+  ok: boolean
+  name: string | null
+  email: string | null
+  admin: boolean | null
+  message: string | null
+  checked_at: string
+}
 export type Net2PhoneIntakeWorkflow =
   | 'locksmith_vehicle_key'
   | 'hvac_equipment'
@@ -56,6 +66,21 @@ export interface CommunicationSettings {
   net2phone_callback_url: string | null
   /** A per-workspace secret rides in the callback URL; the bare URL is refused. */
   net2phone_require_webhook_key: boolean
+  /** CrewBarn set the webhook up in Net2Phone (Net2PhoneWebhookAutoSetup). */
+  net2phone_webhook_auto_provisioned?: boolean
+  net2phone_webhook_sync_status?: string | null
+  net2phone_webhook_sync_error?: string | null
+  net2phone_webhook_synced_at?: string | null
+  /** Real deliveries in a row whose signature checked out; checking switches on by itself at 3. */
+  net2phone_webhook_verified_count?: number
+  net2phone_webhook_failed_count?: number
+  net2phone_webhook_last_delivery_at?: string | null
+  /** Who the API key belongs to, checked when it was saved. */
+  net2phone_key_check?: Net2PhoneKeyCheck | null
+  /** Deliveries held (signature didn't check out), not in the inbox yet. */
+  net2phone_webhook_held?: number
+  /** Has a URL key or a signing secret. */
+  net2phone_webhook_secured?: boolean
   net2phone_intake_enabled: boolean
   /** Keep job-linked threads in the Messages inbox instead of moving them onto the job. */
   comms_inbox_keeps_linked_threads: boolean
@@ -65,6 +90,19 @@ export interface CommunicationSettings {
   net2phone_intake_webhook_secret_present: boolean
   net2phone_intake_workflow: Net2PhoneIntakeWorkflow | null
   net2phone_intake_callback_url: string | null
+  /** The intake line's own: URL key, checking, CrewBarn's setup, deliveries, key. */
+  net2phone_require_intake_webhook_key?: boolean
+  net2phone_intake_enforce_webhook_signature?: boolean
+  net2phone_intake_webhook_auto_provisioned?: boolean
+  net2phone_intake_webhook_sync_status?: string | null
+  net2phone_intake_webhook_sync_error?: string | null
+  net2phone_intake_webhook_synced_at?: string | null
+  net2phone_intake_webhook_verified_count?: number
+  net2phone_intake_webhook_failed_count?: number
+  net2phone_intake_webhook_last_delivery_at?: string | null
+  net2phone_intake_key_check?: Net2PhoneKeyCheck | null
+  net2phone_intake_webhook_held?: number
+  net2phone_intake_webhook_secured?: boolean
 
   // === Telnyx (planned BYO provider; not active until adapter is live) ===
   telnyx_enabled: boolean
@@ -120,6 +158,8 @@ export interface CommunicationSettingsUpdate {
   net2phone_webhook_secret?: string | null
   net2phone_enforce_webhook_signature?: boolean
   net2phone_require_webhook_key?: boolean
+  net2phone_require_intake_webhook_key?: boolean
+  net2phone_intake_enforce_webhook_signature?: boolean
   net2phone_intake_enabled?: boolean
   comms_inbox_keeps_linked_threads?: boolean
   net2phone_intake_label?: string | null

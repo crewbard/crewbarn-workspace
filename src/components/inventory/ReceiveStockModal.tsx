@@ -5,6 +5,8 @@ import { Modal } from '@/components/ui/Modal'
 import { BinTreePicker } from '@/components/BinTreePicker'
 import { useCatalogItems } from '@/hooks/useCatalogItems'
 import type { InventoryBin } from '@/types/inventoryBin'
+import { PoOverrideBox } from '@/components/inventory/PoOverrideBox'
+import { usePoOverrideGate } from '@/hooks/usePoOverride'
 
 /**
  * Stock arriving — put it somewhere and say what it cost.
@@ -49,8 +51,10 @@ export function ReceiveStockModal({
   const itemResults = items.data?.data ?? []
 
   const qtyNum = Number(quantity)
+  // A receive always adds stock; with PO-only on it needs the override.
+  const override = usePoOverrideGate(true)
   const canSave =
-    !!itemId && !!bin && Number.isFinite(qtyNum) && qtyNum > 0
+    !!itemId && !!bin && Number.isFinite(qtyNum) && qtyNum > 0 && override.ready
 
   const receive = useMutation({
     mutationFn: () =>
@@ -68,6 +72,7 @@ export function ReceiveStockModal({
           supplier_name: supplier.trim() || undefined,
           reference_number: reference.trim() || undefined,
           notes: notes.trim() || undefined,
+          ...override.body,
         },
       }),
     onSuccess: () => {
@@ -85,17 +90,18 @@ export function ReceiveStockModal({
     setItemId(''); setItemLabel(''); setItemSearch(''); setBin(null)
     setQuantity('1'); setUnitCost(''); setSupplier(''); setReference(''); setNotes('')
     setError(null)
+    override.setReason('')
   }
 
   return (
     <>
       <Modal isOpen={isOpen} onClose={onClose} title="Receive stock">
-        <div className="space-y-4 p-6">
+        <div data-tour="inv-receive-modal" className="space-y-4 p-6">
           {error && (
             <div className="rounded border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div>
           )}
 
-          <div>
+          <div data-tour="inv-receive-item">
             <label className="mb-1 block text-xs font-medium uppercase tracking-wide text-slate-500">
               Item <span className="text-red-500">*</span>
             </label>
@@ -144,7 +150,7 @@ export function ReceiveStockModal({
             )}
           </div>
 
-          <div>
+          <div data-tour="inv-receive-bin">
             <label className="mb-1 block text-xs font-medium uppercase tracking-wide text-slate-500">
               Put it in <span className="text-red-500">*</span>
             </label>
@@ -162,7 +168,7 @@ export function ReceiveStockModal({
             </button>
           </div>
 
-          <div className="grid grid-cols-2 gap-3">
+          <div data-tour="inv-receive-qty" className="grid grid-cols-2 gap-3">
             <div>
               <label className="mb-1 block text-xs font-medium uppercase tracking-wide text-slate-500">
                 Quantity <span className="text-red-500">*</span>
@@ -187,7 +193,7 @@ export function ReceiveStockModal({
             </div>
           </div>
 
-          <div className="grid grid-cols-2 gap-3">
+          <div data-tour="inv-receive-source" className="grid grid-cols-2 gap-3">
             <div>
               <label className="mb-1 block text-xs font-medium uppercase tracking-wide text-slate-500">
                 Supplier
@@ -211,14 +217,16 @@ export function ReceiveStockModal({
               className="w-full rounded border border-slate-200 px-3 py-2 text-sm focus:border-amber-500 focus:outline-none" />
           </div>
 
+          <PoOverrideBox gate={override} />
+
           <p className="text-[11px] text-slate-500">
             Receiving against a purchase order? Open the PO instead — it knows what was ordered and
             what it cost, and marks the lines received.
           </p>
         </div>
 
-        <div className="flex items-center justify-end gap-2 border-t border-slate-100 px-6 py-4">
-          <button type="button" onClick={onClose}
+        <div data-tour="inv-receive-footer" className="flex items-center justify-end gap-2 border-t border-slate-100 px-6 py-4">
+          <button type="button" onClick={onClose} data-tour="inv-receive-cancel"
             className="rounded px-3 py-1.5 text-sm text-slate-600 hover:bg-slate-100">Cancel</button>
           <button
             type="button"

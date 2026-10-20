@@ -272,6 +272,8 @@ export function BankMatchPage() {
   })
 
   const matchTransaction = useMutation({
+    onMutate: () => setSplitMessage(null),
+    onError: (error: unknown) => setSplitMessage(error instanceof Error && error.message ? error.message : 'Could not match that bank row.'),
     mutationFn: ({ transaction, suggestion }: { transaction: BankTransaction; suggestion: BankSuggestion }) =>
       // An "invoice" suggestion is a deposit with no payment recorded yet
       // (a customer's bank transfer): this records the ACH payment on the
@@ -296,6 +298,8 @@ export function BankMatchPage() {
   })
 
   const markOtherTransaction = useMutation({
+    onMutate: () => setSplitMessage(null),
+    onError: (error: unknown) => setSplitMessage(error instanceof Error && error.message ? error.message : 'Could not mark that bank row as other.'),
     mutationFn: ({ transaction, note }: { transaction: BankTransaction; note: string }) =>
       apiRequest<{ data: BankTransaction }>(`/v1/bank-transactions/${transaction.id}/match`, {
         method: 'POST',
@@ -309,6 +313,8 @@ export function BankMatchPage() {
   })
 
   const ignoreTransaction = useMutation({
+    onMutate: () => setSplitMessage(null),
+    onError: (error: unknown) => setSplitMessage(error instanceof Error && error.message ? error.message : 'Could not ignore that bank row.'),
     mutationFn: (transaction: BankTransaction) =>
       apiRequest<{ data: BankTransaction }>(`/v1/bank-transactions/${transaction.id}/ignore`, {
         method: 'POST',
@@ -318,6 +324,8 @@ export function BankMatchPage() {
   })
 
   const resetTransaction = useMutation({
+    onMutate: () => setSplitMessage(null),
+    onError: (error: unknown) => setSplitMessage(error instanceof Error && error.message ? error.message : 'Could not reset that bank row.'),
     mutationFn: (transaction: BankTransaction) =>
       apiRequest<{ data: BankTransaction }>(`/v1/bank-transactions/${transaction.id}/reset`, {
         method: 'POST',
@@ -330,6 +338,8 @@ export function BankMatchPage() {
   })
 
   const createExpenseFromBankRow = useMutation({
+    onMutate: () => setSplitMessage(null),
+    onError: (error: unknown) => setSplitMessage(error instanceof Error && error.message ? error.message : 'Could not create an expense from that bank row.'),
     mutationFn: ({ transaction, description }: { transaction: BankTransaction; description: string }) =>
       apiRequest<{ data: BankTransaction; expense: { id: string; description: string; total_cents: number } }>(
         `/v1/bank-transactions/${transaction.id}/create-expense`,
@@ -351,6 +361,8 @@ export function BankMatchPage() {
   })
 
   const splitBankTransaction = useMutation({
+    onMutate: () => setSplitMessage(null),
+    onError: (error: unknown) => setSplitMessage(error instanceof Error && error.message ? error.message : 'Could not save the split.'),
     mutationFn: ({ transaction, lines }: { transaction: BankTransaction; lines: Array<{ line_type: 'expense'; amount: number; description: string; category: string }> }) =>
       apiRequest<{ data: BankTransaction }>(`/v1/bank-transactions/${transaction.id}/split`, {
         method: 'POST',
@@ -365,6 +377,8 @@ export function BankMatchPage() {
   })
 
   const reverseSplitTransaction = useMutation({
+    onMutate: () => setSplitMessage(null),
+    onError: (error: unknown) => setSplitMessage(error instanceof Error && error.message ? error.message : 'Could not reverse the split.'),
     mutationFn: ({ transaction, reason }: { transaction: BankTransaction; reason: string }) =>
       apiRequest<{ data: BankTransaction }>(`/v1/bank-transactions/${transaction.id}/reverse-split`, {
         method: 'POST',
@@ -509,7 +523,7 @@ export function BankMatchPage() {
   return (
     <div className="min-h-screen bg-slate-100 px-4 py-6 text-slate-950 lg:px-8">
       <div className="mx-auto w-full max-w-none space-y-6">
-<header data-easy-accounting-header={easy || undefined} className={easy ? 'flex min-w-0 w-full flex-col items-stretch gap-4' : 'flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between'}>
+<header data-tour="bank-review-header" data-easy-accounting-header={easy || undefined} className={easy ? 'flex min-w-0 w-full flex-col items-stretch gap-4' : 'flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between'}>
           <div className={easy ? 'min-w-0 w-full' : undefined}>
             {easy ? <EasyPageHeading title="Bank matching" description="Import your statement, review suggested matches, then reconcile the period once the balances agree." /> : <>
             <p className="text-sm font-semibold uppercase tracking-[0.18em] text-amber-700">Accounting</p>
@@ -524,13 +538,13 @@ export function BankMatchPage() {
           </Link>
         </header>
 
-        <section className="grid gap-3 md:grid-cols-3">
+        <section data-tour="bank-review-summary" className="grid gap-3 md:grid-cols-3">
           <SummaryTile label="Rows on this page" value={transactionsQ.isError ? 'Unavailable' : transactionsQ.isLoading ? '...' : String(transactions.length)} />
           <SummaryTile label="Suggested matches on this page" value={transactionsQ.isError ? 'Unavailable' : transactionsQ.isLoading ? '...' : String(suggestedCount)} />
           <SummaryTile label="Net total on this page" value={transactionsQ.isError ? 'Unavailable' : transactionsQ.isLoading ? '...' : signedDollars(total)} />
         </section>
 
-        <section className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
+        <section data-tour="bank-review-recon" className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
           <div className="flex flex-col gap-2 lg:flex-row lg:items-start lg:justify-between">
             <div>
               <h2 className="text-lg font-bold">Statement reconciliation</h2>
@@ -645,7 +659,7 @@ export function BankMatchPage() {
                           <button
                             className="rounded-md border border-slate-300 bg-white px-3 py-1 text-xs font-bold text-slate-700 disabled:cursor-not-allowed disabled:opacity-60"
                             disabled={closeReconciliationRun.isPending || !canClose}
-                            onClick={() => closeReconciliationRun.mutate(run)}
+                            onClick={() => { if (window.confirm('Close this reconciliation run? It is saved as reconciled for its statement period.')) closeReconciliationRun.mutate(run) }}
                             title={canClose ? 'Close reconciliation run' : 'Difference must be $0.00 before closing.'}
                             type="button"
                           >
@@ -663,7 +677,7 @@ export function BankMatchPage() {
           </div>
         </section>
 
-        <section className="rounded-lg border border-amber-200 bg-white shadow-sm">
+        <section data-tour="bank-review-missing" data-count={unmatchedPayments.length} className="rounded-lg border border-amber-200 bg-white shadow-sm">
           <div className="flex flex-col gap-2 border-b border-amber-100 p-4 lg:flex-row lg:items-start lg:justify-between">
             <div>
               <h2 className="text-lg font-bold">CrewBarn payments not found in bank</h2>
@@ -718,7 +732,7 @@ export function BankMatchPage() {
           )}
         </section>
 
-        <section className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
+        <section data-tour="bank-review-add" className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
           <div className="flex flex-col gap-2 lg:flex-row lg:items-start lg:justify-between">
             <div>
               <h2 className="text-lg font-bold">Add statement row</h2>
@@ -770,7 +784,7 @@ export function BankMatchPage() {
           {createTransaction.error ? <p className="mt-3 text-sm font-semibold text-red-700">Could not save bank row.</p> : null}
         </section>
 
-        <section className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
+        <section data-tour="bank-review-csv" className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
           <div>
             <h2 className="text-lg font-bold">Paste CSV statement</h2>
             <p className="text-sm text-slate-500">
@@ -810,8 +824,8 @@ export function BankMatchPage() {
           </form>
         </section>
 
-        <section className="rounded-lg border border-slate-200 bg-white shadow-sm">
-          <div className="grid gap-3 border-b border-slate-200 p-4 lg:grid-cols-12">
+        <section data-tour="bank-review-rows" className="rounded-lg border border-slate-200 bg-white shadow-sm">
+          <div data-tour="bank-review-filters" className="grid gap-3 border-b border-slate-200 p-4 lg:grid-cols-12">
             <input className="rounded-md border border-slate-300 px-3 py-2 lg:col-span-3" placeholder="Search bank rows..." value={filters.q} onChange={(e) => { setPage(1); setFilters((old) => ({ ...old, q: e.target.value })) }} />
             <input className="rounded-md border border-slate-300 px-3 py-2 lg:col-span-2" type="date" value={filters.date_from} onChange={(e) => { setPage(1); setFilters((old) => ({ ...old, date_from: e.target.value })) }} />
             <input className="rounded-md border border-slate-300 px-3 py-2 lg:col-span-2" type="date" value={filters.date_to} onChange={(e) => { setPage(1); setFilters((old) => ({ ...old, date_to: e.target.value })) }} />
@@ -874,9 +888,9 @@ export function BankMatchPage() {
             ) : transactionsQ.isError ? (
               <div role="alert" className="p-4 text-sm text-red-700">Bank rows could not be loaded. <button type="button" className="underline" onClick={() => void transactionsQ.refetch()}>Retry</button></div>
             ) : transactions.length === 0 ? (
-              <div className="p-8 text-center text-slate-500">No bank rows in this filter.</div>
+              <div data-tour="bank-review-empty" className="p-8 text-center text-slate-500">No bank rows in this filter.</div>
             ) : transactions.map((transaction) => (
-              <article className="grid gap-4 p-4 xl:grid-cols-[minmax(0,1fr)_360px]" key={transaction.id}>
+              <article data-tour="bank-review-row" data-status={transaction.match_status} data-direction={transaction.amount_cents >= 0 ? 'in' : 'out'} className="grid gap-4 p-4 xl:grid-cols-[minmax(0,1fr)_360px]" key={transaction.id}>
                 <div>
                   <div className="flex flex-wrap items-center gap-2">
                     <span className="text-sm font-bold text-slate-500">{transaction.transaction_date}</span>
@@ -895,7 +909,7 @@ export function BankMatchPage() {
                   ) : null}
                 </div>
 
-                <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+                <div data-tour="bank-review-suggestions" className="rounded-lg border border-slate-200 bg-slate-50 p-3">
                   <div className="flex items-center justify-between gap-2">
                     <h4 className="text-sm font-bold text-slate-700">Suggestions</h4>
                     <div className="flex items-center gap-3">
@@ -957,7 +971,17 @@ export function BankMatchPage() {
                         className="w-full rounded-md border border-slate-200 bg-white p-3 text-left shadow-sm hover:border-amber-300 disabled:opacity-60"
                         disabled={matchTransaction.isPending || transaction.match_status === 'matched'}
                         key={`${suggestion.matched_type}-${suggestion.matched_id}`}
-                        onClick={() => matchTransaction.mutate({ transaction, suggestion })}
+                        onClick={() => {
+                          const amount = dollars(suggestion.amount_cents)
+                          const message =
+                            suggestion.matched_type === 'invoice'
+                              ? `Record a ${amount} payment on ${suggestion.label} and match this bank row to it?`
+                              : suggestion.matched_type === 'vendor_bill'
+                                ? `Match this bank row to ${suggestion.label}? This records a ${amount} payment on the bill.`
+                                : `Match this bank row to ${suggestion.label} (${amount})?`
+                          if (!window.confirm(message)) return
+                          matchTransaction.mutate({ transaction, suggestion })
+                        }}
                         type="button"
                       >
                         <div className="flex items-start justify-between gap-3">

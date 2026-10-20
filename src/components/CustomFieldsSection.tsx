@@ -1,7 +1,7 @@
 import { useEffect } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useAuth } from '@/hooks/useAuth'
-import { getRealtimeEcho, resolveTenantId } from '@/lib/realtimeEcho'
+import { getRealtimeEcho, listenPrivate, resolveTenantId } from '@/lib/realtimeEcho'
 import { apiRequest } from '@/lib/api'
 
 /**
@@ -72,10 +72,11 @@ export function CustomFieldsSection({
     if (!tenantId) return
     const echo = getRealtimeEcho(account)
     if (!echo) return
-    const channel = echo.private(`tenant.${tenantId}.custom-fields`)
-    const changed = () => { void queryClient.invalidateQueries({ queryKey: ['custom-fields'] }) }
-    channel.listen('.custom-fields.changed', changed)
-    return () => { channel.stopListening('.custom-fields.changed', changed) }
+    // Several of these forms can be open at once on the same channel; the
+    // cleanup removes only this one's listener.
+    return listenPrivate(echo, `tenant.${tenantId}.custom-fields`, '.custom-fields.changed', () => {
+      void queryClient.invalidateQueries({ queryKey: ['custom-fields'] })
+    })
   }, [tenantId, account, queryClient])
   // existing values to pre-populate the form on edit.
   const defs = useQuery({

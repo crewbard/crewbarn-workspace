@@ -47,7 +47,7 @@ export function SeedPicker<T extends SeedRow>({
 
   if (rows.length === 0) {
     return (
-      <p className="rounded-xl border border-dashed border-slate-300 bg-white p-4 text-sm leading-relaxed text-slate-600">
+      <p data-tour="seed-picker-empty" className="rounded-xl border border-dashed border-slate-300 bg-white p-4 text-sm leading-relaxed text-slate-600">
         {emptyHint}
       </p>
     )
@@ -56,16 +56,16 @@ export function SeedPicker<T extends SeedRow>({
   const setAll = (selected: boolean) => rows.forEach((_, i) => onChange(i, { selected } as Partial<T>))
 
   return (
-    <div>
+    <div data-tour="seed-picker">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <p className="text-sm text-slate-600">
+        <p className="text-sm text-slate-600" data-tour="seed-picker-count">
           <span className="font-bold text-navy-900">
             {chosen} of {rows.length}
           </span>{' '}
           {chosen === 1 ? countNoun : countNoun + 's'} ticked · suggestions from{' '}
           <span className="text-slate-500">{intelligenceLabel.toLowerCase()}</span>
         </p>
-        <div className="flex gap-3 text-sm font-semibold">
+        <div className="flex gap-3 text-sm font-semibold" data-tour="seed-picker-tick-all">
           <button type="button" onClick={() => setAll(true)} className="text-amber-700 hover:underline">
             Tick all
           </button>
@@ -75,9 +75,9 @@ export function SeedPicker<T extends SeedRow>({
         </div>
       </div>
 
-      <ul className="mt-3 divide-y divide-slate-100 overflow-hidden rounded-xl border border-slate-200 bg-white">
+      <ul data-tour="seed-picker-list" className="mt-3 divide-y divide-slate-100 overflow-hidden rounded-xl border border-slate-200 bg-white">
         {rows.map((row, index) => (
-          <li key={`${row.name}-${index}`} className={row.selected ? '' : 'opacity-55'}>
+          <li key={`${row.name}-${index}`} data-tour="seed-picker-row" className={row.selected ? '' : 'opacity-55'}>
             <div className="flex items-start gap-3 p-3">
               <input
                 type="checkbox"
@@ -93,7 +93,7 @@ export function SeedPicker<T extends SeedRow>({
                   aria-label={`Name of ${row.name}`}
                   className="w-full border-0 bg-transparent p-0 text-[15px] font-semibold text-navy-900 focus:outline-none"
                 />
-                <details className="mt-1">
+                <details className="mt-1" data-tour="seed-picker-details">
                   <summary className="cursor-pointer list-none text-xs font-semibold text-slate-400 hover:text-slate-600">
                     Details
                   </summary>

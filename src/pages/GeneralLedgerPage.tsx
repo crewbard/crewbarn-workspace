@@ -3,6 +3,7 @@ import type { ReactNode } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link } from 'react-router-dom'
 import { API_URL, apiRequest, getActingTenant, getFranchiseActAs, getStoredToken } from '@/lib/api'
+import { assertFileResponse } from '@/lib/fileResponse'
 import { tenantDate, useTenantTimezone } from '@/hooks/useTenantTime'
 import { useTheme } from '@/hooks/useTheme'
 import { EasyPageHeading } from '@/components/easy/EasyPageHeading'
@@ -243,6 +244,7 @@ async function downloadAccountingCsv(path: string, fallbackFilename: string) {
     throw new Error(message)
   }
 
+  assertFileResponse(response)
   const disposition = response.headers.get('Content-Disposition') ?? ''
   const filename = disposition.match(/filename="?([^"]+)"?/)?.[1] ?? fallbackFilename
   const blob = await response.blob()
@@ -634,11 +636,19 @@ export function GeneralLedgerPage() {
   }
 
   function closePeriod(periodId: string, lock: boolean) {
+    const period = periods.find((p) => p.id === periodId)
+    const label = period?.name ?? 'this period'
+    const message = lock
+      ? `Lock ${label}? Nothing new can post into a locked period, and it has to be reopened before anyone can change those books.`
+      : `Close ${label}? New postings into a closed period are blocked until it is reopened.`
+    if (!window.confirm(message)) return
     setPeriodActionId(periodId)
     closePeriodMutation.mutate({ periodId, lock })
   }
 
   function reopenPeriod(periodId: string) {
+    const period = periods.find((p) => p.id === periodId)
+    if (!window.confirm(`Reopen ${period?.name ?? 'this period'}? Postings into it will be allowed again, which can change reports you already handed off.`)) return
     setPeriodActionId(periodId)
     reopenPeriodMutation.mutate(periodId)
   }
@@ -796,7 +806,7 @@ export function GeneralLedgerPage() {
 
   return (
     <div className="mx-auto w-full max-w-none space-y-6 px-4 py-4 sm:px-6 sm:py-6 2xl:px-8">
-<div data-easy-accounting-header={easy || undefined} className={easy ? 'flex min-w-0 w-full flex-col items-stretch gap-4' : 'flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between'}>
+<div data-tour="ledger-header" data-easy-accounting-header={easy || undefined} className={easy ? 'flex min-w-0 w-full flex-col items-stretch gap-4' : 'flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between'}>
         <div className={easy ? 'min-w-0 w-full' : undefined}>
           {easy ? <EasyPageHeading title="General ledger" description="Set the reporting dates, review balances and journal entries, then make any bookkeeping adjustments below." /> : <>
           <div className="text-xs font-semibold uppercase tracking-wide text-amber-700">Accounting</div>
@@ -809,7 +819,10 @@ export function GeneralLedgerPage() {
         <div className="flex flex-wrap gap-2">
           <button
             type="button"
-            onClick={() => seedMutation.mutate()}
+            onClick={() => {
+              if (!window.confirm('Add any missing starter accounts to your chart of accounts? Existing accounts are left as they are.')) return
+              seedMutation.mutate()
+            }}
             disabled={seedMutation.isPending}
             className="rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-sm font-semibold text-amber-800 hover:bg-amber-100 disabled:cursor-not-allowed disabled:opacity-60"
           >
@@ -823,6 +836,18 @@ export function GeneralLedgerPage() {
           </Link>
         </div>
       </div>
+      {seedMutation.isSuccess ? (
+        <div role="status" className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm font-semibold text-emerald-800">
+          {(seedMutation.data?.data?.created_count ?? 0) === 0
+            ? 'Your chart of accounts already has every starter account.'
+            : `Added ${seedMutation.data?.data?.created_count} starter account${seedMutation.data?.data?.created_count === 1 ? '' : 's'}.`}
+        </div>
+      ) : null}
+      {seedMutation.isError ? (
+        <div role="alert" className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm font-semibold text-red-700">
+          {(seedMutation.error as Error)?.message || 'Could not add starter accounts.'}
+        </div>
+      ) : null}
 
       {[trialBalanceQ, glDetailQ, journalsQ, accountsQ, periodsQ, incomeStatementQ, balanceSheetQ, cashFlowStatementQ, postingAuditQ].some(query => query.isError) && (
         <div role="alert" className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-800">
@@ -834,12 +859,12 @@ export function GeneralLedgerPage() {
           }}>Retry failed reports</button>
         </div>
       )}
-      <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+      <section data-tour="ledger-filters" className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
         <div className="flex flex-col gap-3 xl:flex-row xl:items-end xl:justify-between">
           <div>
             <h2 className="text-base font-semibold text-slate-900">Ledger filters</h2>
             <p className="mt-1 text-sm text-slate-500">
-              Date range controls income statement, GL detail, and journal entries. As-of controls trial balance and balance sheet.
+              Date range controls the income statement, cash flow, GL detail, journal entries and posting audit. As-of controls trial balance and balance sheet.
             </p>
           </div>
           <div data-easy-filter-grid className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-4 xl:min-w-[760px]">
@@ -910,7 +935,7 @@ export function GeneralLedgerPage() {
         </div>
       ) : null}
 
-      <section className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-6">
+      <section data-tour="ledger-metrics" className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-7">
         <Metric label="Trial balance debit" value={money(trialTotals?.debit_cents ?? 0)} />
         <Metric label="Trial balance credit" value={money(trialTotals?.credit_cents ?? 0)} />
         <Metric
@@ -936,7 +961,7 @@ export function GeneralLedgerPage() {
         />
       </section>
 
-      <section className="rounded-xl border border-slate-200 bg-white shadow-sm">
+      <section data-tour="ledger-posting-audit" data-missing={postingAuditRows.length > 0 ? 'yes' : 'no'} className="rounded-xl border border-slate-200 bg-white shadow-sm">
         <div className="flex flex-col gap-3 border-b border-slate-200 p-4 lg:flex-row lg:items-start lg:justify-between">
           <div>
             <h2 className="text-base font-semibold text-slate-900">Posting audit</h2>
@@ -1024,7 +1049,7 @@ export function GeneralLedgerPage() {
 
       <section className="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1fr)_420px]">
         <div className="space-y-4">
-          <section className="grid grid-cols-1 gap-4 2xl:grid-cols-2">
+          <section data-tour="ledger-statements" className="grid grid-cols-1 gap-4 2xl:grid-cols-2">
             <StatementPanel
               title="Income statement"
               description="Revenue, discounts, expenses, and net income for the selected date range."
@@ -1131,7 +1156,7 @@ export function GeneralLedgerPage() {
             }
           />
 
-          <Panel
+          <Panel tour="ledger-trial"
             title="Trial balance"
             description="CPA hand-off view. Use the date filter for month end, quarter end, or year end."
             action={
@@ -1190,7 +1215,7 @@ export function GeneralLedgerPage() {
             </div>
           </Panel>
 
-          <Panel
+          <Panel tour="ledger-detail"
             title="GL detail"
             description="Line-level ledger drilldown by account, source, status, and date range."
             action={
@@ -1307,7 +1332,7 @@ export function GeneralLedgerPage() {
             </div>
           </Panel>
 
-          <Panel
+          <Panel tour="ledger-journals"
             title="Journal entries"
             description="Posted GL entries by date range. Source type helps isolate invoice, payment, PO, expense, payroll, and tax postings."
             action={
@@ -1356,8 +1381,14 @@ export function GeneralLedgerPage() {
                       </div>
                       {entry.memo ? <p className="mt-1 text-sm text-slate-600">{entry.memo}</p> : null}
                     </div>
-                    <span className="rounded-full bg-emerald-50 px-2 py-1 text-xs font-semibold text-emerald-700 ring-1 ring-emerald-200">
-                      Posted
+                    <span
+                      className={`rounded-full px-2 py-1 text-xs font-semibold capitalize ring-1 ${
+                        entry.status === 'posted'
+                          ? 'bg-emerald-50 text-emerald-700 ring-emerald-200'
+                          : 'bg-amber-50 text-amber-800 ring-amber-200'
+                      }`}
+                    >
+                      {entry.status.replace(/_/g, ' ')}
                     </span>
                   </div>
                   <div className="mt-3 overflow-x-auto">
@@ -1384,7 +1415,7 @@ export function GeneralLedgerPage() {
         </div>
 
         <aside className="space-y-4">
-          <Panel title="Manual journal entry" description="Use for opening balances, owner draw, corrections, and bookkeeper adjustments.">
+          <Panel tour="ledger-manual-journal" title="Manual journal entry" description="Use for opening balances, owner draw, corrections, and bookkeeper adjustments.">
             <div className="space-y-3">
               <label className="block">
                 <span className="mb-1 block text-xs font-semibold text-slate-600">Entry date</span>
@@ -1454,7 +1485,7 @@ export function GeneralLedgerPage() {
             </div>
           </Panel>
 
-          <Panel title="Year-end close" description="Move annual revenue and expense balances into retained earnings.">
+          <Panel tour="ledger-year-end" title="Year-end close" description="Move annual revenue and expense balances into retained earnings.">
             <div className="space-y-3">
               <label className="block">
                 <span className="mb-1 block text-xs font-semibold text-slate-600">Accounting year</span>
@@ -1513,7 +1544,7 @@ export function GeneralLedgerPage() {
             </div>
           </Panel>
 
-          <Panel title="Owner draw" description="Post money paid to an owner without hand-building a journal entry.">
+          <Panel tour="ledger-owner-draw" title="Owner draw" description="Post money paid to an owner without hand-building a journal entry.">
             <div className="space-y-3">
               <label className="block">
                 <span className="mb-1 block text-xs font-semibold text-slate-600">Draw date</span>
@@ -1604,7 +1635,7 @@ export function GeneralLedgerPage() {
             </div>
           </Panel>
 
-          <Panel title="Sales tax payment" description="Post a tax remittance against sales tax payable.">
+          <Panel tour="ledger-sales-tax" title="Sales tax payment" description="Post a tax remittance against sales tax payable.">
             <div className="space-y-3">
               <label className="block">
                 <span className="mb-1 block text-xs font-semibold text-slate-600">Paid on</span>
@@ -1706,7 +1737,7 @@ export function GeneralLedgerPage() {
             </div>
           </Panel>
 
-          <Panel title="Chart of accounts" description="Active accounts used by the posting engine.">
+          <Panel tour="ledger-coa" title="Chart of accounts" description="Active accounts used by the posting engine.">
             <div className="max-h-[520px] space-y-2 overflow-y-auto pr-1">
               {accountOptions.map((account) => (
                 <div key={account.id} className="rounded-lg border border-slate-200 bg-slate-50 p-3">
@@ -1722,7 +1753,7 @@ export function GeneralLedgerPage() {
             </div>
           </Panel>
 
-          <Panel title="Accounting periods" description="Close or lock reviewed months so new postings cannot change finished books.">
+          <Panel tour="ledger-periods" title="Accounting periods" description="Close or lock reviewed months so new postings cannot change finished books.">
             <div className="space-y-3">
               <div className="grid grid-cols-2 gap-2">
                 <label className="block">
@@ -1854,14 +1885,17 @@ function Panel({
   description,
   action,
   children,
+  tour,
 }: {
   title: string
   description: string
   action?: ReactNode
   children: ReactNode
+  /** data-tour target for the Help tour. */
+  tour?: string
 }) {
   return (
-    <section className="rounded-xl border border-slate-200 bg-white shadow-sm">
+    <section data-tour={tour} className="rounded-xl border border-slate-200 bg-white shadow-sm">
       <div className="flex flex-col gap-3 border-b border-slate-200 p-4 lg:flex-row lg:items-start lg:justify-between">
         <div>
           <h2 className="text-base font-semibold text-slate-900">{title}</h2>
@@ -1977,7 +2011,7 @@ function CashFlowPanel({
   const hasRows = sections.some((section) => section.rows.length > 0)
 
   return (
-    <Panel
+    <Panel tour="ledger-cashflow"
       title="Statement of cash flows"
       description="Beginning cash, operating changes, investing activity, financing activity, and ending cash for the selected date range."
       action={action}

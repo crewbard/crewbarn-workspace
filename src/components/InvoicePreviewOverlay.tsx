@@ -31,9 +31,12 @@ function date(iso: string | null | undefined): string {
 export function InvoicePreviewOverlay({
   invoice,
   onClose,
+  canTakePayment = true,
 }: {
   invoice: Invoice
   onClose: () => void
+  /** False hides Receive payment (the caller checks invoices.edit). */
+  canTakePayment?: boolean
 }) {
   const qc = useQueryClient()
   const [payOpen, setPayOpen] = useState(false)
@@ -55,6 +58,7 @@ export function InvoicePreviewOverlay({
   const isPaid = invoice.status === 'paid' || (m.balance_due_cents <= 0 && m.total_cents > 0)
   const isCancelled = invoice.status === 'cancelled'
   const canReceive = !isCancelled && m.balance_due_cents > 0
+  const showReceive = canReceive && canTakePayment
 
   const email = invoice.customer?.email ?? ''
   const phone = invoice.customer?.phone ?? ''
@@ -155,8 +159,8 @@ export function InvoicePreviewOverlay({
       <div className="min-h-full flex items-start justify-center p-3 sm:p-6">
         <div className="w-full max-w-3xl">
           {/* Toolbar (not printed) */}
-          <div className="invoice-no-print flex flex-wrap items-center justify-end gap-2 mb-3">
-            {canReceive && (
+          <div data-tour="invoice-print-toolbar" className="invoice-no-print flex flex-wrap items-center justify-end gap-2 mb-3">
+            {showReceive && (
               <button
                 type="button"
                 onClick={() => setPayOpen(true)}
@@ -200,6 +204,11 @@ export function InvoicePreviewOverlay({
               ✕ Close
             </button>
           </div>
+          {emailMut.isError && (
+            <p role="alert" className="invoice-no-print mb-3 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800">
+              The email didn&apos;t send: {(emailMut.error as Error)?.message ?? 'unknown error'}
+            </p>
+          )}
 
           {/* The invoice document */}
           <div id="invoice-print-area" className="relative bg-white rounded-xl shadow-2xl p-6 sm:p-10">

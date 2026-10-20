@@ -79,7 +79,7 @@ export function FieldReviewPage() {
 
   return (
     <div className={easy ? 'w-full min-w-0 px-3 sm:px-6 py-4 sm:py-6' : 'max-w-5xl mx-auto px-3 sm:px-6 py-4 sm:py-6'}>
-      <div className="mb-4 sm:mb-6">
+      <div data-tour="field-review-header" className="mb-4 sm:mb-6">
         <Link to="/dispatch" className="inline-flex items-center gap-1 text-sm text-amber-700 hover:underline mb-1">
           ← Back to Dispatch
         </Link>
@@ -91,16 +91,16 @@ export function FieldReviewPage() {
         </p>
         </>}
       </div>
-      {easy && <EasyActionCards label="Choose what to review" actions={[
+      {easy && <div data-tour="field-review-cards"><EasyActionCards label="Choose what to review" actions={[
         { key: 'all', title: 'Review everything', description: 'Open visits and missed check-ins.', count: q.isSuccess ? needs.length + missed.length : undefined, active: view === 'all', onClick: () => setView('all') },
         { key: 'visits', title: 'Check open visits', description: 'Visits with GPS, timing, or departure issues.', count: q.isSuccess ? needs.length : undefined, active: view === 'visits', onClick: () => setView('visits') },
         { key: 'missed', title: 'Check missed arrivals', description: 'Scheduled jobs with no check-in.', count: q.isSuccess ? missed.length : undefined, active: view === 'missed', onClick: () => setView('missed') },
-      ]} />}
+      ]} /></div>}
       {q.isError && <div role="alert" className="mb-4 rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-700">
         Field review could not be loaded. <button type="button" onClick={() => void q.refetch()} className="ml-2 underline">Retry</button>
       </div>}
 
-      <form className="mb-5 rounded-lg border border-slate-200 bg-white p-4" onSubmit={e => {
+      <form data-tour="field-review-dates" className="mb-5 rounded-lg border border-slate-200 bg-white p-4" onSubmit={e => {
         e.preventDefault(); if (!invalidRange) setRange({ ...dates })
       }}>
         <h2 className="text-sm font-semibold">Missed check-in date range</h2>
@@ -116,7 +116,7 @@ export function FieldReviewPage() {
       </form>
 
       {/* Needs review — open visits with a loose end */}
-      {(!easy || view !== 'missed') && <section className="mb-6">
+      {(!easy || view !== 'missed') && <section data-tour="field-review-visits" className="mb-6">
         <h2 className="text-sm font-semibold text-slate-900 mb-2">
           Needs review {needs.length > 0 && <span className="text-slate-400">· {needs.length}</span>}
         </h2>
@@ -159,7 +159,7 @@ export function FieldReviewPage() {
       </section>}
 
       {/* Missed check-ins */}
-      {(!easy || view !== 'visits') && <section>
+      {(!easy || view !== 'visits') && <section data-tour="field-review-missed">
         <h2 className="text-sm font-semibold text-slate-900 mb-2">
           Missed check-ins {missed.length > 0 && <span className="text-slate-400">· {missed.length}</span>}
         </h2>

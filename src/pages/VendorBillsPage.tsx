@@ -176,7 +176,7 @@ export function VendorBillsPage() {
   return (
     <div className="min-h-screen bg-slate-100 px-4 py-4 text-slate-950 sm:px-6 sm:py-6 2xl:px-8">
       <div className="mx-auto w-full max-w-none space-y-6">
-<header data-easy-accounting-header={easy || undefined} className={easy ? 'flex min-w-0 w-full flex-col items-stretch gap-4' : 'flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between'}>
+<header data-tour="bills-header" data-easy-accounting-header={easy || undefined} className={easy ? 'flex min-w-0 w-full flex-col items-stretch gap-4' : 'flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between'}>
           <div className={easy ? 'min-w-0 w-full' : undefined}>
             {easy ? <EasyPageHeading title="Vendor bills" description="Add a bill, review its due date and balance, then record payments as they happen." /> : <>
             <p className="text-xs font-semibold uppercase tracking-wide text-amber-700">Accounting</p>
@@ -191,14 +191,14 @@ export function VendorBillsPage() {
           </Link>
         </header>
 
-        <section className="grid gap-3 md:grid-cols-4">
+        <section data-tour="bills-summary" className="grid gap-3 md:grid-cols-4">
           <SummaryTile label="Bills loaded" value={billsQ.isError ? 'Unavailable' : billsQ.isLoading ? '...' : String(bills.length)} />
           <SummaryTile label="Open balance · loaded bills" value={billsQ.isError ? 'Unavailable' : billsQ.isLoading ? '...' : dollars(openTotal)} tone="amber" />
           <SummaryTile label="Overdue · loaded bills" value={billsQ.isError ? 'Unavailable' : billsQ.isLoading ? '...' : dollars(overdueTotal)} tone="red" />
           <SummaryTile label="Paid · loaded bills" value={billsQ.isError ? 'Unavailable' : billsQ.isLoading ? '...' : dollars(bills.reduce((sum, bill) => sum + bill.amount_paid_cents, 0))} tone="green" />
         </section>
 
-        <section className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
+        <section data-tour="bills-add" className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
           <h2 className="text-lg font-bold">Add vendor bill</h2>
           <form className="mt-4 grid gap-3 lg:grid-cols-12" onSubmit={submit}>
             <label className="grid gap-1 text-sm font-semibold text-slate-700 lg:col-span-2">
@@ -257,14 +257,14 @@ export function VendorBillsPage() {
           {createBill.error ? <p className="mt-3 text-sm font-semibold text-red-700">Could not save vendor bill.</p> : null}
         </section>
 
-        <section className="rounded-lg border border-slate-200 bg-white shadow-sm">
-          <div data-easy-filter-grid className="grid gap-3 border-b border-slate-200 p-4 lg:grid-cols-12">
-            <input className="rounded-md border border-slate-300 px-3 py-2 lg:col-span-4" placeholder="Search vendor, bill #, memo..." value={filters.q} onChange={(event) => setFilters((old) => ({ ...old, q: event.target.value }))} />
-            <select className="rounded-md border border-slate-300 px-3 py-2 lg:col-span-2" value={filters.status} onChange={(event) => setFilters((old) => ({ ...old, status: event.target.value }))}>
+        <section data-tour="bills-list" className="rounded-lg border border-slate-200 bg-white shadow-sm">
+          <div data-tour="bills-filters" data-easy-filter-grid className="grid gap-3 border-b border-slate-200 p-4 lg:grid-cols-12">
+            <input aria-label="Search bills" className="rounded-md border border-slate-300 px-3 py-2 lg:col-span-4" placeholder="Search vendor, bill #, memo..." value={filters.q} onChange={(event) => setFilters((old) => ({ ...old, q: event.target.value }))} />
+            <select aria-label="Bill status" className="rounded-md border border-slate-300 px-3 py-2 lg:col-span-2" value={filters.status} onChange={(event) => setFilters((old) => ({ ...old, status: event.target.value }))}>
               {statuses.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
             </select>
-            <input className="rounded-md border border-slate-300 px-3 py-2 lg:col-span-2" type="date" value={filters.date_from} onChange={(event) => setFilters((old) => ({ ...old, date_from: event.target.value }))} />
-            <input className="rounded-md border border-slate-300 px-3 py-2 lg:col-span-2" type="date" value={filters.date_to} onChange={(event) => setFilters((old) => ({ ...old, date_to: event.target.value }))} />
+            <input aria-label="Bill date from" className="rounded-md border border-slate-300 px-3 py-2 lg:col-span-2" type="date" value={filters.date_from} onChange={(event) => setFilters((old) => ({ ...old, date_from: event.target.value }))} />
+            <input aria-label="Bill date to" className="rounded-md border border-slate-300 px-3 py-2 lg:col-span-2" type="date" value={filters.date_to} onChange={(event) => setFilters((old) => ({ ...old, date_to: event.target.value }))} />
             <button className="rounded-md border border-slate-300 bg-white px-3 py-2 font-semibold lg:col-span-2" onClick={() => setFilters({ q: '', status: '', date_from: '', date_to: today })}>
               Clear
             </button>
@@ -278,9 +278,9 @@ export function VendorBillsPage() {
                 <button type="button" onClick={() => void billsQ.refetch()} className="ml-3 rounded-md border border-red-300 px-3 py-2 font-semibold">Try again</button>
               </div>
             ) : bills.length === 0 ? (
-              <p className="rounded-lg border border-slate-200 p-6 text-center text-slate-500 xl:col-span-2">No vendor bills in this filter.</p>
+              <p data-tour="bills-empty" className="rounded-lg border border-slate-200 p-6 text-center text-slate-500 xl:col-span-2">No vendor bills in this filter.</p>
             ) : bills.map((bill) => (
-              <article className="rounded-lg border border-slate-200 bg-slate-50 p-4" key={bill.id}>
+              <article data-tour="bills-card" data-status={bill.status} className="rounded-lg border border-slate-200 bg-slate-50 p-4" key={bill.id}>
                 <div className="flex items-start justify-between gap-3">
                   <div>
                     <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">{bill.bill_number || bill.id}</div>
@@ -300,7 +300,7 @@ export function VendorBillsPage() {
                   <MoneyBox label="Balance" value={dollars(bill.balance_cents)} />
                 </div>
                 {bill.balance_cents > 0 && bill.status !== 'void' ? (
-                  <div className="mt-4 flex flex-col gap-2 sm:flex-row">
+                  <div data-tour="bills-pay" className="mt-4 flex flex-col gap-2 sm:flex-row">
                     <input
                       className="min-w-0 flex-1 rounded-md border border-slate-300 bg-white px-3 py-2"
                       inputMode="decimal"
@@ -312,11 +312,22 @@ export function VendorBillsPage() {
                     <button
                       className="rounded-md bg-slate-950 px-4 py-2 font-bold text-white disabled:opacity-60"
                       disabled={recordPayment.isPending}
-                      onClick={() => recordPayment.mutate({ bill, amount: paymentByBill[bill.id] ?? '' })}
+                      onClick={() => {
+                        const typed = paymentByBill[bill.id] ?? ''
+                        const amountCents = typed.trim() ? Math.round(Number(typed) * 100) : bill.balance_cents
+                        if (!Number.isFinite(amountCents) || amountCents <= 0) return
+                        if (!window.confirm(`Record a ${dollars(amountCents)} payment to ${vendorLabel(bill)} on bill ${bill.bill_number || bill.id}, dated today (${today})?`)) return
+                        recordPayment.mutate({ bill, amount: typed })
+                      }}
                     >
                       Record payment
                     </button>
                   </div>
+                ) : null}
+                {recordPayment.isError && recordPayment.variables?.bill.id === bill.id ? (
+                  <p role="alert" className="mt-2 text-sm font-semibold text-red-700">
+                    {recordPayment.error instanceof Error && recordPayment.error.message ? recordPayment.error.message : 'Could not record that payment.'}
+                  </p>
                 ) : null}
               </article>
             ))}

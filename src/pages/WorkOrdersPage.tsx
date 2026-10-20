@@ -1,5 +1,6 @@
 import { createContext, useContext, useEffect, useMemo, useState } from 'react'
 import { createPortal } from 'react-dom'
+import { useRememberRecordList } from '@/hooks/useShortcuts'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { useWorkOrders } from '@/hooks/useWorkOrders'
 import { useJobStatuses } from '@/hooks/useJobStatuses'
@@ -15,12 +16,23 @@ import { FolderBrowser, Pager, type FolderNode } from '@/components/FolderBrowse
 import { FolderStatTile, formatFolderMoney } from '@/components/FolderStatTile'
 import { FolderLayoutSwitch } from '@/components/FolderLayoutSwitch'
 import { EasyActionCards } from '@/components/easy/EasyActionCards'
+import { usePermissions } from '@/hooks/usePermissions'
 
 // Quick-peek: a card's "Peek" opens a slide-in drawer without leaving the list.
 // Cards live deep inside the folder tree, so the open handler rides a context
 // (wo + the sibling list to arrow-key through) instead of prop-drilling.
 type OpenPeek = (wo: WorkOrder, siblings: WorkOrder[]) => void
 const JobPeekContext = createContext<OpenPeek | null>(null)
+type JobSort = 'default' | 'title' | 'scheduled' | 'amount'
+const JobSortContext = createContext<JobSort>('default')
+function sortJobs(jobs: WorkOrder[], sort: JobSort): WorkOrder[] {
+  if (sort === 'default') return jobs
+  return [...jobs].sort((a, b) => {
+    if (sort === 'title') return a.title.localeCompare(b.title)
+    if (sort === 'amount') return (b.money?.total_cents ?? 0) - (a.money?.total_cents ?? 0)
+    return (a.schedule.date ?? '9999').localeCompare(b.schedule.date ?? '9999')
+  })
+}
 function useJobPeek(): OpenPeek | null {
   return useContext(JobPeekContext)
 }
@@ -35,6 +47,15 @@ const JOB_FILING_OPTIONS: Array<{ value: JobFilingMode; label: string }> = [
   { value: 'year', label: 'Year' },
   { value: 'tech', label: 'Tech' },
 ]
+
+function readJobFilingMode(key: string): JobFilingMode {
+  try {
+    const saved = typeof window === 'undefined' ? null : window.localStorage.getItem(key)
+    return JOB_FILING_OPTIONS.some((option) => option.value === saved) ? saved as JobFilingMode : 'status'
+  } catch {
+    return 'status'
+  }
+}
 
 const JOB_MONTHS = Array.from({ length: 12 }, (_, index) => ({
   value: String(index + 1).padStart(2, '0'),
@@ -58,6 +79,10 @@ export function WorkOrdersPage() {
   const navigate = useNavigate()
   const { theme, jobView, setJobView, density, folderLayout, setFolderLayout } = useTheme()
   const easy = theme === 'easy-side' || theme === 'easy-top'
+  const focus = theme === 'focus'
+  const { has } = usePermissions()
+  const canEditJobs = has('jobs.edit')
+  const canNewAgreement = has('contracts.edit')
   const desktopRowPad = density === 'dense' ? 'px-4 py-2' : density === 'compact' ? 'px-4 py-2.5' : 'px-4 py-3'
   const [searchParams, setSearchParams] = useSearchParams()
   const [q, setQ] = useState('')
@@ -65,20 +90,22 @@ export function WorkOrdersPage() {
   const [subFilter, setSubFilter] = useState<SubFilter>('all')
   const [filtersOpen, setFiltersOpen] = useState(false)
   const [thisWeek, setThisWeek] = useState(false)
+  const [scheduledDate, setScheduledDate] = useState('')
+  const [sort, setSort] = useState<JobSort>('default')
   // Quick-peek: the job whose slide-in drawer is open, plus the list to
   // arrow-key through (←/→). Set together when a card's "Peek" is clicked.
   const [peek, setPeek] = useState<{ id: string; siblings: WorkOrder[] } | null>(null)
   const [page, setPage] = useState(1)
-  const [filingView, setFilingView] = useState(() =>
-    jobView === 'files'
-      || (typeof window !== 'undefined' && window.localStorage.getItem('crewbarn:job-filing-view') === 'true'),
-  )
-  const [filingMode, setFilingMode] = useState<JobFilingMode>(() => {
-    const saved = typeof window !== 'undefined'
-      ? window.localStorage.getItem('crewbarn:job-filing-mode')
-      : null
-    return JOB_FILING_OPTIONS.some((option) => option.value === saved) ? saved as JobFilingMode : 'status'
-  })
+  const filingView = jobView === 'files'
+  const filingModeKey = focus ? 'crewbarn:focus:job-filing-mode' : 'crewbarn:job-filing-mode'
+  const [regularFilingMode, setRegularFilingMode] = useState<JobFilingMode>(() => readJobFilingMode('crewbarn:job-filing-mode'))
+  const [focusFilingMode, setFocusFilingMode] = useState<JobFilingMode>(() => readJobFilingMode('crewbarn:focus:job-filing-mode'))
+  const filingMode = focus ? focusFilingMode : regularFilingMode
+  const setFilingMode = (value: JobFilingMode) => {
+    if (focus) setFocusFilingMode(value)
+    else setRegularFilingMode(value)
+    try { window.localStorage.setItem(filingModeKey, value) } catch { /* browser storage is optional */ }
+  }
 
   // Deep-link filters (set by the dashboard "Needs attention" widget).
   const stale = searchParams.get('stale') || undefined
@@ -103,6 +130,7 @@ export function WorkOrdersPage() {
     status_id: statusId || undefined,
     stale,
     scheduled_week: thisWeek ? 'current' : undefined,
+    scheduled_date: scheduledDate || undefined,
     lead_tech_account_id: leadTech,
     is_subbed: subFilter === 'subbed' ? true : subFilter === 'in_house' ? false : undefined,
     // Year + Status are server-complete (counts + money + lazy per-folder fetch);
@@ -114,7 +142,13 @@ export function WorkOrdersPage() {
   })
   const statusesQuery = useJobStatuses({ active: true, per_page: 100 })
 
-  const items = workOrdersQuery.data?.data ?? []
+  const items = sortJobs(workOrdersQuery.data?.data ?? [], sort)
+  // A failed load is not an empty board. Rows already on screen stay put if
+  // only a background refresh failed.
+  const jobsLoadFailed = workOrdersQuery.isError && items.length === 0
+  const retryJobs = () => void workOrdersQuery.refetch()
+  // [ and ] on a job step through this list, in this order.
+  useRememberRecordList('jobs', items)
   const meta = workOrdersQuery.data?.meta
   const tabCounts = workOrdersQuery.data?.tab_counts
   const jobFilingCounts = workOrdersQuery.data?.job_filing_counts
@@ -126,6 +160,7 @@ export function WorkOrdersPage() {
     status_id: statusId || undefined,
     stale,
     scheduled_week: thisWeek ? 'current' : undefined,
+    scheduled_date: scheduledDate || undefined,
     lead_tech_account_id: leadTech,
     is_subbed: subFilter === 'subbed' ? true : subFilter === 'in_house' ? false : undefined,
   }
@@ -135,6 +170,9 @@ export function WorkOrdersPage() {
   const activeFilters: Array<{ key: string; label: string; remove: () => void }> = []
   if (thisWeek) {
     activeFilters.push({ key: 'week', label: 'This week', remove: () => { setThisWeek(false); setPage(1) } })
+  }
+  if (scheduledDate) {
+    activeFilters.push({ key: 'date', label: `Scheduled: ${scheduledDate}`, remove: () => { setScheduledDate(''); setPage(1) } })
   }
   if (statusId) {
     const name = statuses.find((s) => s.id === statusId)?.name ?? 'Status'
@@ -157,6 +195,7 @@ export function WorkOrdersPage() {
     setSubFilter('all')
     setQ('')
     setThisWeek(false)
+    setScheduledDate('')
     setPage(1)
     const next = new URLSearchParams(searchParams)
     next.delete('stale')
@@ -191,9 +230,10 @@ export function WorkOrdersPage() {
     setPeek({ id: wo.id, siblings: siblings.length ? siblings : [wo] })
 
   return (
+    <JobSortContext.Provider value={sort}>
     <JobPeekContext.Provider value={openPeek}>
-    <div className={`mx-auto px-3 sm:px-6 py-4 sm:py-6 ${easy ? 'w-full min-w-0 max-w-none' : filingView ? 'max-w-[1760px]' : 'max-w-7xl'}`}>
-      <div data-easy-jobs-header={easy ? '' : undefined} className={easy ? 'mb-6 overflow-hidden rounded-2xl border border-slate-200 bg-white' : 'flex items-center justify-between mb-4 sm:mb-6 gap-3 flex-wrap'}>
+    <div data-focus-page="jobs" className={`mx-auto px-3 sm:px-6 py-4 sm:py-6 ${easy ? 'w-full min-w-0 max-w-none' : 'max-w-[1760px]'}`}>
+      <div data-tour="jobs-header" data-easy-jobs-header={easy ? '' : undefined} className={easy ? 'mb-6 overflow-hidden rounded-2xl border border-slate-200 bg-white' : 'flex items-center justify-between mb-4 sm:mb-6 gap-3 flex-wrap'}>
         {easy ? <div className="bg-[var(--chrome-bg,#0F1A2E)] px-5 py-6 text-white sm:px-7 sm:py-8">
           <p className="text-xs font-semibold uppercase tracking-widest text-white/80">Your work · from request to invoice</p>
           <h1 className="mt-3 text-3xl font-semibold tracking-tight sm:text-4xl">Jobs</h1>
@@ -203,6 +243,7 @@ export function WorkOrdersPage() {
           {/* Secondary actions hidden on phones — accessible via Tool Shed
               menu or the action overflow on detail pages. Keeps the
               primary "+ New Job" button reachable without scrolling. */}
+          <div data-tour="jobs-partner-links" className="hidden lg:flex items-center gap-2">
           <Link
             to="/inbound-sub-jobs"
             className="hidden lg:inline-block px-4 py-2 text-sm font-medium border border-slate-300 text-slate-700 hover:bg-slate-50 rounded-md"
@@ -224,40 +265,70 @@ export function WorkOrdersPage() {
           >
             Sub reviews
           </Link>
-          <Link
+          </div>
+          {canEditJobs && <Link
             to="/jobs/new?kind=sub"
+            data-tour="jobs-new-sub"
             className="hidden sm:inline-block px-4 py-2 text-sm font-medium border border-amber-500 text-amber-700 hover:bg-amber-50 rounded-md whitespace-nowrap"
             title="Outsource a job to a vendor partner"
           >
             + Sub Job
-          </Link>
-          <Link
+          </Link>}
+          {canNewAgreement && <Link
             to="/maintenance-contracts/new"
+            data-tour="jobs-new-agreement"
             className="hidden sm:inline-block px-4 py-2 text-sm font-medium border border-amber-500 text-amber-700 hover:bg-amber-50 rounded-md whitespace-nowrap"
             title="Work agreed on a schedule — the visits it generates land on this board"
           >
             + Service Agreement
-          </Link>
-          <Link
+          </Link>}
+          {canEditJobs && <Link
             to="/jobs/new"
             data-tour="jobs-new"
             className="px-4 py-2 text-sm font-medium bg-amber-600 hover:bg-amber-700 text-white rounded-md whitespace-nowrap"
           >
             + New Job
-          </Link>
+          </Link>}
         </div>
       </div>
 
-      {easy && <details className="mb-5 rounded-xl border border-slate-200 bg-white p-4 lg:hidden">
-        <summary className="cursor-pointer text-sm font-semibold text-slate-700">Partner work & subcontracting</summary>
+      {(easy || focus) && <details data-focus-jobs-partner-tools className={focus ? 'mb-3 rounded-lg border border-slate-200 bg-white px-3 py-2' : 'mb-5 rounded-xl border border-slate-200 bg-white p-4 lg:hidden'}>
+        <summary className="cursor-pointer text-sm font-semibold text-slate-700">Partner work & service agreements</summary>
         <nav aria-label="Partner job tools" className="mt-3 flex flex-wrap gap-2">
-          {[['/inbound-sub-jobs', 'Inbound jobs'], ['/sub-payouts', 'Sub payouts'], ['/sub-reviews', 'Sub reviews'], ['/jobs/new?kind=sub', 'New sub job']].map(([to, label]) =>
+          {[['/inbound-sub-jobs', 'Inbound jobs'], ['/sub-payouts', 'Sub payouts'], ['/sub-reviews', 'Sub reviews'], ...(canEditJobs ? [['/jobs/new?kind=sub', 'New sub job']] : []), ...(canNewAgreement ? [['/maintenance-contracts/new', 'New service agreement']] : [])].map(([to, label]) =>
             <Link key={to} to={to} className="rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-700 hover:bg-slate-50">{label}</Link>)}
         </nav>
       </details>}
 
+      {focus && (
+        <div data-focus-jobs-queues role="group" aria-label="Jobs needing action" className="mb-3 flex gap-2 overflow-x-auto pb-1">
+          {([
+            { key: 'past_scheduled_open', label: 'Past due' },
+            { key: 'unbilled_completed', label: 'Ready to bill' },
+            { key: 'needs_parts', label: 'Needs parts' },
+            { key: 'parts_ordered', label: 'Parts ordered' },
+          ] as const).map(({ key, label }) => (
+            <button
+              key={key}
+              type="button"
+              aria-pressed={stale === key}
+              onClick={() => {
+                const next = new URLSearchParams(searchParams)
+                if (stale === key) next.delete('stale')
+                else next.set('stale', key)
+                setPage(1)
+                setSearchParams(next, { replace: true })
+              }}
+              className="shrink-0 rounded-full border px-3 py-1.5 text-xs font-semibold"
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+      )}
+
       {/* Workflow tabs — common stages up front; full list stays in the dropdown. */}
-      {easy && <EasyActionCards actions={[
+      {easy && <div data-tour="jobs-attention"><EasyActionCards actions={[
         { key: 'past_scheduled_open', title: 'Past their date', description: 'Review jobs that need a new plan.' },
         { key: 'unbilled_completed', title: 'Ready to bill', description: 'Review completed work before invoicing.' },
         { key: 'needs_parts', title: 'Waiting on parts', description: 'Check what is holding up the work.' },
@@ -268,7 +339,8 @@ export function WorkOrdersPage() {
         else next.set('stale', action.key)
         setPage(1)
         setSearchParams(next, { replace: true })
-      } }))} />}
+      } }))} /></div>}
+      <div data-tour="jobs-tabs">
       <WorkflowTabs
         tabs={jobTabs}
         active={statusId}
@@ -277,11 +349,13 @@ export function WorkOrdersPage() {
           setPage(1)
         }}
       />
+      </div>
 
       {/* Filters */}
-      <div data-easy-list-toolbar className="flex items-center gap-2 sm:gap-3 mb-4 flex-wrap">
+      <div data-tour="jobs-toolbar" data-easy-list-toolbar className="flex items-center gap-2 sm:gap-3 mb-4 flex-wrap">
         <input
           type="search"
+          data-tour="jobs-search"
           value={q}
           onChange={(e) => {
             setQ(e.target.value)
@@ -294,6 +368,7 @@ export function WorkOrdersPage() {
         {/* This week — quick scope to jobs scheduled in the current tenant week. */}
         <button
           type="button"
+          data-tour="jobs-this-week"
           onClick={() => { setThisWeek((v) => !v); setPage(1) }}
           aria-pressed={thisWeek}
           className={`inline-flex items-center gap-1.5 rounded-md border px-3 py-2 text-sm font-medium transition-colors ${
@@ -312,6 +387,7 @@ export function WorkOrdersPage() {
         <div className="relative">
           <button
             type="button"
+            data-tour="jobs-filters"
             onClick={() => setFiltersOpen((o) => !o)}
             aria-expanded={filtersOpen}
             className={`inline-flex items-center gap-2 rounded-md border px-3 py-2 text-sm font-medium transition-colors ${
@@ -339,7 +415,7 @@ export function WorkOrdersPage() {
                 onClick={() => setFiltersOpen(false)}
                 className="fixed inset-0 z-10 cursor-default"
               />
-              <div className="absolute right-0 z-20 mt-2 w-64 rounded-lg border border-slate-200 bg-white p-4 shadow-xl">
+              <div data-tour="jobs-filters-panel" className="absolute right-0 z-20 mt-2 w-64 rounded-lg border border-slate-200 bg-white p-4 shadow-xl">
                 <div className="mb-4">
                   <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-slate-500">
                     Status
@@ -407,27 +483,55 @@ export function WorkOrdersPage() {
           )}
         </div>
 
-        {(jobView === 'cards' || jobView === 'files') && (
-          <div className="hidden flex-wrap items-center gap-2 md:flex">
+        <label className="flex items-center gap-2 text-xs font-semibold text-slate-600">
+          Scheduled
+          <input type="date" aria-label="Scheduled date" value={scheduledDate} onChange={(e) => { setScheduledDate(e.target.value); setPage(1) }} className="rounded-md border border-slate-300 bg-white px-2 py-2 text-sm font-normal" />
+        </label>
+        <label className="flex items-center gap-2 text-xs font-semibold text-slate-600">
+          Sort
+          <select aria-label="Sort jobs on this page" title="Sorts the loaded page within each view or folder" value={sort} onChange={(e) => setSort(e.target.value as JobSort)} className="rounded-md border border-slate-300 bg-white px-2 py-2 text-sm font-normal">
+            <option value="default">Default order</option>
+            <option value="title">Title A–Z (this page)</option>
+            <option value="scheduled">Scheduled date (this page)</option>
+            <option value="amount">Amount: high first (this page)</option>
+          </select>
+        </label>
+          <div className="flex w-full flex-wrap items-center gap-2">
             {/* Same light segmented control as FolderLayoutSwitch so the toggles match. */}
             <div
               className="inline-flex h-9 items-center gap-0.5 rounded-md border border-slate-300 bg-slate-100 p-1"
               role="group"
-              aria-label="Job card display"
+              aria-label="Job view"
+              data-tour="jobs-views"
               data-easy-view-group
             >
               <button
                 type="button"
-                onClick={() => {
-                  setFilingView(false)
-                  setJobView('cards')
-                }}
+                onClick={() => { setJobView('compact'); setPage(1) }}
                 className={'rounded px-2.5 py-1 text-xs font-semibold transition-colors ' + (
-                  !filingView
+                  !filingView && jobView !== 'cards'
                     ? 'bg-amber-500 text-white shadow-sm'
                     : 'text-slate-600 hover:bg-white hover:text-slate-900'
                 )}
-                aria-pressed={!filingView}
+                aria-pressed={!filingView && jobView !== 'cards'}
+                data-tour="jobs-view-rows"
+                data-easy-view-option
+              >
+                Rows
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setJobView('cards')
+                  setPage(1)
+                }}
+                className={'rounded px-2.5 py-1 text-xs font-semibold transition-colors ' + (
+                  jobView === 'cards' && !filingView
+                    ? 'bg-amber-500 text-white shadow-sm'
+                    : 'text-slate-600 hover:bg-white hover:text-slate-900'
+                )}
+                aria-pressed={jobView === 'cards' && !filingView}
+                data-tour="jobs-view-cards"
                 data-easy-view-option
               >
                 Cards
@@ -435,8 +539,8 @@ export function WorkOrdersPage() {
               <button
                 type="button"
                 onClick={() => {
-                  setFilingView(true)
                   setJobView('files')
+                  setPage(1)
                 }}
                 className={'rounded px-2.5 py-1 text-xs font-semibold transition-colors ' + (
                   filingView
@@ -444,15 +548,15 @@ export function WorkOrdersPage() {
                     : 'text-slate-600 hover:bg-white hover:text-slate-900'
                 )}
                 aria-pressed={filingView}
+                data-tour="jobs-view-files"
                 data-easy-view-option
               >
                 Files
               </button>
             </div>
 
-            {filingView && (
-              <div className="flex items-center gap-1.5">
-                <span className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">Group by</span>
+              <div data-tour="jobs-group-by" className="flex items-center gap-1.5">
+                <span className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">File group</span>
                 {JOB_FILING_OPTIONS.map((option) => {
                   const active = filingMode === option.value
                   return (
@@ -462,7 +566,6 @@ export function WorkOrdersPage() {
                       onClick={() => {
                         setFilingMode(option.value)
                         setPage(1)
-                        window.localStorage.setItem('crewbarn:job-filing-mode', option.value)
                       }}
                       className={'rounded-full border px-2.5 py-1 text-xs font-semibold transition-colors ' + (
                         active
@@ -475,18 +578,18 @@ export function WorkOrdersPage() {
                   )
                 })}
               </div>
-            )}
 
-            {filingView && (
-              <FolderLayoutSwitch value={folderLayout} onChange={setFolderLayout} />
-            )}
+              <FolderLayoutSwitch value={folderLayout} onChange={(layout) => {
+                setFolderLayout(layout)
+                setJobView('files')
+                setPage(1)
+              }} />
           </div>
-        )}
       </div>
 
       {/* Filtered by — active filters shown as removable chips + Clear all. */}
       {activeFilters.length > 0 && (
-        <div className="mb-4 flex flex-wrap items-center gap-2">
+        <div data-tour="jobs-active-filters" className="mb-4 flex flex-wrap items-center gap-2">
           <span className="text-xs font-medium text-slate-500">Filtered by</span>
           {activeFilters.map((f) => (
             <button
@@ -513,11 +616,14 @@ export function WorkOrdersPage() {
           priority; status pill + total stack as meta. Portal-request
           chip surfaces inline because that's a queue the office
           actively triages. */}
-      <div className="md:hidden space-y-2">
+      <div data-tour="jobs-list" data-list-state={workOrdersQuery.isLoading ? 'loading' : items.length > 0 ? 'rows' : jobsLoadFailed ? 'error' : (q || statusId || activeFilters.length > 0) ? 'filtered' : 'empty'}>
+      <div className={jobView === 'cards' || jobView === 'files' ? 'hidden' : 'md:hidden space-y-2'}>
         {workOrdersQuery.isLoading ? (
           [0, 1, 2].map((i) => (
             <div key={i} className="h-20 bg-slate-100 rounded animate-pulse" />
           ))
+        ) : jobsLoadFailed ? (
+          <JobsLoadError retrying={workOrdersQuery.isFetching} onRetry={retryJobs} />
         ) : items.length === 0 ? (
           <div className="bg-white border border-slate-200 rounded-lg p-8 text-center text-sm text-slate-500">
             {q || statusId ? 'No jobs match your filters.' : 'No jobs yet.'}
@@ -526,7 +632,17 @@ export function WorkOrdersPage() {
           items.map((wo) => easy ? <JobCard key={wo.id} wo={wo} siblings={items} onOpen={() => navigate(`/jobs/${wo.id}`)} /> : (
             <div
               key={wo.id}
+              data-tour="jobs-row"
               onClick={() => navigate(`/jobs/${wo.id}`)}
+              role="link"
+              tabIndex={0}
+              onKeyDown={(e) => {
+                if (e.target !== e.currentTarget) return
+                if (e.key === 'Enter' || e.key === ' ') {
+                  e.preventDefault()
+                  navigate(`/jobs/${wo.id}`)
+                }
+              }}
               className="rounded-lg border border-slate-200 bg-white p-3 active:bg-amber-50/60 cursor-pointer"
             >
               <div className="flex items-center justify-between gap-2">
@@ -564,17 +680,21 @@ export function WorkOrdersPage() {
               <div className="mt-0.5 flex items-center justify-between gap-2 text-[11px] text-slate-500">
                 <span>{formatSchedule(wo)}</span>
                 <NextStepHint wo={wo} />
+                <button type="button" onClick={(e) => { e.stopPropagation(); openPeek(wo, items) }} className="shrink-0 rounded border border-slate-200 px-2 py-1 font-semibold text-slate-600 hover:bg-amber-50">Quick Peek</button>
               </div>
             </div>
           ))
         )}
       </div>
 
-      {/* Desktop — follows Tool Shed → Appearance → Job default view. */}
+      {/* Desktop — Cards / Files (per browser); a legacy stored value falls back to the row list. */}
       {jobView === 'cards' || jobView === 'files' ? (
         <DesktopJobCards
           items={items}
           isLoading={workOrdersQuery.isLoading}
+          loadFailed={jobsLoadFailed}
+          retrying={workOrdersQuery.isFetching}
+          onRetry={retryJobs}
           filingView={filingView}
           filingMode={filingMode}
           folderLayout={folderLayout}
@@ -586,27 +706,31 @@ export function WorkOrdersPage() {
           emptyText={
             q || statusId
               ? 'No jobs match your filters.'
-              : 'No jobs yet. Click "New Job" to create one.'
+              : (canEditJobs ? 'No jobs yet. Click "New Job" to create one.' : 'No jobs yet.')
           }
         />
       ) : (
       <div className="hidden md:block bg-white border border-slate-200 rounded-lg overflow-hidden divide-y divide-slate-100">
         {workOrdersQuery.isLoading ? (
           <div role="status" className="cb-loading-region text-center">Loading jobs…</div>
+        ) : jobsLoadFailed ? (
+          <JobsLoadError retrying={workOrdersQuery.isFetching} onRetry={retryJobs} className="m-3" />
         ) : items.length === 0 ? (
           <div className="px-4 py-8 text-center text-slate-500">
             {q || statusId
               ? 'No jobs match your filters.'
-              : 'No jobs yet. Click "New Job" to create one.'}
+              : (canEditJobs ? 'No jobs yet. Click "New Job" to create one.' : 'No jobs yet.')}
           </div>
         ) : (
           items.map((wo) => (
             <div
               key={wo.id}
+              data-tour="jobs-row"
               onClick={() => navigate(`/jobs/${wo.id}`)}
               role="link"
               tabIndex={0}
               onKeyDown={(e) => {
+                if (e.target !== e.currentTarget) return
                 if (e.key === 'Enter' || e.key === ' ') {
                   e.preventDefault()
                   navigate(`/jobs/${wo.id}`)
@@ -641,7 +765,6 @@ export function WorkOrdersPage() {
                       </span>
                     )}
                   </div>
-                  {jobView !== 'compact' && (
                   <div className="text-xs text-slate-500 mt-0.5 truncate">
                     {wo.service_customer?.display_name ?? 'No customer'}
                     {wo.service_customer?.vip && (
@@ -651,7 +774,6 @@ export function WorkOrdersPage() {
                     {' · '}
                     {wo.lead_tech?.full_name ?? <span className="text-slate-400">No assigned tech</span>}
                   </div>
-                  )}
                 </div>
 
                 {/* Status + schedule + next-step hint */}
@@ -675,6 +797,7 @@ export function WorkOrdersPage() {
                   </div>
                 </div>
 
+                <button type="button" onClick={(e) => { e.stopPropagation(); openPeek(wo, items) }} className="shrink-0 rounded border border-slate-200 px-2 py-1 text-xs font-semibold text-slate-600 hover:border-amber-300 hover:bg-amber-50">Quick Peek</button>
                 <RowChevron />
               </div>
             </div>
@@ -682,10 +805,11 @@ export function WorkOrdersPage() {
         )}
       </div>
       )}
+      </div>
 
       {/* Pagination */}
       {meta && meta.last_page > 1 && !filingView && (
-        <div className="flex flex-wrap items-center justify-between gap-3 mt-4 text-sm">
+        <div data-tour="jobs-pager" className="flex flex-wrap items-center justify-between gap-3 mt-4 text-sm">
           <div className="text-slate-600">
             Showing {meta.from ?? 0}–{meta.to ?? 0} of {meta.total}
           </div>
@@ -719,6 +843,7 @@ export function WorkOrdersPage() {
       />
     </div>
     </JobPeekContext.Provider>
+    </JobSortContext.Provider>
   )
 }
 
@@ -840,6 +965,7 @@ function JobBucketFolder({
   const [payment, setPayment] = useState<PaymentFilter>('all')
   const [progress, setProgress] = useState<'all' | 'complete' | 'open'>('all')
   const [page, setPage] = useState(1)
+  const sort = useContext(JobSortContext)
   const filterKey = JSON.stringify({ f: filters ?? {}, s: scope })
   useEffect(() => { setPage(1) }, [filterKey, payment, progress])
 
@@ -851,7 +977,7 @@ function JobBucketFolder({
     page,
     per_page: 50,
   })
-  const jobs = data?.data ?? []
+  const jobs = sortJobs(data?.data ?? [], sort)
   const meta = data?.meta
   const gridClass = 'grid gap-3 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4'
   const collected = money?.collected_cents ?? 0
@@ -932,9 +1058,21 @@ function JobBucketFolder({
 }
 
 
+function JobsLoadError({ retrying, onRetry, className = '' }: { retrying: boolean; onRetry: () => void; className?: string }) {
+  return (
+    <div role="alert" className={`rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-900 ${className}`}>
+      Couldn't load jobs.
+      <button type="button" disabled={retrying} className="ml-2 underline disabled:opacity-50" onClick={onRetry}>Try again</button>
+    </div>
+  )
+}
+
 function DesktopJobCards({
   items,
   isLoading,
+  loadFailed,
+  retrying,
+  onRetry,
   emptyText,
   filingView,
   filingMode,
@@ -947,6 +1085,9 @@ function DesktopJobCards({
 }: {
   items: WorkOrder[]
   isLoading: boolean
+  loadFailed: boolean
+  retrying: boolean
+  onRetry: () => void
   emptyText: string
   filingView: boolean
   filingMode: JobFilingMode
@@ -961,7 +1102,7 @@ function DesktopJobCards({
 
   if (isLoading) {
     return (
-      <div data-easy-job-grid className="hidden md:grid grid-cols-2 xl:grid-cols-3 gap-3">
+      <div data-easy-job-grid className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
         {[0, 1, 2, 3, 4, 5].map((i) => (
           <div key={i} className="h-36 bg-slate-100 rounded-lg animate-pulse" />
         ))}
@@ -969,9 +1110,12 @@ function DesktopJobCards({
     )
   }
 
+  // Before the folders too: their counts come from the same failed load.
+  if (loadFailed) return <JobsLoadError retrying={retrying} onRetry={onRetry} />
+
   if (items.length === 0 && !filingView) {
     return (
-      <div className="hidden md:block bg-white border border-slate-200 rounded-lg p-8 text-center text-sm text-slate-500">
+      <div className="bg-white border border-slate-200 rounded-lg p-8 text-center text-sm text-slate-500">
         {emptyText}
       </div>
     )
@@ -981,7 +1125,7 @@ function DesktopJobCards({
 
   if (!filingView) {
     return (
-      <div data-easy-job-grid className="hidden md:grid grid-cols-2 xl:grid-cols-3 gap-3">
+      <div data-easy-job-grid className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
         {items.map((wo) => (
           <JobCard key={wo.id} wo={wo} siblings={items} onOpen={() => openJob(wo)} />
         ))}
@@ -1025,7 +1169,7 @@ function DesktopJobCards({
       }))
 
     return (
-      <div className="hidden min-w-0 md:block">
+      <div className="min-w-0">
         <FolderBrowser folders={yearFolders} layout={folderLayout} countNoun="job" emptyFolderText="No jobs are filed here." />
       </div>
     )
@@ -1055,7 +1199,7 @@ function DesktopJobCards({
       }))
 
     return (
-      <div className="hidden min-w-0 md:block">
+      <div className="min-w-0">
         <FolderBrowser folders={statusFolders} layout={folderLayout} countNoun="job" emptyFolderText="No jobs are filed here." />
       </div>
     )
@@ -1096,7 +1240,7 @@ function DesktopJobCards({
   })
 
   return (
-    <div className="hidden min-w-0 md:block">
+    <div className="min-w-0">
       <FolderBrowser
         folders={folders}
         layout={folderLayout}
@@ -1114,6 +1258,7 @@ function JobCard({ wo, onOpen, siblings }: { wo: WorkOrder; onOpen: () => void; 
   const easy = theme === 'easy-side' || theme === 'easy-top'
   return (
     <article
+      data-tour="jobs-row"
       onClick={onOpen}
       onKeyDown={(event) => {
         if (event.target !== event.currentTarget) return
@@ -1182,13 +1327,14 @@ function JobCard({ wo, onOpen, siblings }: { wo: WorkOrder; onOpen: () => void; 
           {openPeek && (
             <button
               type="button"
+              data-tour="jobs-peek"
               onClick={(e) => {
                 e.stopPropagation()
                 openPeek(wo, siblings ?? [])
               }}
               className="rounded border border-slate-200 px-2 py-0.5 text-xs font-semibold text-slate-600 hover:border-amber-300 hover:bg-amber-50 hover:text-amber-700"
             >
-              {easy ? 'Quick view' : 'Peek'}
+              Quick Peek
             </button>
           )}
         </div>
@@ -1197,7 +1343,7 @@ function JobCard({ wo, onOpen, siblings }: { wo: WorkOrder; onOpen: () => void; 
   )
 }
 
-/** Full one-line service address: "123 Main St #4, Cocoa, FL 32922". */
+/** Full one-line service address: "123 Main St #4, Springfield, IL 62701". */
 function fullServiceAddress(loc?: WorkOrderServiceLocation | null): string {
   if (!loc) return ''
   const line1 = [loc.street_address, loc.apt_unit].filter(Boolean).join(' ')
@@ -1356,6 +1502,7 @@ function PaymentStamp({ wo }: { wo: WorkOrder }) {
 
   return (
     <span
+      data-tour="jobs-pay-stamp"
       className={
         'inline-flex min-w-14 items-center justify-center rounded-sm border-2 px-2 py-0.5 text-[10px] font-black ' +
         (isPaid
@@ -1538,6 +1685,7 @@ function NextStepHint({ wo }: { wo: WorkOrder }) {
   return (
     <button
       type="button"
+      data-tour="jobs-next-step"
       onClick={(e) => {
         e.stopPropagation()
         navigate(`/jobs/${wo.id}`)

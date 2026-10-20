@@ -288,7 +288,7 @@ export function AssetTreeBuilderModal({
                       setAssetNamePrefix(event.target.value)
                       setPreview(null)
                     }}
-                    placeholder={selectedType?.name || 'Fire Door'}
+                    placeholder={selectedType?.name || 'Water Heater'}
                     className="mt-1 w-full rounded border border-slate-200 px-3 py-2 text-sm focus:border-amber-500 focus:outline-none"
                   />
                 </label>
@@ -301,7 +301,7 @@ export function AssetTreeBuilderModal({
                       setAssetCodePrefix(event.target.value.toUpperCase())
                       setPreview(null)
                     }}
-                    placeholder="FD"
+                    placeholder="WH"
                     className="mt-1 w-full rounded border border-slate-200 px-3 py-2 text-sm uppercase focus:border-amber-500 focus:outline-none"
                   />
                 </label>
@@ -327,7 +327,7 @@ export function AssetTreeBuilderModal({
                     value={description}
                     onChange={(event) => setDescription(event.target.value)}
                     rows={5}
-                    placeholder="e.g. 3 floors, 8 units per floor, 2 locks per unit"
+                    placeholder="e.g. 3 floors, 8 units per floor, 1 water heater per unit"
                     className="mt-1 w-full rounded border border-slate-200 px-3 py-2 text-sm focus:border-amber-500 focus:outline-none"
                   />
                 </label>
@@ -337,7 +337,7 @@ export function AssetTreeBuilderModal({
                     value={schedule}
                     onChange={(event) => setSchedule(event.target.value)}
                     rows={5}
-                    placeholder="Paste rows from a spreadsheet or hardware list"
+                    placeholder="Paste rows from a spreadsheet or equipment list"
                     className="mt-1 w-full rounded border border-slate-200 px-3 py-2 font-mono text-xs focus:border-amber-500 focus:outline-none"
                   />
                 </label>
@@ -442,10 +442,10 @@ export function AssetTreeBuilderModal({
                   <p className="text-xs text-slate-500">Use paths like Floor 1 or Building A / Floor 2 / East Hall.</p>
                 </div>
                 <div className="flex flex-wrap gap-2">
-                  <button type="button" onClick={() => applyPreset('fire_doors')} className="rounded border border-slate-200 px-2 py-1 text-xs text-slate-700 hover:bg-slate-50">Fire doors</button>
-                  <button type="button" onClick={() => applyPreset('extinguishers')} className="rounded border border-slate-200 px-2 py-1 text-xs text-slate-700 hover:bg-slate-50">Extinguishers</button>
-                  <button type="button" onClick={() => applyPreset('cameras')} className="rounded border border-slate-200 px-2 py-1 text-xs text-slate-700 hover:bg-slate-50">Cameras</button>
-                  <button type="button" onClick={() => applyPreset('access_control')} className="rounded border border-slate-200 px-2 py-1 text-xs text-slate-700 hover:bg-slate-50">Access control</button>
+                  <button type="button" onClick={() => applyPreset('fire_doors')} className="rounded border border-slate-200 px-2 py-1 text-xs text-slate-700 hover:bg-slate-50">By floor</button>
+                  <button type="button" onClick={() => applyPreset('extinguishers')} className="rounded border border-slate-200 px-2 py-1 text-xs text-slate-700 hover:bg-slate-50">By wing</button>
+                  <button type="button" onClick={() => applyPreset('cameras')} className="rounded border border-slate-200 px-2 py-1 text-xs text-slate-700 hover:bg-slate-50">Inside &amp; outside</button>
+                  <button type="button" onClick={() => applyPreset('access_control')} className="rounded border border-slate-200 px-2 py-1 text-xs text-slate-700 hover:bg-slate-50">By entry</button>
                 </div>
               </div>
 

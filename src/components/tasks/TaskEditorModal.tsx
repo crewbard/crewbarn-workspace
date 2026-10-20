@@ -79,7 +79,7 @@ export function TaskEditorModal({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4" onClick={onClose}>
-      <div className="bg-white rounded-xl shadow-xl max-w-md w-full p-5" onClick={(e) => e.stopPropagation()}>
+      <div data-tour="task-editor" className="bg-white rounded-xl shadow-xl max-w-md w-full p-5" onClick={(e) => e.stopPropagation()}>
         <h2 className="text-base font-semibold text-navy-900 mb-1">
           {isEdit ? 'Edit task' : 'New task'}
         </h2>

@@ -1,10 +1,11 @@
 import { useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useSearchParams } from 'react-router-dom'
 import { useInventoryMovements } from '@/hooks/useInventoryMovements'
 import { useInventoryLocations } from '@/hooks/useInventoryLocations'
 import { useCatalogItems } from '@/hooks/useCatalogItems'
 import {
   INVENTORY_MOVEMENT_TYPES,
+  INVENTORY_MOVEMENT_TYPE_LABELS,
   type InventoryMovementType,
   type InventoryMovement,
 } from '@/types/inventoryMovement'
@@ -20,11 +21,13 @@ import { EasyActionCards } from '@/components/easy/EasyActionCards'
  * did what, when, and from→to so when stock looks weird you can find the
  * row that caused it.
  */
-export function InventoryMovementsPage() {
+export function InventoryMovementsPage({ embedded = false }: { embedded?: boolean } = {}) {
   const { theme } = useTheme()
   const easy = theme === 'easy-side' || theme === 'easy-top'
   const [type, setType] = useState<InventoryMovementType | ''>('')
-  const [itemId, setItemId] = useState('')
+  // ?item= (the product overlay's "All movements") starts on that product.
+  const [searchParams] = useSearchParams()
+  const [itemId, setItemId] = useState(() => searchParams.get('item') ?? '')
   const [locationId, setLocationId] = useState('')
   const [fromDate, setFromDate] = useState('')
   const [toDate, setToDate] = useState('')
@@ -59,22 +62,27 @@ export function InventoryMovementsPage() {
 
   return (
     <div className="max-w-7xl mx-auto p-6 space-y-6">
-      <div>
-        <h1 className="text-3xl font-semibold text-slate-900">Inventory Movements</h1>
+      <div data-tour="moves-header">
+        {embedded ? (
+          <h2 className="text-xl font-semibold text-slate-900">Movements</h2>
+        ) : (
+          <h1 className="text-3xl font-semibold text-slate-900">Inventory Movements</h1>
+        )}
         <p className="text-sm text-slate-600 mt-1">
-          Append-only audit log. Every stock-changing event lands here.
-          Fixes happen via counter-movements, not edits.
+          Every stock change lands here with the person who made it.
+          Rows are never edited: a mistake is fixed with a new movement.
         </p>
       </div>
 
       {/* Filters */}
-      {easy && <EasyActionCards label="Follow the stock" actions={[
-        { key: 'receive', title: 'Stock received', description: 'Review stock coming into inventory.' },
+      {easy && <div data-tour="moves-quick-filters"><EasyActionCards label="Follow the stock" actions={[
+        { key: 'receive', title: 'Stock received', description: 'Purchase orders, counter pickups, stock added in a bin, starting stock.' },
+        { key: 'adjustment', title: 'Count corrected', description: 'Counts changed by hand, with who changed them.' },
         { key: 'transfer', title: 'Moved between locations', description: 'Trace transfers between stocking locations.' },
         { key: 'install', title: 'Installed on jobs', description: 'Review recorded installations.' },
         { key: 'return', title: 'Returned stock', description: 'Review recorded returns.' },
-      ].map(action => ({ ...action, active: type === action.key, onClick: () => setType(type === action.key ? '' : action.key as InventoryMovementType) }))} />}
-      <div className="bg-white border border-slate-200 rounded-xl shadow-sm p-4">
+      ].map(action => ({ ...action, active: type === action.key, onClick: () => setType(type === action.key ? '' : action.key as InventoryMovementType) }))} /></div>}
+      <div data-tour="moves-filters" className="bg-white border border-slate-200 rounded-xl shadow-sm p-4">
         <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
           <div>
             <label className="block text-xs font-medium text-slate-700 mb-1 uppercase tracking-wide">Type</label>
@@ -86,16 +94,7 @@ export function InventoryMovementsPage() {
               <option value="">All</option>
               {INVENTORY_MOVEMENT_TYPES.map((t) => (
                 <option key={t} value={t}>
-                  {({
-                    receive: 'Receive',
-                    transfer: 'Transfer',
-                    issue: 'Issue',
-                    install: 'Install',
-                    write_off: 'Write off',
-                    adjustment: 'Adjustment',
-                    return: 'Return',
-                    vendor_rma: 'RMA',
-                  } as Record<string, string>)[t] ?? t}
+                  {TYPE_LABELS[t] ?? t}
                 </option>
               ))}
             </select>
@@ -170,16 +169,24 @@ export function InventoryMovementsPage() {
         <button type="button" disabled={query.isFetching} onClick={() => void query.refetch()} className="ml-2 underline disabled:opacity-50">Retry</button>
       </div>}
       {!query.isLoading && !query.isError && movements.length === 0 && (
-        <div className="bg-white border border-slate-200 rounded-xl shadow-sm p-12 text-center">
-          <p className="text-sm text-slate-600">
-            No movements yet{hasFilters ? ' matching the current filters' : ''}.
-          </p>
+        <div data-tour="moves-empty" data-filtered={hasFilters ? 'yes' : 'no'} className="bg-white border border-slate-200 rounded-xl shadow-sm p-12 text-center">
+          {hasFilters ? (
+            <p className="text-sm text-slate-600">
+              No movements match these filters.{' '}
+              <button type="button" onClick={clearFilters} className="font-medium underline">Clear filters</button>
+            </p>
+          ) : (
+            <div className="mx-auto max-w-md space-y-2 text-sm text-slate-600">
+              <p className="font-medium text-slate-900">No movements yet.</p>
+              <p>Every stock change is listed here with who made it: stock received on a purchase order or a counter pickup, count corrections, moves between places, and parts used on jobs.</p>
+            </div>
+          )}
         </div>
       )}
 
       {movements.length > 0 && (
-        <div className={`bg-white border border-slate-200 rounded-xl shadow-sm ${easy ? 'overflow-x-auto' : 'overflow-hidden'}`}>
-          <table className={`w-full text-sm ${easy ? 'min-w-[760px]' : ''}`}>
+        <div data-tour="moves-table" className="bg-white border border-slate-200 rounded-xl shadow-sm overflow-x-auto">
+          <table className="w-full text-sm min-w-[860px]">
             <thead className="bg-slate-50 text-xs uppercase tracking-wide text-slate-500 border-b border-slate-200">
               <tr>
                 <th className="text-left px-4 py-3 font-medium">When</th>
@@ -188,6 +195,7 @@ export function InventoryMovementsPage() {
                 <th className="text-right px-4 py-3 font-medium">Qty</th>
                 <th className="text-left px-4 py-3 font-medium">From → To</th>
                 <th className="text-left px-4 py-3 font-medium">Source / Reason</th>
+                <th className="text-left px-4 py-3 font-medium">Created by</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
@@ -223,18 +231,10 @@ const TYPE_BADGES: Record<InventoryMovementType, string> = {
   adjustment: 'bg-slate-100 text-slate-700',
   return: 'bg-cyan-50 text-cyan-700',
   vendor_rma: 'bg-orange-50 text-orange-700',
+  opening_balance: 'bg-[var(--accent-50)] text-[var(--accent-800)]',
 }
 
-const TYPE_LABELS: Record<InventoryMovementType, string> = {
-  receive: 'Receive',
-  transfer: 'Transfer',
-  issue: 'Issue',
-  install: 'Install',
-  write_off: 'Write off',
-  adjustment: 'Adjustment',
-  return: 'Return',
-  vendor_rma: 'RMA',
-}
+const TYPE_LABELS = INVENTORY_MOVEMENT_TYPE_LABELS
 
 function MovementRow({ m, onClick }: { m: InventoryMovement; onClick: () => void }) {
   const fromLabel = m.from_bin?.path_label ?? m.from_location?.name ?? null
@@ -242,7 +242,7 @@ function MovementRow({ m, onClick }: { m: InventoryMovement; onClick: () => void
   const arrow = fromLabel && toLabel ? `${fromLabel}  →  ${toLabel}` : (toLabel ? `→ ${toLabel}` : (fromLabel ? `${fromLabel} →` : '—'))
 
   const sourceBits: string[] = []
-  if (m.reference_number) sourceBits.push(`PO ${m.reference_number}`)
+  if (m.reference_number) sourceBits.push(`Ref ${m.reference_number}`)
   if (m.supplier_name) sourceBits.push(`vendor: ${m.supplier_name}`)
   if (m.work_order_line_item_id) sourceBits.push(`WO line`)
   if (m.installation.customer_id) sourceBits.push(`installed at customer`)
@@ -281,6 +281,9 @@ function MovementRow({ m, onClick }: { m: InventoryMovement; onClick: () => void
       <td className="px-4 py-3 text-xs text-slate-600">
         {sourceBits.length > 0 ? sourceBits.join(' · ') : <span className="text-slate-400">—</span>}
       </td>
+      <td className="px-4 py-3 text-xs text-slate-700 whitespace-nowrap">
+        {m.created_by_name || (m.created_by_account_id ? <span className="font-mono text-slate-500">{m.created_by_account_id}</span> : <span className="text-slate-400">System</span>)}
+      </td>
     </tr>
   )
 }
@@ -307,6 +310,7 @@ function MovementDetailModal({
       onClick={onClose}
     >
       <div
+        data-tour="moves-detail"
         className="bg-white max-w-2xl w-full max-h-[90vh] overflow-y-auto rounded-xl shadow-2xl border border-slate-200"
         onClick={(e) => e.stopPropagation()}
       >
@@ -350,11 +354,12 @@ function MovementDetailModal({
             {m.to_location && <Row label="To location">{m.to_location.name}</Row>}
             {m.to_bin && <Row label="To bin">📦 {m.to_bin.path_label}</Row>}
             {m.reason && <Row label="Reason">{m.reason}</Row>}
+            {m.notes && <Row label="Notes"><span className="whitespace-pre-wrap">{m.notes}</span></Row>}
           </Section>
 
           {(m.reference_number || m.supplier_name || m.unit_cost_cents) && (
             <Section title="Source / cost">
-              {m.reference_number && <Row label="PO #"><span className="font-mono">{m.reference_number}</span></Row>}
+              {m.reference_number && <Row label="Reference #"><span className="font-mono">{m.reference_number}</span></Row>}
               {m.supplier_name && <Row label="Supplier">{m.supplier_name}</Row>}
               {m.unit_cost_cents != null && (
                 <Row label="Unit cost">${(m.unit_cost_cents / 100).toFixed(2)}</Row>
@@ -405,11 +410,9 @@ function MovementDetailModal({
           <Section title="Timestamps">
             <Row label="Created">{created}</Row>
             <Row label="Applied">{applied}</Row>
-            {m.created_by_account_id && (
-              <Row label="Created by">
-                {m.created_by_name || <span className="font-mono">{m.created_by_account_id}</span>}
-              </Row>
-            )}
+            <Row label="Created by">
+              {m.created_by_name || (m.created_by_account_id ? <span className="font-mono">{m.created_by_account_id}</span> : 'System (no person recorded)')}
+            </Row>
           </Section>
         </div>
 
@@ -417,6 +420,7 @@ function MovementDetailModal({
           <button
             type="button"
             onClick={onClose}
+            data-tour="moves-detail-close"
             className="text-sm px-4 py-1.5 text-slate-700 hover:text-slate-900"
           >
             Close

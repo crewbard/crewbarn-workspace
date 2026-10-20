@@ -4,6 +4,7 @@ import { formatPhone, linkConversation, listConversations, type CommsConversatio
 import { ConversationThread, messageStamp, fullStamp } from './ConversationThread'
 import { EmailComposerModal } from './EmailComposerModal'
 import { SmsComposerModal } from './SmsComposerModal'
+import { listCallOuts } from '@/lib/callOuts'
 
 /**
  * WorkOrderMessagesTab is the job-scoped view of the shared comms inbox.
@@ -37,6 +38,10 @@ export function WorkOrderMessagesTab({
     queryFn: () => (customerId ? listConversations({ customerId }) : Promise.resolve([])),
     enabled: !!customerId,
   })
+
+  // CBI's calls about this job (running late, to the tech or the customer).
+  // Their own list: they aren't a conversation with the customer.
+  const callOuts = useQuery({ queryKey: ['wo-call-outs', workOrderId], queryFn: () => listCallOuts(workOrderId), refetchInterval: 30000 })
 
   const linked = linkedQuery.data ?? []
   const linkable = (custQuery.data ?? []).filter((c) => c.work_order_id !== workOrderId)
@@ -115,6 +120,36 @@ export function WorkOrderMessagesTab({
             )}
           </div>
 
+          {(callOuts.data?.length ?? 0) > 0 && (
+            <div data-tour="wo-automated-calls" className="overflow-hidden rounded-xl border border-slate-200 bg-white">
+              <div className="border-b border-slate-100 bg-slate-50 px-3 py-2 text-sm font-semibold text-navy-900">
+                CBI calls
+              </div>
+              {(callOuts.data ?? []).map((c) => {
+                const answered = c.answered_at !== null
+                const bad = c.status === 'failed' || c.status === 'no-answer' || c.status === 'busy'
+                return (
+                  <div key={c.id} className="border-b border-slate-50 px-3 py-2.5 text-sm last:border-b-0">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="truncate font-medium text-slate-800">
+                        {c.audience === 'customer' ? 'CBI called the customer' : `CBI called ${c.account_name ?? 'the tech'}`}
+                        <span className="font-normal text-slate-500">{c.kind === 'late_alert' ? ' · running late' : ''}</span>
+                      </span>
+                      <span className="flex-shrink-0 text-xs text-slate-400">{c.created_at ? messageStamp(c.created_at) : ''}</span>
+                    </div>
+                    <div className={`text-xs ${answered ? 'text-emerald-700' : bad ? 'text-red-700' : 'text-slate-500'}`}>
+                      {c.outcome}
+                      {c.pressed ? ` · ${c.pressed}` : ''}
+                      {c.started_by_name ? ` · started by ${c.started_by_name}` : ''}
+                      {c.to_number ? ` · ${formatPhone(c.to_number)}` : ''}
+                    </div>
+                    {c.message && <div className="mt-0.5 line-clamp-2 text-xs text-slate-400">“{c.message}”</div>}
+                  </div>
+                )
+              })}
+            </div>
+          )}
+
           {linkable.length > 0 && (
             <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
               <div className="border-b border-slate-100 bg-slate-50 px-3 py-2 text-sm font-semibold text-slate-600">
@@ -153,6 +188,7 @@ export function WorkOrderMessagesTab({
 
       <EmailComposerModal
         isOpen={emailOpen}
+        topic="job"
         onClose={() => setEmailOpen(false)}
         customerId={customerId}
         workOrderId={workOrderId}

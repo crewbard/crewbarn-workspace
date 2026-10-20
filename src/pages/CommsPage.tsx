@@ -47,7 +47,7 @@ type ChannelKind = 'text' | 'call' | 'email'
 const WEEK_VIEWS = new Set<View>(['inbox', 'texts', 'calls', 'emails'])
 
 const VIEW_TITLE: Record<View, string> = {
-  inbox: 'Inbox',
+  inbox: 'Inbox · this week',
   needs_action: 'Needs action',
   unread: 'Unread',
   unknown_calls: 'Unknown callers',
@@ -188,6 +188,15 @@ export function CommsPage() {
     setSearchParams(next, { replace: true })
   }
 
+  // Phones / small tablets show one pane at a time: list, or the open
+  // thread with a Back button.
+  const closeConversation = () => {
+    setSelectedId(null)
+    const params = new URLSearchParams(searchParams)
+    params.delete('conversation')
+    setSearchParams(params, { replace: true })
+  }
+
   const pick = (next: View) => {
     setView(next)
     setSearch('')
@@ -208,17 +217,40 @@ export function CommsPage() {
     // grew, and one page scrollbar moved the rail, the list and the thread
     // together — you could not read a conversation without losing your place
     // in the list.
-    <div data-easy-comms={easy ? '' : undefined} className="flex h-[calc(100vh-5rem)] flex-col overflow-hidden bg-slate-100 text-slate-900">
+    <div data-easy-comms={easy ? '' : undefined} data-focus-page="comms" data-easy-board="" className="flex h-[calc(100vh-5rem)] flex-col overflow-hidden bg-slate-100 text-slate-900">
       <div className="min-h-0 flex-1 grid grid-cols-1 lg:grid-cols-[15rem_25rem_minmax(0,1fr)]">
         <InboxViews view={view} counts={counts} onPick={pick} onNewMessage={() => setComposerOpen(true)} />
 
-        <aside className="flex min-h-0 flex-col border-r border-slate-200 bg-white">
+        <aside data-tour="comms-list" className={`${selectedId ? 'hidden lg:flex' : 'flex'} min-h-0 flex-col border-r border-slate-200 bg-white`}>
           <div className="shrink-0 border-b border-slate-200 p-3">
+            {/* Below lg the left rail is hidden: give the views and
+                + New message a compact home here instead. */}
+            <div className="mb-2 flex items-center gap-2 lg:hidden">
+              <label className="sr-only" htmlFor="comms-mobile-view">View</label>
+              <select
+                id="comms-mobile-view"
+                data-tour="comms-mobile-view"
+                value={view}
+                onChange={(e) => pick(e.target.value as View)}
+                className="min-w-0 flex-1 rounded-md border border-slate-300 bg-white px-2 py-2 text-sm font-semibold text-slate-800"
+              >
+                {(Object.keys(VIEW_TITLE) as View[]).map((key) => {
+                  const count = counts ? viewCount(counts, key) : undefined
+                  return (
+                    <option key={key} value={key}>
+                      {VIEW_TITLE[key]}{count ? ` (${count})` : ''}
+                    </option>
+                  )
+                })}
+              </select>
+              <button type="button" data-tour="comms-new-mobile" onClick={() => setComposerOpen(true)} className="shrink-0 rounded-md bg-amber-500 px-3 py-2 text-sm font-bold text-white shadow-sm hover:bg-amber-600">+ New</button>
+            </div>
             <input
               type="search"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               placeholder="Search all messages, incl. archive…"
+              data-tour="comms-search"
               className="block w-full rounded-md border border-slate-300 px-3 py-2 text-sm placeholder:text-slate-400 focus:border-amber-500 focus:outline-none focus:ring-1 focus:ring-amber-500"
             />
             <div className="mt-2 flex items-center justify-between">
@@ -227,6 +259,7 @@ export function CommsPage() {
               </div>
               <button
                 type="button"
+                data-tour="comms-sort"
                 onClick={() => setSortDirection((d) => (d === 'desc' ? 'asc' : 'desc'))}
                 title={sortDirection === 'desc' ? 'Newest first — click for oldest first' : 'Oldest first — click for newest first'}
                 aria-label={sortDirection === 'desc' ? 'Sorted newest first' : 'Sorted oldest first'}
@@ -243,6 +276,7 @@ export function CommsPage() {
               </button>
               <button
                 type="button"
+                data-tour="comms-date"
                 onClick={() => setFiltersOpen((open) => !open)}
                 aria-expanded={filtersOpen}
                 className={`inline-flex items-center gap-1.5 rounded-md border px-2 py-1 text-xs font-semibold transition-colors ${
@@ -258,7 +292,7 @@ export function CommsPage() {
             </div>
 
             {view === 'archive' && !debounced && (
-              <div className="mt-2 grid grid-cols-2 gap-2 border-t border-slate-200 pt-2">
+              <div data-tour="comms-archive-filters" className="mt-2 grid grid-cols-2 gap-2 border-t border-slate-200 pt-2">
                 <ArchiveSelect
                   label="Year"
                   value={archiveYear}
@@ -292,7 +326,7 @@ export function CommsPage() {
               </div>
             )}
             {filtersOpen && (
-              <div className="mt-2 space-y-2 border-t border-slate-200 pt-2">
+              <div data-tour="comms-date-panel" className="mt-2 space-y-2 border-t border-slate-200 pt-2">
                 <input
                   type="date"
                   value={dateFilter}
@@ -319,9 +353,23 @@ export function CommsPage() {
               header is taller than 5.5rem whenever the date filter or the
               archive selects are open — so the bottom of the list fell off
               the pane exactly when someone was filtering it. */}
-          <div className="min-h-0 flex-1 overflow-y-auto">
+          <div data-tour="comms-rows" className="min-h-0 flex-1 overflow-y-auto">
             {listQuery.isLoading ? (
               <ListSkeleton />
+            ) : listQuery.isError && conversations.length === 0 ? (
+              // Before the week view too: an empty "Today" on a failed load
+              // reads as a quiet day, not a broken inbox.
+              <div role="alert" className="p-6 text-center text-sm font-medium text-red-700">
+                Couldn't load conversations.
+                <button
+                  type="button"
+                  disabled={listQuery.isFetching}
+                  onClick={() => void listQuery.refetch()}
+                  className="ml-2 underline disabled:opacity-50"
+                >
+                  Try again
+                </button>
+              </div>
             ) : grouped.mode === 'week' ? (
               <WeekList
                 today={grouped.today}
@@ -345,11 +393,18 @@ export function CommsPage() {
             the thread's own scroll box never had anything to scroll, and its
             scroll-to-latest had no effect — which is why opening a call landed
             you at the top of the conversation instead of the newest message. */}
-        <main className="hidden min-h-0 min-w-0 flex-col lg:flex">
+        <main className={`${selectedId ? 'flex' : 'hidden lg:flex'} min-h-0 min-w-0 flex-col`}>
           {selectedId ? (
             <section className="flex min-h-0 min-w-0 flex-1 flex-col">
-              <ConversationContext conversation={selected} />
-              <div className="min-h-0 flex-1">
+              <div className="shrink-0 border-b border-slate-200 bg-white px-3 py-2 lg:hidden">
+                <button type="button" onClick={closeConversation} className="text-sm font-semibold text-amber-700 hover:text-amber-800">
+                  ← Back to messages
+                </button>
+              </div>
+              <div data-tour="comms-thread-actions" className="shrink-0">
+                <ConversationContext conversation={selected} />
+              </div>
+              <div data-tour="comms-thread" className="min-h-0 flex-1">
                 <ConversationThread key={selectedId} conversationId={selectedId} showHeader={false} showTemplates={false} onChanged={() => { queryClient.invalidateQueries({ queryKey: LIST_KEY }); queryClient.invalidateQueries({ queryKey: COUNTS_KEY }) }} />
               </div>
             </section>
@@ -382,41 +437,41 @@ function InboxViews({ view, counts, onPick, onNewMessage }: {
   const today = new Date().toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' })
   return (
     <aside className="hidden min-h-0 flex-col border-r border-slate-200 bg-white lg:flex">
-      <div className="border-b border-slate-200 px-4 py-4">
+      <div data-tour="comms-rail" className="border-b border-slate-200 px-4 py-4">
         <div className="text-lg font-bold text-slate-950">Messages</div>
         <div className="mt-0.5 text-xs text-slate-500">{today}</div>
-        <div className="mt-2">
+        <div data-tour="comms-alerts" className="mt-2">
           <ToastPrefToggle area="messages" label="New message" />
         </div>
-        <button type="button" onClick={onNewMessage} className="mt-3 w-full rounded-md bg-amber-500 px-3 py-2 text-sm font-bold text-white shadow-sm transition hover:bg-amber-600">+ New message</button>
+        <button type="button" data-tour="comms-new" onClick={onNewMessage} className="mt-3 w-full rounded-md bg-amber-500 px-3 py-2 text-sm font-bold text-white shadow-sm transition hover:bg-amber-600">+ New message</button>
       </div>
 
-      <div className="min-h-0 flex-1 overflow-y-auto p-3">
+      <div data-tour="comms-views" className="min-h-0 flex-1 overflow-y-auto p-3">
         {/* Home view — the way back to today's threads from any other queue. */}
         <div className="mb-5">
-          <RailItem icon={IconInbox} label="Inbox · today" active={view === 'inbox'} onClick={() => onPick('inbox')} />
+          <RailItem icon={IconInbox} tour="inbox" label="Inbox · this week" active={view === 'inbox'} onClick={() => onPick('inbox')} />
         </div>
 
-        <RailGroup label="My queue">
-          <RailItem icon={IconBolt} label="Needs action" active={view === 'needs_action'} count={counts?.needs_action} onClick={() => onPick('needs_action')} />
-          <RailItem icon={IconMailOpened} label="Unread" active={view === 'unread'} count={counts?.unread} onClick={() => onPick('unread')} />
-          <RailItem icon={IconUserQuestion} label="Unknown callers" active={view === 'unknown_calls'} count={counts?.unknown_calls} onClick={() => onPick('unknown_calls')} />
-          <RailItem icon={IconUser} label="Assigned to me" active={view === 'assigned'} count={counts?.assigned} onClick={() => onPick('assigned')} />
+        <RailGroup label="My queue" tour="comms-queue">
+          <RailItem icon={IconBolt} tour="needs-action" label="Needs action" active={view === 'needs_action'} count={counts?.needs_action} onClick={() => onPick('needs_action')} />
+          <RailItem icon={IconMailOpened} tour="unread" label="Unread" active={view === 'unread'} count={counts?.unread} onClick={() => onPick('unread')} />
+          <RailItem icon={IconUserQuestion} tour="unknown-calls" label="Unknown callers" active={view === 'unknown_calls'} count={counts?.unknown_calls} onClick={() => onPick('unknown_calls')} />
+          <RailItem icon={IconUser} tour="assigned" label="Assigned to me" active={view === 'assigned'} count={counts?.assigned} onClick={() => onPick('assigned')} />
         </RailGroup>
 
-        <RailGroup label="Channels">
-          <RailItem icon={IconMessage} label="Texts" active={view === 'texts'} count={counts?.texts} onClick={() => onPick('texts')} />
-          <RailItem icon={IconPhone} label="Calls" active={view === 'calls'} count={counts?.calls} onClick={() => onPick('calls')} />
-          <RailItem icon={IconMail} label="Emails" active={view === 'emails'} count={counts?.emails} onClick={() => onPick('emails')} />
+        <RailGroup label="Channels" tour="comms-channels">
+          <RailItem icon={IconMessage} tour="texts" label="Texts" active={view === 'texts'} count={counts?.texts} onClick={() => onPick('texts')} />
+          <RailItem icon={IconPhone} tour="calls" label="Calls" active={view === 'calls'} count={counts?.calls} onClick={() => onPick('calls')} />
+          <RailItem icon={IconMail} tour="emails" label="Emails" active={view === 'emails'} count={counts?.emails} onClick={() => onPick('emails')} />
         </RailGroup>
 
-        <RailGroup label="Outbound">
-          <RailItem icon={IconDeviceMobile} label="From the app" active={view === 'app_calls'} onClick={() => onPick('app_calls')} />
-          <RailItem icon={IconArrowUpRight} label="All outbound" active={view === 'all_outbound'} onClick={() => onPick('all_outbound')} />
+        <RailGroup label="Outbound" tour="comms-outbound">
+          <RailItem icon={IconDeviceMobile} tour="app-calls" label="From the app" active={view === 'app_calls'} onClick={() => onPick('app_calls')} />
+          <RailItem icon={IconArrowUpRight} tour="all-outbound" label="All outbound" active={view === 'all_outbound'} onClick={() => onPick('all_outbound')} />
         </RailGroup>
 
-        <div className="mt-6">
-          <RailItem icon={IconArchive} label="Archive" active={view === 'archive'} onClick={() => onPick('archive')} />
+        <div data-tour="comms-archive" className="mt-6">
+          <RailItem icon={IconArchive} tour="archive" label="Archive" active={view === 'archive'} onClick={() => onPick('archive')} />
           <p className="mt-2 px-3 text-[11px] leading-relaxed text-slate-400">
             Threads auto-archive Sunday night. Nothing is lost — every message stays on its job and customer record.
           </p>
@@ -426,25 +481,41 @@ function InboxViews({ view, counts, onPick, onNewMessage }: {
   )
 }
 
-function RailGroup({ label, children }: { label: string; children: ReactNode }) {
+function viewCount(counts: InboxCounts, view: View): number | undefined {
+  switch (view) {
+    case 'needs_action': return counts.needs_action
+    case 'unread': return counts.unread
+    case 'unknown_calls': return counts.unknown_calls
+    case 'assigned': return counts.assigned
+    case 'texts': return counts.texts
+    case 'calls': return counts.calls
+    case 'emails': return counts.emails
+    default: return undefined
+  }
+}
+
+function RailGroup({ label, children, tour }: { label: string; children: ReactNode; tour?: string }) {
   return (
-    <div className="mb-5">
+    <div data-tour={tour} className="mb-5">
       <div className="px-3 pb-1.5 text-[11px] font-bold uppercase tracking-wide text-slate-400">{label}</div>
       <div className="space-y-0.5">{children}</div>
     </div>
   )
 }
 
-function RailItem({ icon: Icon, label, active, count, onClick }: {
+function RailItem({ icon: Icon, label, active, count, onClick, tour }: {
   icon: RailIcon
   label: string
   active?: boolean
   count?: number
   onClick?: () => void
+  tour: string
 }) {
   return (
     <button
       type="button"
+      data-tour={`comms-view-${tour}`}
+      aria-pressed={!!active}
       onClick={onClick}
       className={`flex w-full items-center gap-2.5 rounded-md px-3 py-2 text-left text-sm transition-colors ${
         active ? 'bg-amber-500 font-semibold text-white' : 'text-slate-700 hover:bg-slate-100 hover:text-slate-950'
@@ -475,7 +546,7 @@ function WeekList({ today, earlier, expanded, onToggle, selectedId, onSelect, on
   const openCount = today.filter((c) => !c.handled_at).length
   return (
     <div>
-      <div className="sticky top-0 z-10 flex items-center justify-between border-b border-slate-200 bg-slate-900 px-4 py-2 text-white">
+      <div data-tour="comms-today" className="sticky top-0 z-10 flex items-center justify-between border-b border-slate-200 bg-slate-900 px-4 py-2 text-white">
         <span className="text-[11px] font-bold uppercase tracking-wide">Today · {todayLabel}</span>
         <span className="rounded-full bg-amber-500 px-2 py-0.5 text-[11px] font-bold">{openCount} open</span>
       </div>
@@ -491,6 +562,8 @@ function WeekList({ today, earlier, expanded, onToggle, selectedId, onSelect, on
         <>
           <button
             type="button"
+            data-tour="comms-earlier"
+            aria-expanded={expanded}
             onClick={onToggle}
             className="flex w-full items-center justify-between border-y border-slate-200 bg-slate-50 px-4 py-2 text-left hover:bg-slate-100"
           >
@@ -506,7 +579,7 @@ function WeekList({ today, earlier, expanded, onToggle, selectedId, onSelect, on
         </>
       )}
 
-      <button type="button" onClick={onArchive} className="block w-full px-4 py-3 text-left">
+      <button type="button" data-tour="comms-archive-link" onClick={onArchive} className="block w-full px-4 py-3 text-left">
         <span className="text-sm font-semibold text-amber-600 hover:text-amber-700">Search the archive →</span>
         <span className="mt-0.5 block text-[11px] text-slate-400">Before this week · still on the job &amp; customer</span>
       </button>
@@ -579,6 +652,8 @@ function ConversationRow({
     <div
       role="button"
       tabIndex={0}
+      data-tour="comms-row"
+      data-channel={conversation.channel}
       onClick={onClick}
       onKeyDown={handleKeyDown}
       className={`w-full cursor-pointer border-b border-slate-100 px-4 py-3 text-left transition-colors hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-amber-400 ${
@@ -633,7 +708,7 @@ function ConversationRow({
         </div>
       </div>
 
-      <div className="mt-2 flex flex-wrap items-center gap-1.5">
+      <div data-tour="comms-row-badges" className="mt-2 flex flex-wrap items-center gap-1.5">
         {done && <Badge tone="green">✓ done</Badge>}
         {!done && needsReply && <Badge tone="blue">needs reply</Badge>}
         {unknown && <Badge tone="slate">unknown</Badge>}
@@ -696,7 +771,7 @@ function ConversationContext({ conversation }: { conversation: CommsConversation
     // flex child it would otherwise be squeezed instead of taking the room.
     <div className="shrink-0 border-b border-slate-200 bg-white px-5 py-3">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="min-w-0">
+        <div data-tour="comms-thread-title" data-channel={conversation?.channel ?? ''} className="min-w-0">
           <div className="flex min-w-0 items-center gap-2">
             <span className="truncate text-sm font-semibold text-navy-900">{title}</span>
             {conversation && <ChannelBadge conversation={conversation} />}
@@ -719,6 +794,7 @@ function ConversationContext({ conversation }: { conversation: CommsConversation
         <div className="flex flex-wrap items-center gap-2">
           {conversation?.external_number && (
             <a
+              data-tour="comms-callback"
               href={`tel:${conversation.external_number}`}
               className="rounded-md border border-slate-300 px-3 py-1.5 text-xs font-medium text-slate-600 hover:bg-slate-50"
               title={`Call ${formatPhone(conversation.external_number)}`}
@@ -728,6 +804,7 @@ function ConversationContext({ conversation }: { conversation: CommsConversation
           )}
           {conversation && (
             <select
+              data-tour="comms-assign"
               value={conversation.assigned_to_account_id ?? ''}
               disabled={busy}
               onChange={(e) => assignMutation.mutate(e.target.value || null)}
@@ -743,6 +820,7 @@ function ConversationContext({ conversation }: { conversation: CommsConversation
           {conversation && (
             <button
               type="button"
+              data-tour="comms-done"
               disabled={busy}
               onClick={() => doneMutation.mutate(!done)}
               className={`rounded-md px-3 py-1.5 text-xs font-semibold disabled:opacity-50 ${
@@ -759,6 +837,7 @@ function ConversationContext({ conversation }: { conversation: CommsConversation
           )}
           {conversation?.customer_id && (
             <Link
+              data-tour="comms-customer-link"
               to={`/customers/${conversation.customer_id}?tab=messages`}
               className="rounded-md border border-slate-300 px-3 py-1.5 text-xs font-medium text-slate-600 hover:bg-slate-50"
             >
@@ -806,13 +885,15 @@ function LinkToCustomerControl({ conversation, onDone }: { conversation: CommsCo
     <span className="relative inline-block">
       <button
         type="button"
+        data-tour="comms-link-customer"
+        aria-expanded={open}
         onClick={() => setOpen((v) => !v)}
         className="rounded-md border border-amber-300 bg-amber-50 px-3 py-1.5 text-xs font-semibold text-amber-800 hover:bg-amber-100"
       >
         + Link to customer
       </button>
       {open && (
-        <div className="absolute right-0 z-30 mt-1 w-80 rounded-lg border border-slate-200 bg-white p-2 shadow-xl">
+        <div data-tour="comms-link-customer-panel" className="absolute right-0 z-30 mt-1 w-80 rounded-lg border border-slate-200 bg-white p-2 shadow-xl">
           <input
             autoFocus
             type="search"
@@ -895,7 +976,7 @@ function LinkToJobControl({ conversation, onDone }: { conversation: CommsConvers
 
   if (conversation.work_order_id) {
     return (
-      <span className="inline-flex items-center gap-1">
+      <span data-tour="comms-linked-job" className="inline-flex items-center gap-1">
         <Link
           to={`/jobs/${conversation.work_order_id}?tab=messages`}
           className="rounded-md border border-emerald-300 bg-emerald-50 px-3 py-1.5 text-xs font-semibold text-emerald-800 hover:bg-emerald-100"
@@ -919,13 +1000,15 @@ function LinkToJobControl({ conversation, onDone }: { conversation: CommsConvers
     <span className="relative inline-block">
       <button
         type="button"
+        data-tour="comms-link-job"
+        aria-expanded={open}
         onClick={() => setOpen((v) => !v)}
         className="rounded-md border border-amber-300 bg-amber-50 px-3 py-1.5 text-xs font-semibold text-amber-800 hover:bg-amber-100"
       >
         + Link to job
       </button>
       {open && (
-        <div className="absolute right-0 z-30 mt-1 w-80 rounded-lg border border-slate-200 bg-white p-2 shadow-xl">
+        <div data-tour="comms-link-job-panel" className="absolute right-0 z-30 mt-1 w-80 rounded-lg border border-slate-200 bg-white p-2 shadow-xl">
           <input
             autoFocus
             type="search"
@@ -1023,6 +1106,14 @@ function conversationChannelMeta(conversation: CommsConversation): {
   detail: string
   badgeClass: string
 } {
+  // Written in the customer portal: no number or address, the customer is the thread.
+  if (conversation.channel === 'portal') {
+    return {
+      label: 'Portal',
+      detail: 'Customer portal message',
+      badgeClass: 'border-amber-200 bg-amber-50 text-amber-800',
+    }
+  }
   const channel = conversationChannel(conversation)
   if (channel === 'email') {
     return {

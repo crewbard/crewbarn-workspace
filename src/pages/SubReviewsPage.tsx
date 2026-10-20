@@ -4,6 +4,7 @@ import { Link } from 'react-router-dom'
 import { apiRequest } from '@/lib/api'
 import { useTheme } from '@/hooks/useTheme'
 import { EasyPageHeading } from '@/components/easy/EasyPageHeading'
+import { usePermissions } from '@/hooks/usePermissions'
 import { EasyActionCards } from '@/components/easy/EasyActionCards'
 import { AttachmentOverlay } from '@/components/ui/AttachmentOverlay'
 
@@ -61,13 +62,13 @@ export function SubReviewsPage() {
 
   return (
     <div className={easy ? 'w-full min-w-0 px-3 py-4 sm:px-6 sm:py-6' : 'max-w-5xl mx-auto px-6 py-6'}>
-      <div className="mb-6">
+      <div className="mb-6" data-tour="sub-reviews-header">
         <Link to="/jobs" className="inline-flex items-center text-sm font-medium text-amber-700 hover:text-amber-800 hover:underline mb-3">
           ← Back to Jobs
         </Link>
         {easy ? <EasyPageHeading title="Partner reviews" description="Review requested spending-limit increases and submitted invoices. Opening a review does not approve or pay it." /> : <h1 className="text-2xl font-semibold text-slate-900">Sub reviews</h1>}
         <p className="text-sm text-slate-500 mt-1">
-          NTE extension requests and submitted invoices from subcontractors awaiting your approval.
+          Requests to raise a job's not-to-exceed (NTE) limit, and invoices from subcontractors waiting on you.
         </p>
       </div>
 
@@ -101,7 +102,7 @@ export function SubReviewsPage() {
 
 function NteExtensionsSection({ rows }: { rows: PendingExtension[] }) {
   return (
-    <section>
+    <section data-tour="sub-reviews-nte">
       <h2 className="text-base font-semibold text-slate-900 mb-3">
         NTE extension requests
         {rows.length > 0 && (
@@ -122,6 +123,8 @@ function NteExtensionsSection({ rows }: { rows: PendingExtension[] }) {
 }
 
 function ExtensionRow({ row }: { row: PendingExtension }) {
+  // Approve / deny need jobs.edit on the server.
+  const canEdit = usePermissions().has('jobs.edit')
   const queryClient = useQueryClient()
   const [denyReason, setDenyReason] = useState('')
   const [showDeny, setShowDeny] = useState(false)
@@ -165,7 +168,7 @@ function ExtensionRow({ row }: { row: PendingExtension }) {
             </div>
           )}
         </div>
-        <div className="flex flex-col gap-2 shrink-0">
+        {canEdit && <div className="flex flex-col gap-2 shrink-0">
           <button
             type="button"
             onClick={() => approve.mutate()}
@@ -184,7 +187,7 @@ function ExtensionRow({ row }: { row: PendingExtension }) {
               Deny
             </button>
           ) : null}
-        </div>
+        </div>}
       </div>
       {showDeny && (
         <div className="mt-3 pt-3 border-t border-slate-200">
@@ -226,7 +229,7 @@ function ExtensionRow({ row }: { row: PendingExtension }) {
 
 function InvoicesSection({ rows }: { rows: PendingInvoice[] }) {
   return (
-    <section>
+    <section data-tour="sub-reviews-invoices">
       <h2 className="text-base font-semibold text-slate-900 mb-3">
         Sub invoices
         {rows.length > 0 && (
@@ -247,6 +250,8 @@ function InvoicesSection({ rows }: { rows: PendingInvoice[] }) {
 }
 
 function InvoiceRow({ row }: { row: PendingInvoice }) {
+  // Approve / mark paid / decline need jobs.edit on the server.
+  const canEdit = usePermissions().has('jobs.edit')
   const queryClient = useQueryClient()
   const [showDecline, setShowDecline] = useState(false)
   const [showPay, setShowPay] = useState(false)
@@ -312,7 +317,7 @@ function InvoiceRow({ row }: { row: PendingInvoice }) {
             </div>
           )}
         </div>
-        <div className="flex flex-col gap-2 shrink-0">
+        <div className="flex flex-col gap-2 shrink-0" data-tour="sub-reviews-invoice-actions">
           <button
             type="button"
             onClick={viewPdf}
@@ -320,6 +325,7 @@ function InvoiceRow({ row }: { row: PendingInvoice }) {
           >
             View PDF
           </button>
+          {canEdit && <>
           <button
             type="button"
             onClick={() => approve.mutate()}
@@ -342,6 +348,7 @@ function InvoiceRow({ row }: { row: PendingInvoice }) {
           >
             Decline
           </button>
+          </>}
         </div>
       </div>
 

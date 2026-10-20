@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import type { ScheduleWorkOrder } from '@/types/schedule'
+import { subLine } from '@/lib/subLane'
 import { EventBadges } from './EventBadges'
 
 /**
@@ -72,7 +73,13 @@ export function EventHoverPreview({
             </span>
           </div>
         )}
-        {wo.lead_tech?.name && (
+        {wo.sub ? (
+          <div>
+            <span className="text-slate-500">Sub: </span>
+            <span className="text-slate-800">{subLine(wo.sub)}</span>
+            <span className="text-slate-500"> · {wo.sub.label}</span>
+          </div>
+        ) : wo.lead_tech?.name && (
           <div>
             <span className="text-slate-500">Tech: </span>
             <span className="text-slate-800">{wo.lead_tech.name}</span>

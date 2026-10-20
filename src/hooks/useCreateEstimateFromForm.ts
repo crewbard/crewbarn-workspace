@@ -9,7 +9,9 @@ import {
   type DraftAttachment,
 } from '@/components/workorders/CreateFormAttachmentsPicker'
 import type { EstimateCreateFromFormInput } from '@/components/WorkOrderForm'
-import type { Estimate } from '@/types/estimate'
+import type { Estimate, EstimateOptionUpdateInput } from '@/types/estimate'
+import type { EstimateLineItemDraft } from '@/types/estimateLineItem'
+import { addEstimateOption, updateEstimateOption } from '@/lib/estimates'
 
 export interface CreateEstimateFromFormResult {
   estimate: Estimate
@@ -54,6 +56,7 @@ export function useCreateEstimateFromForm() {
       internal_notes: input.internal_notes,
       customer_notes: input.customer_notes,
       contract_template_id: input.contract_template_id,
+      ...(input.job_tasks && input.job_tasks.length > 0 ? { job_tasks: input.job_tasks } : {}),
     })
 
     const issues: string[] = []
@@ -74,7 +77,7 @@ export function useCreateEstimateFromForm() {
     // Line drafts — best-effort. Carries the FULL field set so estimates
     // keep their line types, discounts/fees, and show-image-on-doc flag.
     const lineFailures: string[] = []
-    for (const draft of input.line_drafts) {
+    const postLine = async (draft: EstimateLineItemDraft, optionId?: string | null) => {
       try {
         await createEstimateLine.mutateAsync({
           estimateId: estimate.id,
@@ -90,10 +93,63 @@ export function useCreateEstimateFromForm() {
             show_image_on_doc: draft.show_image_on_doc,
             discount_kind: draft.discount_kind,
             discount_value: draft.discount_value,
+            ...(optionId !== undefined ? { estimate_option_id: optionId } : {}),
           },
         })
       } catch {
         lineFailures.push(draft.description || '(unnamed line)')
+      }
+    }
+
+    /*
+     * Good / better / best built on the form. The first tier's lines go up
+     * first; adding the tiers then makes those lines the first tier and
+     * the others start empty (copy_lines: false), and each other tier's
+     * lines go into it. Lines in every tier go last, into none.
+     */
+    const tiers = input.option_drafts ?? []
+    if (tiers.length < 2) {
+      for (const draft of input.line_drafts) await postLine(draft)
+    } else {
+      const [first, ...rest] = tiers
+      for (const draft of input.line_drafts.filter((d) => d.option_key === first.key)) await postLine(draft)
+
+      let saved: Estimate | null = null
+      try {
+        for (const tier of rest) {
+          saved = await addEstimateOption(estimate.id, {
+            name: tier.name,
+            highlights: tier.highlights || null,
+            copy_lines: false,
+          })
+        }
+      } catch (e) {
+        issues.push(`The tiers could not all be saved (${(e as Error).message}). The first tier's lines are on the estimate.`)
+      }
+
+      const made = saved?.options ?? []
+      if (made.length === tiers.length) {
+        for (let i = 0; i < tiers.length; i++) {
+          const tier = tiers[i]
+          const option = made[i]
+          const patch: EstimateOptionUpdateInput = {}
+          if (option.name !== tier.name) patch.name = tier.name
+          if ((option.highlights ?? '') !== tier.highlights) patch.highlights = tier.highlights || null
+          if (tier.is_recommended) patch.is_recommended = true
+          if (Object.keys(patch).length > 0) {
+            try {
+              await updateEstimateOption(estimate.id, option.id, patch)
+            } catch {
+              issues.push(`Tier "${tier.name}" was saved without its name or note`)
+            }
+          }
+          if (i > 0) {
+            for (const draft of input.line_drafts.filter((d) => d.option_key === tier.key)) {
+              await postLine(draft, option.id)
+            }
+          }
+        }
+        for (const draft of input.line_drafts.filter((d) => !d.option_key)) await postLine(draft, null)
       }
     }
     if (lineFailures.length > 0) {

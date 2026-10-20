@@ -320,9 +320,21 @@ export function parseThermalSize(value: string | null | undefined): ThermalSizeK
  *   the standard browser print margins.
  * - Otherwise, set @page size to match the thermal label.
  */
+/**
+ * The printable copy (`.print-stage`) is for the browser's print window
+ * only. On screen it is gone entirely: no space, no scroll height. The
+ * Print labels screen draws its own preview above it, and leaving this copy
+ * visible put a second, unstyled column of every label under the page.
+ */
+export const PRINT_STAGE_SCREEN_CSS = `
+  @media screen {
+    .print-stage { display: none !important; }
+  }
+`
+
 export function thermalPrintCss(key: ThermalSizeKey, multiUp = false): string {
   if (key === 'sheet' || multiUp) {
-    return `
+    return `${PRINT_STAGE_SCREEN_CSS}
       @media print {
         @page { margin: 0.25in; }
         html, body, #root { background: white !important; padding: 0 !important; margin: 0 !important; }
@@ -333,7 +345,7 @@ export function thermalPrintCss(key: ThermalSizeKey, multiUp = false): string {
     `
   }
   const { w, h } = THERMAL_SIZES[key]
-  return `
+  return `${PRINT_STAGE_SCREEN_CSS}
     @media print {
       @page { size: ${w}in ${h}in; margin: 0; }
       html, body, #root { background: white !important; padding: 0 !important; margin: 0 !important; }

@@ -19,6 +19,8 @@ export type InventoryMovementType =
   | 'adjustment'
   | 'return'
   | 'vendor_rma'
+  /** Written once per stock row from the count on the day logging began; never moves stock. */
+  | 'opening_balance'
 
 export const INVENTORY_MOVEMENT_TYPES: InventoryMovementType[] = [
   'receive',
@@ -29,7 +31,21 @@ export const INVENTORY_MOVEMENT_TYPES: InventoryMovementType[] = [
   'adjustment',
   'return',
   'vendor_rma',
+  'opening_balance',
 ]
+
+/** Plain words for each type: the Movements tab and the Stock tab's history. */
+export const INVENTORY_MOVEMENT_TYPE_LABELS: Record<InventoryMovementType, string> = {
+  receive: 'Stock received',
+  transfer: 'Transfer',
+  issue: 'Issue',
+  install: 'Install',
+  write_off: 'Write off',
+  adjustment: 'Count corrected',
+  return: 'Return',
+  vendor_rma: 'RMA',
+  opening_balance: 'Opening balance',
+}
 
 export interface InventoryMovementCatalogMini {
   id: string

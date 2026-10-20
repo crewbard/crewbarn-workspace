@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import {
   IconBookmarks,
+  IconCards,
   IconChevronLeft,
   IconChevronRight,
   IconSearch,
@@ -12,24 +13,33 @@ import {
 } from '@tabler/icons-react'
 import {
   formatSize,
-  readReferenceCardDocument,
-  updateReferenceCardDocument,
+  readCatalogFile,
+  sendImage,
   type DownloadProgress,
 } from '@/lib/referenceCardDocuments'
-import type { DocumentTab, ReferenceCardDocument } from '@/lib/referenceCards'
-import { lastCatalogPage, noteCatalogOpened, rememberCatalogPage } from '@/lib/catalogs'
+import { emptyDraft, nextKey, type Draft, type DocumentTab, type ReferenceCardDocument } from '@/lib/referenceCards'
+import {
+  lastCatalogPage,
+  noteCatalogOpened,
+  noteCatalogOpenedOnServer,
+  rememberCatalogPage,
+  updateCatalog,
+} from '@/lib/catalogs'
+import { ReferenceCardEditor } from '@/components/ReferenceCardEditor'
+import { CardMaker } from './CardMaker'
+import { selectionFromPart, splitPartNumber, type CardPrefill, type CardSelection } from './cardPicks'
 import type { EstimateContext, PickedPart } from '@/lib/catalogOrders'
 import { usePermissions, PERM } from '@/hooks/usePermissions'
 import { OrderPanel, type OrderPanelHandle } from './OrderPanel'
 import { priceAfter, type PartOnPage } from './partNumbers'
-import { Book, openBook, type PageLink, type SearchHit, type Suggestion } from './pdfBook'
+import { Book, openBook, type Box, type PageLink, type SearchHit, type Suggestion } from './pdfBook'
 import { PageNumbers } from './pageNumbers'
 import { TabEditor } from './TabEditor'
-import { BookSearch } from './BookSearch'
+import { BookSearch, FoundMark } from './BookSearch'
 import { SWATCH, colorOf } from './tabColors'
 
 /**
- * A PDF on a card, read like the catalogue it usually is.
+ * A catalog, read like the printed book it usually is.
  *
  * Two pages side by side with the cover on its own, a page that turns
  * when you go forward, and coloured index tabs down the edge that open
@@ -42,9 +52,14 @@ import { SWATCH, colorOf } from './tabColors'
  */
 
 export type MagazineViewerProps = {
-  cardId: string
-  document: ReferenceCardDocument
-  /** The shop that owns the card, while the card can still change. */
+  /** Modeless side workbench, only used by the Focus create flow on wide screens. */
+  docked?: boolean
+  /** A job/estimate editor opened the book to copy parts into its lines. */
+  onPickLine?: (part: PickedPart) => Promise<string | void> | string | void
+  /** Where it was opened from, when that was a card. The file is read by its own id. */
+  cardId?: string
+  document: ReferenceCardDocument & { has_cover?: boolean }
+  /** The shop's own catalog, while no other shop is reading it: tabs can change. */
   canEdit: boolean
   onClose: () => void
   onTabsSaved?: (document: ReferenceCardDocument) => void
@@ -60,7 +75,7 @@ const TURN_MS = 650
 const FROM: Record<Suggestion['source'], string> = {
   bookmarks: 'tabs from the PDF’s bookmarks',
   edges: 'tabs printed on its pages',
-  contents: 'tabs from its contents page',
+  contents: 'tabs from its table of contents',
   headings: 'tabs from its headings',
 }
 
@@ -111,17 +126,20 @@ const reducedMotion = () =>
   typeof window !== 'undefined' && window.matchMedia?.('(prefers-reduced-motion: reduce)').matches
 
 export default function MagazineViewer({
-  cardId,
   document: doc,
+  docked = false,
+  onPickLine,
   canEdit,
   onClose,
   onTabsSaved,
   initialPage,
   estimate,
 }: MagazineViewerProps) {
-  const { hasAny } = usePermissions()
+  const { has, hasAny } = usePermissions()
   // Building an order needs the inventory right, or the estimate right for an estimate's parts.
   const canOrder = hasAny([PERM.INVENTORY_EDIT, PERM.JOBS_EDIT])
+  // Making reference cards from the book is writing cards.
+  const canMakeCards = has(PERM.CATALOG_EDIT)
   const [book, setBook] = useState<Book | null>(null)
   const [failed, setFailed] = useState<string | null>(null)
   // The file on its way down, before there is a book to show.
@@ -139,7 +157,11 @@ export default function MagazineViewer({
    * One panel at a time down the right: the tab editor or the search.
    * Both want the book beside them, and two would leave no book.
    */
-  const [panel, setPanel] = useState<'tabs' | 'search' | null>(null)
+  const [panel, setPanel] = useState<'tabs' | 'search' | 'cards' | null>(null)
+  const making = panel === 'cards'
+  // A part picked off the page for a card, and the card being written from it.
+  const [selection, setSelection] = useState<CardSelection | null>(null)
+  const [cardDraft, setCardDraft] = useState<Draft | null>(null)
   const editing = panel === 'tabs'
   const setEditing = (open: boolean | ((was: boolean) => boolean)) =>
     setPanel((was) => {
@@ -170,6 +192,21 @@ export default function MagazineViewer({
     // The panel may only now be mounting; hand it the part once it is.
     window.setTimeout(() => orderPanel.current?.add(part), 0)
   }, [])
+  const [lineFeedback, setLineFeedback] = useState<{ error: boolean; text: string } | null>(null)
+  const [pickingLine, setPickingLine] = useState(false)
+  const pickLine = async (part: PickedPart) => {
+    if (!onPickLine || pickingLine) return
+    setPickingLine(true)
+    setLineFeedback(null)
+    try {
+      const note = await onPickLine(part)
+      setLineFeedback({ error: false, text: note || `${part.part_number ?? 'Item'} added to the line editor. Review price and tax.` })
+    } catch (error) {
+      setLineFeedback({ error: true, text: error instanceof Error ? error.message : 'Could not add that PDF item.' })
+    } finally {
+      setPickingLine(false)
+    }
+  }
 
   const [stage, setStage] = useState({ w: 0, h: 0 })
 
@@ -208,7 +245,7 @@ export default function MagazineViewer({
     let opened: Book | null = null
     const stop = new AbortController()
 
-    readReferenceCardDocument(cardId, doc.id, {
+    readCatalogFile(doc.id, {
       signal: stop.signal,
       expectedBytes: doc.size_bytes,
       onProgress: (p) => live && setDownload(p),
@@ -230,6 +267,18 @@ export default function MagazineViewer({
         const start = startAt.current ?? lastCatalogPage(doc.id)
         if (start && start <= b.pageCount) setPage(start)
         noteCatalogOpened(doc.id)
+
+        // The library's "last opened" and page count; and its cover, the first time.
+        if (doc.mine) {
+          noteCatalogOpenedOnServer(doc.id, b.pageCount)
+          if (doc.has_cover === false) {
+            b.render(1, 420)
+              .then((url) => fetch(url))
+              .then((r) => r.blob())
+              .then((blob) => sendImage(`/v1/catalogs/${doc.id}/cover`, 'cover', blob))
+              .catch(() => undefined)
+          }
+        }
 
         b.pageNumbers()
           .then((found) => live && setNumbers(found))
@@ -261,7 +310,9 @@ export default function MagazineViewer({
       stop.abort()
       opened?.destroy()
     }
-  }, [cardId, doc.id, doc.size_bytes])
+    // Opened once per file; whether it is the shop's own does not change while it is open.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [doc.id, doc.size_bytes])
 
   useEffect(() => {
     if (book) rememberCatalogPage(doc.id, page)
@@ -294,19 +345,19 @@ export default function MagazineViewer({
   )
 
   const layout = useMemo(() => {
-    const pad = 20
-    const sideTabs = shownTabs.length > 0 && stage.w >= 560
+    const pad = docked ? 12 : 20
+    const sideTabs = !docked && shownTabs.length > 0 && stage.w >= 560
     const tabRoom = sideTabs ? (shownTabs.length > MANY_TABS ? 132 : 40) : 0
-    const topStrip = shownTabs.length > 0 && !sideTabs ? 40 : 0
+    const topStrip = !docked && shownTabs.length > 0 && !sideTabs ? 40 : 0
 
     const availW = Math.max(0, stage.w - pad * 2 - tabRoom)
     const availH = Math.max(0, stage.h - pad * 2 - topStrip)
 
-    let pageH = availH
+    let pageH = docked ? availW / aspect : availH
     let pageW = pageH * aspect
 
     // Two pages when two pages fit at a readable size; one otherwise.
-    const spread = stage.w >= 720 && availW / 2 >= Math.min(pageW, 300)
+    const spread = !docked && stage.w >= 720 && availW / 2 >= Math.min(pageW, 300)
 
     const across = spread ? 2 : 1
     if (pageW * across > availW) {
@@ -319,7 +370,7 @@ export default function MagazineViewer({
     const renderH = Math.max(256, Math.min(3600, Math.round((pageH * zoom * dpr) / 128) * 128))
 
     return { spread, sideTabs, topStrip, pageW, pageH, renderH }
-  }, [stage, aspect, zoom, shownTabs.length])
+  }, [stage, aspect, zoom, shownTabs.length, docked])
 
   const { spread, pageW, pageH, renderH } = layout
   const lastSpread = count > 0 ? spreadOf(count, count) : 0
@@ -353,6 +404,17 @@ export default function MagazineViewer({
     },
     [count, turn],
   )
+
+  /*
+   * What the parts cart's search found, lit up the same way Find's hits
+   * are, with the best one open: `jump` turns to its page.
+   */
+  const showFound = useCallback((found: SearchHit[], active: number | null, jump: boolean) => {
+    setHits(found)
+    setActiveHit(active)
+    const hit = active !== null ? found[active] : undefined
+    if (jump && hit) goTo(hit.page)
+  }, [goTo])
 
   const canPrev = count > 0 && (spread ? spreadOf(page, count) > 0 : page > 1)
   const canNext = count > 0 && (spread ? spreadOf(page, count) < lastSpread : page < count)
@@ -453,11 +515,17 @@ export default function MagazineViewer({
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
+      // A docked book must not steal arrows or search from the estimate form.
+      if (docked && e.target instanceof Element && !e.target.closest('[data-tour="book-viewer"]')) return
+      // A card being written over the book has the keyboard.
+      if (cardDraft) return
       // The target can be the window or the document, which have no closest().
       const typing = e.target instanceof Element && e.target.closest('input, textarea, select')
 
       if (e.key === 'Escape') {
         e.preventDefault()
+        // What the cart's search lit up goes first; the next Escape closes as before.
+        if (orderPanel.current?.clearFind()) return
         if (panel) setPanel(null)
         else onClose()
         return
@@ -489,7 +557,7 @@ export default function MagazineViewer({
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [panel, onClose, step, goTo, count])
+  }, [panel, onClose, step, goTo, count, cardDraft, docked])
 
   // A swipe on a phone turns the page.
   const swipe = useRef<number | null>(null)
@@ -515,7 +583,7 @@ export default function MagazineViewer({
     setSaving(true)
     setSaveError(null)
     try {
-      const saved = await updateReferenceCardDocument(cardId, doc.id, { tabs: next })
+      const saved = await updateCatalog(doc.id, { tabs: next })
       setTabs(saved.tabs)
       onTabsSaved?.(saved)
       setEditing(false)
@@ -526,12 +594,37 @@ export default function MagazineViewer({
     }
   }
 
+  // ------------------------------------------------------------ cards
+
+  /** A box dragged on a page: the text inside it says what the part is. */
+  const pickBox = useCallback(async (p: number, box: Box) => {
+    const text = book ? await book.textIn(p, box).catch(() => [] as string[]) : []
+    setSelection({ page: p, box, partNumber: splitPartNumber(text).partNumber, text })
+  }, [book])
+
+  /** The picked part, as a card ready to check in the editor. */
+  const makeCard = (prefill: CardPrefill) => {
+    const draft = emptyDraft()
+    const number = prefill.partNumber
+    setCardDraft({
+      ...draft,
+      title: prefill.name || number,
+      // The number opens the card wherever it is written, as long as it is long enough to.
+      triggers: number.length >= 3 ? [number] : [],
+      partNumbers: number ? [number] : [],
+      sections: [{ key: nextKey(), heading: 'About this part', body: prefill.about, tab: '' }],
+      links: [{ document_id: doc.id, title: doc.title, page: prefill.page, page_label: prefill.pageLabel }],
+      picture: prefill.picture,
+    })
+  }
+
   // ------------------------------------------------------------ paint
 
   const pageLabel = count ? numbers.range(visible.left, visible.right) : ''
 
   const bookW = pageW * (spread ? 2 : 1) * zoom
   const bookH = pageH * zoom
+  const toggleFocusedPage = () => setZoom((current) => current === 1 ? 1.5 : 1)
 
   const slot = (p: number | null, side: 'left' | 'right' | 'only') =>
     book && p !== null ? (
@@ -543,8 +636,13 @@ export default function MagazineViewer({
         height={renderH}
         side={side}
         interactive={!turn}
+        zoomed={zoom > 1}
         marks={hits.flatMap((hit, i) => (hit.page === p ? [{ ...hit.box, active: i === activeHit }] : []))}
-        onPart={ordering ? (found) => pick({
+        picked={making && selection?.page === p ? selection.box : null}
+        onPickPart={making ? (found) => setSelection(selectionFromPart(p, found)) : undefined}
+        onPickBox={making ? (box) => void pickBox(p, box) : undefined}
+        partActionLabel={onPickLine ? 'line' : 'order'}
+        onPart={(onPickLine || ordering) && !making && !pickingLine ? (found) => (onPickLine ? (part: PickedPart) => { void pickLine(part) } : pick)({
           part_number: found.text,
           description: found.line,
           list_price_cents: found.price,
@@ -554,6 +652,7 @@ export default function MagazineViewer({
           source_page_label: numbers.label(p),
         }) : undefined}
         onTurn={() => void step(side === 'left' ? 'prev' : 'next')}
+        onFocus={docked && !making ? toggleFocusedPage : undefined}
         onLink={(link) => {
           if (link.page) goTo(link.page)
           else if (link.url) window.open(link.url, '_blank', 'noopener,noreferrer')
@@ -566,18 +665,21 @@ export default function MagazineViewer({
   return createPortal(
     <div
       role="dialog"
-      aria-modal="true"
+      aria-modal={docked ? undefined : 'true'}
       aria-label={doc.title}
+      data-tour="book-viewer"
       /*
        * React events bubble along the component tree, through the portal.
        * Opened from a card drawer, a click here would otherwise reach the
        * drawer's backdrop and close the card under the book.
        */
       onClick={(e) => e.stopPropagation()}
-      className="fixed inset-0 z-[60] flex flex-col bg-[#22262d] text-slate-100"
+      className={docked
+        ? 'fixed inset-y-0 right-0 z-[60] flex w-[min(64vw,1100px)] flex-col border-l border-white/10 bg-[#22262d] text-slate-100 shadow-2xl'
+        : 'fixed inset-0 z-[60] flex flex-col bg-[#22262d] text-slate-100'}
       style={{ backgroundImage: 'radial-gradient(ellipse at 50% 35%, #333944 0%, #22262d 60%, #1b1e24 100%)' }}
     >
-      <header className="flex shrink-0 items-center gap-3 border-b border-white/10 px-4 py-2.5">
+      <header data-tour="book-header" className="flex shrink-0 items-center gap-3 border-b border-white/10 px-4 py-2.5">
         <div className="min-w-0 flex-1">
           <h2 className="truncate text-sm font-semibold text-white">{doc.title}</h2>
           <p className="truncate text-xs text-slate-400">
@@ -595,12 +697,44 @@ export default function MagazineViewer({
         </button>
       </header>
 
+      {onPickLine && <div className="shrink-0 border-b border-white/10 bg-sky-950/70 px-4 py-2 text-xs text-sky-100">Select a highlighted PDF part or use Find to add it to the open job or estimate line editor. Review price and tax before sending.</div>}
+      {lineFeedback && <div role={lineFeedback.error ? 'alert' : 'status'} className={`shrink-0 border-b px-4 py-2 text-xs ${lineFeedback.error ? 'border-rose-700 bg-rose-950 text-rose-100' : 'border-emerald-700 bg-emerald-950 text-emerald-100'}`}>{lineFeedback.text}</div>}
+
+      {docked && book && (
+        <div className="flex shrink-0 flex-wrap items-center gap-2 border-b border-white/10 bg-slate-950/60 px-4 py-2.5">
+          <label htmlFor="catalog-section" className="text-xs font-semibold text-slate-300">Section</label>
+          <select
+            id="catalog-section"
+            aria-label="Catalog section"
+            value={activeTab}
+            onChange={(e) => {
+              const tab = shownTabs[Number(e.target.value)]
+              if (tab) goTo(tab.page)
+            }}
+            disabled={shownTabs.length === 0}
+            className="min-w-0 flex-1 rounded-md border border-white/20 bg-slate-800 px-3 py-2 text-sm text-white focus-visible:outline-2 focus-visible:outline-sky-400"
+          >
+            <option value={-1}>{shownTabs.length ? 'Before first section' : 'No sections available'}</option>
+            {shownTabs.map((tab, index) => (
+              <option key={`${tab.page}-${index}`} value={index}>{tab.label} · page {numbers.label(tab.page)}</option>
+            ))}
+          </select>
+          <button type="button" disabled={!canPrev || !!turn} onClick={() => void step('prev')} className="rounded-md border border-white/20 px-3 py-2 text-sm text-white hover:bg-white/10 disabled:opacity-40">← Previous</button>
+          <span className="min-w-16 text-center text-sm tabular-nums text-slate-300">{pageLabel}</span>
+          <button type="button" disabled={!canNext || !!turn} onClick={() => void step('next')} className="rounded-md border border-white/20 px-3 py-2 text-sm text-white hover:bg-white/10 disabled:opacity-40">Next →</button>
+          <button type="button" onClick={toggleFocusedPage} aria-pressed={zoom > 1} className="rounded-md border border-sky-400/40 px-3 py-2 text-sm text-sky-100 hover:bg-sky-900/40">{zoom > 1 ? 'Fit page' : 'Focus page'}</button>
+          <span className="w-full text-xs text-slate-400">Double-click the page to focus for easier reading and part selection. Click a highlighted part to add it.</span>
+        </div>
+      )}
+
       <div className="relative flex min-h-0 flex-1">
         <div
           ref={stageRef}
-          className={'relative min-w-0 flex-1 ' + (zoom > 1 ? 'overflow-auto' : 'overflow-hidden')}
+          data-tour="book-pages"
+          className={'relative min-w-0 flex-1 ' + (docked || zoom > 1 ? 'overflow-auto' : 'overflow-hidden')}
           onPointerDown={(e) => {
-            if (e.pointerType !== 'mouse') swipe.current = e.clientX
+            // Picking a part drags on the page; that is not a swipe.
+            if (e.pointerType !== 'mouse' && !making) swipe.current = e.clientX
           }}
           onPointerUp={(e) => {
             if (swipe.current === null || zoom > 1) return
@@ -619,7 +753,7 @@ export default function MagazineViewer({
 
           {book && stage.w > 0 && (
             <div
-              className="flex min-h-full min-w-full flex-col items-center justify-center p-5"
+              className={'flex min-h-full min-w-full flex-col items-center p-3 ' + (docked ? 'justify-start' : 'justify-center')}
               style={{ width: zoom > 1 ? bookW + 120 : undefined }}
             >
               {layout.topStrip > 0 && (
@@ -696,10 +830,12 @@ export default function MagazineViewer({
               setActiveHit(i)
               goTo(hit.page)
             }}
-            onOrder={canOrder ? (partNumber, hit) => pick({
+            actionLabel={onPickLine ? 'Line' : 'Order'}
+            onOrder={(onPickLine || canOrder) && !pickingLine ? (partNumber, hit) => (onPickLine ? (part: PickedPart) => { void pickLine(part) } : pick)({
               part_number: partNumber,
-              description: hit.text,
-              list_price_cents: priceAfter(hit.text, partNumber),
+              description: hit.part?.text === partNumber ? hit.part.line : hit.text,
+              list_price_cents: hit.part?.text === partNumber ? hit.part.price : priceAfter(hit.text, partNumber),
+              kind: hit.part?.text === partNumber ? hit.part.kind : undefined,
               source_document_id: doc.id,
               source_page: hit.page,
               source_page_label: numbers.label(hit.page),
@@ -726,9 +862,27 @@ export default function MagazineViewer({
           />
         )}
 
+        {making && book && (
+          <CardMaker
+            book={book}
+            catalogId={doc.id}
+            pages={[visible.left, visible.right].filter((p): p is number => p !== null)}
+            pageLabel={(n) => numbers.label(n)}
+            selection={selection}
+            onClear={() => setSelection(null)}
+            onMake={makeCard}
+            onGo={goTo}
+            onClose={() => {
+              setPanel(null)
+              setSelection(null)
+            }}
+          />
+        )}
+
         {ordering && book && (
           <OrderPanel
             ref={orderPanel}
+            book={book}
             documentId={doc.id}
             estimate={estimate}
             minimized={ordering === 'min'}
@@ -737,11 +891,12 @@ export default function MagazineViewer({
             onMinimize={(min) => setOrdering(min ? 'min' : 'open')}
             onClose={() => setOrdering(null)}
             onGoToPage={goTo}
+            onFound={showFound}
           />
         )}
       </div>
 
-      <footer className="flex shrink-0 flex-wrap items-center justify-center gap-x-4 gap-y-2 border-t border-white/10 px-4 py-2.5">
+      <footer data-tour="book-footer" className="flex shrink-0 flex-wrap items-center justify-center gap-x-4 gap-y-2 border-t border-white/10 px-4 py-2.5">
         <div className="flex items-center gap-1">
           <ToolButton label="Previous page" disabled={!canPrev || !!turn} onClick={() => void step('prev')}>
             <IconChevronLeft size={20} />
@@ -792,6 +947,7 @@ export default function MagazineViewer({
         {book && (
           <button
             type="button"
+            data-tour="book-find"
             onClick={() => setPanel((was) => (was === 'search' ? null : 'search'))}
             aria-pressed={panel === 'search'}
             title="Find in this book (Ctrl F)"
@@ -809,9 +965,10 @@ export default function MagazineViewer({
           </button>
         )}
 
-        {canOrder && book && (
+        {canOrder && book && !onPickLine && (
           <button
             type="button"
+            data-tour="book-order-button"
             onClick={() => setOrdering((was) => (was === 'open' ? 'min' : 'open'))}
             aria-pressed={ordering !== null}
             title="Order parts from this catalog"
@@ -825,9 +982,27 @@ export default function MagazineViewer({
           </button>
         )}
 
+        {canMakeCards && book && (
+          <button
+            type="button"
+            data-tour="book-cards-button"
+            onClick={() => setPanel((was) => (was === 'cards' ? null : 'cards'))}
+            aria-pressed={making}
+            title="Make reference cards from this catalog"
+            className={
+              'inline-flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-sm '
+              + (making ? 'bg-white text-slate-900' : 'text-slate-200 hover:bg-white/10')
+            }
+          >
+            <IconCards size={16} />
+            Cards
+          </button>
+        )}
+
         {canEdit && book && (
           <button
             type="button"
+            data-tour="book-tabs-button"
             onClick={() => setEditing((v) => !v)}
             aria-pressed={editing}
             className={
@@ -840,6 +1015,15 @@ export default function MagazineViewer({
           </button>
         )}
       </footer>
+
+      {cardDraft && (
+        <ReferenceCardEditor
+          draft={cardDraft}
+          layer="over-book"
+          onClose={() => setCardDraft(null)}
+          onSaved={() => setSelection(null)}
+        />
+      )}
     </div>,
     document.body,
   )
@@ -902,10 +1086,16 @@ function PageSlot({
   height,
   side,
   interactive,
+  zoomed = false,
   marks = [],
+  picked = null,
   onTurn,
+  onFocus,
   onLink,
   onPart,
+  partActionLabel = 'order',
+  onPickPart,
+  onPickBox,
 }: {
   book: Book
   page: number
@@ -915,16 +1105,39 @@ function PageSlot({
   height: number
   side: 'left' | 'right' | 'only'
   interactive: boolean
+  /** Zoomed in: the open search hit is scrolled to. */
+  zoomed?: boolean
   /** Search hits on this page, as fractions of it. */
   marks?: Array<{ left: number; top: number; width: number; height: number; active: boolean }>
   onTurn: () => void
+  /** Double-click an unmarked area to enlarge the page for reading and picking. */
+  onFocus?: () => void
   onLink: (link: PageLink) => void
   /** While an order is open: a part number on the page, clicked. */
   onPart?: (part: PartOnPage) => void
+  partActionLabel?: 'line' | 'order'
+  /** The area picked for a card, lit up. */
+  picked?: Box | null
+  /** While making cards: a part number pressed, or a box dragged around a part. */
+  onPickPart?: (part: PartOnPage) => void
+  onPickBox?: (box: Box) => void
 }) {
   const [links, setLinks] = useState<{ page: number; links: PageLink[] } | null>(null)
   const [parts, setParts] = useState<{ page: number; parts: PartOnPage[] } | null>(null)
-  const ordering = !!onPart
+  const picking = !!onPickBox
+  const partClick = onPickPart ?? onPart
+  const ordering = !!partClick
+  const surface = useRef<HTMLDivElement>(null)
+  // The box being dragged, in fractions of the page.
+  const [drag, setDrag] = useState<{ x: number; y: number; box: Box } | null>(null)
+  const at = (e: React.PointerEvent) => {
+    const r = surface.current?.getBoundingClientRect()
+    if (!r || r.width === 0 || r.height === 0) return null
+    return {
+      x: Math.min(1, Math.max(0, (e.clientX - r.left) / r.width)),
+      y: Math.min(1, Math.max(0, (e.clientY - r.top) / r.height)),
+    }
+  }
 
   useEffect(() => {
     if (!ordering) return
@@ -947,8 +1160,42 @@ function PageSlot({
 
   return (
     <div
-      className={'group relative h-full w-full overflow-hidden bg-white ' + (side === 'only' ? '' : 'cursor-pointer')}
-      onClick={side === 'only' || !interactive ? undefined : onTurn}
+      ref={surface}
+      className={'group relative h-full w-full overflow-hidden bg-white ' + (picking ? 'cursor-crosshair touch-none' : side === 'only' ? '' : 'cursor-pointer')}
+      onClick={side === 'only' || !interactive || picking ? undefined : onTurn}
+      onDoubleClick={onFocus ? (e) => {
+        if (e.target instanceof Element && e.target.closest('button')) return
+        e.stopPropagation()
+        onFocus()
+      } : undefined}
+      onPointerDown={picking ? (e) => {
+        // A part number's own button handles its press.
+        if (e.target instanceof Element && e.target.closest('button')) return
+        const p = at(e)
+        if (!p) return
+        e.currentTarget.setPointerCapture(e.pointerId)
+        setDrag({ x: p.x, y: p.y, box: { left: p.x, top: p.y, width: 0, height: 0 } })
+      } : undefined}
+      onPointerMove={picking && drag ? (e) => {
+        const p = at(e)
+        if (!p) return
+        setDrag({
+          ...drag,
+          box: {
+            left: Math.min(drag.x, p.x),
+            top: Math.min(drag.y, p.y),
+            width: Math.abs(p.x - drag.x),
+            height: Math.abs(p.y - drag.y),
+          },
+        })
+      } : undefined}
+      onPointerUp={picking && drag ? () => {
+        const box = drag.box
+        setDrag(null)
+        // A click is not a box.
+        if (box.width > 0.015 && box.height > 0.01) onPickBox?.(box)
+      } : undefined}
+      onPointerCancel={picking ? () => setDrag(null) : undefined}
     >
       <PageImage book={book} page={page} label={label} height={height} />
 
@@ -967,23 +1214,10 @@ function PageSlot({
       )}
 
       {marks.map((mark, i) => (
-        <div
-          key={`mark-${i}`}
-          aria-hidden
-          className={
-            'pointer-events-none absolute rounded-[2px] mix-blend-multiply '
-            + (mark.active ? 'bg-amber-300/80 ring-2 ring-amber-500' : 'bg-yellow-200/70')
-          }
-          style={{
-            left: `${mark.left * 100}%`,
-            top: `${mark.top * 100}%`,
-            width: `${mark.width * 100}%`,
-            height: `${mark.height * 100}%`,
-          }}
-        />
+        <FoundMark key={`mark-${i}`} box={mark} active={mark.active} scroll={zoomed} />
       ))}
 
-      {interactive &&
+      {interactive && !picking &&
         here.map((link, i) => (
           <button
             key={i}
@@ -1004,16 +1238,29 @@ function PageSlot({
           />
         ))}
 
-      {interactive && onPart && parts?.page === page &&
-        parts.parts.map((part, i) => (
+      {(drag || picked) && (
+        <div
+          aria-hidden
+          className="pointer-events-none absolute rounded-[2px] border-2 border-sky-500 bg-sky-400/15"
+          style={{
+            left: `${(drag?.box ?? picked!).left * 100}%`,
+            top: `${(drag?.box ?? picked!).top * 100}%`,
+            width: `${(drag?.box ?? picked!).width * 100}%`,
+            height: `${(drag?.box ?? picked!).height * 100}%`,
+          }}
+        />
+      )}
+
+      {interactive && partClick && parts?.page === page &&
+        parts.parts.filter((part) => !onPickPart || part.kind === 'part').map((part, i) => (
           <button
             key={`part-${i}`}
             type="button"
-            title={`Put ${part.text} on the order`}
-            aria-label={`Put ${part.text} on the order`}
+            title={onPickPart ? `Make a card for ${part.text}` : `Add ${part.text} to ${partActionLabel}`}
+            aria-label={onPickPart ? `Make a card for ${part.text}` : `Add ${part.text} to ${partActionLabel}`}
             onClick={(e) => {
               e.stopPropagation()
-              onPart(part)
+              partClick(part)
             }}
             className="absolute rounded-[2px] outline-amber-500 hover:bg-amber-300/40 hover:outline-2 focus-visible:bg-amber-300/40 focus-visible:outline-2"
             style={{
@@ -1109,6 +1356,7 @@ function SideTabs({
   return (
     <nav
       aria-label="Tabs"
+      data-tour="book-edge-tabs"
       className="absolute left-full top-0 flex flex-col overflow-y-auto [scrollbar-width:none]"
       style={{ gap, maxHeight: height }}
     >
@@ -1150,7 +1398,7 @@ function SideTabs({
 /** The same tabs across the top, when the screen is too narrow for an edge. */
 function TabStrip({ tabs, active, onPick }: { tabs: DocumentTab[]; active: number; onPick: (page: number) => void }) {
   return (
-    <nav aria-label="Tabs" className="mb-2 flex max-w-full gap-1.5 overflow-x-auto pb-1">
+    <nav aria-label="Tabs" data-tour="book-edge-tabs" className="mb-2 flex max-w-full gap-1.5 overflow-x-auto pb-1">
       {tabs.map((tab, i) => {
         const color = SWATCH[colorOf(tab, i)]
         return (

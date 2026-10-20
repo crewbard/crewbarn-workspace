@@ -57,7 +57,7 @@ export function WorkOrderCustomerAssetsPanel({ wo }: { wo: WorkOrder }) {
   ) : coveredAssets
 
   return (
-    <section className="rounded-lg border border-slate-200 bg-white shadow-sm">
+    <section data-tour="job-assets-panel" className="rounded-lg border border-slate-200 bg-white shadow-sm">
       <header className="flex flex-col gap-3 border-b border-slate-200 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h2 className="text-base font-semibold text-slate-950">{easy ? 'Equipment on this job' : 'Customer Assets'}</h2>

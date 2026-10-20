@@ -1,13 +1,15 @@
 import { useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { apiRequest } from '@/lib/api'
-import { PERM, usePermissions } from '@/hooks/usePermissions'
+import { usePermissions } from '@/hooks/usePermissions'
 import { PhotoMeasure } from './PhotoMeasure'
 
 type Photo = { key: string; message_id: string; index: number; url: string; created_at: string; body: string | null; annotation: { description: string; memory_id: string | null } | null }
 
 export function IntakePhotos({ draftId }: { draftId: string }) {
-  const canTeach = usePermissions().has(PERM.AI_TRAIN)
+  const permissions = usePermissions()
+  const canSuggest = permissions.has('ai.learn.suggest')
+  const canTeach = permissions.has('ai.train') || canSuggest
   // Default is the photos that came WITH this request. The whole
   // conversation is one click away for the rare time the right picture is
   // genuinely further back — but it is not the default, because a dealer who
@@ -21,7 +23,7 @@ export function IntakePhotos({ draftId }: { draftId: string }) {
     ),
     refetchInterval: 30_000,
   })
-  return <section className="rounded-xl border border-slate-200 bg-white p-4">
+  return <section data-tour="intake-photos" className="rounded-xl border border-slate-200 bg-white p-4">
     <div className="flex flex-wrap items-baseline justify-between gap-2">
       <h3 className="font-bold text-navy-900">Photos · Teach CBI</h3>
       <button type="button" onClick={() => setShowAll(v => !v)} className="text-sm font-semibold text-navy-700 underline">
@@ -69,7 +71,9 @@ function PhotoTrainingHistory({ draftId }: { draftId: string }) {
 }
 
 function PhotoCard({ photo, draftId }: { photo: Photo; draftId: string }) {
-  const canTeach = usePermissions().has(PERM.AI_TRAIN)
+  const permissions = usePermissions()
+  const canSuggest = permissions.has('ai.learn.suggest')
+  const canTeach = permissions.has('ai.train') || canSuggest
   const client = useQueryClient()
   const [open, setOpen] = useState(false)
   const [description, setDescription] = useState(photo.annotation?.description ?? '')
@@ -88,9 +92,9 @@ function PhotoCard({ photo, draftId }: { photo: Photo; draftId: string }) {
       {safeUrl && !imageFailed && <PhotoMeasure url={safeUrl} onUse={text => setDescription(current => [current, text].filter(Boolean).join('\n'))} />}
       {description.length > 1500 && <p role="alert" className="text-sm text-red-700">Identification exceeds 1,500 characters. Shorten it before saving; no measurements have been discarded.</p>}
       <label className="block text-sm font-semibold">What is in this photo?<textarea required maxLength={1500} value={description} onChange={event => setDescription(event.target.value)} className="mt-1 w-full rounded-lg border border-slate-300 p-2 font-normal" placeholder="Identify the item, visible markings, model and useful context." /></label>
-      <label className="flex items-start gap-2 text-sm"><input type="checkbox" checked={remember} onChange={event => setRemember(event.target.checked)} />Also save a reusable lesson for CBI</label>
+      {canSuggest && <label className="flex items-start gap-2 text-sm"><input type="checkbox" checked={remember} onChange={event => setRemember(event.target.checked)} />Also queue a reusable lesson for review</label>}
       {remember && <label className="block text-sm">What should CBI remember for future work?<textarea required maxLength={1500} value={lesson} onChange={event => setLesson(event.target.value)} className="mt-1 w-full rounded-lg border border-slate-300 p-2" placeholder="State when this applies and how to recognize it. Avoid customer-specific details." /></label>}
-      <p className="text-xs text-slate-500">Identification stays with this intake. A reusable lesson becomes confirmed shop knowledge; it does not retrain the vision model or authorize actions. Existing lessons are not removed by an identification-only edit.</p>
+      <p className="text-xs text-slate-500">Identification stays with this intake. A reusable lesson is queued for authorized review; it does not retrain the vision model or authorize actions. Existing lessons are not removed by an identification-only edit.</p>
       {save.isError && <p role="alert" className="text-sm text-red-700">Could not save. Your text is retained; please retry.</p>}
       <button disabled={save.isPending || description.length > 1500 || !description.trim() || (remember && !lesson.trim())} className="rounded-lg bg-amber-500 px-4 py-2 text-sm font-bold text-navy-900 disabled:opacity-50">{save.isPending ? 'Saving…' : remember ? 'Save identification and lesson' : 'Save identification'}</button>
     </form>}

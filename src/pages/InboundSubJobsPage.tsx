@@ -1,10 +1,11 @@
 import { useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link } from 'react-router-dom'
-import { apiRequest } from '@/lib/api'
+import { ApiError, apiRequest } from '@/lib/api'
 import { useTheme } from '@/hooks/useTheme'
 import { EasyPageHeading } from '@/components/easy/EasyPageHeading'
 import { EasyActionCards } from '@/components/easy/EasyActionCards'
+import { usePermissions } from '@/hooks/usePermissions'
 
 /**
  * InboundSubJobsPage — receiving-side inbox for cross-tenant subbing.
@@ -21,10 +22,22 @@ import { EasyActionCards } from '@/components/easy/EasyActionCards'
  *
  * Recently accepted/declined rows (last 30 days) stay visible at the
  * bottom so there's no separate history view.
+ *
+ * The first job from a company that added this one by email carries
+ * `consent`: accepting it connects the two companies and shares the
+ * documents it asked for, so Accept asks first (owner or admin only; the
+ * server says so otherwise). The job can start before the documents are in.
  */
+
+interface Consent {
+  hiring_company: string
+  documents: Array<{ kind: string; label: string }>
+}
 
 interface InboundRow {
   id: string
+  /** First job from a company that asked by email: what accepting shares. */
+  consent?: Consent | null
   work_order_number: number | null
   title: string
   description: string | null
@@ -71,20 +84,33 @@ export function InboundSubJobsPage() {
     refetchInterval: 60_000,
   })
 
+  // The companies this one works for (owner/admin; otherwise not shown).
+  const workFor = useQuery({
+    queryKey: ['sub-connections', 'as-sub'],
+    queryFn: () => apiRequest<{ data: Array<{ id: string }> }>('/v1/sub-connections?as=sub'),
+    retry: false,
+  })
+
   const pending = data?.data.rows.filter((r) => r.mirror_status === 'pending_accept') ?? []
   const recent = data?.data.rows.filter((r) => r.mirror_status !== 'pending_accept') ?? []
 
   return (
     <div className={easy ? 'w-full min-w-0 px-3 py-4 sm:px-6 sm:py-6' : 'max-w-5xl mx-auto px-6 py-6'}>
-      <div className="mb-6">
+      <div className="mb-6" data-tour="inbound-header">
         <Link to="/jobs" className="inline-flex items-center text-sm font-medium text-amber-700 hover:text-amber-800 hover:underline mb-3">
           ← Back to Jobs
         </Link>
         {easy ? <EasyPageHeading title="Incoming partner jobs" description="Review the job details, then accept it into your dispatch flow or decline with a reason." /> : <h1 className="text-2xl font-semibold text-slate-900">Inbound sub jobs</h1>}
         <p className="text-sm text-slate-500 mt-1">
-          Work routed to you by partner tenants. Accept to move into your dispatch flow, or
-          decline with a reason so they can reassign.
+          Jobs other CrewBarn companies sent you. Accept to move them into your dispatch flow, or
+          decline with a reason so they can give the job to someone else.
         </p>
+        {(workFor.data?.data.length ?? 0) > 0 && (
+          <p className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-sm">
+            <Link to="/companies-i-work-for" className="font-medium text-amber-700 hover:underline">Companies I work for</Link>
+            <Link to="/sub-documents" className="font-medium text-amber-700 hover:underline">Your documents</Link>
+          </p>
+        )}
       </div>
 
       {easy && <EasyActionCards label="Choose a job queue" actions={[
@@ -115,7 +141,7 @@ export function InboundSubJobsPage() {
 
 function PendingSection({ rows }: { rows: InboundRow[] }) {
   return (
-    <section>
+    <section data-tour="inbound-pending">
       <h2 className="text-base font-semibold text-slate-900 mb-3">
         Pending acceptance
         {rows.length > 0 && (
@@ -126,7 +152,7 @@ function PendingSection({ rows }: { rows: InboundRow[] }) {
       </h2>
       {rows.length === 0 ? (
         <div className="bg-white border border-slate-200 rounded-lg p-6 text-sm text-slate-500 text-center">
-          Nothing waiting. New cross-tenant sub jobs will show up here.
+          Nothing waiting. New jobs from the companies you work for will show up here.
         </div>
       ) : (
         <div className="space-y-3">
@@ -141,27 +167,51 @@ function PendingSection({ rows }: { rows: InboundRow[] }) {
 
 function PendingCard({ row }: { row: InboundRow }) {
   const qc = useQueryClient()
+  const { has } = usePermissions()
+  const canEdit = has('jobs.edit')
   const [declining, setDeclining] = useState(false)
   const [reason, setReason] = useState('')
   const [error, setError] = useState<string | null>(null)
+  // Asking before the first job from a new company shares documents.
+  const [consent, setConsent] = useState<Consent | null>(null)
 
   const acceptMut = useMutation({
-    mutationFn: () =>
+    mutationFn: (shareDocuments: boolean) =>
       apiRequest(`/v1/inbound-sub-jobs/${row.id}/accept`, {
         method: 'PATCH',
+        body: shareDocuments ? { share_documents: true } : undefined,
       }),
-    onSuccess: () => {
+    onSuccess: (_data, shareDocuments) => {
+      setConsent(null)
       qc.invalidateQueries({ queryKey: inboxKey })
       qc.invalidateQueries({ queryKey: ['topbar-inbound-sub-jobs-pending'] })
+      if (shareDocuments) {
+        qc.invalidateQueries({ queryKey: ['sub-documents'] })
+        qc.invalidateQueries({ queryKey: ['sub-connections', 'as-sub'] })
+      }
     },
-    onError: (e: Error) => setError(e.message),
+    onError: (e: Error) => {
+      // Asked by email since this list loaded: ask now.
+      const asked = e instanceof ApiError && e.code === 'consent_required' ? (e.details as { consent?: Consent } | undefined)?.consent : undefined
+      if (asked) {
+        setConsent(asked)
+        return
+      }
+      setConsent(null)
+      setError(e.message)
+    },
   })
+  const accept = () => {
+    setError(null)
+    if (row.consent) setConsent(row.consent)
+    else acceptMut.mutate(false)
+  }
 
   const declineMut = useMutation({
     mutationFn: () =>
       apiRequest(`/v1/inbound-sub-jobs/${row.id}/decline`, {
         method: 'PATCH',
-        body: JSON.stringify({ reason: reason.trim() }),
+        body: { reason: reason.trim() },
       }),
     onSuccess: () => {
       setDeclining(false)
@@ -262,7 +312,7 @@ function PendingCard({ row }: { row: InboundRow }) {
           >
             View details →
           </Link>
-          <div className="flex items-center gap-2">
+          {canEdit && <div className="flex items-center gap-2" data-tour="inbound-actions">
             <button
               type="button"
               onClick={() => setDeclining(true)}
@@ -273,15 +323,74 @@ function PendingCard({ row }: { row: InboundRow }) {
             </button>
             <button
               type="button"
-              onClick={() => acceptMut.mutate()}
+              onClick={accept}
               disabled={acceptMut.isPending}
               className="text-xs font-semibold bg-emerald-600 text-white rounded px-3 py-1.5 hover:bg-emerald-700 disabled:opacity-50"
             >
               {acceptMut.isPending ? 'Accepting…' : 'Accept'}
             </button>
-          </div>
+          </div>}
         </div>
       )}
+
+      {consent && (
+        <ConsentDialog
+          consent={consent}
+          pending={acceptMut.isPending}
+          onAccept={() => acceptMut.mutate(true)}
+          onCancel={() => setConsent(null)}
+        />
+      )}
+    </div>
+  )
+}
+
+/**
+ * The first job from a company new to you: accepting it connects you and
+ * shares the documents it asked for. The work can start now; the documents
+ * can follow.
+ */
+function ConsentDialog({ consent, pending, onAccept, onCancel }: { consent: Consent; pending: boolean; onAccept: () => void; onCancel: () => void }) {
+  const holder = consent.documents.some((d) => d.kind === 'insurance_holder')
+
+  return (
+    <div className="fixed inset-0 z-50 flex overflow-y-auto bg-black/30 p-4" role="dialog" aria-modal="true" aria-labelledby={`consent-title-${consent.hiring_company}`}>
+      <div className="m-auto w-full max-w-md rounded-xl bg-white p-6 shadow-xl">
+        <h2 id={`consent-title-${consent.hiring_company}`} className="text-lg font-semibold text-navy-900">
+          First job from {consent.hiring_company}
+        </h2>
+        <p className="mt-2 text-sm text-slate-700">
+          Accepting connects your company with {consent.hiring_company}
+          {consent.documents.length > 0 ? ' and lets them see these company documents:' : '.'}
+        </p>
+        {consent.documents.length > 0 && (
+          <ul className="mt-3 space-y-1.5">
+            {consent.documents.map((d) => (
+              <li key={d.kind} className="flex items-start gap-2 text-sm text-slate-800">
+                <span aria-hidden="true" className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-amber-500" />
+                {d.label}
+              </li>
+            ))}
+          </ul>
+        )}
+        {holder && (
+          <p className="mt-3 rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900">
+            They want to be named on your insurance. Ask your insurance company for a certificate with {consent.hiring_company} as certificate
+            holder, then upload it under Your documents.
+          </p>
+        )}
+        <p className="mt-3 text-xs text-slate-500">
+          You can start the job now. Upload the documents when you can; they're encrypted and only the companies that asked can open them.
+        </p>
+        <div className="mt-5 flex justify-end gap-2">
+          <button type="button" onClick={onCancel} disabled={pending} className="rounded-md px-3 py-2 text-sm text-slate-600 hover:text-navy-900">
+            Not now
+          </button>
+          <button type="button" onClick={onAccept} disabled={pending} className="rounded-md bg-emerald-600 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-700 disabled:opacity-50">
+            {pending ? 'Accepting…' : 'Accept and share'}
+          </button>
+        </div>
+      </div>
     </div>
   )
 }
@@ -290,7 +399,7 @@ function RecentSection({ rows }: { rows: InboundRow[] }) {
   if (rows.length === 0) return null
 
   return (
-    <section>
+    <section data-tour="inbound-recent">
       <h2 className="text-base font-semibold text-slate-900 mb-3">
         Recently actioned
         <span className="ml-2 text-xs font-normal text-slate-500">(last 30 days)</span>

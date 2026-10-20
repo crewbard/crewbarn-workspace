@@ -27,6 +27,8 @@ interface Invitation {
     title: string
     description: string | null
     priority: string
+    request_kind?: 'estimate' | 'service' | 'service_plan'
+    plan_rhythm?: { interval_count?: number; interval_unit?: string; time_window?: string | null; blackout_months?: number[] } | null
     their_work_order_number: string | null
     their_po_number: string | null
     deadline: string | null
@@ -43,6 +45,8 @@ interface Invitation {
     }
   } | null
 }
+
+const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
 
 function dollars(c: number | null): string {
   if (c === null) return '—'
@@ -72,7 +76,7 @@ export function IncomingEstimateRequestsPanel() {
   if (q.isLoading || active.length === 0) return null
 
   return (
-    <section className="bg-blue-50 border border-blue-200 rounded-xl p-4 mb-4">
+    <section data-tour="dash-incoming-marketplace" className="bg-blue-50 border border-blue-200 rounded-xl p-4 mb-4">
       <div className="flex items-center justify-between mb-3">
         <h3 className="text-sm font-semibold text-blue-900 uppercase tracking-wider">
           Estimate requests · {active.length}
@@ -95,6 +99,14 @@ function InvitationRow({ inv }: { inv: Invitation }) {
   const [notes, setNotes] = useState('')
   const [validity, setValidity] = useState('30')
   const [reason, setReason] = useState('')
+  // A service plan answer: what the price is per, visits, months, cover, terms.
+  const isPlan = inv.request?.request_kind === 'service_plan'
+  const [per, setPer] = useState<'month' | 'quarter' | 'year' | 'visit'>('month')
+  const [visits, setVisits] = useState('')
+  const [months, setMonths] = useState<number[]>([])
+  const [coverage, setCoverage] = useState('')
+  const [terms, setTerms] = useState('')
+  const [termMonths, setTermMonths] = useState('12')
 
   const submit = useMutation({
     mutationFn: () =>
@@ -104,6 +116,16 @@ function InvitationRow({ inv }: { inv: Invitation }) {
           quote_cents: Math.round(Number(amount) * 100),
           quote_notes: notes.trim() || null,
           quote_validity_days: validity ? Number(validity) : null,
+          ...(isPlan
+            ? {
+                plan_price_per: per,
+                plan_visits_per_year: visits ? Number(visits) : null,
+                plan_visit_months: months,
+                plan_coverage: coverage.trim() || null,
+                plan_terms: terms.trim() || null,
+                plan_term_months: termMonths ? Number(termMonths) : null,
+              }
+            : {}),
         },
       }),
     onSuccess: () => {
@@ -133,7 +155,7 @@ function InvitationRow({ inv }: { inv: Invitation }) {
   const r = inv.request
 
   return (
-    <div className="bg-white border border-blue-100 rounded-lg p-4">
+    <div data-tour="dispatch-market-request" data-kind={isPlan ? 'plan' : 'one-off'} data-status={inv.status} className="bg-white border border-blue-100 rounded-lg p-4">
       <div className="flex items-start justify-between gap-3 mb-2">
         <div className="flex-1 min-w-0">
           <h4 className="text-sm font-semibold text-navy-900">{r?.title ?? 'Estimate request'}</h4>
@@ -162,6 +184,14 @@ function InvitationRow({ inv }: { inv: Invitation }) {
                   <strong>PO#</strong> {r.their_po_number}
                 </span>
               )}
+            </div>
+          )}
+          {isPlan && r?.plan_rhythm && (
+            <div data-tour="dispatch-market-plan" className="mt-1 text-xs font-medium text-teal-800">
+              Service plan · every {r.plan_rhythm.interval_count ?? 1} {r.plan_rhythm.interval_unit ?? 'month'}
+              {(r.plan_rhythm.interval_count ?? 1) > 1 ? 's' : ''}
+              {r.plan_rhythm.time_window ? ` · ${r.plan_rhythm.time_window}s` : ''}
+              {r.plan_rhythm.blackout_months?.length ? ` · not ${r.plan_rhythm.blackout_months.map((m) => MONTHS[m - 1]).join(', ')}` : ''}
             </div>
           )}
           {r?.description && (
@@ -199,7 +229,12 @@ function InvitationRow({ inv }: { inv: Invitation }) {
               Customer account
             </Link>
           )}
-          {!inv.estimate_id && !inv.work_order_id && (
+          {isPlan && (
+            <Link to="/maintenance-contracts?tab=requests" className="px-3 py-1.5 rounded-md bg-emerald-600 hover:bg-emerald-700 text-white font-semibold">
+              Open Plan requests → write up the agreement
+            </Link>
+          )}
+          {!isPlan && !inv.estimate_id && !inv.work_order_id && (
             <span className="text-slate-500">Awarded before this was wired up: open the customer and add the estimate by hand.</span>
           )}
         </div>
@@ -212,7 +247,7 @@ function InvitationRow({ inv }: { inv: Invitation }) {
       )}
 
       {mode === 'idle' && inv.status !== 'quoted' && inv.status !== 'awarded' && (
-        <div className="flex flex-wrap gap-2 mt-2">
+        <div data-tour="dispatch-market-actions" className="flex flex-wrap gap-2 mt-2">
           <button
             type="button"
             onClick={() => { setAmount('0'); setNotes((n) => n || 'We need to see it first: free on-site estimate, no obligation.'); setMode('quote') }}
@@ -275,6 +310,67 @@ function InvitationRow({ inv }: { inv: Invitation }) {
             />
             <span className="text-xs text-slate-500">days valid</span>
           </div>
+          {isPlan && (
+            <div data-tour="dispatch-market-plan-fields" className="space-y-2 rounded-md border border-teal-100 bg-teal-50/50 p-2">
+              <div className="flex flex-wrap items-center gap-2 text-xs text-slate-700">
+                <span>The price is per</span>
+                <select value={per} onChange={(e) => setPer(e.target.value as typeof per)} className="rounded border border-slate-300 px-2 py-1 text-xs">
+                  <option value="month">month</option>
+                  <option value="quarter">quarter</option>
+                  <option value="year">year</option>
+                  <option value="visit">visit</option>
+                </select>
+                <input
+                  type="number"
+                  min={1}
+                  max={365}
+                  value={visits}
+                  onChange={(e) => setVisits(e.target.value)}
+                  placeholder="Visits"
+                  className="w-20 rounded border border-slate-300 px-2 py-1 text-xs"
+                />
+                <span>visits a year, for</span>
+                <input
+                  type="number"
+                  min={1}
+                  max={120}
+                  value={termMonths}
+                  onChange={(e) => setTermMonths(e.target.value)}
+                  className="w-16 rounded border border-slate-300 px-2 py-1 text-xs"
+                />
+                <span>months</span>
+              </div>
+              <div className="flex flex-wrap gap-1" aria-label="Months the visits fall in">
+                {MONTHS.map((m, i) => {
+                  const on = months.includes(i + 1)
+                  return (
+                    <button
+                      key={m}
+                      type="button"
+                      onClick={() => setMonths((cur) => (on ? cur.filter((x) => x !== i + 1) : [...cur, i + 1].sort((a, b) => a - b)))}
+                      className={`rounded px-1.5 py-0.5 text-[11px] font-semibold ${on ? 'bg-teal-600 text-white' : 'border border-slate-300 bg-white text-slate-600'}`}
+                    >
+                      {m}
+                    </button>
+                  )
+                })}
+              </div>
+              <textarea
+                value={coverage}
+                onChange={(e) => setCoverage(e.target.value)}
+                rows={2}
+                placeholder="What is covered: the equipment, the checks, reports…"
+                className="w-full text-xs rounded border border-slate-300 px-2 py-1 focus:outline-none focus:ring-2 focus:ring-amber-500"
+              />
+              <textarea
+                value={terms}
+                onChange={(e) => setTerms(e.target.value)}
+                rows={2}
+                placeholder="Terms: notice to cancel, renewal, parts and repairs…"
+                className="w-full text-xs rounded border border-slate-300 px-2 py-1 focus:outline-none focus:ring-2 focus:ring-amber-500"
+              />
+            </div>
+          )}
           <textarea
             value={notes}
             onChange={(e) => setNotes(e.target.value)}

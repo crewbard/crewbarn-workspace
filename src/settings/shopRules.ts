@@ -1,3 +1,5 @@
+import { createElement } from 'react'
+import { Link } from 'react-router-dom'
 import { apiRequest } from '@/lib/api'
 import type { SettingDefinition } from '@/settings/types'
 
@@ -61,6 +63,14 @@ export const jobReminders: SettingDefinition<boolean, null> = {
       : ['No appointment reminders are sent, whatever rules exist.'],
 
   scopeNote: 'Turning this off leaves your reminder rules saved — it only stops them firing.',
+
+  // The rules themselves (who, when, what words) are on the timeline.
+  aside: () =>
+    createElement(
+      Link,
+      { to: '/tool-shed/automations/reminders', className: 'text-sm font-semibold text-amber-700 hover:underline' },
+      'Change who gets a reminder, and when, on the timeline →',
+    ),
 
   summary: (value) => (value ? 'On' : 'Off'),
   attention: (value) => (value ? null : 'Appointment reminders are switched off'),
@@ -192,4 +202,42 @@ export const autoCheckIn: SettingDefinition<boolean, null> = {
   scopeNote: 'Only starts visits. It never ends one, and never clocks anybody out.',
 
   summary: (value) => (value ? 'Automatic' : 'By hand'),
+}
+
+// ── flashing Schedule when a tech may be late ────────────────────────────────
+
+export const lateTechFlash: SettingDefinition<boolean, null> = {
+  key: 'workflow.late-techs',
+  route: '/tool-shed/preferences/late-techs',
+  section: 'workflow',
+
+  title: 'Flashing Schedule when a tech may be late',
+  blurb:
+    'When a tech isn’t at a job by its start time, looks too far away to make it, or said on a call they’d be late, the Schedule button flashes red and blue on every office screen until somebody says they’ve seen it.',
+  keywords: ['late', 'running late', 'eta', 'flash', 'strobe', 'alert', 'schedule', 'calendar', 'dispatch'],
+  permission: 'settings_preferences.edit',
+
+  control: {
+    kind: 'toggle',
+    on: 'Schedule flashes, and a toast pops up if nobody answers.',
+    off: 'Nothing flashes. Late arrivals still show on the schedule cards.',
+  },
+
+  ...fromPreferences<boolean>('schedule_late_flash_enabled', true),
+
+  consequences: (value) =>
+    value
+      ? [
+          'The tech hears first: a red pop-up in the phone app with a Call customer button, and an automated call. Dispatch is told a few minutes later (Shop Rules → GPS check-in).',
+          'If the tech calls the customer first, Schedule doesn’t flash for it.',
+          'Schedule flashes for the office, never on a tech’s own screen.',
+          'Pressing Got it on the Schedule page stops it for everybody.',
+          'If nobody does within a few minutes, a toast pops up on every office screen. How many minutes is on Shop Rules under GPS check-in.',
+          'It stops on its own when the tech checks in, the job moves, or they’re back on time.',
+        ]
+      : ['Nothing flashes and no toast appears. Anything flashing now stops within a minute.'],
+
+  scopeNote: 'Nothing is sent to the customer. Only the tech and the office hear about it.',
+
+  summary: (value) => (value ? 'Flashes' : 'Off'),
 }

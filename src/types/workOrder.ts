@@ -72,6 +72,7 @@ export interface WorkOrderServiceLocation {
 
 export interface WorkOrderLeadTech {
   id: string
+  active?: boolean
   first_name: string | null
   last_name: string | null
   full_name: string
@@ -108,6 +109,11 @@ export interface WorkOrderSchedule {
   end_local?: string | null
   tz_abbrev?: string | null
   estimated_duration_minutes: number | null
+  planned_sessions?: Array<{
+    id: string
+    scheduled_start_at: string
+    scheduled_end_at: string
+  }>
 }
 
 export interface WorkOrderMoney {
@@ -181,6 +187,11 @@ export interface WorkOrder {
   their_work_order_number: string | null
   their_po_number: string | null
 
+  /** This job's own on-site contact (a property's resident who asked, say). Null on most jobs. */
+  site_contact?: { name: string | null; phone: string | null; email: string | null } | null
+  /** The unit or area inside the address ("Building A, 4B"). */
+  site_unit?: string | null
+
   // Inspection placeholder + repair-job chain
   parent_work_order_id: string | null
   inspection_checklist_id: string | null
@@ -203,6 +214,16 @@ export interface WorkOrder {
   requires_collection?: boolean
   /** Dispatch has unlocked the COD gate for this job. */
   collection_override?: boolean
+  /** Off: nothing automatic goes out for this job. Imported jobs start off. */
+  automation_enabled?: boolean
+
+  /** A lead (status Lead): somebody to call by lead_call_by, not a visit. */
+  is_lead?: boolean
+  lead_call_by?: string | null
+  /** The tech called (from the app, or pressing 1 on CrewBarn's call). */
+  lead_called_at?: string | null
+  /** CrewBarn called the tech because the time passed with no call. */
+  lead_call_alerted_at?: string | null
 
   // Field-service workflow — snapshotted from customer at WO creation
   field_policy: {
@@ -225,13 +246,27 @@ export interface WorkOrder {
   template_original_filename: string | null
   template_uploaded_at: string | null
   filled_wo_pdf_url: string | null
+  /** What was written into the customer's form the last time it was filled. */
+  filled_wo_pdf_report?: FilledFormReport | null
   ai_field_map: AiFieldMap | null
   ai_field_map_at: string | null
+  /** source key => label, for picking what goes in a blank. Null without a form. */
+  form_field_sources?: Record<string, string> | null
+  /** What each blank on the map is filled with now, in the map's order. */
+  form_field_resolved?: string[] | null
 
   // Lifecycle timestamps
   first_status_change_at: string | null
   on_site_at: string | null
   completed_at: string | null
+  /** Completed without its required proof by someone allowed to. */
+  completion_override?: {
+    reason: string
+    by_account_id: string | null
+    by_name: string | null
+    at: string
+    missing: string[]
+  } | null
   dashboard_cleared_at: string | null
 
   // Present only on the list endpoint (withCount('invoices')) — drives the
@@ -311,6 +346,19 @@ export interface AiFieldMapField {
   y_pt: number
   w_pt: number
   h_pt: number
+  /** What the office chose to fill this blank with; "blank" leaves it empty. */
+  source?: string
+}
+
+export interface FilledFormReport {
+  at: string
+  preview: boolean
+  /** filled: blanks written · attached: form included as is · not_readable: couldn't open it · none: no form */
+  form: 'filled' | 'attached' | 'not_readable' | 'none'
+  note: string
+  written: number
+  blanks: number
+  fields: Array<{ label: string; page: number; source: string | null; written: boolean; reason?: string }>
 }
 
 export interface AiFieldMap {
@@ -320,6 +368,7 @@ export interface AiFieldMap {
   raw_excerpt?: string
   page_size?: { w_pt: number; h_pt: number }
   fields?: AiFieldMapField[]
+  edited_at?: string
 }
 
 // ---------- Field workflow sub-models ----------
@@ -400,7 +449,13 @@ export interface WorkOrderNteExtension {
  * is auto-assigned via TenantSetting::nextWorkOrderNumber().
  */
 export interface WorkOrderInput {
+  /** A lead: when the tech must have called the customer by (ISO). */
+  lead_call_by?: string | null
+  /** The job's tasks, set by the office on the create form. */
+  job_tasks?: import('@/lib/jobTasks').JobTaskDraft[]
   custom_values?: import('@/components/CustomFieldsSection').CustomValues
+  /** Needs the jobs.automation permission to change. */
+  automation_enabled?: boolean
   ai_intake_draft_id?: string
   job_type_id: string
   status_id: string
@@ -424,6 +479,12 @@ export interface WorkOrderInput {
    *  these over date+time when present. */
   scheduled_start_at?: string | null
   scheduled_end_at?: string | null
+  /** Explicit, separate planned work windows. Omitted keeps the legacy span. */
+  planned_sessions?: Array<{
+    id?: string
+    scheduled_start_at: string
+    scheduled_end_at: string
+  }>
   estimated_duration_minutes?: number | null
 
   priority?: WorkOrderPriority

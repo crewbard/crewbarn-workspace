@@ -79,6 +79,10 @@ export const settingsLocation: SettingDefinition<Where, WorkspaceData> = {
           'Nothing is hidden from anybody: the pages still open if someone has the link, and their role still decides what they can change.',
         ],
 
+  // The workspace menu reads this through useSettingsInWorkspace, under its
+  // own cache key. Refresh it so the Tool Shed changes without a reload.
+  invalidates: [['tenant-preferences', 'settings-in-workspace']],
+
   scopeNote:
     'This only changes what is listed in a menu. No setting is switched off, no page is deleted, and nobody loses a permission.',
 

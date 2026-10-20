@@ -24,8 +24,9 @@ import {
  * help question about the current page, so the AI answers "what is this
  * screen / how do I…" with steps + links.
  *
- * A small × hides it for this user; re-enable from Tool Shed → Audit
- * Log's help, or anywhere setAiHelpEnabled(true) is called.
+ * A small × hides it in this browser; turn it back on with the "Show the
+ * floating CBI button on every page" checkbox in the Help panel (or
+ * anywhere setAiHelpEnabled(true) is called).
  */
 export function AiHelpBubble() {
   const { account } = useAuth()

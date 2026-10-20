@@ -1,5 +1,7 @@
 import { useMemo } from 'react'
-import { useParams, useSearchParams } from 'react-router-dom'
+import { Navigate, useParams, useSearchParams } from 'react-router-dom'
+import { useQuery } from '@tanstack/react-query'
+import { apiRequest } from '@/lib/api'
 import { QRCodeCanvas } from 'qrcode.react'
 import { usePurchaseOrder } from '@/hooks/usePurchaseOrders'
 import { useInventoryUnits } from '@/hooks/useInventoryUnits'
@@ -12,9 +14,10 @@ import {
 } from '@/lib/thermalLabels'
 import { printLabelPdf, type PdfLabel } from '@/lib/pdfLabels'
 import { LabelStudio } from '@/components/labels/LabelStudio'
+import { pickSelected } from '@/lib/labelSelection'
 import type { LabelFaceData } from '@/components/labels/LabelFace'
 import { downloadLabelPng } from '@/lib/pngLabels'
-import { printLabelsViaBluetooth } from '@/lib/escposBluetooth'
+import { printLabelsViaBluetooth } from '@/lib/bluetoothPrint'
 
 /**
  * Print-friendly QR sticker sheet for a single PO line.
@@ -61,8 +64,36 @@ export function PurchaseOrderLabelsPage() {
     return poQuery.data.items.find((it) => it.id === itemId) ?? null
   }, [poQuery.data, itemId])
 
-  if (poQuery.isLoading) {
+  // With unit tracking on, every unit this line brought in has its own QR
+  // (CBSTK fingerprint). Print those, on the catalog item's label sheet, the
+  // same way as after receiving into a bin. The sheet below (serial or SKU
+  // QR) stays for shops without unit tracking.
+  const catalogId = lineItem?.catalog_item_id ?? null
+  const stockUnits = useQuery({
+    queryKey: ['stock-units-for-labels', 'po-line-count', catalogId, itemId],
+    queryFn: () => apiRequest<{ data: unknown[] }>(
+      `/v1/inventory-stock-units?catalog_item_id=${encodeURIComponent(catalogId ?? '')}&purchase_order_item_id=${encodeURIComponent(itemId ?? '')}&per_page=1`,
+    ),
+    enabled: !!catalogId && !!itemId,
+  })
+  if (catalogId && itemId && (stockUnits.data?.data.length ?? 0) > 0) {
+    const np = new URLSearchParams(search)
+    np.delete('item_id')
+    np.set('per_unit', '1')
+    np.set('po_item_id', itemId)
+    return <Navigate replace to={`/catalog-items/${catalogId}/labels?${np.toString()}`} />
+  }
+
+  if (poQuery.isLoading || (catalogId && stockUnits.isLoading)) {
     return <Centered>Loading purchase order…</Centered>
+  }
+  if (!itemId) {
+    return (
+      <Centered>
+        Pick a line first: open the purchase order and press 🏷 Labels on a received line.{' '}
+        <a href={`/purchase-orders/${id}`} className="text-amber-700 underline">Open the purchase order</a>
+      </Centered>
+    )
   }
   if (!poQuery.data || !lineItem) {
     return <Centered>PO line not found.</Centered>
@@ -150,18 +181,18 @@ export function PurchaseOrderLabelsPage() {
         onCopies={(n) => setParam('copies', String(n))}
         gap={gap}
         onGap={(g) => setParam('gap', g === 0 ? null : String(g))}
-        onPrint={async () => {
-          await printLabelPdf({ labels: buildPoLabels(), thermalSize: thermal, copies, multiUp, gap })
+        onPrint={async (selected) => {
+          await printLabelPdf({ labels: pickSelected(buildPoLabels(), selected), thermalSize: thermal, copies, multiUp, gap })
         }}
-        onBluetooth={async () => {
+        onBluetooth={async (selected) => {
           try {
-            await printLabelsViaBluetooth({ labels: buildPoLabels(), thermalSize: thermal, copies })
+            await printLabelsViaBluetooth({ labels: pickSelected(buildPoLabels(), selected), thermalSize: thermal, copies })
           } catch (err) {
             alert(err instanceof Error ? err.message : String(err))
           }
         }}
-        onDownloadImage={async () => {
-          const first = buildPoLabels()[0]
+        onDownloadImage={async (selected) => {
+          const first = pickSelected(buildPoLabels(), selected)[0]
           if (first) await downloadLabelPng({ label: first, thermalSize: thermal, filename: `${itemName}.png` })
         }}
       />

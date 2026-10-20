@@ -12,10 +12,17 @@ import {
 } from '@/lib/thermalLabels'
 import { printLabelPdf, type PdfLabel } from '@/lib/pdfLabels'
 import { LabelStudio } from '@/components/labels/LabelStudio'
+import { pickSelected } from '@/lib/labelSelection'
 import type { LabelFaceData } from '@/components/labels/LabelFace'
 import { downloadLabelPng } from '@/lib/pngLabels'
-import { printLabelsViaBluetooth } from '@/lib/escposBluetooth'
+import { printLabelsViaBluetooth } from '@/lib/bluetoothPrint'
 import type { Asset } from '@/types/asset'
+import { assetScanUrl } from '@/components/assets/scanUrl'
+
+/** Full public scan URL, so a phone camera opens the scan page (same as the group placard). */
+function assetQrValue(asset: Asset): string {
+  return assetScanUrl(asset.tenant_id, asset.asset_code || asset.id)
+}
 
 /**
  * Batch print labels for multiple assets in one job.
@@ -77,7 +84,7 @@ export function AssetBatchLabelsPage() {
         asset.service_location?.street_address ??
         ''
       return {
-        qrValue: asset.asset_code || asset.id,
+        qrValue: assetQrValue(asset),
         title: asset.name,
         subtitle: asset.asset_type?.name ?? undefined,
         details: [
@@ -96,7 +103,7 @@ export function AssetBatchLabelsPage() {
 
   /** The studio's picture, from the same builder the printers use. */
   const faces: LabelFaceData[] = assets.map((asset) => ({
-    qrValue: asset.asset_code || asset.id,
+    qrValue: assetQrValue(asset),
     name: asset.name,
     code: asset.asset_code ?? undefined,
     tag: asset.asset_type?.name ?? undefined,
@@ -122,10 +129,11 @@ export function AssetBatchLabelsPage() {
       <style>{thermalPrintCss(thermal, multiUp)}</style>
 
       {missingIds.length > 0 && (
-        <div className="no-print border-b border-amber-200 bg-amber-50 px-6 py-2 text-xs text-amber-800">
+        <div data-tour="batch-labels-missing" className="no-print border-b border-amber-200 bg-amber-50 px-6 py-2 text-xs text-amber-800">
           {missingIds.length} asset{missingIds.length === 1 ? '' : 's'} could not be found and will not be printed.
         </div>
       )}
+      <div data-tour="batch-labels-studio">
       <LabelStudio
         backTo={{ href: '/assets', label: title }}
         faces={faces}
@@ -135,9 +143,9 @@ export function AssetBatchLabelsPage() {
         onCopies={(n) => setParam('copies', String(n))}
         gap={gap}
         onGap={(g) => setParam('gap', g === 0 ? null : String(g))}
-        onPrint={async () => {
+        onPrint={async (selected) => {
           await printLabelPdf({
-            labels: buildLabels(),
+            labels: pickSelected(buildLabels(), selected),
             thermalSize: thermal,
             copies,
             multiUp,
@@ -145,18 +153,27 @@ export function AssetBatchLabelsPage() {
             filename: `${baseFilename()}.pdf`,
           })
         }}
-        onBluetooth={async () => {
+        onBluetooth={async (selected) => {
           try {
-            await printLabelsViaBluetooth({ labels: buildLabels(), thermalSize: thermal, copies })
+            await printLabelsViaBluetooth({ labels: pickSelected(buildLabels(), selected), thermalSize: thermal, copies })
           } catch (err) {
             alert(err instanceof Error ? err.message : String(err))
           }
         }}
-        onDownloadImage={async () => {
-          const first = buildLabels()[0]
-          if (first) await downloadLabelPng({ label: first, thermalSize: thermal, filename: `${baseFilename()}.png` })
+        onDownloadImage={async (selected) => {
+          // One PNG per ticked label. A short pause between files keeps
+          // browsers from dropping the later downloads.
+          const labels = buildLabels()
+          for (let n = 0; n < selected.length; n++) {
+            const i = selected[n]
+            const asset = assets[i]
+            const name = (asset?.asset_code || asset?.name || `label-${i + 1}`).replace(/[^A-Za-z0-9.-]+/g, '-')
+            await downloadLabelPng({ label: labels[i], thermalSize: thermal, filename: `${baseFilename()}-${name}.png` })
+            if (n < selected.length - 1) await new Promise((resolve) => setTimeout(resolve, 250))
+          }
         }}
       />
+      </div>
       <div className={`print-stage ${isThermal ? 'p-0' : isMini ? 'p-2' : 'p-4'}`}>
         <div
           className={
@@ -190,7 +207,7 @@ function AssetCard({
   mini: boolean
   thermal: ThermalSizeKey
 }) {
-  const qrValue = asset.asset_code || asset.id
+  const qrValue = assetQrValue(asset)
   const name = asset.name
   const typeName = asset.asset_type?.name ?? null
   const groupName = asset.asset_group?.name ?? null

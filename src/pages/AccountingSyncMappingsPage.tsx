@@ -4,6 +4,7 @@ import type { FormEvent } from 'react'
 import { Link } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { API_URL, apiRequest, getActingTenant, getFranchiseActAs, getStoredToken } from '@/lib/api'
+import { assertFileResponse } from '@/lib/fileResponse'
 import type { PaginatedResponse } from '@/types/api'
 import { useTheme } from '@/hooks/useTheme'
 import { EasyPageHeading } from '@/components/easy/EasyPageHeading'
@@ -198,6 +199,7 @@ export function AccountingSyncMappingsPage() {
       if (!response.ok) {
         throw new Error(`Export failed with status ${response.status}`)
       }
+      assertFileResponse(response)
 
       const blob = await response.blob()
       const url = window.URL.createObjectURL(blob)
@@ -237,6 +239,7 @@ export function AccountingSyncMappingsPage() {
       if (!response.ok) {
         throw new Error(`Xero export failed with status ${response.status}`)
       }
+      assertFileResponse(response)
 
       const blob = await response.blob()
       const url = window.URL.createObjectURL(blob)
@@ -257,7 +260,7 @@ export function AccountingSyncMappingsPage() {
   return (
     <div className="min-h-screen bg-slate-100 px-4 py-4 text-slate-950 sm:px-6 sm:py-6 2xl:px-8">
       <div className="mx-auto w-full max-w-none space-y-6">
-<header data-easy-accounting-header={easy || undefined} className={easy ? 'flex min-w-0 w-full flex-col items-stretch gap-4' : 'flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between'}>
+<header data-tour="sync-header" data-easy-accounting-header={easy || undefined} className={easy ? 'flex min-w-0 w-full flex-col items-stretch gap-4' : 'flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between'}>
           <div className={easy ? 'min-w-0 w-full' : undefined}>
             {easy ? <EasyPageHeading title="Accounting mappings" description="Choose an export provider, match CrewBarn records to its codes, then review your mappings before exporting." /> : <>
             <p className="text-xs font-semibold uppercase tracking-wide text-amber-700">Accounting</p>
@@ -272,7 +275,7 @@ export function AccountingSyncMappingsPage() {
           </Link>
         </header>
 
-        <section className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
+        <section data-tour="sync-form" data-editing={editingId ? 'yes' : 'no'} className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
           <div className="flex flex-col gap-1">
             <h2 className="text-lg font-bold">{editingId ? 'Edit mapping' : 'Add mapping'}</h2>
             <p className="text-sm text-slate-500">
@@ -280,7 +283,7 @@ export function AccountingSyncMappingsPage() {
             </p>
           </div>
           <form className="mt-4 grid gap-3 lg:grid-cols-12" onSubmit={submit}>
-            <label className="grid gap-1 text-sm font-semibold text-slate-700 lg:col-span-2">
+            <label data-tour="sync-provider" className="grid gap-1 text-sm font-semibold text-slate-700 lg:col-span-2">
               Provider
               <select className="rounded-md border border-slate-300 px-3 py-2" value={form.provider} onChange={(event) => setForm((old) => ({ ...old, provider: event.target.value as Provider }))}>
                 {providerOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
@@ -300,11 +303,11 @@ export function AccountingSyncMappingsPage() {
               CrewBarn ID
               <input className="rounded-md border border-slate-300 px-3 py-2" value={form.crewbarn_id} onChange={(event) => setForm((old) => ({ ...old, crewbarn_id: event.target.value }))} placeholder="Optional record ID" />
             </label>
-            <label className="grid gap-1 text-sm font-semibold text-slate-700 lg:col-span-4">
+            <label data-tour="sync-key" className="grid gap-1 text-sm font-semibold text-slate-700 lg:col-span-4">
               CrewBarn key
               <input className="rounded-md border border-slate-300 px-3 py-2" value={form.crewbarn_key} onChange={(event) => setForm((old) => ({ ...old, crewbarn_key: event.target.value }))} placeholder="cash:1000, tax:state, payment:card" />
             </label>
-            <label className="grid gap-1 text-sm font-semibold text-slate-700 lg:col-span-3">
+            <label data-tour="sync-external" className="grid gap-1 text-sm font-semibold text-slate-700 lg:col-span-3">
               External name
               <input className="rounded-md border border-slate-300 px-3 py-2" value={form.external_name} onChange={(event) => setForm((old) => ({ ...old, external_name: event.target.value }))} placeholder="Checking, Sales Tax Payable" />
             </label>
@@ -341,7 +344,7 @@ export function AccountingSyncMappingsPage() {
           {saveMapping.error ? <p className="mt-3 text-sm font-semibold text-red-700">Could not save this mapping.</p> : null}
         </section>
 
-        <section className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
+        <section data-tour="sync-xero" className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
           <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_auto] xl:items-end">
             <div>
               <h2 className="text-lg font-bold">Xero journal export</h2>
@@ -381,9 +384,14 @@ export function AccountingSyncMappingsPage() {
           {xeroExportError ? <p className="mt-3 text-sm font-semibold text-red-700">{xeroExportError}</p> : null}
         </section>
 
-        <section className="rounded-lg border border-slate-200 bg-white shadow-sm">
-          <div className="grid gap-3 border-b border-slate-200 p-4 lg:grid-cols-12">
-            <input className="rounded-md border border-slate-300 px-3 py-2 lg:col-span-4" placeholder="Search mappings..." value={filters.q} onChange={(event) => { setPage(1); setFilters((old) => ({ ...old, q: event.target.value })) }} />
+        <section data-tour="sync-list" className="rounded-lg border border-slate-200 bg-white shadow-sm">
+          {deleteMapping.isError ? (
+            <p role="alert" className="mx-4 mt-3 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm font-semibold text-red-700">
+              {deleteMapping.error instanceof Error && deleteMapping.error.message ? deleteMapping.error.message : 'Could not remove this mapping.'}
+            </p>
+          ) : null}
+          <div data-tour="sync-filters" className="grid gap-3 border-b border-slate-200 p-4 lg:grid-cols-12">
+            <input aria-label="Search mappings" className="rounded-md border border-slate-300 px-3 py-2 lg:col-span-4" placeholder="Search mappings..." value={filters.q} onChange={(event) => { setPage(1); setFilters((old) => ({ ...old, q: event.target.value })) }} />
             <select className="rounded-md border border-slate-300 px-3 py-2 lg:col-span-2" value={filters.provider} onChange={(event) => { setPage(1); setFilters((old) => ({ ...old, provider: event.target.value })) }}>
               <option value="">All providers</option>
               {providerOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
@@ -427,7 +435,7 @@ export function AccountingSyncMappingsPage() {
                     <button type="button" onClick={() => void mappingsQ.refetch()} className="mt-2 rounded-md border border-red-300 px-3 py-2 font-semibold">Try again</button>
                   </td></tr>
                 ) : mappings.length === 0 ? (
-                  <tr><td className="px-4 py-8 text-center text-slate-500" colSpan={6}>No mappings in this filter.</td></tr>
+                  <tr><td data-tour="sync-empty" className="px-4 py-8 text-center text-slate-500" colSpan={6}>No mappings in this filter.</td></tr>
                 ) : mappings.map((mapping) => (
                   <tr key={mapping.id}>
                     <td className="px-4 py-3 font-semibold capitalize text-slate-900">{mapping.provider.replace('_', ' ')}</td>

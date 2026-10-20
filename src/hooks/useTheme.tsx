@@ -3,10 +3,13 @@ import {
   useContext,
   useEffect,
   useLayoutEffect,
+  useRef,
   useState,
   type ReactNode,
 } from 'react'
 import { DEFAULT_CHROME, chromeHex } from '@/lib/chromeColors'
+import { useAuth } from '@/hooks/useAuth'
+import { apiRequest } from '@/lib/api'
 import { ACCENT_COLORS, DEFAULT_ACCENT, accentVars } from '@/lib/accentColors'
 import {
   DEFAULT_TEXT_SCALE,
@@ -27,6 +30,7 @@ import {
  *   - 'rail' — Category rail: five headings on the edge, their contents in a
  *     panel beside it. The only shell that can hold the whole app without
  *     demoting anything — see lib/navTaxonomy.
+ *   - 'focus' — Full-workspace rail shell with compact, task-first pages.
  *   - 'pro' — Side bar shell: left vertical nav + a slim action bar on top,
  *     framing a light page body.
  *
@@ -37,11 +41,11 @@ import {
  * both themes, plus the pro sidebar). The page body always stays light;
  * only the chrome is tinted.
  *
- * Both persist in localStorage (per-browser, not per-tenant) so the choice
- * sticks across reloads and is instant (no round-trip). Selectable from
- * Tool Shed → General → Appearance.
+ * Layout follows the account override, then the company default. Existing
+ * browser-local choices migrate once to the account override after sign-in.
+ * Other appearance options remain browser-local.
  */
-export type AppTheme = 'classic' | 'pro' | 'rail' | 'easy-side' | 'easy-top'
+export type AppTheme = 'classic' | 'pro' | 'rail' | 'focus' | 'easy-side' | 'easy-top'
 export type AppDensity = 'comfortable' | 'compact' | 'dense'
 export type AppPageWidth = 'centered' | 'wide' | 'full'
 export type JobViewPreference = 'workflow' | 'cards' | 'files' | 'compact'
@@ -51,6 +55,7 @@ export type EstimateViewPreference = 'workflow' | 'cards' | 'files' | 'compact'
 export type FolderLayout = 'cabinet' | 'tree' | 'accordion'
 
 const THEME_KEY = 'crewbarn_theme'
+const accountThemeKey = (accountId: string, tenantId: string) => `crewbarn_theme:${tenantId}:${accountId}`
 const CHROME_KEY = 'crewbarn_chrome'
 const ACCENT_KEY = 'crewbarn_accent'
 const UI_FONT_KEY = 'crewbarn_ui_font'
@@ -61,10 +66,24 @@ const JOB_VIEW_KEY = 'crewbarn_job_view'
 const CUSTOMER_VIEW_KEY = 'crewbarn_customer_view'
 const ESTIMATE_VIEW_KEY = 'crewbarn_estimate_view'
 const FOLDER_LAYOUT_KEY = 'crewbarn_folder_layout'
+// Focus is a separate workspace, not a preset that overwrites the other
+// layouts' browsing choices. Keep its local presentation preferences apart.
+const FOCUS_DENSITY_KEY = 'crewbarn:focus:density'
+const FOCUS_PAGE_WIDTH_KEY = 'crewbarn:focus:page-width'
+const FOCUS_JOB_VIEW_KEY = 'crewbarn:focus:job-view'
+const FOCUS_CUSTOMER_VIEW_KEY = 'crewbarn:focus:customer-view'
+const FOCUS_ESTIMATE_VIEW_KEY = 'crewbarn:focus:estimate-view'
+const FOCUS_FOLDER_LAYOUT_KEY = 'crewbarn:focus:folder-layout'
 
 interface ThemeContextValue {
   theme: AppTheme
   setTheme: (t: AppTheme) => void
+  defaultTheme: AppTheme
+  themeOverride: AppTheme | null
+  appearanceLoading: boolean
+  appearanceError: string | null
+  clearThemeOverride: () => Promise<void>
+  setDefaultTheme: (t: AppTheme) => Promise<void>
   chromeColor: string
   setChromeColor: (id: string) => void
   accentColor: string
@@ -96,13 +115,23 @@ function readTheme(): AppTheme {
     // The app has two shells now: Top bar (classic) and Side bar (pro). Migrate
     // the retired sidebar variants (command/field/studio) to 'pro'; everything
     // else — including the old compact/minimal top-bar variants — to 'classic'.
-    if (value === 'rail' || value === 'easy-side' || value === 'easy-top') return value
+    if (value === 'rail' || value === 'focus' || value === 'easy-side' || value === 'easy-top') return value
     return value === 'pro' || value === 'command' || value === 'field' || value === 'studio'
       ? 'pro'
       : 'classic'
   } catch {
     return 'classic'
   }
+}
+
+const APP_THEMES: AppTheme[] = ['classic', 'pro', 'rail', 'focus', 'easy-side', 'easy-top']
+
+function validTheme(value: unknown): AppTheme | null {
+  return typeof value === 'string' && APP_THEMES.includes(value as AppTheme) ? value as AppTheme : null
+}
+
+interface AppearanceResponse {
+  data: { default_theme: AppTheme; theme_override: AppTheme | null }
 }
 
 function readChrome(): string {
@@ -209,8 +238,80 @@ function readFolderLayout(): FolderLayout {
   }
 }
 
+function readFocusDensity(): AppDensity {
+  if (typeof window === 'undefined') return 'compact'
+  try {
+    const value = window.localStorage.getItem(FOCUS_DENSITY_KEY)
+    return value === 'comfortable' || value === 'dense' ? value : 'compact'
+  } catch {
+    return 'compact'
+  }
+}
+
+function readFocusPageWidth(): AppPageWidth {
+  if (typeof window === 'undefined') return 'full'
+  try {
+    const value = window.localStorage.getItem(FOCUS_PAGE_WIDTH_KEY)
+    return value === 'centered' || value === 'wide' ? value : 'full'
+  } catch {
+    return 'full'
+  }
+}
+
+function readFocusJobView(): JobViewPreference {
+  if (typeof window === 'undefined') return 'compact'
+  try {
+    const value = window.localStorage.getItem(FOCUS_JOB_VIEW_KEY)
+    return value === 'cards' || value === 'files' ? value : 'compact'
+  } catch {
+    return 'compact'
+  }
+}
+
+function readFocusCustomerView(): CustomerViewPreference {
+  if (typeof window === 'undefined') return 'compact'
+  try {
+    const value = window.localStorage.getItem(FOCUS_CUSTOMER_VIEW_KEY)
+    return value === 'cards' || value === 'files' ? value : 'compact'
+  } catch {
+    return 'compact'
+  }
+}
+
+function readFocusEstimateView(): EstimateViewPreference {
+  if (typeof window === 'undefined') return 'compact'
+  try {
+    const value = window.localStorage.getItem(FOCUS_ESTIMATE_VIEW_KEY)
+    return value === 'cards' || value === 'files' ? value : 'compact'
+  } catch {
+    return 'compact'
+  }
+}
+
+function readFocusFolderLayout(): FolderLayout {
+  if (typeof window === 'undefined') return 'cabinet'
+  try {
+    const value = window.localStorage.getItem(FOCUS_FOLDER_LAYOUT_KEY)
+    return value === 'tree' || value === 'accordion' ? value : 'cabinet'
+  } catch {
+    return 'cabinet'
+  }
+}
+
 export function ThemeProvider({ children }: { children: ReactNode }) {
+  const { account } = useAuth()
   const [theme, setThemeState] = useState<AppTheme>(readTheme)
+  const [defaultTheme, setDefaultThemeState] = useState<AppTheme>('classic')
+  const [themeOverride, setThemeOverrideState] = useState<AppTheme | null>(null)
+  const [appearanceLoading, setAppearanceLoading] = useState(false)
+  const [appearanceError, setAppearanceError] = useState<string | null>(null)
+  const requestVersion = useRef(0)
+  const overrideSaveQueue = useRef<Promise<void>>(Promise.resolve())
+  const appearanceIdentity = `${account?.tenant?.id ?? ''}:${account?.id ?? ''}`
+  const appearanceIdentityRef = useRef(appearanceIdentity)
+  useEffect(() => {
+    appearanceIdentityRef.current = appearanceIdentity
+  }, [appearanceIdentity])
   const [chromeColor, setChromeColorState] = useState<string>(readChrome)
   const [accentColor, setAccentColorState] = useState<string>(readAccent)
   const [uiFont, setUiFontState] = useState<string>(readUiFont)
@@ -221,14 +322,110 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
   const [customerView, setCustomerViewState] = useState<CustomerViewPreference>(readCustomerView)
   const [estimateView, setEstimateViewState] = useState<EstimateViewPreference>(readEstimateView)
   const [folderLayout, setFolderLayoutState] = useState<FolderLayout>(readFolderLayout)
+  const [focusDensity, setFocusDensityState] = useState<AppDensity>(readFocusDensity)
+  const [focusPageWidth, setFocusPageWidthState] = useState<AppPageWidth>(readFocusPageWidth)
+  const [focusJobView, setFocusJobViewState] = useState<JobViewPreference>(readFocusJobView)
+  const [focusCustomerView, setFocusCustomerViewState] = useState<CustomerViewPreference>(readFocusCustomerView)
+  const [focusEstimateView, setFocusEstimateViewState] = useState<EstimateViewPreference>(readFocusEstimateView)
+  const [focusFolderLayout, setFocusFolderLayoutState] = useState<FolderLayout>(readFocusFolderLayout)
+
+  const saveOverride = (value: AppTheme | null): Promise<AppearanceResponse> => {
+    const identity = appearanceIdentity
+    const queued = overrideSaveQueue.current.then(() => {
+      if (identity !== appearanceIdentityRef.current) throw new Error('Account changed before appearance could be saved.')
+      return apiRequest<AppearanceResponse>('/v1/appearance', {
+        method: 'PATCH', body: { theme_override: value },
+      })
+    })
+    overrideSaveQueue.current = queued.then(() => undefined, () => undefined)
+    return queued
+  }
+
+  useEffect(() => {
+    const version = ++requestVersion.current
+    const tenantId = account?.tenant?.id
+    if (!account || !tenantId) {
+      setAppearanceLoading(false)
+      setDefaultThemeState('classic')
+      setThemeOverrideState(null)
+      return
+    }
+    try {
+      const cached = validTheme(window.localStorage.getItem(accountThemeKey(account.id, tenantId)))
+      if (cached) setThemeState(cached)
+    } catch { /* Browser storage is optional. */ }
+    setAppearanceLoading(true)
+    setAppearanceError(null)
+    void (async () => {
+      try {
+        const response = await apiRequest<AppearanceResponse>('/v1/appearance')
+        if (version !== requestVersion.current) return
+        const company = validTheme(response.data.default_theme) ?? 'classic'
+        let override = validTheme(response.data.theme_override)
+        setDefaultThemeState(company)
+        // The old key was shared by a browser. Claim it for the first signed-in
+        // account, then remove it so a later account on that browser gets its
+        // own setting instead of accidentally inheriting this one.
+        const legacy = window.localStorage.getItem(THEME_KEY) === null ? null : readTheme()
+        if (legacy && !override) {
+          const migrated = await saveOverride(legacy)
+          if (version !== requestVersion.current) return
+          override = validTheme(migrated.data.theme_override)
+        }
+        if (legacy) window.localStorage.removeItem(THEME_KEY)
+        setThemeOverrideState(override)
+        setThemeState(override ?? company)
+        window.localStorage.setItem(accountThemeKey(account.id, tenantId), override ?? company)
+      } catch {
+        if (version === requestVersion.current) setAppearanceError('Layout could not be loaded. Your browser choice is still available.')
+      } finally {
+        if (version === requestVersion.current) setAppearanceLoading(false)
+      }
+    })()
+    return () => { requestVersion.current++ }
+  }, [account?.id, account?.tenant?.id])
 
   const setTheme = (t: AppTheme) => {
     setThemeState(t)
+    setThemeOverrideState(t)
+    setAppearanceError(null)
     try {
-      window.localStorage.setItem(THEME_KEY, t)
+      // Keep an account-specific browser fallback, and never share a newly
+      // selected layout with another staff member using the same browser.
+      window.localStorage.setItem(account?.tenant ? accountThemeKey(account.id, account.tenant.id) : THEME_KEY, t)
     } catch {
       /* private mode / quota — non-fatal, state still updates in-memory */
     }
+    if (account?.tenant) {
+      const version = ++requestVersion.current
+      setAppearanceLoading(false)
+      void saveOverride(t).then((response) => {
+        if (version === requestVersion.current) setDefaultThemeState(validTheme(response.data.default_theme) ?? 'classic')
+      }).catch(() => {
+        if (version === requestVersion.current) setAppearanceError('Layout could not be saved to your account. It is saved in this browser for now.')
+      })
+    }
+  }
+
+  const clearThemeOverride = async () => {
+    if (!account?.tenant) return
+    const response = await saveOverride(null)
+    ++requestVersion.current
+    window.localStorage.removeItem(THEME_KEY)
+    window.localStorage.setItem(accountThemeKey(account.id, account.tenant.id), validTheme(response.data.default_theme) ?? 'classic')
+    setThemeOverrideState(null)
+    setThemeState(validTheme(response.data.default_theme) ?? 'classic')
+    setAppearanceError(null)
+  }
+
+  const setDefaultTheme = async (value: AppTheme) => {
+    const response = await apiRequest<AppearanceResponse>('/v1/tenant-settings/appearance', {
+      method: 'PATCH', body: { default_theme: value },
+    })
+    const company = validTheme(response.data.default_theme) ?? 'classic'
+    setDefaultThemeState(company)
+    if (!themeOverride) setThemeState(company)
+    setAppearanceError(null)
   }
 
   const setChromeColor = (id: string) => {
@@ -268,6 +465,11 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
   }
 
   const setDensity = (value: AppDensity) => {
+    if (theme === 'focus') {
+      setFocusDensityState(value)
+      try { window.localStorage.setItem(FOCUS_DENSITY_KEY, value) } catch { /* non-fatal */ }
+      return
+    }
     setDensityState(value)
     try {
       window.localStorage.setItem(DENSITY_KEY, value)
@@ -277,6 +479,11 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
   }
 
   const setPageWidth = (value: AppPageWidth) => {
+    if (theme === 'focus') {
+      setFocusPageWidthState(value)
+      try { window.localStorage.setItem(FOCUS_PAGE_WIDTH_KEY, value) } catch { /* non-fatal */ }
+      return
+    }
     setPageWidthState(value)
     try {
       window.localStorage.setItem(PAGE_WIDTH_KEY, value)
@@ -286,6 +493,11 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
   }
 
   const setJobView = (value: JobViewPreference) => {
+    if (theme === 'focus') {
+      setFocusJobViewState(value)
+      try { window.localStorage.setItem(FOCUS_JOB_VIEW_KEY, value) } catch { /* non-fatal */ }
+      return
+    }
     setJobViewState(value)
     try {
       window.localStorage.setItem(JOB_VIEW_KEY, value)
@@ -296,6 +508,11 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
   }
 
   const setCustomerView = (value: CustomerViewPreference) => {
+    if (theme === 'focus') {
+      setFocusCustomerViewState(value)
+      try { window.localStorage.setItem(FOCUS_CUSTOMER_VIEW_KEY, value) } catch { /* non-fatal */ }
+      return
+    }
     setCustomerViewState(value)
     try {
       window.localStorage.setItem(CUSTOMER_VIEW_KEY, value)
@@ -306,6 +523,11 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
   }
 
   const setEstimateView = (value: EstimateViewPreference) => {
+    if (theme === 'focus') {
+      setFocusEstimateViewState(value)
+      try { window.localStorage.setItem(FOCUS_ESTIMATE_VIEW_KEY, value) } catch { /* non-fatal */ }
+      return
+    }
     setEstimateViewState(value)
     try {
       window.localStorage.setItem(ESTIMATE_VIEW_KEY, value)
@@ -316,6 +538,11 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
   }
 
   const setFolderLayout = (value: FolderLayout) => {
+    if (theme === 'focus') {
+      setFocusFolderLayoutState(value)
+      try { window.localStorage.setItem(FOCUS_FOLDER_LAYOUT_KEY, value) } catch { /* non-fatal */ }
+      return
+    }
     setFolderLayoutState(value)
     try {
       window.localStorage.setItem(FOLDER_LAYOUT_KEY, value)
@@ -330,12 +557,12 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
   }, [theme])
 
   useLayoutEffect(() => {
-    document.documentElement.dataset.density = density
-  }, [density])
+    document.documentElement.dataset.density = theme === 'focus' ? focusDensity : density
+  }, [theme, density, focusDensity])
 
   useLayoutEffect(() => {
-    document.documentElement.dataset.pageWidth = pageWidth
-  }, [pageWidth])
+    document.documentElement.dataset.pageWidth = theme === 'focus' ? focusPageWidth : pageWidth
+  }, [theme, pageWidth, focusPageWidth])
 
   // Write the chrome surface color as a CSS var the chrome reads via
   // bg-[var(--chrome-bg)]. index.css seeds a default so there's no flash.
@@ -371,7 +598,11 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
   // Cross-tab sync — flipping theme or color in one tab updates the others.
   useEffect(() => {
     function onStorage(e: StorageEvent) {
-      if (e.key === THEME_KEY) setThemeState(readTheme())
+      if (e.key === THEME_KEY && e.newValue) setThemeState(readTheme())
+      if (account?.tenant && e.key === accountThemeKey(account.id, account.tenant.id)) {
+        const next = validTheme(e.newValue)
+        if (next) setThemeState(next)
+      }
       if (e.key === CHROME_KEY) setChromeColorState(readChrome())
       if (e.key === ACCENT_KEY) setAccentColorState(readAccent())
       if (e.key === UI_FONT_KEY) setUiFontState(readUiFont())
@@ -382,15 +613,27 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
       if (e.key === CUSTOMER_VIEW_KEY) setCustomerViewState(readCustomerView())
       if (e.key === ESTIMATE_VIEW_KEY) setEstimateViewState(readEstimateView())
       if (e.key === FOLDER_LAYOUT_KEY) setFolderLayoutState(readFolderLayout())
+      if (e.key === FOCUS_DENSITY_KEY) setFocusDensityState(readFocusDensity())
+      if (e.key === FOCUS_PAGE_WIDTH_KEY) setFocusPageWidthState(readFocusPageWidth())
+      if (e.key === FOCUS_JOB_VIEW_KEY) setFocusJobViewState(readFocusJobView())
+      if (e.key === FOCUS_CUSTOMER_VIEW_KEY) setFocusCustomerViewState(readFocusCustomerView())
+      if (e.key === FOCUS_ESTIMATE_VIEW_KEY) setFocusEstimateViewState(readFocusEstimateView())
+      if (e.key === FOCUS_FOLDER_LAYOUT_KEY) setFocusFolderLayoutState(readFocusFolderLayout())
     }
     window.addEventListener('storage', onStorage)
     return () => window.removeEventListener('storage', onStorage)
-  }, [])
+  }, [account?.id, account?.tenant?.id])
 
   return (
     <ThemeContext.Provider value={{
       theme,
       setTheme,
+      defaultTheme,
+      themeOverride,
+      appearanceLoading,
+      appearanceError,
+      clearThemeOverride,
+      setDefaultTheme,
       chromeColor,
       setChromeColor,
       accentColor,
@@ -399,17 +642,17 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
       setUiFont,
       textScale,
       setTextScale,
-      density,
+      density: theme === 'focus' ? focusDensity : density,
       setDensity,
-      pageWidth,
+      pageWidth: theme === 'focus' ? focusPageWidth : pageWidth,
       setPageWidth,
-      jobView,
+      jobView: theme === 'focus' ? focusJobView : jobView,
       setJobView,
-      customerView,
+      customerView: theme === 'focus' ? focusCustomerView : customerView,
       setCustomerView,
-      estimateView,
+      estimateView: theme === 'focus' ? focusEstimateView : estimateView,
       setEstimateView,
-      folderLayout,
+      folderLayout: theme === 'focus' ? focusFolderLayout : folderLayout,
       setFolderLayout,
     }}>
       {children}
@@ -427,6 +670,12 @@ export function useTheme(): ThemeContextValue {
     return {
       theme: 'classic',
       setTheme: () => {},
+      defaultTheme: 'classic',
+      themeOverride: null,
+      appearanceLoading: false,
+      appearanceError: null,
+      clearThemeOverride: async () => {},
+      setDefaultTheme: async () => {},
       chromeColor: DEFAULT_CHROME,
       setChromeColor: () => {},
       accentColor: DEFAULT_ACCENT,

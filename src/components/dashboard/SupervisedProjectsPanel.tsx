@@ -51,7 +51,7 @@ export function SupervisedProjectsPanel() {
   if (!supervised?.applies || supervised.total === 0) return null
 
   return (
-    <section className="rounded-2xl border border-slate-200 bg-white p-5 sm:p-6">
+    <section data-tour="dash-supervised" className="rounded-2xl border border-slate-200 bg-white p-5 sm:p-6">
       <div className="flex flex-wrap items-baseline justify-between gap-2">
         <h2 className="text-sm font-semibold text-slate-900">
           My supervised projects

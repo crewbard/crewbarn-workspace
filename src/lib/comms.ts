@@ -1,3 +1,4 @@
+import type { PricingSuggestion } from '@/lib/intakePricing'
 import { apiRequest, API_URL, getStoredToken, getActingTenant } from '@/lib/api'
 
 export type CommsDirection = 'inbound' | 'outbound'
@@ -44,7 +45,7 @@ export interface CommsMessage {
   subject: string | null
   media_urls: string[]
   /** Speaker turns for a call transcript. Absent on older calls. */
-  transcript_segments?: Array<{ speaker: 'office' | 'customer' | 'unknown'; text: string; voice?: number | null; source?: 'audio'; start?: number; end?: number }> | null
+  transcript_segments?: Array<{ speaker: 'office' | 'customer' | 'unknown'; text: string; voice?: number | null; source?: 'audio' | 'channel'; start?: number; end?: number }> | null
   recording_url: string | null
   transcription_status: string | null
   meta?: Record<string, unknown> | null
@@ -67,6 +68,7 @@ export interface CommsMessage {
 
 /** Compact AI intake summary shown in the thread's "What they need" card. */
 export interface MessageIntakeSummary {
+  pricing?: PricingSuggestion | null
   id: string
   classification: 'job' | 'estimate' | string | null
   status: string | null
@@ -421,6 +423,8 @@ export async function composeEmail(params: {
   workOrderId?: string | null
   subject?: string
   body: string
+  /** A designed email template, already filled in; sent as-is under the note. */
+  html?: string | null
 }): Promise<ComposeEmailResult> {
   return apiRequest<ComposeEmailResult>(`/v1/comms/email`, {
     method: 'POST',
@@ -430,6 +434,7 @@ export async function composeEmail(params: {
       work_order_id: params.workOrderId ?? null,
       subject: params.subject ?? '',
       body: params.body,
+      html: params.html ?? null,
     },
   })
 }
@@ -511,17 +516,54 @@ export async function getEmailTemplate(id: string): Promise<{ subject: string; b
  * fill in before the composer inserts it (instead of going out raw). Binds the
  * work order when given (full tags), else the customer (customer + company).
  */
+/** The job a composer template was filled in from. */
+export interface ComposerUsedJob {
+  id: string
+  number: string | null
+  title: string | null
+  /** ISO time, or null when the job isn't scheduled. */
+  scheduled_at: string | null
+  /** Already in the job's own time zone, e.g. "Tue Oct 14, 9:00 AM". */
+  scheduled_label: string | null
+  /** True when the customer's next or latest open job was picked for you. */
+  auto_picked: boolean
+}
+
+export interface ComposerRenderResult {
+  subject?: string
+  body: string
+  /** Tags nothing could fill, still in the text as {{tag}}. */
+  unfilled: string[]
+  used_job: ComposerUsedJob | null
+  source?: string
+}
+
+/**
+ * POST /v1/templates/render — fill a saved template for the composer from the
+ * most specific thing the page knows (job > estimate's job > invoice's job >
+ * contract > customer, where a customer alone uses their best job).
+ */
 export async function renderTemplateForComposer(params: {
   channel: 'email' | 'sms'
   template_id: string
   customer_id?: string | null
   work_order_id?: string | null
-}): Promise<{ subject?: string; body: string }> {
-  const res = await apiRequest<{ data: { subject?: string; body?: string } }>(
+  estimate_id?: string | null
+  invoice_id?: string | null
+  location_id?: string | null
+  contract_id?: string | null
+}): Promise<ComposerRenderResult> {
+  const res = await apiRequest<{ data: Partial<ComposerRenderResult> }>(
     '/v1/templates/render',
     { method: 'POST', body: params },
   )
-  return { subject: res.data.subject, body: res.data.body ?? '' }
+  return {
+    subject: res.data.subject,
+    body: res.data.body ?? '',
+    unfilled: res.data.unfilled ?? [],
+    used_job: res.data.used_job ?? null,
+    source: res.data.source,
+  }
 }
 
 /** Upload an image for an outbound reply; returns its public URL. */
@@ -633,6 +675,8 @@ export interface ConvertIntakeDraftPayload {
   city?: string
   state?: string
   postal_code?: string
+  /** A matched customer's own address on file, chosen for this job. */
+  service_location_id?: string
   latitude?: number | null
   longitude?: number | null
   scheduled_date?: string

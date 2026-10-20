@@ -91,6 +91,8 @@ export interface WizardControl {
   kind: 'wizard'
   /** Opens the wizard from the setting page. */
   cta: string
+  /** The wizard's route. The setting page renders `cta` as a button to it. */
+  to: string
 }
 
 export type SettingControl = ChoiceControl | NumberControl | ToggleControl | WizardControl
@@ -168,4 +170,11 @@ export interface SettingDefinition<V = unknown, D = unknown> {
 
   /** Anything the page should show beside the control — a preview, a status. */
   aside?: (value: V, data: D) => ReactNode
+
+  /**
+   * Other cached queries that read this value somewhere else (a menu, a
+   * hook). They are refreshed after a save so the rest of the app does not
+   * keep showing the old answer.
+   */
+  invalidates?: ReadonlyArray<readonly unknown[]>
 }

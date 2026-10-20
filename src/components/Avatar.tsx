@@ -46,6 +46,18 @@ export function monogramColor(key: string, preset?: string | null): string {
   return MONOGRAM_COLORS[hashIndex(key || 'x', MONOGRAM_COLORS.length)]
 }
 
+/**
+ * A "#rrggbb" hue blended onto white, as a solid color. The monogram's tint
+ * and ring used to be see-through, which reads as a light tint on a white card
+ * but turned dark on the Easy theme's dark green customer header. Solid, they
+ * look the same on white and stay light on dark.
+ */
+function onWhite(hex: string, amount: number): string {
+  const n = parseInt(hex.slice(1), 16)
+  const mix = (c: number) => Math.round(255 + (c - 255) * amount)
+  return `rgb(${mix(n >> 16)}, ${mix((n >> 8) & 255)}, ${mix(n & 255)})`
+}
+
 export const AVATAR_PRESET_COLORS = MONOGRAM_COLORS
 
 /** DiceBear illustrated-avatar styles — stored as "db:<style>" in avatar_preset. */
@@ -181,9 +193,10 @@ export function Avatar({
       title={name}
       style={{
         ...dim,
-        backgroundColor: `${hue}1A`,
+        // The old 10% (1A) tint and 40% (66) ring, made solid.
+        backgroundColor: onWhite(hue, 0x1a / 255),
         color: hue,
-        border: `1.5px solid ${hue}66`,
+        border: `1.5px solid ${onWhite(hue, 0x66 / 255)}`,
         fontSize: `${Math.round(size * 0.4)}px`,
       }}
       className={`inline-flex items-center justify-center rounded-full font-semibold leading-none select-none ${className}`}

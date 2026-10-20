@@ -1,13 +1,10 @@
 import { useEffect, useState } from 'react'
-import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { Modal } from '@/components/ui/Modal'
-import { apiRequest } from '@/lib/api'
 import { formatPhoneInput } from '@/lib/phone'
 import {
   useCreateSubcontractor,
   useUpdateSubcontractor,
 } from '@/hooks/useSubcontractors'
-import { PortalUserPicker } from '@/components/subs/PortalUserPicker'
 import type {
   Subcontractor,
   SubcontractorInput,
@@ -57,7 +54,6 @@ interface DraftState {
   default_payment_terms: SubPaymentTerms
   active: boolean
   notes: string
-  portal_account: { id: string; email?: string | null } | null
 }
 
 function emptyDraft(seed?: Partial<SubcontractorInput>): DraftState {
@@ -78,7 +74,6 @@ function emptyDraft(seed?: Partial<SubcontractorInput>): DraftState {
     default_payment_terms: seed?.default_payment_terms ?? 'net_30',
     active: seed?.active ?? true,
     notes: seed?.notes ?? '',
-    portal_account: null,
   }
 }
 
@@ -100,9 +95,6 @@ function fromExisting(sub: Subcontractor): DraftState {
     default_payment_terms: sub.default_payment_terms,
     active: sub.active,
     notes: sub.notes ?? '',
-    portal_account: sub.portal_account_id
-      ? { id: sub.portal_account_id, email: sub.portal_account_email }
-      : null,
   }
 }
 
@@ -125,7 +117,6 @@ function toInput(d: DraftState): SubcontractorInput {
     default_payment_terms: d.default_payment_terms,
     active: d.active,
     notes: n(d.notes),
-    portal_account_id: d.portal_account?.id ?? null,
   }
 }
 
@@ -276,34 +267,12 @@ export function SubcontractorEditor({
             </div>
           </fieldset>
 
-          {/* Portal access — link this sub to a portal user so they
-              can see assigned WOs + submit invoices at portal.crewbarn.com.
-              Three paths:
-                1. Attach existing portal user (PortalUserPicker)
-                2. Email an invite (only when editing an existing sub —
-                   the API needs a sub.id to attach the invite to)
-                3. Show pending invite + revoke action */}
+          {/* Subs work jobs in their own CrewBarn once they accept an invite. */}
           <fieldset className="border-t border-slate-100 pt-3">
-            <legend className="text-xs font-semibold text-slate-700 uppercase tracking-wide mb-2">Portal access</legend>
-            <Field label="Portal user (optional)" error={errors.portal_account_id}>
-              <PortalUserPicker
-                value={draft.portal_account}
-                onChange={(v) => patch({ portal_account: v })}
-              />
-            </Field>
-
-            {mode === 'edit' && subcontractor && (
-              <SubInvitePanel
-                sub={subcontractor}
-                seedEmail={draft.email}
-              />
-            )}
-
-            {mode === 'add' && (
-              <p className="text-[11px] text-slate-500 mt-1">
-                Save the sub first, then you'll be able to email them a portal-access invite from this section.
-              </p>
-            )}
+            <legend className="text-xs font-semibold text-slate-700 uppercase tracking-wide mb-2">CrewBarn</legend>
+            <p className="text-xs text-slate-600">
+              Subs work your jobs in their own CrewBarn. Save the sub, then invite it from Tool Shed → Subcontractors or Staff &amp; crews.
+            </p>
           </fieldset>
 
           {/* Compliance + terms */}
@@ -386,138 +355,5 @@ function Check({ label, checked, onChange }: { label: string; checked: boolean; 
       />
       <span>{label}</span>
     </label>
-  )
-}
-
-/**
- * Three-state portal-invite panel sitting under the Portal user picker:
- *
- *   - Pending invite outstanding → show "Pending to <email>, expires <date>"
- *     with a Revoke button.
- *   - Already linked OR no pending invite → show "Invite by email" form.
- *     Submitting calls POST /v1/subcontractors/{id}/portal-invite which
- *     either (a) links an existing PlatformCustomer directly when the
- *     email matches, or (b) creates an invite and emails the link.
- *
- * Lives inside the SubcontractorEditor modal; only rendered in edit mode
- * because we need a sub.id to attach the invite to.
- */
-function SubInvitePanel({ sub, seedEmail }: { sub: Subcontractor; seedEmail: string }) {
-  const qc = useQueryClient()
-  const [email, setEmail] = useState(sub.email ?? seedEmail ?? '')
-  const [flash, setFlash] = useState<string | null>(null)
-  const [error, setError] = useState<string | null>(null)
-
-  function invalidateSub() {
-    qc.invalidateQueries({ queryKey: ['subcontractors'] })
-    qc.invalidateQueries({ queryKey: ['subcontractor', sub.id] })
-  }
-
-  const sendInvite = useMutation({
-    mutationFn: (overrideEmail?: string) =>
-      apiRequest<{ data: { kind: 'invited' | 'linked_existing'; email?: string; portal_account_id?: string } }>(
-        `/v1/subcontractors/${sub.id}/portal-invite`,
-        { method: 'POST', body: overrideEmail ? { email: overrideEmail } : {} },
-      ),
-    onSuccess: (res) => {
-      setError(null)
-      if (res.data.kind === 'linked_existing') {
-        setFlash('That email already has a portal account — linked them directly.')
-      } else {
-        setFlash(`Invite sent to ${res.data.email}. Link expires in 14 days.`)
-      }
-      invalidateSub()
-    },
-    onError: (e: { payload?: { message?: string } } | Error) => {
-      const msg =
-        (e as { payload?: { message?: string } })?.payload?.message ??
-        (e as Error).message ??
-        'Failed to send invite.'
-      setError(msg)
-    },
-  })
-
-  const revoke = useMutation({
-    mutationFn: () =>
-      apiRequest(`/v1/subcontractors/${sub.id}/portal-invite`, { method: 'DELETE' }),
-    onSuccess: () => {
-      setFlash('Invite revoked.')
-      invalidateSub()
-    },
-    onError: (e: Error) => setError(e.message),
-  })
-
-  // Linked already? Nothing to do here.
-  if (sub.portal_account_id) {
-    return (
-      <div className="mt-3 bg-emerald-50 border border-emerald-200 rounded-md px-3 py-2 text-xs text-emerald-900">
-        ✓ Linked to <strong>{sub.portal_account_email ?? sub.portal_account_id}</strong>
-      </div>
-    )
-  }
-
-  if (sub.pending_invite) {
-    const expires = sub.pending_invite.expires_at
-      ? new Date(sub.pending_invite.expires_at).toLocaleDateString()
-      : '—'
-    return (
-      <div className="mt-3 bg-amber-50 border border-amber-200 rounded-md px-3 py-2 space-y-2">
-        <div className="text-xs text-amber-900">
-          Invite pending to <strong>{sub.pending_invite.email}</strong> (expires {expires})
-        </div>
-        <div className="flex items-center gap-2">
-          <button
-            type="button"
-            onClick={() => sendInvite.mutate(sub.pending_invite!.email)}
-            disabled={sendInvite.isPending}
-            className="text-[11px] font-semibold text-amber-800 border border-amber-300 hover:bg-amber-100 rounded px-2 py-1 disabled:opacity-50"
-          >
-            {sendInvite.isPending ? 'Resending…' : 'Resend'}
-          </button>
-          <button
-            type="button"
-            onClick={() => {
-              if (confirm('Revoke this invite? The link will stop working immediately.')) {
-                revoke.mutate()
-              }
-            }}
-            disabled={revoke.isPending}
-            className="text-[11px] font-semibold text-red-700 border border-red-300 hover:bg-red-50 rounded px-2 py-1 disabled:opacity-50"
-          >
-            {revoke.isPending ? 'Revoking…' : 'Revoke'}
-          </button>
-        </div>
-        {flash && <div className="text-[11px] text-emerald-800">{flash}</div>}
-        {error && <div className="text-[11px] text-red-700">{error}</div>}
-      </div>
-    )
-  }
-
-  // No portal account, no pending invite — show the invite form.
-  return (
-    <div className="mt-3 space-y-2">
-      <div className="text-[11px] text-slate-500">
-        Or send them an invite — they'll get an email with a link to set up portal access.
-      </div>
-      <div className="flex items-center gap-2">
-        <input
-          type="email"
-          value={email}
-          onChange={(e) => setEmail(e.target.value)}
-          placeholder="email@subshop.com"
-          className="flex-1 px-3 py-2 text-sm border border-slate-300 rounded-md focus:outline-none focus:ring-1 focus:ring-amber-500"
-        />
-        <button
-          type="button"
-          onClick={() => sendInvite.mutate(email.trim() || undefined)}
-          disabled={sendInvite.isPending || !email.trim()}
-          className="text-xs font-semibold bg-amber-600 hover:bg-amber-700 text-white rounded-md px-3 py-2 disabled:opacity-50"
-        >
-          {sendInvite.isPending ? 'Sending…' : 'Send invite'}
-        </button>
-      </div>
-      {flash && <div className="text-xs text-emerald-700">{flash}</div>}
-      {error && <div className="text-xs text-red-700">{error}</div>}
-    </div>
   )
 }

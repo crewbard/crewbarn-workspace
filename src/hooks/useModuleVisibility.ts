@@ -3,17 +3,16 @@ import { apiRequest } from '@/lib/api'
 import { readSnapshot, writeSnapshot } from '@/lib/snapshots'
 
 /**
- * Per-tenant module visibility. An owner can turn off whole feature areas they
- * don't use (Settings → Modules); this hook reads that list and exposes a
- * `isRouteVisible(to)` predicate the nav surfaces (TopBar, Sidebar, Tool Shed,
- * MobileNavDrawer) use to hide disabled areas.
+ * Per-tenant module visibility and Work placement. The disabled list removes
+ * a module from navigation across apps. The separate Connect-only list removes
+ * its links from Work navigation while keeping the module enabled.
  *
  * v1 toggleable module keys: assets, billing, inventory, workflow. The GET is
  * readable by ANY authenticated user — every member's nav must filter, not just
  * owners. Degrades to "everything visible" if the call fails.
  *
- * Enforcement is HIDE-FROM-NAV-ONLY (the user's explicit choice). The API still
- * serves these routes; this is a decluttering aid, not a security boundary.
+ * Enforcement is HIDE-FROM-NAV-ONLY. The API still serves these routes;
+ * neither preference is a security boundary.
  */
 export type ModuleKey = 'assets' | 'billing' | 'inventory' | 'workflow'
 
@@ -51,6 +50,7 @@ const MODULE_ROUTES: Record<ModuleKey, string[]> = {
     '/catalog',
     '/vendors',
     '/purchase-orders',
+    '/order-parts',
   ],
   workflow: ['/tasks', '/tool-shed/automations'],
 }
@@ -82,6 +82,7 @@ interface ModulesResponse {
     toggleable: string[]
     disabled_modules: string[]
     disabled_modules_catalog?: string[]
+    connect_only_modules?: string[]
     /** The server's catalog (App\Services\Modules\ModuleCatalog). Absent on an old cached snapshot. */
     catalog?: CatalogRow[]
   }
@@ -111,9 +112,12 @@ function moduleForRouteIn(catalog: CatalogRow[] | undefined, to: string): string
 
 export interface ModuleVisibility {
   disabled: Set<string>
+  connectOnly: Set<string>
   isModuleEnabled: (key: string) => boolean
   /** True when this route's governing module is enabled (or the route is core). */
   isRouteVisible: (to: string) => boolean
+  /** Work navigation excludes enabled modules placed in Connect only. */
+  isRouteVisibleInWork: (to: string) => boolean
   /** First load with nothing cached — the shell waits for this. */
   isLoading: boolean
 }
@@ -133,6 +137,7 @@ export function useModuleVisibility(): ModuleVisibility {
   })
 
   const disabled = new Set<string>(query.data?.data.disabled_modules_catalog ?? query.data?.data.disabled_modules ?? [])
+  const connectOnly = new Set<string>(query.data?.data.connect_only_modules ?? [])
   const catalog = query.data?.data.catalog
 
   const isModuleEnabled = (key: string) => !disabled.has(key)
@@ -140,6 +145,10 @@ export function useModuleVisibility(): ModuleVisibility {
     const mod = moduleForRouteIn(catalog, to)
     return mod === null || !disabled.has(mod)
   }
+  const isRouteVisibleInWork = (to: string) => {
+    const mod = moduleForRouteIn(catalog, to)
+    return mod === null || (!disabled.has(mod) && !connectOnly.has(mod))
+  }
 
-  return { disabled, isModuleEnabled, isRouteVisible, isLoading: query.isLoading }
+  return { disabled, connectOnly, isModuleEnabled, isRouteVisible, isRouteVisibleInWork, isLoading: query.isLoading }
 }

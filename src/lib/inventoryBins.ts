@@ -149,7 +149,7 @@ export interface BinContentsPayload {
     bin_id: string | null
     serial_number: string
     status: string
-    catalog_item?: { id: string; name: string; sku?: string | null } | null
+    catalog_item?: { id: string; name: string; sku?: string | null; unit_label?: string | null; images?: { thumb_url?: string | null; medium_url?: string | null } | null } | null
     bin?: { id: string; path_label: string; name?: string | null } | null
   }>
   stock_levels: Array<{
@@ -159,7 +159,7 @@ export interface BinContentsPayload {
     // InventoryStockLevelResource NESTS this. Typed flat, it read as undefined
     // and every quantity in the contents modal rendered as a dash.
     quantities: { qty_on_hand: number }
-    catalog_item?: { id: string; name: string; sku?: string | null } | null
+    catalog_item?: { id: string; name: string; sku?: string | null; unit_label?: string | null; images?: { thumb_url?: string | null; medium_url?: string | null } | null } | null
     bin?: { id: string; path_label: string; name?: string | null } | null
   }>
 }

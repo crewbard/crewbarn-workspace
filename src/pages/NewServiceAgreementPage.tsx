@@ -291,6 +291,16 @@ export function NewServiceAgreementPage() {
 
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  /**
+   * Saving is several calls in a row (agreement, then each service, then
+   * each rhythm). When a later one fails, the earlier ones are already
+   * saved — say exactly what made it, and link to it, rather than leaving
+   * a half-built agreement nobody knows about.
+   */
+  const [partial, setPartial] = useState<{ id: string; saved: string[]; failed: string } | null>(null)
+  /** Saved and started, but placing its visit dates failed. */
+  const [unplanned, setUnplanned] = useState<{ id: string; why: string } | null>(null)
+  const [replanning, setReplanning] = useState(false)
 
   const jobTypes = useQuery({
     queryKey: ['job-types'],
@@ -351,18 +361,10 @@ export function NewServiceAgreementPage() {
     setLocationIds([])
   }, [customerId, arrivedWithLocation])
 
-  // Only fills a service that has not been given one. Picking the first
-  // job type for every new service is how every line ends up booking
-  // "Lockout" because nobody noticed the default.
-  useEffect(() => {
-    const first = jobTypes.data?.data[0]?.id
-    if (!first) return
-    setServices((current) =>
-      current.some((sv) => !sv.jobTypeId)
-        ? current.map((sv) => (sv.jobTypeId ? sv : { ...sv, jobTypeId: first }))
-        : current,
-    )
-  }, [jobTypes.data])
+  // No job type is filled in for you. Defaulting every new service to the
+  // first job type is how every line ends up booking the wrong kind of job
+  // because nobody noticed the default — so each service starts on
+  // "Pick a job type" and the save buttons wait until one is chosen.
 
   const places = useMemo(() => locations.data?.data ?? [], [locations.data])
 
@@ -433,15 +435,14 @@ export function NewServiceAgreementPage() {
     if (p.bill_every_unit) setBillEvery(p.bill_every_unit)
 
     if (p.services.length) {
-      const firstType = jobTypes.data?.data[0]?.id ?? ''
       setServices(
         p.services.map((sv) => ({
           name: sv.name,
           description: sv.description ?? '',
           // The kind of job is a choice about this workspace's board, not
-          // something a contract says. It gets the same default a new
-          // line gets, and step 2 is where it is chosen.
-          jobTypeId: firstType,
+          // something a contract says. Left blank, like a new line; step 2
+          // is where it is chosen.
+          jobTypeId: '',
           assetIds: [],
           rhythms: sv.rhythms.length
             ? sv.rhythms.map((r) => ({
@@ -468,9 +469,29 @@ export function NewServiceAgreementPage() {
       services.every((sv) => sv.name.trim() && sv.jobTypeId),
   )
 
+  /** Places the visit dates. Resolves to null when it worked, or why it didn't. */
+  const planVisits = (id: string) =>
+    apiRequest(`/v1/maintenance-contracts/${id}/plan-visits`, { method: 'POST', body: {} }).then(
+      () => null,
+      (e: unknown) => (e instanceof Error && e.message ? e.message : 'Something went wrong.'),
+    )
+
+  const retryPlanVisits = async () => {
+    if (!unplanned) return
+    setReplanning(true)
+    const planError = await planVisits(unplanned.id)
+    setReplanning(false)
+    if (planError === null) navigate(`/maintenance-contracts/${unplanned.id}`)
+    else setUnplanned({ id: unplanned.id, why: planError })
+  }
+
   const submit = async (start: boolean) => {
     setBusy(true)
     setError(null)
+    setPartial(null)
+    let savedId: string | null = null
+    const saved: string[] = []
+    let doing = 'the agreement'
     try {
       const contract = await apiRequest<{ data: { id: string } }>('/v1/maintenance-contracts', {
         method: 'POST',
@@ -505,7 +526,11 @@ export function NewServiceAgreementPage() {
        * rule would sit underneath every season and book visits nobody
        * asked for.
        */
+      savedId = contract.data.id
+      saved.push(`the agreement "${title.trim()}" (${start ? 'started' : 'as a draft'})`)
+
       for (const [si, sv] of services.entries()) {
+        doing = `the service "${sv.name.trim()}"`
         const line = await apiRequest<{ data: { id: string; rules: { id: string }[] } }>(
           `/v1/maintenance-contracts/${contract.data.id}/services`,
           {
@@ -525,6 +550,7 @@ export function NewServiceAgreementPage() {
         const defaultRule = line.data.rules?.[0]
 
         for (const [ri, r] of sv.rhythms.entries()) {
+          doing = `rhythm ${ri + 1} of the service "${sv.name.trim()}"`
           const seasonal = r.fromMonth !== '' && r.toMonth !== ''
           const body = {
             interval_count: Number(r.count),
@@ -549,28 +575,42 @@ export function NewServiceAgreementPage() {
             await apiRequest(base, { method: 'POST', body })
           }
         }
+        saved.push(`the service "${sv.name.trim()}" with ${sv.rhythms.length === 1 ? 'its rhythm' : `all ${sv.rhythms.length} rhythms`}`)
       }
 
       // Place the dates straight away, so an agreement that is live
       // shows its schedule instead of an empty page until the nightly
       // run. Writes visit rows only — no jobs, no invoices.
       if (start) {
-        await apiRequest(`/v1/maintenance-contracts/${contract.data.id}/plan-visits`, {
-          method: 'POST',
-          body: {},
-        }).catch(() => null)
+        const planError = await planVisits(contract.data.id)
+        if (planError !== null) {
+          // The agreement is saved and live; only the dates are missing.
+          // Say so here instead of opening an agreement with an empty
+          // schedule that looks finished.
+          setUnplanned({ id: contract.data.id, why: planError })
+          setBusy(false)
+          return
+        }
       }
 
       navigate(`/maintenance-contracts/${contract.data.id}`)
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Could not create that agreement.')
+      const why = e instanceof Error ? e.message : 'Something went wrong.'
+      if (savedId) {
+        // Part of it is saved. Pressing save again would make a second
+        // agreement, so point at the one that exists instead.
+        setPartial({ id: savedId, saved: [...saved], failed: `${doing}: ${why}` })
+      } else {
+        setError(e instanceof Error ? e.message : 'Could not create that agreement.')
+      }
       setBusy(false)
     }
   }
 
   return (
-    <div className="mx-auto max-w-[1640px] px-3 py-4 sm:px-6 sm:py-6 lg:px-8">
+    <div data-focus-form="agreement" className="mx-auto max-w-[1640px] px-3 py-4 sm:px-6 sm:py-6 lg:px-8">
       <div
+        data-tour="contract-new-header"
         className={
           easy
             ? 'mb-5 rounded-2xl border border-emerald-900 bg-emerald-950 px-5 py-6 shadow-sm sm:px-7'
@@ -616,11 +656,13 @@ export function NewServiceAgreementPage() {
             answers arrive in this order anyway: who, what, how much,
             and the paperwork.
           */}
-          <ol className="flex flex-wrap items-center gap-x-2 gap-y-1 rounded-lg border border-navy-100 bg-white px-4 py-3">
+          <ol data-tour="contract-new-steps" className="flex flex-wrap items-center gap-x-2 gap-y-1 rounded-lg border border-navy-100 bg-white px-4 py-3">
             {STEP_NAMES.map((name, i) => (
               <li key={name} className="flex items-center gap-2">
                 <button
                   type="button"
+                  data-tour={`contract-new-step-${i}`}
+                  aria-pressed={i === step}
                   onClick={() => setStep(i)}
                   className={`flex items-center gap-1.5 text-sm font-semibold transition-colors ${
                     i === step ? 'text-navy-900' : 'text-navy-400 hover:text-navy-600'
@@ -645,7 +687,7 @@ export function NewServiceAgreementPage() {
           </ol>
 
           {step === 0 && (
-        <section className={SECTION}>
+        <section data-tour="contract-new-customer" className={SECTION}>
           {/*
             Most shops arrive with the work already sold. The alternative
             to reading the contract they already have is typing all of it
@@ -656,6 +698,7 @@ export function NewServiceAgreementPage() {
           {!readFrom && (
             <button
               type="button"
+              data-tour="contract-new-read"
               onClick={() => setReadOpen(true)}
               className="mb-4 flex w-full items-start gap-3 rounded-lg border border-dashed border-navy-300 px-4 py-3 text-left transition-colors hover:border-amber-400 hover:bg-amber-50/40 sm:mb-5"
             >
@@ -726,7 +769,7 @@ export function NewServiceAgreementPage() {
             {/* Two columns of the three. A name plus the "new customer"
                 button in a single narrow cell left barely half a field for
                 the name itself, and everything past it was cut. */}
-            <div className="lg:col-span-2">
+            <div data-tour="contract-new-customer-picker" className="lg:col-span-2">
               <span className={LABEL}>Customer</span>
               {/* A typeahead, not a list. A dropdown of every customer is
                   unusable past the first hundred, and the shop knows the
@@ -745,6 +788,7 @@ export function NewServiceAgreementPage() {
                 {!picked && !addingCustomer && (
                   <button
                     type="button"
+                    data-tour="contract-new-add-customer"
                     onClick={() => setAddingCustomer(true)}
                     className="whitespace-nowrap rounded-md border border-amber-500 px-3 py-2 text-sm font-medium text-amber-700 hover:bg-amber-50"
                   >
@@ -753,7 +797,7 @@ export function NewServiceAgreementPage() {
                 )}
               </div>
             </div>
-            <div>
+            <div data-tour="contract-new-title">
               <label className={LABEL} htmlFor="sa-title">What to call it</label>
               <input
                 id="sa-title"
@@ -781,7 +825,7 @@ export function NewServiceAgreementPage() {
             </div>
           )}
 
-          <div className="mt-4">
+          <div data-tour="contract-new-properties" className="mt-4">
             <p className={LABEL}>Which properties</p>
 
             {!customerId && <p className="text-sm text-navy-400">Pick a customer first.</p>}
@@ -840,7 +884,7 @@ export function NewServiceAgreementPage() {
           )}
 
           {step === 1 && (
-        <section className={SECTION}>
+        <section data-tour="contract-new-services" className={SECTION}>
           <div className="mb-4 sm:mb-5">
             <h2 className={HEADING}>What you will do</h2>
             <p className={SUB}>
@@ -851,19 +895,19 @@ export function NewServiceAgreementPage() {
 
           <div className="space-y-3">
             {services.map((sv, si) => (
-              <div key={si} className="rounded-md border border-navy-200 bg-white p-3">
+              <div key={si} data-tour="contract-new-service" className="rounded-md border border-navy-200 bg-white p-3">
                 <div className="grid gap-3 sm:grid-cols-[1fr_1fr_auto]">
-                  <div>
+                  <div data-tour="contract-new-service-name">
                     <label className={LABEL} htmlFor={`sa-svc-${si}`}>The service</label>
                     <input
                       id={`sa-svc-${si}`}
                       value={sv.name}
                       onChange={(e) => setService(si, { name: e.target.value })}
-                      placeholder={si === 0 ? 'Lock service' : 'Grounds care'}
+                      placeholder={si === 0 ? 'Routine service' : 'Seasonal check'}
                       className={FIELD}
                     />
                   </div>
-                  <div>
+                  <div data-tour="contract-new-service-jobtype">
                     <label className={LABEL} htmlFor={`sa-jt-${si}`}>Books this kind of job</label>
                     <select
                       id={`sa-jt-${si}`}
@@ -871,6 +915,7 @@ export function NewServiceAgreementPage() {
                       onChange={(e) => setService(si, { jobTypeId: e.target.value })}
                       className={FIELD}
                     >
+                      <option value="">Pick a job type</option>
                       {(jobTypes.data?.data ?? []).map((t) => (
                         <option key={t.id} value={t.id}>{t.name}</option>
                       ))}
@@ -889,7 +934,7 @@ export function NewServiceAgreementPage() {
                   )}
                 </div>
 
-                <div className="mt-3">
+                <div data-tour="contract-new-service-desc" className="mt-3">
                   <label className={LABEL} htmlFor={`sa-desc-${si}`}>
                     What this involves
                   </label>
@@ -898,7 +943,7 @@ export function NewServiceAgreementPage() {
                     value={sv.description}
                     onChange={(e) => setService(si, { description: e.target.value })}
                     rows={2}
-                    placeholder="e.g. Check and lubricate all door hardware, test every lock, adjust closers, replace worn parts under $50"
+                    placeholder="e.g. Inspect the equipment, clean and adjust it, test that everything works, replace small worn parts"
                     className={FIELD}
                   />
                   {/* The drafted contract describes the work from this. A
@@ -917,7 +962,7 @@ export function NewServiceAgreementPage() {
                   nothing to list it under before then.
                 */}
                 {locationIds.length > 0 && (
-                  <div className="mt-3">
+                  <div data-tour="contract-new-service-assets" className="mt-3">
                     <p className={LABEL}>What this covers</p>
 
                     {assets.isLoading && (
@@ -996,7 +1041,7 @@ export function NewServiceAgreementPage() {
                   when, and letting the all-year one be deleted leaves a
                   service that only runs in winter.
                 */}
-                <div className="mt-3 rounded-md border border-navy-200 bg-navy-50/40 p-3">
+                <div data-tour="contract-new-rhythm" className="mt-3 rounded-md border border-navy-200 bg-navy-50/40 p-3">
                   <span className={LABEL}>How often</span>
 
                   <div className="flex flex-wrap items-center gap-2">
@@ -1128,6 +1173,7 @@ export function NewServiceAgreementPage() {
 
                   <button
                     type="button"
+                    data-tour="contract-new-season-add"
                     onClick={() =>
                       setService(si, {
                         rhythms: [...sv.rhythms, { count: '2', unit: 'week', fromMonth: '11', toMonth: '3' }],
@@ -1140,7 +1186,7 @@ export function NewServiceAgreementPage() {
 
                   {/* The schedule said back, in a sentence. Dropdowns say
                       what was configured, not what will happen. */}
-                  <p className="mt-3 border-t border-navy-200 pt-2.5 text-sm leading-relaxed text-navy-700">
+                  <p data-tour="contract-new-rhythm-sentence" className="mt-3 border-t border-navy-200 pt-2.5 text-sm leading-relaxed text-navy-700">
                     <span className="font-semibold">So:</span>{' '}
                     {sv.name.trim() ? `${sv.name.trim()} — ` : ''}
                     {describeRhythms(sv.rhythms)}
@@ -1152,7 +1198,8 @@ export function NewServiceAgreementPage() {
 
           <button
             type="button"
-            onClick={() => setServices([...services, blankService(jobTypes.data?.data[0]?.id ?? '')])}
+            data-tour="contract-new-add-service"
+            onClick={() => setServices([...services, blankService()])}
             className="mt-3 rounded-md border-2 border-dashed border-navy-200 px-4 py-2 text-sm font-medium text-navy-600 transition-colors hover:border-amber-400 hover:text-amber-600"
           >
             + Add another service
@@ -1165,14 +1212,14 @@ export function NewServiceAgreementPage() {
           )}
 
           {step === 2 && (
-        <section className={SECTION}>
+        <section data-tour="contract-new-money" className={SECTION}>
           <div className="mb-4 sm:mb-5">
             <h2 className={HEADING}>The money and the term</h2>
             <p className={SUB}>The fee covers the visits — they are never invoiced separately.</p>
           </div>
 
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-            <div>
+            <div data-tour="contract-new-fee">
               <label className={LABEL} htmlFor="sa-fee">Fee</label>
               <input
                 id="sa-fee"
@@ -1183,7 +1230,7 @@ export function NewServiceAgreementPage() {
                 className={FIELD}
               />
             </div>
-            <div>
+            <div data-tour="contract-new-billed">
               <label className={LABEL} htmlFor="sa-cadence">Billed every</label>
               <select id="sa-cadence" value={billEvery} onChange={(e) => setBillEvery(e.target.value)} className={FIELD}>
                 <option value="week">week</option>
@@ -1191,17 +1238,17 @@ export function NewServiceAgreementPage() {
                 <option value="year">year</option>
               </select>
             </div>
-            <div>
+            <div data-tour="contract-new-starts">
               <label className={LABEL} htmlFor="sa-starts">Starts</label>
               <input id="sa-starts" type="date" value={startsOn} onChange={(e) => setStartsOn(e.target.value)} className={FIELD} />
             </div>
-            <div>
+            <div data-tour="contract-new-ends">
               <label className={LABEL} htmlFor="sa-ends">Ends</label>
               <input id="sa-ends" type="date" value={endsOn} onChange={(e) => setEndsOn(e.target.value)} className={FIELD} />
             </div>
           </div>
 
-          <div className="mt-4 max-w-sm">
+          <div data-tour="contract-new-supervisor" className="mt-4 max-w-sm">
             <label className={LABEL} htmlFor="sa-supervisor">Who looks after it</label>
             <select
               id="sa-supervisor"
@@ -1226,14 +1273,14 @@ export function NewServiceAgreementPage() {
           )}
 
           {step === 3 && (
-        <section className={SECTION}>
+        <section data-tour="contract-new-document" className={SECTION}>
           <div className="mb-4 sm:mb-5">
             <h2 className={HEADING}>The contract itself</h2>
             <p className={SUB}>The wording the customer signs. Optional — you can attach it later.</p>
           </div>
 
           <div className="grid gap-4 sm:grid-cols-[1fr_auto] sm:items-end">
-            <div>
+            <div data-tour="contract-new-doc-select">
               <label className={LABEL} htmlFor="sa-doc">Attach a contract</label>
               <select id="sa-doc" value={documentId} onChange={(e) => setDocumentId(e.target.value)} className={FIELD}>
                 <option value="">No contract attached</option>
@@ -1248,6 +1295,7 @@ export function NewServiceAgreementPage() {
             </div>
             <button
               type="button"
+              data-tour="contract-new-draft"
               onClick={() => setDraftOpen(true)}
               className="rounded-md border-2 border-dashed border-navy-200 px-4 py-2 text-sm font-medium text-navy-600 transition-colors hover:border-amber-400 hover:text-amber-600"
             >
@@ -1269,6 +1317,7 @@ export function NewServiceAgreementPage() {
 
         </div>
 
+        <div data-tour="contract-new-summary" className="min-w-0">
         <ContractSummary
           customer={picked?.display_name ?? ''}
           title={title}
@@ -1279,6 +1328,7 @@ export function NewServiceAgreementPage() {
           startsOn={startsOn}
           endsOn={endsOn}
         />
+        </div>
       </div>
 
       {error && (
@@ -1287,14 +1337,52 @@ export function NewServiceAgreementPage() {
         </p>
       )}
 
+      {partial && (
+        <div role="alert" className="mt-4 rounded-md border border-danger/30 bg-danger/5 px-4 py-3 text-sm text-danger">
+          <p className="font-semibold">The agreement was only partly saved.</p>
+          <p className="mt-1">Saved: {partial.saved.join('; ')}.</p>
+          <p className="mt-1">Not saved: {partial.failed}. Nothing after that was saved either.</p>
+          <p className="mt-1">
+            Don&apos;t save again here — that would make a second agreement. Open the saved one and add what&apos;s
+            missing there:{' '}
+            <Link to={`/maintenance-contracts/${partial.id}`} className="font-semibold underline">
+              open the saved agreement
+            </Link>
+            .
+          </p>
+        </div>
+      )}
+
+      {unplanned && (
+        <div role="alert" className="mt-4 rounded-md border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+          <p className="font-semibold">The agreement is saved and started, but its visit dates weren&apos;t planned yet.</p>
+          <p className="mt-1">
+            They&apos;ll be planned in tonight&apos;s run, or you can try again now. ({unplanned.why})
+          </p>
+          <p className="mt-2 flex flex-wrap items-center gap-3">
+            <button
+              type="button"
+              onClick={() => void retryPlanVisits()}
+              disabled={replanning}
+              className="rounded-md bg-amber-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-amber-700 disabled:opacity-50"
+            >
+              {replanning ? 'Planning…' : 'Try again'}
+            </button>
+            <Link to={`/maintenance-contracts/${unplanned.id}`} className="font-semibold underline">
+              Open the agreement
+            </Link>
+          </p>
+        </div>
+      )}
+
       {step === STEP_NAMES.length - 1 && (
-        <p className="mt-5 text-right text-xs leading-relaxed text-navy-500">
+        <p data-tour="contract-new-start-note" className="mt-5 text-right text-xs leading-relaxed text-navy-500">
           Starting it places the visit dates now. A draft sits there doing nothing until you start it — no visits,
           no jobs, no invoices.
         </p>
       )}
 
-      <div className="mt-2 flex flex-wrap items-center justify-end gap-2">
+      <div data-tour="contract-new-save" className="mt-2 flex flex-wrap items-center justify-end gap-2">
         {step === 0 ? (
           <Link
             to="/maintenance-contracts"
@@ -1315,6 +1403,7 @@ export function NewServiceAgreementPage() {
         {step < STEP_NAMES.length - 1 ? (
           <button
             type="button"
+            data-tour="contract-new-next"
             onClick={() => setStep(step + 1)}
             className="rounded-md bg-amber-600 px-4 py-2 text-sm font-medium text-white hover:bg-amber-700"
           >
@@ -1324,7 +1413,8 @@ export function NewServiceAgreementPage() {
           <>
             <button
               type="button"
-              disabled={!ready || busy}
+              data-tour="contract-new-save-draft"
+              disabled={!ready || busy || !!partial || !!unplanned}
               onClick={() => submit(false)}
               className="rounded-md border border-navy-200 bg-white px-4 py-2 text-sm font-medium text-navy-700 hover:bg-navy-50 disabled:opacity-50"
             >
@@ -1332,7 +1422,8 @@ export function NewServiceAgreementPage() {
             </button>
             <button
               type="button"
-              disabled={!ready || busy}
+              data-tour="contract-new-start"
+              disabled={!ready || busy || !!partial || !!unplanned}
               onClick={() => submit(true)}
               className="rounded-md bg-amber-600 px-4 py-2 text-sm font-medium text-white hover:bg-amber-700 disabled:opacity-50"
             >
@@ -1345,7 +1436,7 @@ export function NewServiceAgreementPage() {
       {/* Said on the last step, where the buttons are, rather than as a
           disabled button somebody has to guess the reason for. */}
       {step === STEP_NAMES.length - 1 && !ready && (
-        <p className="mt-2 text-right text-xs text-navy-500">
+        <p data-tour="contract-new-still-needed" className="mt-2 text-right text-xs text-navy-500">
           Still needed: a customer, a name, at least one property, and a service with a name and a job type.
         </p>
       )}
@@ -1508,7 +1599,7 @@ function ReadContractOverlay({
 
   return (
     <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-navy-900/50 p-4 sm:p-8">
-      <div className="w-full max-w-2xl rounded-lg bg-white shadow-xl">
+      <div data-tour="contract-read-overlay" className="w-full max-w-2xl rounded-lg bg-white shadow-xl">
         <div className="flex items-start justify-between gap-4 border-b border-navy-100 px-5 py-4">
           <div>
             <h2 className="text-base font-semibold text-navy-900">Read a contract you already have</h2>
@@ -1519,6 +1610,8 @@ function ReadContractOverlay({
           </div>
           <button
             type="button"
+            data-tour="contract-read-close"
+            aria-label="Close"
             onClick={onClose}
             disabled={busy}
             className="rounded p-1 text-navy-400 hover:bg-navy-50 hover:text-navy-700 disabled:opacity-40"
@@ -1675,7 +1768,7 @@ function ContractDraftOverlay({
   // What was written. Held here rather than closing on success: pressing
   // a button and watching a dialog vanish tells you nothing about the
   // document it just produced, and this one is a contract.
-  const [drafted, setDrafted] = useState<{ id: string; name: string; body: string } | null>(null)
+  const [drafted, setDrafted] = useState<{ id: string; name: string; body: string; previewFailed: boolean } | null>(null)
 
   // The two lists every service agreement argument is really about.
   // Seeded with what follows from any agreement, so the draft is never
@@ -1743,6 +1836,7 @@ function ContractDraftOverlay({
         id: res.data.id,
         name: full?.data.name ?? 'Service agreement (draft)',
         body: full?.data.body ?? '',
+        previewFailed: !full,
       })
       setBusy(false)
     } catch (e) {
@@ -1759,7 +1853,7 @@ function ContractDraftOverlay({
       aria-label="Draft a service contract"
       onClick={(e) => { if (e.target === e.currentTarget) onClose() }}
     >
-      <div className="w-full max-w-[640px] rounded-lg bg-white shadow-xl">
+      <div data-tour="contract-draft-overlay" className="w-full max-w-[640px] rounded-lg bg-white shadow-xl">
         <div className="flex items-start justify-between border-b border-navy-100 px-5 py-4">
           <div>
             <h2 className="text-base font-bold text-navy-900">Draft a service contract</h2>
@@ -1792,15 +1886,22 @@ function ContractDraftOverlay({
                   markup, and rendering it as HTML inside the app would be
                   an injection path for the sake of a prettier preview —
                   the editor is where it gets rendered properly. */}
-              <pre className="mt-1.5 max-h-[42vh] overflow-auto whitespace-pre-wrap rounded-md border border-navy-100 bg-navy-50/40 p-3 font-sans text-[13px] leading-relaxed text-navy-700">
-                {plainBody(drafted.body)}
-              </pre>
+              {drafted.previewFailed ? (
+                // A blank box here would read as an empty contract.
+                <p role="alert" className="mt-1.5 rounded-md border border-danger/30 bg-danger/5 px-3 py-2 text-sm text-danger">
+                  The preview couldn't load. The draft was still written — open it in a new tab to read it.
+                </p>
+              ) : (
+                <pre className="mt-1.5 max-h-[42vh] overflow-auto whitespace-pre-wrap rounded-md border border-navy-100 bg-navy-50/40 p-3 font-sans text-[13px] leading-relaxed text-navy-700">
+                  {plainBody(drafted.body)}
+                </pre>
+              )}
             </>
           )}
 
           {terms && !drafted && (
             <>
-              <div className="rounded-md border border-amber-300 bg-amber-50 p-4">
+              <div data-tour="contract-draft-terms" className="rounded-md border border-amber-300 bg-amber-50 p-4">
                 <h3 className="text-sm font-bold text-amber-900">{terms.heading}</h3>
                 <ul className="mt-2 space-y-1.5 text-sm leading-relaxed text-amber-900">
                   {terms.points.map((point) => (
@@ -1813,7 +1914,7 @@ function ContractDraftOverlay({
               </div>
 
               {!needsAcceptance && (
-                <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                <div data-tour="contract-draft-lists" className="mt-4 grid gap-3 sm:grid-cols-2">
                   <label className="block">
                     <span className={LABEL}>Included in the fee</span>
                     <textarea
@@ -1840,7 +1941,7 @@ function ContractDraftOverlay({
               )}
 
               {needsAcceptance ? (
-                <div className="mt-4">
+                <div data-tour="contract-draft-ack" className="mt-4">
                   {terms.reaccept_required && (
                     <p className="mb-2 text-sm font-semibold text-amber-900">
                       This wording has changed since you last read it. Please read it again.
@@ -1885,11 +1986,14 @@ function ContractDraftOverlay({
         <div className="flex items-center justify-end gap-2 border-t border-navy-100 px-5 py-4">
           {drafted ? (
             <>
+              {/* A new tab, so what's typed into this agreement isn't lost. */}
               <Link
                 to={`/custom-documents/document/${drafted.id}`}
+                target="_blank"
+                rel="noopener noreferrer"
                 className="rounded-md border border-navy-200 bg-white px-4 py-2 text-sm font-medium text-navy-700 hover:bg-navy-50"
               >
-                Open and edit
+                Open and edit (new tab)
               </Link>
               <button
                 type="button"
@@ -1903,6 +2007,7 @@ function ContractDraftOverlay({
             <>
           <button
             type="button"
+            data-tour="contract-draft-cancel"
             onClick={onClose}
             className="rounded-md border border-navy-200 bg-white px-4 py-2 text-sm font-medium text-navy-700 hover:bg-navy-50"
           >
@@ -1911,6 +2016,7 @@ function ContractDraftOverlay({
           {needsAcceptance ? (
             <button
               type="button"
+              data-tour="contract-draft-go"
               onClick={accept}
               disabled={typed.trim().toLowerCase() !== 'i understand' || busy || !terms}
               className="rounded-md bg-amber-600 px-4 py-2 text-sm font-medium text-white hover:bg-amber-700 disabled:opacity-50"
@@ -1920,6 +2026,7 @@ function ContractDraftOverlay({
           ) : (
             <button
               type="button"
+              data-tour="contract-draft-go"
               onClick={generate}
               disabled={busy}
               className="rounded-md bg-amber-600 px-4 py-2 text-sm font-medium text-white hover:bg-amber-700 disabled:opacity-50"

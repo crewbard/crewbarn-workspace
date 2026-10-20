@@ -1,10 +1,10 @@
-import { useState, useRef, useEffect } from 'react'
+import { useState, useRef, useEffect, lazy, Suspense } from 'react'
+import { TutorialTopBarButton } from '@/components/guides/TutorialControls'
 import { Link, NavLink, useNavigate } from 'react-router-dom'
-import { useQuery } from '@tanstack/react-query'
-import { apiRequest } from '@/lib/api'
 import { useAuth } from '@/hooks/useAuth'
 import { usePermissions, PERM } from '@/hooks/usePermissions'
 import { NotificationBell } from '@/components/layout/NotificationBell'
+import { PartsCartBadge } from '@/components/parts/PartsCartBadge'
 import { useModuleVisibility } from '@/hooks/useModuleVisibility'
 import { useFranchiseFeature } from '@/hooks/useFranchiseFeature'
 import { ToolShedMenu } from './ToolShedMenu'
@@ -12,34 +12,49 @@ import { MobileNavDrawer } from './MobileNavDrawer'
 import { HeaderAiInput } from './HeaderAiInput'
 import { GlobalSearch } from './GlobalSearch'
 import { CatalogLauncher } from '@/components/catalogs/CatalogLauncher'
-import { NewAssetWizardModal } from '@/components/NewAssetWizardModal'
+// Loads when first opened: it reaches the PDF maker, which nobody needs at sign-in.
+const NewAssetWizardModal = lazy(() => import('@/components/NewAssetWizardModal').then((m) => ({ default: m.NewAssetWizardModal })))
+// Loads when first opened: it carries the phone app's QR code.
+const PhoneAppModal = lazy(() => import('@/components/PhoneAppModal').then((m) => ({ default: m.PhoneAppModal })))
 
 import { useUnhandledIncomingCalls } from '@/hooks/useUnhandledIncomingCalls'
+import { useNavBadges, useTaskCount } from '@/hooks/useNavBadges'
 import { useIntakePendingCount } from '@/hooks/useIntakePendingCount'
+import { useLateRisks } from '@/hooks/useLateRisks'
 import { useTheme } from '@/hooks/useTheme'
+import { appExtensions } from '@/lib/appExtensions'
 
 export interface PrimaryNavItem {
   to: string
   label: string
   end?: boolean
+  /** Route permission(s) — the item shows when the user has ANY of them.
+   *  Mirrors the RequirePermission on the route in main.tsx, so the menu
+   *  never offers a page that answers with "access denied". */
+  anyOf?: string[]
+}
+
+/** True when the user may open this nav item (no anyOf = everyone signed in). */
+export function canOpenNavItem(item: PrimaryNavItem, hasAny: (keys: string[]) => boolean): boolean {
+  return !item.anyOf || item.anyOf.length === 0 || hasAny(item.anyOf)
 }
 
 export const PRIMARY_NAV: PrimaryNavItem[] = [
   { to: '/', label: 'Dashboard', end: true },
-  { to: '/jobs', label: 'Jobs' },
-  { to: '/tasks', label: 'Tasks' },
-  { to: '/estimates', label: 'Estimates' },
-  { to: '/customers', label: 'Customers' },
+  { to: '/jobs', label: 'Jobs', anyOf: ['jobs.view'] },
+  { to: '/tasks', label: 'Tasks', anyOf: ['tasks.view', 'jobs.view', 'customers.view'] },
+  { to: '/estimates', label: 'Estimates', anyOf: ['jobs.view'] },
+  { to: '/customers', label: 'Customers', anyOf: ['customers.view'] },
   // Assets demoted to Tool Shed -> Inventory section. Daily-use surface
   // is now the per-customer Assets tab on CustomerDetailPage.
   // Comms moved to the right-side area as "Messages" — sits next to
   // the AI pill since both are communication surfaces.
-  { to: '/schedule', label: 'Schedule' },
-  { to: '/dispatch', label: 'Dispatch' },
+  { to: '/schedule', label: 'Schedule', anyOf: ['jobs.view'] },
+  { to: '/dispatch', label: 'Dispatch', anyOf: ['jobs.view'] },
   // Reports folded into Accounting. Running a report is something you do
   // while working the books, not a separate department — top billing put it
   // on the same footing as running the business.
-  { to: '/accounting', label: 'Accounting' },
+  { to: '/accounting', label: 'Accounting', anyOf: ['invoices.view'] },
 ]
 
 /**
@@ -56,16 +71,16 @@ export const PRIMARY_NAV: PrimaryNavItem[] = [
  * so this cannot quietly become a list of links that no longer exist.
  */
 export const WORK_BAR_EXTRAS: PrimaryNavItem[] = [
-  { to: '/communications', label: 'Messages' },
-  { to: '/calls', label: 'Calls' },
-  { to: '/intake', label: 'Intake Queue' },
-  { to: '/franchises', label: 'Franchise' },
+  { to: '/communications', label: 'Messages', anyOf: ['customers.view'] },
+  { to: '/calls', label: 'Calls', anyOf: ['calls.view'] },
+  { to: '/intake', label: 'Intake Queue', anyOf: ['customers.view'] },
+  { to: '/franchises', label: 'Franchise', anyOf: ['franchises.view'] },
 ]
 
 export function primaryNavForTheme(theme: string, canViewParts: boolean): PrimaryNavItem[] {
   if ((theme !== 'easy-side' && theme !== 'easy-top') || !canViewParts) return PRIMARY_NAV
   return PRIMARY_NAV.flatMap(item => item.to === '/accounting'
-    ? [{ to: '/inventory', label: 'Parts' }, item]
+    ? [{ to: '/inventory', label: 'Parts', anyOf: ['inventory.view'] }, item]
     : [item])
 }
 
@@ -82,87 +97,55 @@ export function TopBar({
 } = {}) {
   const isPro = variant === 'pro'
   const { density, theme, setTheme } = useTheme()
+  const focus = theme === 'focus'
   const compactHeader = !isPro && density !== 'comfortable'
   const navigate = useNavigate()
   const { account, logout } = useAuth()
-  const { isRouteVisible } = useModuleVisibility()
+  const { isRouteVisibleInWork: isRouteVisible } = useModuleVisibility()
   const { has, hasAny } = usePermissions()
   const callAlerts = useUnhandledIncomingCalls()
+  const taskCount = useTaskCount()
   const intakeCount = useIntakePendingCount()
-  const visibleNav = primaryNavForTheme(theme, has('inventory.view')).filter((item) => isRouteVisible(item.to))
+  const visibleNav = primaryNavForTheme(theme, has('inventory.view'))
+    .filter((item) => isRouteVisible(item.to) && canOpenNavItem(item, hasAny))
+  // Messages and Intake open pages that need customers.view; each link also
+  // hides when its own module is switched off (and only that link).
+  const canMessages = has('customers.view') && isRouteVisible('/communications')
+  const canIntake = has('customers.view') && isRouteVisible('/intake')
+  const canCalls = callAlerts.canViewCalls && isRouteVisible('/calls')
+  const hasCommsLinks = canMessages || canCalls || canIntake
   // Franchise Dashboard tab — only for a franchisor tenant + franchises.view.
   // Appended here so both the desktop nav and the mobile drawer pick it up.
   const franchiseFeature = useFranchiseFeature()
   const navWithFranchise =
     franchiseFeature.enabled && has('franchises.view') && isRouteVisible('/franchises')
-      ? [...visibleNav, { to: '/franchises', label: 'Franchise' }]
+      ? [...visibleNav, { to: '/franchises', label: 'Franchise', anyOf: ['franchises.view'] }]
       : visibleNav
   const [isToolShedOpen, setIsToolShedOpen] = useState(false)
   const [isAvatarMenuOpen, setIsAvatarMenuOpen] = useState(false)
   const [isQuickCreateOpen, setIsQuickCreateOpen] = useState(false)
   const [isMoreMenuOpen, setIsMoreMenuOpen] = useState(false)
   const [isNewAssetOpen, setIsNewAssetOpen] = useState(false)
+  const [isPhoneAppOpen, setIsPhoneAppOpen] = useState(false)
   const [isMobileNavOpen, setIsMobileNavOpen] = useState(false)
 
-  // Combined pending-request count surfaced on the Dispatch nav link.
-  // Sums portal WO requests + RFQ invitations awaiting vendor action.
-  // Polls every 60s; silently 0 if the account lacks jobs.view.
-  const incomingReqs = useQuery({
-    queryKey: ['topbar-incoming-work-requests'],
-    queryFn: () =>
-      apiRequest<{ data: unknown[] }>('/v1/work-orders/incoming-requests').catch(() => ({ data: [] })),
-    refetchInterval: 60000,
-  })
-  const incomingRfqs = useQuery({
-    queryKey: ['topbar-incoming-rfqs'],
-    queryFn: () =>
-      apiRequest<{ data: Array<{ status: string }> }>('/v1/estimate-requests/incoming').catch(() => ({ data: [] })),
-    refetchInterval: 60000,
-  })
-  const dispatchPendingCount =
-    (incomingReqs.data?.data.length ?? 0) +
-    (incomingRfqs.data?.data.filter((r) =>
-      ['pending', 'viewed'].includes(r.status),
-    ).length ?? 0)
-
-  // Sub-review queue size — NTE extension requests + submitted
-  // invoices awaiting tenant action. Surfaces a badge on the Jobs
-  // nav link so dispatch sees pending sub work from anywhere.
-  const subReviews = useQuery({
-    queryKey: ['topbar-sub-reviews-pending'],
-    queryFn: () =>
-      apiRequest<{ data: { nte_extensions: unknown[]; invoices: unknown[] } }>(
-        '/v1/sub-reviews/pending',
-      ).catch(() => ({ data: { nte_extensions: [], invoices: [] } })),
-    refetchInterval: 60000,
-  })
-  const subReviewPendingCount =
-    (subReviews.data?.data.nte_extensions.length ?? 0) +
-    (subReviews.data?.data.invoices.length ?? 0)
-
-  // Inbound mirror jobs — cross-tenant sub work waiting for this
-  // tenant to accept. Lights up the Jobs nav so dispatch notices
-  // incoming work from partner tenants without polling /inbound-sub-jobs.
-  const inboundMirror = useQuery({
-    queryKey: ['topbar-inbound-sub-jobs-pending'],
-    queryFn: () =>
-      apiRequest<{ data: { count: number } }>('/v1/inbound-sub-jobs/pending-count')
-        .catch(() => ({ data: { count: 0 } })),
-    refetchInterval: 60000,
-  })
-  const inboundMirrorPendingCount = inboundMirror.data?.data.count ?? 0
-
-  // Pending-turnover payments — tech-collected money waiting for a
-  // cash-flow manager to confirm. Shows on Accounting nav so anyone
-  // who handles cash spots the queue immediately.
-  const pendingPayments = useQuery({
-    queryKey: ['topbar-pending-payments'],
-    queryFn: () =>
-      apiRequest<{ data: { count: number } }>('/v1/payments/pending-count')
-        .catch(() => ({ data: { count: 0 } })),
-    refetchInterval: 60000,
-  })
-  const pendingPaymentsCount = pendingPayments.data?.data.count ?? 0
+  // Nav badge counts, from the same hook (and the same query keys) as the
+  // Sidebar, so the two share one poll:
+  //   - Dispatch: portal work-order requests + RFQ invitations
+  //   - Jobs: sub reviews (NTE extensions + sub invoices) and inbound sub jobs
+  //   - Accounting: tech-collected payments awaiting turnover
+  // A failed poll keeps the last count; no permission or plan shows nothing.
+  const {
+    dispatchPendingCount,
+    subReviewPendingCount,
+    inboundMirrorPendingCount,
+    pendingPaymentsCount,
+  } = useNavBadges()
+  // A tech may be late and nobody has said they've seen it: Schedule flashes.
+  const lateRisks = useLateRisks()
+  const lateTitle = lateRisks.flashing
+    ? `${lateRisks.unseen.length} tech${lateRisks.unseen.length === 1 ? '' : 's'} may be late. Open Schedule to see.`
+    : undefined
 
   const toolShedTriggerRef = useRef<HTMLButtonElement>(null)
   const avatarMenuRef = useRef<HTMLDivElement>(null)
@@ -252,10 +235,10 @@ export function TopBar({
 
   return (
     <>
-      <header data-easy-topbar={theme === 'easy-top' && !isPro ? '' : undefined} className="sticky top-0 z-30 bg-[var(--chrome-bg)] border-b border-white/10">
+      <header data-tour="topbar" data-easy-topbar={theme === 'easy-top' && !isPro ? '' : undefined} className="sticky top-0 z-30 bg-[var(--chrome-bg)] border-b border-white/10">
         {theme === 'easy-top' && !isPro && (
           <div data-easy-brand-strip>
-            <Link to="/" className="flex min-w-0 items-center gap-2 text-sm text-white">
+            <Link to="/" data-tour="shell-brand" className="flex min-w-0 items-center gap-2 text-sm text-white">
               <span className="shrink-0 font-bold">Crew<span className="text-[#fbbf24]">Barn</span></span>
               {account?.tenant?.name && <><span aria-hidden="true" className="text-white/40">·</span><span className="min-w-0 break-words text-white">{account.tenant.name}</span></>}
             </Link>
@@ -275,8 +258,10 @@ export function TopBar({
           <button
             type="button"
             onClick={() => setIsMobileNavOpen(true)}
-            className={`${isPro ? 'md:hidden' : theme === 'easy-top' ? 'min-[1920px]:hidden' : 'xl:hidden'} ${compactHeader ? 'w-8 h-8' : 'w-10 h-10'} shrink-0 flex items-center justify-center rounded-md -ml-1 text-white/80 hover:bg-white/10`}
-            aria-label="Open navigation"
+            data-tour="mobile-menu"
+            className={`${isPro ? 'md:hidden' : theme === 'easy-top' ? 'min-[1920px]:hidden' : 'xl:hidden'} ${compactHeader ? 'w-8 h-8' : 'w-10 h-10'} shrink-0 flex items-center justify-center rounded-md -ml-1 text-white/80 hover:bg-white/10 ${lateRisks.flashing ? 'cb-strobe' : ''}`}
+            aria-label={lateTitle ? `Open navigation. ${lateTitle}` : 'Open navigation'}
+            title={lateTitle}
           >
             <svg viewBox="0 0 24 24" fill="none" className="w-6 h-6">
               <path
@@ -293,9 +278,10 @@ export function TopBar({
               (where the sidebar is collapsed behind the hamburger). */}
           {(theme !== 'easy-top' || isPro) && <Link
             to="/"
+            data-tour="shell-brand"
             className={[
               'flex items-center gap-2 shrink-0 group',
-              isPro ? 'md:hidden' : '',
+              isPro && !focus ? 'md:hidden' : '',
             ].join(' ')}
           >
             <span className={compactHeader ? 'text-base font-bold text-white' : 'text-lg font-bold text-white'}>
@@ -311,9 +297,13 @@ export function TopBar({
             )}
           </Link>}
 
+          {focus && <div data-focus-search className="flex min-w-0 flex-1">
+            <GlobalSearch prominent />
+          </div>}
+
           {/* Primary nav — desktop only; mobile drawer mirrors below.
               Hidden entirely in pro mode (the Sidebar carries it). */}
-          {!isPro && isRouteVisible('/communications') && (
+          {!isPro && (
           <nav className={`hidden ${theme === 'easy-top' ? 'min-[1920px]:flex' : 'xl:flex'} items-center ${compactHeader ? 'gap-0.5' : 'gap-1'}`}>
             {navWithFranchise.map((item) => (
               <NavLink
@@ -321,12 +311,15 @@ export function TopBar({
                 to={item.to}
                 end={item.end}
                 data-tour={`nav-${item.to === '/' ? 'dashboard' : item.to.slice(1)}`}
+                title={item.to === '/schedule' ? lateTitle : undefined}
+                data-late={item.to === '/schedule' && lateRisks.flashing ? lateRisks.unseen.length : undefined}
                 className={({ isActive }) =>
                   [
                   `relative ${compactHeader ? 'px-2 py-1.5 text-xs' : 'px-3 py-2 text-sm'} font-medium transition-colors`,
                     isActive
                       ? 'text-white'
                       : 'text-white/70 hover:text-white',
+                    item.to === '/schedule' && lateRisks.flashing ? 'cb-strobe' : '',
                   ].join(' ')
                 }
               >
@@ -356,6 +349,15 @@ export function TopBar({
                           title={`${pendingPaymentsCount} tech-collected payment${pendingPaymentsCount === 1 ? '' : 's'} awaiting turnover`}
                         >
                           {pendingPaymentsCount > 99 ? '99+' : pendingPaymentsCount}
+                        </span>
+                      )}
+                      {item.to === '/tasks' && taskCount.open > 0 && (
+                        <span
+                          data-nav-count="tasks"
+                          className="absolute -top-1 right-0 w-7 text-center rounded-full bg-amber-500 px-1 py-0.5 text-[10px] font-bold leading-none text-white"
+                          title={`${taskCount.open} open task${taskCount.open === 1 ? '' : 's'}${taskCount.overdue ? `, ${taskCount.overdue} overdue` : ''}`}
+                        >
+                          {taskCount.open > 99 ? '99+' : taskCount.open}
                         </span>
                       )}
                       {item.to === '/jobs' && inboundMirrorPendingCount > 0 && (
@@ -428,16 +430,18 @@ export function TopBar({
           </nav>
           )}
 
-          <div className="flex-1" />
+          {!focus && <div className="flex-1" />}
 
           {/* Messages — formerly "Comms" in the primary nav. Lives next
               to the AI pill on the right because both are communication
               surfaces (and to free up space in the left-side primary nav).
               Hidden on mobile (drawer covers it). In pro mode the Sidebar
               carries Messages, so hide it here. */}
-          {!isPro && (
+          {!isPro && hasCommsLinks && (
           <>
+            {canMessages && (
             <NavLink
+              data-tour="topbar-comms"
               to="/communications"
               // Anchor for the new-message toast — see AnchoredToastLayer.
               data-toast-anchor="messages"
@@ -467,9 +471,11 @@ export function TopBar({
                 </>
               )}
             </NavLink>
-            {callAlerts.canViewCalls && (
+            )}
+            {canCalls && (
               <NavLink
-                to="/calls"
+                data-tour="topbar-comms"
+              to="/calls"
                 data-toast-anchor="calls"
                 className={({ isActive }) =>
                  [
@@ -504,7 +510,9 @@ export function TopBar({
                 )}
               </NavLink>
             )}
+            {canIntake && (
             <NavLink
+              data-tour="topbar-comms"
               to="/intake"
               data-toast-anchor="intake"
               className={({ isActive }) =>
@@ -544,12 +552,13 @@ export function TopBar({
                 </>
               )}
             </NavLink>
+            )}
           </>
           )}
 
           {/* AI ask box — hidden entirely when AI is off / unconfigured.
               Also hidden on mobile (drawer-only nav). */}
-          <div data-header-ai className="hidden xl:block">
+          <div data-header-ai data-tour="topbar-cbi" className="hidden xl:block">
             {isRouteVisible('/tool-shed/ai') && <HeaderAiInput />}
           </div>
 
@@ -557,7 +566,7 @@ export function TopBar({
               (Notifications / settings placeholders were removed until they
               actually do something.) */}
           <div data-header-actions className={`flex items-center ${compactHeader ? 'gap-0.5' : 'gap-1'}`}>
-            {compactHeader && !isPro && isRouteVisible('/communications') && (
+            {compactHeader && !isPro && hasCommsLinks && (
               <div ref={moreMenuRef} className="relative hidden md:block xl:hidden">
                 <button
                   type="button"
@@ -576,9 +585,9 @@ export function TopBar({
                     />
                   </svg>
                   <span>More</span>
-                  {(callAlerts.count + intakeCount > 0) && (
+                  {((canCalls ? callAlerts.count : 0) + (canIntake ? intakeCount : 0) > 0) && (
                     <span className="absolute -top-1 right-0 w-7 text-center rounded-full bg-amber-500 px-1 py-0.5 text-[10px] font-bold leading-none text-white">
-                      {callAlerts.count + intakeCount > 99 ? '99+' : callAlerts.count + intakeCount}
+                      {(canCalls ? callAlerts.count : 0) + (canIntake ? intakeCount : 0) > 99 ? '99+' : (canCalls ? callAlerts.count : 0) + (canIntake ? intakeCount : 0)}
                     </span>
                   )}
                 </button>
@@ -588,6 +597,7 @@ export function TopBar({
                     <div className="px-3 py-1.5 text-xs font-semibold uppercase tracking-wide text-slate-500">
                       Communication
                     </div>
+                    {canMessages && (
                     <CompactMoreLink
                       to="/communications"
                       icon="messages"
@@ -595,7 +605,8 @@ export function TopBar({
                     >
                       Messages
                     </CompactMoreLink>
-                    {callAlerts.canViewCalls && (
+                    )}
+                    {canCalls && (
                       <CompactMoreLink
                         to="/calls"
                         icon="calls"
@@ -605,6 +616,7 @@ export function TopBar({
                         Calls
                       </CompactMoreLink>
                     )}
+                    {canIntake && (
                     <CompactMoreLink
                       to="/intake"
                       icon="intake"
@@ -613,6 +625,7 @@ export function TopBar({
                     >
                       Intake
                     </CompactMoreLink>
+                    )}
                     <div className="border-t border-slate-100 my-1" />
                     <div className="px-3 py-2 text-xs text-slate-500">
                       Dialer and full AI bar stay tucked away in compact mode.
@@ -623,13 +636,13 @@ export function TopBar({
             )}
 
             {/* Global search — the non-AI way to jump to a record. Both themes. */}
-            <GlobalSearch />
+            {!focus && <GlobalSearch />}
 
             {/* The shop's catalogues, Alt C from anywhere. */}
             <CatalogLauncher />
 
             {/* Quick create button - "+" with dropdown of create actions */}
-            <div ref={quickCreateRef} className={`relative ml-1 ${compactHeader ? 'md:ml-1' : 'md:ml-2'}`}>
+            <div ref={quickCreateRef} data-tour="topbar-create" className={`relative ml-1 ${compactHeader ? 'md:ml-1' : 'md:ml-2'}`}>
               <button
                 type="button"
                 onClick={() => setIsQuickCreateOpen((v) => !v)}
@@ -649,12 +662,13 @@ export function TopBar({
               </button>
 
               {isQuickCreateOpen && (
-                <div className="absolute right-0 top-full mt-1 w-56 bg-white border border-slate-200 rounded-lg shadow-lg py-1 z-40">
+                <div data-tour="topbar-create-menu" className="absolute right-0 top-full mt-1 w-56 bg-white border border-slate-200 rounded-lg shadow-lg py-1 z-40">
                   <div className="px-3 py-1.5 text-xs font-semibold text-slate-500 uppercase tracking-wide">
                     Create
                   </div>
                   <QuickCreateLink
                     to="/jobs/new"
+                    anyOf={['jobs.edit']}
                     onClick={() => setIsQuickCreateOpen(false)}
                     icon="briefcase"
                   >
@@ -662,6 +676,7 @@ export function TopBar({
                   </QuickCreateLink>
                   <QuickCreateLink
                     to="/tasks?new=1"
+                    anyOf={['tasks.edit']}
                     onClick={() => setIsQuickCreateOpen(false)}
                     icon="task"
                   >
@@ -669,6 +684,7 @@ export function TopBar({
                   </QuickCreateLink>
                   <QuickCreateLink
                     to="/estimates/new"
+                    anyOf={['jobs.edit']}
                     onClick={() => setIsQuickCreateOpen(false)}
                     icon="document"
                   >
@@ -676,6 +692,7 @@ export function TopBar({
                   </QuickCreateLink>
                   <QuickCreateLink
                     to="/maintenance-contracts/new"
+                    anyOf={['contracts.edit']}
                     onClick={() => setIsQuickCreateOpen(false)}
                     icon="document"
                   >
@@ -683,11 +700,13 @@ export function TopBar({
                   </QuickCreateLink>
                   <QuickCreateLink
                     to="/customers/new"
+                    anyOf={['customers.edit']}
                     onClick={() => setIsQuickCreateOpen(false)}
                     icon="user"
                   >
                     New Customer
                   </QuickCreateLink>
+                  {has('assets.edit') && isRouteVisible('/assets') && (
                   <QuickCreateButton
                     onClick={() => {
                       setIsQuickCreateOpen(false)
@@ -697,20 +716,28 @@ export function TopBar({
                   >
                     New Asset
                   </QuickCreateButton>
+                  )}
                 </div>
               )}
             </div>
 
-            {/* Office notification bell — disputes, external refunds, etc.
-                Gated on invoices (view or edit) since every producer is a
-                money event; mirrors the route's method-based permission. */}
-            {hasAny([PERM.INVOICES_VIEW, PERM.INVOICES_EDIT]) && <NotificationBell compact={compactHeader} />}
+            {/* Parts to order (N): the parts cart, for the buyer and whoever asked. */}
+            <PartsCartBadge compact={compactHeader} />
+
+            {/* Office notification bell — disputes, external refunds, and for
+                whoever orders parts, the parts waiting. Mirrors the route's
+                permission (invoices, or inventory.order). */}
+            {hasAny([PERM.INVOICES_VIEW, PERM.INVOICES_EDIT, PERM.INVENTORY_ORDER]) && <NotificationBell compact={compactHeader} />}
+
+            {/* A tour of this page (or its area tutorial), while "Show tutorials on pages" is ticked in Help. */}
+            <TutorialTopBarButton pageTours="work" className={compactHeader ? 'ml-1 !h-8 !w-8' : 'ml-2'} />
 
             {/* Help button — opens HelpPanel slide-over (or press ?) */}
             {onOpenHelp && (
               <button
                 type="button"
                 onClick={onOpenHelp}
+                data-tour="topbar-help"
                 className={`${compactHeader ? 'ml-1 w-8 h-8' : 'ml-2 w-9 h-9'} flex items-center justify-center rounded-full text-white/80 hover:bg-white/10 transition-colors text-base font-semibold`}
                 title="Help (press ?)"
                 aria-label="Open help"
@@ -737,7 +764,7 @@ export function TopBar({
               </button>
 
               {isAvatarMenuOpen && (
-                <div className="absolute right-0 top-full mt-1 w-56 bg-white border border-slate-200 rounded-lg shadow-lg py-1 z-40">
+                <div data-tour="user-menu-panel" className="absolute right-0 top-full mt-1 w-56 bg-white border border-slate-200 rounded-lg shadow-lg py-1 z-40">
                   <div className="px-3 py-2 border-b border-slate-100">
                     <div className="text-sm font-medium text-navy-900 truncate">
                       {account?.email ?? 'Signed in'}
@@ -750,41 +777,24 @@ export function TopBar({
                   </div>
                   {account?.is_platform_admin && (
                     <>
-                      <MenuItemLink
-                        to="/admin/tenants"
-                        onClick={() => setIsAvatarMenuOpen(false)}
-                      >
-                        <span className="flex items-center justify-between">
-                          <span>Tenants</span>
-                          <span className="text-[10px] uppercase tracking-wide bg-amber-100 text-amber-800 px-1.5 py-0.5 rounded">
-                            Staff
-                          </span>
-                        </span>
-                      </MenuItemLink>
-                      <MenuItemLink
-                        to="/admin/testers"
-                        onClick={() => setIsAvatarMenuOpen(false)}
-                      >
-                        Testers
-                      </MenuItemLink>
-                      <MenuItemLink
-                        to="/admin/inbox"
-                        onClick={() => setIsAvatarMenuOpen(false)}
-                      >
-                        Inbox
-                      </MenuItemLink>
-                      <MenuItemLink
-                        to="/admin/platform-integrations"
-                        onClick={() => setIsAvatarMenuOpen(false)}
-                      >
-                        Platform integrations
-                      </MenuItemLink>
-                      <MenuItemLink
-                        to="/admin/platform-users"
-                        onClick={() => setIsAvatarMenuOpen(false)}
-                      >
-                        Platform Users
-                      </MenuItemLink>
+                      {(appExtensions().staffMenuLinks ?? []).map((link) => (
+                        <MenuItemLink
+                          key={link.to}
+                          to={link.to}
+                          onClick={() => setIsAvatarMenuOpen(false)}
+                        >
+                          {link.badge ? (
+                            <span className="flex items-center justify-between">
+                              <span>{link.label}</span>
+                              <span className="text-[10px] uppercase tracking-wide bg-amber-100 text-amber-800 px-1.5 py-0.5 rounded">
+                                {link.badge}
+                              </span>
+                            </span>
+                          ) : (
+                            link.label
+                          )}
+                        </MenuItemLink>
+                      ))}
                       {/* Platform admin's OWN login 2FA — in the account menu,
                           NOT the Tool Shed, so acting-as-a-tenant never shows
                           "your" 2FA under that tenant. Tenant users get theirs
@@ -810,19 +820,29 @@ export function TopBar({
                   <MenuItemLink to="/me/account" onClick={() => setIsAvatarMenuOpen(false)}>
                     My account
                   </MenuItemLink>
+                  <MenuItem onClick={() => { setIsAvatarMenuOpen(false); setIsPhoneAppOpen(true) }}>
+                    Phone app
+                  </MenuItem>
+                  <MenuItemLink to="/me/keyboard-shortcuts" onClick={() => setIsAvatarMenuOpen(false)}>
+                    Keyboard shortcuts
+                  </MenuItemLink>
                   {has(PERM.SETTINGS_EDIT) && (
                     <MenuItemLink to="/me/ai-connectors" onClick={() => setIsAvatarMenuOpen(false)}>
                       AI connectors
                     </MenuItemLink>
                   )}
-                  <MenuItem onClick={() => setIsAvatarMenuOpen(false)} disabled>
-                    Help
-                  </MenuItem>
+                  {onOpenHelp && (
+                    <MenuItem onClick={() => { setIsAvatarMenuOpen(false); onOpenHelp() }}>
+                      Help
+                    </MenuItem>
+                  )}
                   <div className="border-t border-slate-100 my-1" />
-                  <div className="px-4 py-1 text-xs font-semibold text-slate-500">Layout preview</div>
+                  <div data-tour="user-menu-layouts" className="px-4 py-1 text-xs font-semibold text-slate-500">Layout preview</div>
                   <MenuItem onClick={() => { setTheme('easy-side'); setIsAvatarMenuOpen(false) }}>Easy · Side bar{theme === 'easy-side' ? ' ✓' : ''}</MenuItem>
                   <MenuItem onClick={() => { setTheme('easy-top'); setIsAvatarMenuOpen(false) }}>Easy · Top bar{theme === 'easy-top' ? ' ✓' : ''}</MenuItem>
-                  <MenuItemLink to="/tool-shed/appearance" onClick={() => setIsAvatarMenuOpen(false)}>All layouts</MenuItemLink>
+                  {has(PERM.SETTINGS_VIEW) && (
+                    <MenuItemLink to="/tool-shed/appearance" onClick={() => setIsAvatarMenuOpen(false)}>All layouts</MenuItemLink>
+                  )}
                   <div className="border-t border-slate-100 my-1" />
                   <MenuItem onClick={handleSignOut}>Sign out</MenuItem>
                 </div>
@@ -835,10 +855,20 @@ export function TopBar({
       {/* Slice 13c: New Asset wizard, mounted at TopBar so the quick-create
           dropdown can open it from anywhere in the app. The Modal portals
           over everything via fixed inset-0 z-50. */}
-      <NewAssetWizardModal
-        isOpen={isNewAssetOpen}
-        onClose={() => setIsNewAssetOpen(false)}
-      />
+      {isNewAssetOpen && (
+        <Suspense fallback={null}>
+          <NewAssetWizardModal
+            isOpen={isNewAssetOpen}
+            onClose={() => setIsNewAssetOpen(false)}
+          />
+        </Suspense>
+      )}
+
+      {isPhoneAppOpen && (
+        <Suspense fallback={null}>
+          <PhoneAppModal onClose={() => setIsPhoneAppOpen(false)} />
+        </Suspense>
+      )}
 
       {/* Mobile nav drawer — only renders content when open. Mirrors the
           desktop PRIMARY_NAV + Tool Shed sections. Badges are forwarded
@@ -848,6 +878,8 @@ export function TopBar({
         onClose={() => setIsMobileNavOpen(false)}
         primaryNav={navWithFranchise}
         badges={{
+          '/schedule': lateRisks.flashing ? [{ count: lateRisks.unseen.length, color: 'red' }] : [],
+          '/tasks': taskCount.open > 0 ? [{ count: taskCount.open, color: 'amber' }] : [],
           '/dispatch':
             dispatchPendingCount > 0
               ? [{ count: dispatchPendingCount, color: 'amber' }]
@@ -866,6 +898,7 @@ export function TopBar({
               : [],
         }}
         accountEmail={account?.email ?? null}
+        onOpenPhoneApp={() => setIsPhoneAppOpen(true)}
         onSignOut={handleSignOut}
         wide={!isPro}
       />
@@ -987,15 +1020,20 @@ function QuickCreateLink({
   to,
   onClick,
   icon,
+  anyOf,
   children,
 }: {
   to: string
   onClick: () => void
   icon: QuickCreateIconName
+  /** Permission(s) the target route needs; hidden when the user has none. */
+  anyOf?: string[]
   children: React.ReactNode
 }) {
-  const { isRouteVisible } = useModuleVisibility()
+  const { isRouteVisibleInWork: isRouteVisible } = useModuleVisibility()
+  const { hasAny } = usePermissions()
   if (!isRouteVisible(to)) return null
+  if (anyOf && anyOf.length > 0 && !hasAny(anyOf)) return null
   return (
     <Link
       to={to}

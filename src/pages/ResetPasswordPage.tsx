@@ -11,6 +11,14 @@ import { resetPassword } from '@/lib/auth'
  * (/reset-password/:token?email=…). Posts token + email + new password to
  * /v1/auth/reset-password.
  */
+/** A 422 whose field errors are about the new password, not the token. */
+function isPasswordRuleError(err: ApiError): boolean {
+  const details = err.details
+  if (!details || typeof details !== 'object') return false
+  const keys = Object.keys(details as Record<string, unknown>)
+  return keys.some((key) => key === 'password' || key === 'password_confirmation') && !keys.includes('token') && !keys.includes('email')
+}
+
 export function ResetPasswordPage() {
   const { token = '' } = useParams()
   const [params] = useSearchParams()
@@ -28,8 +36,9 @@ export function ResetPasswordPage() {
   async function onSubmit(e: FormEvent) {
     e.preventDefault()
     setError(null)
-    if (password.length < 8) {
-      setError('Password must be at least 8 characters.')
+    // Same rule as sign-up: at least 10 characters.
+    if (password.length < 10) {
+      setError('Password must be at least 10 characters.')
       return
     }
     if (password !== confirm) {
@@ -42,7 +51,10 @@ export function ResetPasswordPage() {
       setDone(true)
       setTimeout(() => navigate('/login', { replace: true }), 1800)
     } catch (err) {
-      if (err instanceof ApiError && err.status === 422) {
+      if (err instanceof ApiError && err.status === 422 && isPasswordRuleError(err)) {
+        // The server turned down the password itself, not the link.
+        setError(err.message)
+      } else if (err instanceof ApiError && err.status === 422) {
         setError('This reset link is invalid or expired — request a new one.')
       } else if (err instanceof ApiError && err.status === 429) {
         setError('Too many attempts. Please try again shortly.')
@@ -85,7 +97,7 @@ export function ResetPasswordPage() {
           </Link>
         </div>
       ) : (
-        <form onSubmit={onSubmit} className="space-y-5">
+        <form data-tour="reset-form" onSubmit={onSubmit} className="space-y-5">
           <div>
             <h2 className="text-2xl font-bold text-navy-800">Set a new password</h2>
             <p className="text-sm text-navy-500 mt-1">
@@ -98,7 +110,7 @@ export function ResetPasswordPage() {
             type="password"
             autoFocus
             autoComplete="new-password"
-            placeholder="At least 8 characters"
+            placeholder="At least 10 characters"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
           />

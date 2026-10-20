@@ -86,7 +86,7 @@ export function CustomerOrdersPanel() {
   }
 
   return (
-    <section aria-label="Orders from customers" className="mb-4 rounded-lg border border-amber-200 bg-amber-50/60 p-3 sm:p-4">
+    <section aria-label="Orders from customers" data-tour="estimates-customer-orders" className="mb-4 rounded-lg border border-amber-200 bg-amber-50/60 p-3 sm:p-4">
       <h2 className="flex items-center gap-2 text-sm font-semibold text-slate-900">
         <IconShoppingCart size={17} className="text-amber-600" />
         Orders from customers

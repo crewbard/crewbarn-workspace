@@ -1,6 +1,7 @@
 import { apiRequest } from '@/lib/api'
 import type {
   PurchaseOrder,
+  SupplierCopy,
   PurchaseOrderInput,
   PurchaseOrderUpdateInput,
   PurchaseOrderListParams,
@@ -31,6 +32,12 @@ export async function listPurchaseOrders(
   return apiRequest<PaginatedResponse<PurchaseOrder>>(
     `/v1/purchase-orders${buildQuery(params)}`
   )
+}
+
+/** The order as the supplier sees it (34.257). */
+export async function getSupplierCopy(id: string): Promise<SupplierCopy> {
+  const res = await apiRequest<{ data: SupplierCopy }>(`/v1/purchase-orders/${id}/supplier-copy`)
+  return res.data
 }
 
 export async function getPurchaseOrder(id: string): Promise<PurchaseOrder> {

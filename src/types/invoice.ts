@@ -25,6 +25,9 @@ export interface InvoiceWorkOrderRef {
   id: string
   display_number: string | null
   title: string | null
+  /** The client's own work order and PO numbers. */
+  their_work_order_number?: string | null
+  their_po_number?: string | null
 }
 
 export interface InvoiceLineItem {
@@ -76,6 +79,8 @@ export interface Invoice {
 
   payment_method: string | null
   payment_reference: string | null
+  /** Each payment on it with CrewBarn's receipt number (invoice detail only). */
+  receipts?: Array<{ receipt_number: string | null; amount_cents: number; received_at: string | null; payment_method: string | null }>
 
   customer_notes: string | null
   internal_notes: string | null

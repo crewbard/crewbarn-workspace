@@ -12,7 +12,19 @@ import { SmsComposerModal } from './SmsComposerModal'
  * both SMS and email threads, then opens the same ConversationThread used by
  * the global inbox and job messages.
  */
-export function CustomerMessagesTab({ customer, fill = false }: { customer: Customer; fill?: boolean }) {
+export function CustomerMessagesTab({
+  customer,
+  fill = false,
+  estimateId,
+  locationId,
+}: {
+  customer: Customer
+  fill?: boolean
+  /** Opened from an estimate: templates fill from it and the job it came from. */
+  estimateId?: string | null
+  /** The service location the page is about, for address tags. */
+  locationId?: string | null
+}) {
   const queryClient = useQueryClient()
   const cardsKey = ['comms', 'message-cards', customer.id] as const
   const [selectedId, setSelectedId] = useState<string | null>(null)
@@ -124,6 +136,8 @@ export function CustomerMessagesTab({ customer, fill = false }: { customer: Cust
         isOpen={emailOpen}
         onClose={() => setEmailOpen(false)}
         customerId={customer.id}
+        estimateId={estimateId ?? null}
+        locationId={locationId ?? null}
         defaultEmail={customer.email ?? null}
         onSent={(id) => {
           setSelectedId(id)
@@ -134,6 +148,8 @@ export function CustomerMessagesTab({ customer, fill = false }: { customer: Cust
         isOpen={smsOpen}
         onClose={() => setSmsOpen(false)}
         customerId={customer.id}
+        estimateId={estimateId ?? null}
+        locationId={locationId ?? null}
         defaultPhone={defaultPhone}
         onSent={(id) => {
           setSelectedId(id)
@@ -161,8 +177,10 @@ function ThreadRow({
   onClick: () => void
 }) {
   const unread = conversation.unread_for_me ?? conversation.unread_count > 0
-  const channelLabel = conversation.channel === 'email' ? 'Email' : conversation.channel === 'call' ? 'Call' : 'Text'
-  const title = conversation.channel === 'email'
+  const channelLabel = conversation.channel === 'portal' ? 'Portal' : conversation.channel === 'email' ? 'Email' : conversation.channel === 'call' ? 'Call' : 'Text'
+  const title = conversation.channel === 'portal'
+    ? 'Customer portal messages'
+    : conversation.channel === 'email'
     ? (conversation.external_email ?? 'Email thread')
     : formatPhone(conversation.external_number)
 

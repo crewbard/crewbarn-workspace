@@ -169,7 +169,8 @@ export const changeLine = (orderId: string, lineId: string, body: { qty?: number
 export const removeLine = (orderId: string, lineId: string) =>
   apiRequest<CatalogOrder>(`${BASE}/${orderId}/lines/${lineId}`, { method: 'DELETE' })
 
-export const changeVendor = (orderId: string, vendorId: string) =>
+/** Null: nobody chosen yet, the buyer picks. */
+export const changeVendor = (orderId: string, vendorId: string | null) =>
   apiRequest<CatalogOrder>(`${BASE}/${orderId}`, { method: 'PATCH', body: { vendor_id: vendorId } })
 
 export const makeCatalogItem = (orderId: string, lineId: string, body: { name?: string; sku?: string; customer_cost_cents?: number }) =>

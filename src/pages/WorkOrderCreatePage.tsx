@@ -3,6 +3,7 @@ import { useTheme } from '@/hooks/useTheme'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { WorkOrderForm } from '@/components/WorkOrderForm'
+import { FocusFormSectionNav } from '@/components/workorders/FocusFormSectionNav'
 import { SubJobForm } from '@/components/subs/SubJobForm'
 import type { EstimateCreateFromFormInput } from '@/components/WorkOrderForm'
 import { useCreateWorkOrder, useCreateLineItem } from '@/hooks/useWorkOrders'
@@ -12,6 +13,7 @@ import { getAiIntakeDraft, linkConversation } from '@/lib/comms'
 import type { WorkOrderInput } from '@/types/workOrder'
 import type { WorkOrderLineItemDraft } from '@/types/workOrderLineItem'
 import { apiRequest } from '@/lib/api'
+import { usePermissions, PERM } from '@/hooks/usePermissions'
 import { type CustomValues } from '@/components/CustomFieldsSection'
 import { uploadCreatedFormPdf } from '@/components/workorders/CreateFormPdfPicker'
 import {
@@ -37,6 +39,7 @@ import {
  */
 export function WorkOrderCreatePage() {
   const { theme } = useTheme()
+  const { has } = usePermissions()
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
   const customerId = searchParams.get('customer_id') ?? undefined
@@ -56,8 +59,9 @@ export function WorkOrderCreatePage() {
   const [serverErrors, setServerErrors] = useState<Record<string, string[]>>({})
   const [templatePdf, setTemplatePdf] = useState<File | null>(null)
   const [attachments, setAttachments] = useState<DraftAttachment[]>([])
+  const [pdfPickerRequest, setPdfPickerRequest] = useState(0)
   const [guidedMode, setGuidedMode] = useState(() => {
-    const easyDefault = theme === 'easy-side' || theme === 'easy-top'
+    const easyDefault = theme === 'easy-side' || theme === 'easy-top' || theme === 'focus'
     try {
       const saved = localStorage.getItem('crewbarn:job-form:guided')
       return saved === null ? easyDefault : saved === '1'
@@ -240,8 +244,8 @@ export function WorkOrderCreatePage() {
   const easy = theme === 'easy-side' || theme === 'easy-top'
 
   return (
-    <div className={`${isWorkspaceLayout ? 'max-w-[1640px]' : 'max-w-5xl'} mx-auto px-3 sm:px-6 lg:px-8 py-4 sm:py-6`}>
-      <div className={easy ? 'mb-5 rounded-2xl border border-emerald-900 bg-emerald-950 px-5 py-6 shadow-sm sm:px-7' : 'mb-4 rounded-xl border border-slate-200 bg-white px-4 py-3 shadow-sm sm:px-5'}>
+    <div data-focus-form="job" className={`${isWorkspaceLayout ? 'max-w-[1640px]' : 'max-w-5xl'} mx-auto px-3 sm:px-6 lg:px-8 py-4 sm:py-6`}>
+      <div data-tour={`${isSubKind ? 'sub' : 'job'}-create-header`} className={easy ? 'mb-5 rounded-2xl border border-emerald-900 bg-emerald-950 px-5 py-6 shadow-sm sm:px-7' : 'mb-4 rounded-xl border border-slate-200 bg-white px-4 py-3 shadow-sm sm:px-5'}>
         <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
           <div className="min-w-0">
             <Link to="/jobs" className={`inline-flex items-center gap-1 text-sm font-medium hover:underline mb-1 ${easy ? 'text-emerald-200' : 'text-amber-700'}`}>
@@ -263,11 +267,11 @@ export function WorkOrderCreatePage() {
               </p>
             )}
           </div>
-          <div className="inline-flex shrink-0 self-start rounded-md border border-slate-300 bg-slate-100 p-1 lg:self-center" role="group" aria-label="Job entry mode">
-            <button type="button" data-easy-view-option onClick={() => setEntryMode(true)} aria-pressed={guidedMode} className={`rounded px-3 py-1.5 text-sm font-semibold transition-colors ${guidedMode ? 'bg-amber-500 text-white shadow-sm' : 'text-slate-600 hover:bg-white'}`}>
+          <div data-tour="job-entry-mode" className="inline-flex shrink-0 self-start rounded-md border border-slate-300 bg-slate-100 p-1 lg:self-center" role="group" aria-label="Job entry mode">
+            <button type="button" data-easy-view-option data-tour="job-entry-guided" onClick={() => setEntryMode(true)} aria-pressed={guidedMode} className={`rounded px-3 py-1.5 text-sm font-semibold transition-colors ${guidedMode ? 'bg-amber-500 text-white shadow-sm' : 'text-slate-600 hover:bg-white'}`}>
               Step-by-step
             </button>
-            <button type="button" data-easy-view-option onClick={() => setEntryMode(false)} aria-pressed={!guidedMode} className={`rounded px-3 py-1.5 text-sm font-semibold transition-colors ${!guidedMode ? 'bg-slate-950 text-white shadow-sm' : 'text-slate-600 hover:bg-white'}`}>
+            <button type="button" data-easy-view-option data-tour="job-entry-full" onClick={() => setEntryMode(false)} aria-pressed={!guidedMode} className={`rounded px-3 py-1.5 text-sm font-semibold transition-colors ${!guidedMode ? 'bg-slate-950 text-white shadow-sm' : 'text-slate-600 hover:bg-white'}`}>
               Full page
             </button>
           </div>
@@ -277,6 +281,11 @@ export function WorkOrderCreatePage() {
         <h2 className="text-sm font-semibold text-slate-900">Start with the customer. Build the job from there.</h2>
         <p className="mt-1 text-sm text-slate-600">Choose the customer and service location, describe the work, then review scheduling, line items, files, and billing before submitting. Use Step-by-step or Full page above without leaving this form.</p>
       </aside>}
+      {theme === 'focus' && !isSubKind && <div data-tour="job-order-book" className="mb-3 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-200 bg-white px-4 py-3">
+        <div><strong className="text-sm text-slate-900">Keep the PDF order book beside your {initialFormKind}</strong><p className="mt-0.5 text-xs text-slate-600">Pick a PDF item to add it directly to the line items. Matching shop catalog products use their saved price and tax; review PDF-only prices before sending.</p></div>
+        {has(PERM.CATALOG_VIEW) && <button type="button" onClick={() => setPdfPickerRequest((request) => request + 1)} className="rounded-lg border border-slate-300 px-3 py-2 text-sm font-semibold text-slate-800 hover:bg-slate-50">Add from PDF order book</button>}
+      </div>}
+      {theme === 'focus' && !guidedMode && <FocusFormSectionNav kind={isSubKind ? 'sub' : initialFormKind} />}
       {isSubKind ? (
         <SubJobForm guidedMode={guidedMode} />
       ) : (
@@ -289,7 +298,9 @@ export function WorkOrderCreatePage() {
           initialKind={initialFormKind}
           layout="workspace"
           guidedMode={guidedMode}
+          pdfPickerRequest={pdfPickerRequest}
           onGuidedModeChange={setEntryMode}
+          allowTenantGuidedDefault={theme !== 'focus'}
           initialServiceCustomer={customerQuery.data ?? null}
           aiIntakeDraft={aiIntakeDraftQuery.data ?? null}
           templatePdf={templatePdf}

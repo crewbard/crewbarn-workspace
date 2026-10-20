@@ -29,10 +29,30 @@ function DevelopmentBanner() {
   const label = import.meta.env.VITE_ENV_LABEL
   if (!label) return null
   return (
-    <div className="bg-amber-100 border-b border-amber-300 text-amber-900 text-xs font-medium px-4 py-2 text-center">
+    <div data-tour="login-env-banner" className="bg-amber-100 border-b border-amber-300 text-amber-900 text-xs font-medium px-4 py-2 text-center">
       🚧 {label}
     </div>
   )
+}
+
+/**
+ * The name this sign-in shows under sessions and trusted devices. It used to
+ * say "Chrome" for every browser.
+ */
+function webDeviceName(): string {
+  const ua = typeof navigator !== 'undefined' ? navigator.userAgent : ''
+  const browser = /Edg\//.test(ua)
+    ? 'Edge'
+    : /OPR\/|Opera/.test(ua)
+      ? 'Opera'
+      : /Firefox\//.test(ua)
+        ? 'Firefox'
+        : /Chrome\/|CriOS\//.test(ua)
+          ? 'Chrome'
+          : /Safari\//.test(ua)
+            ? 'Safari'
+            : 'Browser'
+  return `Web Dashboard - ${browser}`
 }
 
 export function LoginPage() {
@@ -93,7 +113,7 @@ export function LoginPage() {
       const res = await login(
         values.email,
         values.password,
-        'Web Dashboard - Chrome',
+        webDeviceName(),
         values.two_factor_code?.trim() || undefined,
         values.trust_device,
       )
@@ -123,7 +143,8 @@ export function LoginPage() {
         } else if (err.status === 401) {
           setSubmitError('Invalid email or password.')
         } else if (err.status === 429) {
-          setSubmitError('Too many login attempts. Please try again in a moment.')
+          // The server says how long: "Try again in 60 minutes, or reset your password."
+          setSubmitError(err.code === 'rate_limited' ? err.message : 'Too many tries. Wait a minute and try again.')
         } else if (err.status >= 500) {
           setSubmitError('Server error. Please try again.')
         } else {
@@ -163,7 +184,7 @@ export function LoginPage() {
           const res = await login(
             pushWait.email,
             pushWait.password,
-            'Web Dashboard - Chrome',
+            webDeviceName(),
             undefined,
             pushWait.trust,
             pushWait.approvalId,
@@ -205,7 +226,7 @@ export function LoginPage() {
         <DevelopmentBanner />
         <div className="flex-1 flex items-center justify-center px-6 py-12 lg:px-12">
           <div className="w-full max-w-md">
-            <div className="mb-10">
+            <div data-tour="login-header" className="mb-10">
               <h1 className="text-3xl font-bold text-navy-800">
                 Crew<span className="text-amber-500">Barn</span>
               </h1>
@@ -214,7 +235,7 @@ export function LoginPage() {
               </p>
             </div>
 
-            <form onSubmit={handleSubmit(onSubmit)} className="space-y-5">
+            <form data-tour="login-form" onSubmit={handleSubmit(onSubmit)} className="space-y-5">
               <Input
                 label="Email"
                 type="email"
@@ -235,7 +256,7 @@ export function LoginPage() {
               />
 
               {needsTwoFactor && (
-                <>
+                <div data-tour="login-2fa" className="space-y-5">
                   <Input
                     label="Authenticator code"
                     type="text"
@@ -250,11 +271,11 @@ export function LoginPage() {
                     <input type="checkbox" className="rounded border-slate-300" {...register('trust_device')} />
                     Trust this device for 30 days — skip the code next time
                   </label>
-                </>
+                </div>
               )}
 
               {pushWait && (
-                <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-center space-y-2">
+                <div data-tour="login-push" className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-center space-y-2">
                   <div className="flex items-center justify-center gap-2 text-amber-800">
                     <span className="inline-block h-3 w-3 rounded-full bg-amber-500 animate-pulse" />
                     <span className="text-sm font-semibold">Check your phone</span>
@@ -302,14 +323,25 @@ export function LoginPage() {
               )}
             </form>
 
-            <div className="mt-6 text-center text-sm text-navy-500">
+            <div data-tour="login-forgot" className="mt-6 text-center text-sm text-navy-500">
               <Link to="/forgot-password" className="hover:text-navy-800 hover:underline">
                 Forgot password?
               </Link>
             </div>
 
+            <p data-tour="login-signup" className="mt-4 text-center text-sm text-navy-500">
+              New to CrewBarn?{' '}
+              <Link to="/sign-up" className="font-semibold text-amber-700 hover:text-amber-800">
+                Start a free trial
+              </Link>
+            </p>
+
             <p className="text-center text-xs text-navy-400 mt-12">
-              By signing in you agree to the terms of service.
+              By signing in you agree to the{' '}
+              <a href="https://crewbarn.com/terms" target="_blank" rel="noreferrer" className="underline hover:text-navy-600">
+                terms of service
+              </a>
+              .
             </p>
           </div>
         </div>

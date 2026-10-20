@@ -1,8 +1,9 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useUpdateEstimate } from '@/hooks/useEstimates'
 import { apiRequest } from '@/lib/api'
 import type { Estimate, EstimateUpdateInput } from '@/types/estimate'
+import { useRecordShortcuts } from '@/hooks/useShortcuts'
 
 /**
  * Header-fields editor for an estimate. Replaces the "coming soon"
@@ -96,7 +97,7 @@ function formatTemplateType(type: string | null): string {
   return normalized ? normalized.replace(/\b\w/g, (letter) => letter.toUpperCase()) : 'Template'
 }
 
-export function EstimateEditForm({ estimate }: { estimate: Estimate }) {
+export function EstimateEditForm({ estimate, readOnly = false }: { estimate: Estimate; readOnly?: boolean }) {
   const update = useUpdateEstimate()
   const [draft, setDraft] = useState<DraftState>(() => fromEstimate(estimate))
   const [dirty, setDirty] = useState(false)
@@ -115,7 +116,18 @@ export function EstimateEditForm({ estimate }: { estimate: Estimate }) {
   )
 
   // Re-seed when the underlying estimate changes (e.g. after a re-quote).
+  // When only the server copy moved (same estimate) and there are unsaved
+  // edits, keep them and only pick up the attached document, which the AI
+  // window saves on its own.
+  const dirtyRef = useRef(dirty)
+  dirtyRef.current = dirty
+  const seededIdRef = useRef(estimate.id)
   useEffect(() => {
+    if (seededIdRef.current === estimate.id && dirtyRef.current) {
+      setDraft((d) => ({ ...d, contract_template_id: estimate.contract_template_id ?? '' }))
+      return
+    }
+    seededIdRef.current = estimate.id
     setDraft(fromEstimate(estimate))
     setDirty(false)
   }, [estimate.id, estimate.updated_at])
@@ -125,6 +137,15 @@ export function EstimateEditForm({ estimate }: { estimate: Estimate }) {
     setDirty(true)
     setSavedAt(null)
   }
+
+  // Ctrl/⌘ Enter saves, like pressing Save changes.
+  useRecordShortcuts({
+    save: () => {
+      if (readOnly || !dirty || update.isPending) return false
+      void save()
+      return true
+    },
+  })
 
   async function save() {
     setError(null)
@@ -148,9 +169,15 @@ export function EstimateEditForm({ estimate }: { estimate: Estimate }) {
     'w-full px-3 py-2 text-sm border border-slate-300 rounded-md focus:outline-none focus:ring-1 focus:ring-amber-500 focus:border-amber-500'
 
   return (
-    <div className="space-y-5">
+    <div className="space-y-5" data-tour="estimate-edit">
+      {readOnly && (
+        <p className="rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600">
+          You can view these details, but your role can't change estimates.
+        </p>
+      )}
+      <fieldset disabled={readOnly} className="space-y-5 min-w-0">
       {/* Title + description + priority */}
-      <section className="bg-white border border-slate-200 rounded-xl p-4 space-y-3">
+      <section data-tour="estimate-edit-basics" className="bg-white border border-slate-200 rounded-xl p-4 space-y-3">
         <Field label="Title">
           <input
             type="text"
@@ -194,7 +221,7 @@ export function EstimateEditForm({ estimate }: { estimate: Estimate }) {
       </section>
 
       {/* Scheduling */}
-      <section className="bg-white border border-slate-200 rounded-xl p-4 space-y-3">
+      <section data-tour="estimate-edit-schedule" className="bg-white border border-slate-200 rounded-xl p-4 space-y-3">
         <h3 className="text-xs uppercase tracking-wide font-semibold text-slate-700">
           Walkthrough schedule
         </h3>
@@ -231,19 +258,19 @@ export function EstimateEditForm({ estimate }: { estimate: Estimate }) {
       {/* Signable document attachment — when set, the customer is required to
           read + sign this document before approving the estimate on
           the portal. */}
-      <section className="bg-white border border-slate-200 rounded-xl p-4 space-y-3">
+      <section data-tour="estimate-edit-signable" className="bg-white border border-slate-200 rounded-xl p-4 space-y-3">
         <div className="flex items-center justify-between gap-3">
           <h3 className="text-xs uppercase tracking-wide font-semibold text-slate-700">
             Signable document
           </h3>
-          <button
+          {!readOnly && <button
             type="button"
             onClick={() => setAiOpen(true)}
             className="text-xs font-semibold border border-sky-300 text-sky-700 hover:bg-sky-50 rounded px-2 py-1 inline-flex items-center gap-1"
             title="Describe the scope; AI drafts a contract + saves it to Templates & Forms"
           >
             <span>✨</span> Generate with AI
-          </button>
+          </button>}
         </div>
         <Field
           label="Attached signable document"
@@ -271,7 +298,7 @@ export function EstimateEditForm({ estimate }: { estimate: Estimate }) {
           <p className="text-[11px] text-slate-500">
             No signable document templates yet — create a Contract, Estimate, or Work Order template
             under{' '}
-            <a className="text-amber-700 underline" href="/tool-shed/documents">
+            <a className="text-amber-700 underline" href="/custom-documents">
               Tool Shed → Templates & Forms
             </a>{' '}
             and include a signature block, or click <strong>Generate with AI</strong> above.
@@ -283,15 +310,18 @@ export function EstimateEditForm({ estimate }: { estimate: Estimate }) {
         <AiContractModal
           estimate={estimate}
           onClose={() => setAiOpen(false)}
-          onCreated={(templateId) => {
-            patch({ contract_template_id: templateId })
+          onCreated={async (templateId) => {
+            // Attach it on the estimate now, so "Save + attach" means what it
+            // says. Other unsaved edits on this form stay as they are.
+            await update.mutateAsync({ id: estimate.id, input: { contract_template_id: templateId } })
+            setDraft((d) => ({ ...d, contract_template_id: templateId }))
             setAiOpen(false)
           }}
         />
       )}
 
       {/* Notes + terms */}
-      <section className="bg-white border border-slate-200 rounded-xl p-4 space-y-3">
+      <section data-tour="estimate-edit-notes" className="bg-white border border-slate-200 rounded-xl p-4 space-y-3">
         <h3 className="text-xs uppercase tracking-wide font-semibold text-slate-700">
           Notes & terms
         </h3>
@@ -320,9 +350,10 @@ export function EstimateEditForm({ estimate }: { estimate: Estimate }) {
           />
         </Field>
       </section>
+      </fieldset>
 
       {/* Save bar */}
-      <div className="flex items-center justify-end gap-2 sticky bottom-0 bg-slate-50 -mx-2 px-2 py-3 border-t border-slate-200">
+      {!readOnly && <div data-tour="estimate-edit-save" className="flex items-center justify-end gap-2 sticky bottom-0 bg-slate-50 -mx-2 px-2 py-3 border-t border-slate-200">
         {error && (
           <div className="text-xs text-red-700 bg-red-50 border border-red-200 rounded px-3 py-1.5 mr-auto">
             {error}
@@ -347,7 +378,7 @@ export function EstimateEditForm({ estimate }: { estimate: Estimate }) {
         >
           {update.isPending ? 'Saving…' : 'Save changes'}
         </button>
-      </div>
+      </div>}
     </div>
   )
 }
@@ -394,7 +425,7 @@ function AiContractModal({
 }: {
   estimate: Estimate
   onClose: () => void
-  onCreated: (templateId: string) => void
+  onCreated: (templateId: string) => Promise<void>
 }) {
   const qc = useQueryClient()
   const customerName = estimate.customer?.display_name ?? ''
@@ -469,7 +500,16 @@ function AiContractModal({
       // Refresh the contract list so the picker shows it.
       qc.invalidateQueries({ queryKey: ['document-templates', 'contracts'] })
       qc.invalidateQueries({ queryKey: ['document-templates'] })
-      onCreated(res.data.id)
+      try {
+        await onCreated(res.data.id)
+      } catch (attachErr) {
+        setError(
+          `The contract was saved to Templates & Forms as "${draft.name}", but it could not be attached to this estimate: ` +
+            ((attachErr as Error).message || 'unknown error') +
+            '. Pick it under "Attached signable document" and press Save changes.',
+        )
+        return
+      }
     } catch (err) {
       setError((err as Error).message)
     } finally {
@@ -537,9 +577,9 @@ function AiContractModal({
                 />
               </div>
               <p className="text-[11px] text-slate-500">
-                The AI returns a contract template that you'll preview before saving. After
-                saving, it lives in Tool Shed → Templates & Forms and gets attached to this
-                estimate.
+                The AI returns a contract template that you'll preview before saving. Saving
+                stores it in Tool Shed → Templates & Forms and attaches it to this estimate
+                right away.
               </p>
             </>
           )}

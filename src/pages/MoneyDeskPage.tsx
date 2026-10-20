@@ -348,7 +348,9 @@ export function MoneyDeskPage() {
         } else if (group === 'approve') {
           await apiRequest(`/v1/expenses/${id}`, {
             method: 'PATCH',
-            body: { reimbursement_status: 'approved' },
+            // Same payload as the Expense register and Payroll, so an
+            // approval looks the same wherever it was made.
+            body: { reimbursement_status: 'approved', status: 'approved' },
           })
         }
         // 'match' never reaches here — see navigateFor(). Confirming needs a
@@ -406,10 +408,10 @@ export function MoneyDeskPage() {
   })
 
   return (
-    <div className={easy ? 'w-full min-w-0 max-w-none p-3 sm:p-4 lg:p-6' : 'mx-auto max-w-[1180px] px-6 py-8'}>
+    <div data-focus-page="money-desk" className={easy ? 'w-full min-w-0 max-w-none p-3 sm:p-4 lg:p-6' : 'mx-auto max-w-[1180px] px-6 py-8'}>
       <AccountingTools />
       <div className="flex flex-wrap items-start justify-between gap-4">
-        <div>
+        <div data-tour="money-desk-header" data-state={loading ? 'checking' : totalItems === 0 ? 'clear' : 'todo'}>
           <p className="text-[11px] font-bold uppercase tracking-[0.08em] text-[#B45309]">
             {today}
           </p>
@@ -425,7 +427,7 @@ export function MoneyDeskPage() {
           </p>
         </div>
 
-        <div className="flex flex-col items-end gap-2">
+        <div className="flex flex-col items-end gap-2" data-tour="money-desk-period">
           <div className="flex flex-wrap items-center gap-2">
             <span className="text-[10.5px] font-bold uppercase tracking-[0.06em] text-slate-500">
               Covering
@@ -483,9 +485,9 @@ export function MoneyDeskPage() {
       </div>
 
       {/* progress */}
-      <div className="mt-5 rounded-[13px] border border-slate-200 bg-white p-4">
+      <div className="mt-5 rounded-[13px] border border-slate-200 bg-white p-4" data-tour="money-desk-progress">
         <div className="flex flex-wrap items-center justify-between gap-4">
-          <span className="text-[13.5px] font-bold text-[#0A1220]">Cleared today</span>
+          <span className="text-[13.5px] font-bold text-[#0A1220]">Cleared this visit</span>
           <div className="flex flex-wrap items-center gap-5">
             <span className="tnum text-[12.5px] font-semibold text-slate-500">
               {doneItems} of {totalItems + doneItems}
@@ -510,7 +512,7 @@ export function MoneyDeskPage() {
       )}
 
       {/* groups */}
-      <div className="mt-4 flex flex-col gap-3">
+      <div className="mt-4 flex flex-col gap-3" data-tour="money-desk-groups">
         {GROUPS.map((g) => {
           const rows = rowsByGroup[g.id]
           const clearedCount = cleared[g.id] ?? 0
@@ -523,6 +525,8 @@ export function MoneyDeskPage() {
           return (
             <section
               key={g.id}
+              data-tour={`money-desk-${g.id}`}
+              data-rows={rows.length > 0 ? 'waiting' : 'cleared'}
               className="overflow-hidden rounded-[13px] border border-slate-200 bg-white"
               style={{ opacity: rows.length === 0 ? 0.72 : 1 }}
             >
@@ -681,7 +685,7 @@ export function MoneyDeskPage() {
       </div>
 
       {!loading && totalItems === 0 && doneItems === 0 && (
-        <div className="mt-4 rounded-[13px] border border-[#A7D9B8] bg-[#EFF7F1] px-5 py-4 text-[14px] font-bold text-[#166534]">
+        <div data-tour="money-desk-clear" className="mt-4 rounded-[13px] border border-[#A7D9B8] bg-[#EFF7F1] px-5 py-4 text-[14px] font-bold text-[#166534]">
           Desk is clear. Nothing is waiting on you.
         </div>
       )}

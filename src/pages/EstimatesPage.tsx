@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { useEstimates } from '@/hooks/useEstimates'
+import { useRememberRecordList } from '@/hooks/useShortcuts'
 import { WorkflowTabs, type WorkflowTab } from '@/components/lists/WorkflowTabs'
 import { RowChevron } from '@/components/lists/RowChevron'
 import { useTheme, type FolderLayout } from '@/hooks/useTheme'
@@ -13,6 +14,7 @@ import type { EstimateFilingSummary } from '@/types/api'
 import { EasyActionCards } from '@/components/easy/EasyActionCards'
 import { Modal } from '@/components/ui/Modal'
 import { CustomerOrdersPanel } from '@/components/estimates/CustomerOrdersPanel'
+import { usePermissions } from '@/hooks/usePermissions'
 
 const STATUS_OPTIONS: { value: EstimateStatus | ''; label: string }[] = [
   { value: '', label: 'All statuses' },
@@ -77,15 +79,30 @@ const estimateTitle = (est: Estimate) =>
     <span className="text-slate-400 font-normal">Untitled estimate</span>
   )
 
+type EstimateSort = 'newest' | 'oldest' | 'customer'
+type EstimateDisplayControls = { from: string; to: string; sort: EstimateSort }
+function displayEstimates(estimates: Estimate[], controls: EstimateDisplayControls) {
+  return estimates.filter(est => {
+    const date = est.created_at?.slice(0, 10) ?? ''
+    return (!controls.from || date >= controls.from) && (!controls.to || (!!date && date <= controls.to))
+  }).sort((a, b) => controls.sort === 'customer'
+    ? (a.customer?.display_name ?? '').localeCompare(b.customer?.display_name ?? '')
+    : (controls.sort === 'oldest' ? 1 : -1) * (a.created_at ?? '').localeCompare(b.created_at ?? ''))
+}
+
 export function EstimatesPage() {
   const navigate = useNavigate()
   const { theme, estimateView, setEstimateView, density, folderLayout, setFolderLayout } = useTheme()
   const easy = theme === 'easy-side' || theme === 'easy-top'
+  const { has } = usePermissions()
+  // The /estimates/new route needs jobs.edit; don't show a button that hits a wall.
+  const canCreate = has('jobs.edit')
   const [board, setBoard] = useState(true)
   const [mobileLane, setMobileLane] = useState('Drafts')
   const [preview, setPreview] = useState<Estimate | null>(null)
   const showBoard = easy && board
   const [q, setQ] = useState('')
+  const [displayControls, setDisplayControls] = useState<EstimateDisplayControls>({ from: '', to: '', sort: 'newest' })
   const [status, setStatus] = useState<EstimateStatus | ''>('')
   // Status filters must reveal their matching lane on the single-column phone board.
   useEffect(() => {
@@ -95,10 +112,7 @@ export function EstimatesPage() {
     else if (status) setMobileLane('Closed / expired')
   }, [status])
   const [page, setPage] = useState(1)
-  const [filingView, setFilingView] = useState(
-    () => estimateView === 'files'
-      || (typeof window !== 'undefined' && window.localStorage.getItem('crewbarn:estimate-filing-view') === 'true'),
-  )
+  const filingView = estimateView === 'files'
   const estimatesQuery = useEstimates({
     q: q || undefined,
     status: status || undefined,
@@ -109,23 +123,28 @@ export function EstimatesPage() {
     per_page: 25,
   })
 
-  const items = estimatesQuery.data?.data ?? []
+  const items = displayEstimates(estimatesQuery.data?.data ?? [], displayControls)
+  // [ and ] on an estimate step through this list, in this order.
+  useRememberRecordList('estimates', items)
+  const hasFilters = !!(q || status || displayControls.from || displayControls.to)
   const meta = estimatesQuery.data?.meta
   const tabCounts = estimatesQuery.data?.tab_counts
   const filingCounts = estimatesQuery.data?.estimate_filing_counts
   const desktopRowPad = density === 'dense' ? 'px-4 py-2' : density === 'compact' ? 'px-4 py-2.5' : 'px-4 py-3'
 
   return (
-    <div className={`mx-auto px-3 sm:px-6 py-4 sm:py-6 ${easy ? 'w-full min-w-0 max-w-none' : filingView ? 'max-w-[1760px]' : 'max-w-7xl'}`}>
-      {easy ? <EasyPageHeading title="Estimates" description="Prepare the work, follow up on approvals, and find estimates ready for their next step." actions={<Link to="/estimates/new" data-tour="estimates-new" className="rounded-xl bg-amber-400 px-4 py-3 text-sm font-semibold text-slate-950 hover:bg-amber-300">+ New estimate</Link>} /> : <div className="flex items-center justify-between mb-4 sm:mb-6 gap-3">
-        <h1 className="text-xl sm:text-2xl font-semibold text-slate-900">Estimates</h1>
-        <Link
-          to="/estimates/new"
-          data-tour="estimates-new"
-          className="px-4 py-2 text-sm font-medium bg-amber-600 hover:bg-amber-700 text-white rounded-md whitespace-nowrap"
-        >
-          + New
-        </Link>
+    <div data-focus-page="estimates" className={`mx-auto px-3 sm:px-6 py-4 sm:py-6 ${easy ? 'w-full min-w-0 max-w-none' : 'max-w-[1760px]'}`}>
+      {easy ? <EasyPageHeading title="Estimates" description="Prepare the work, follow up on approvals, and find estimates ready for their next step." actions={canCreate ? <Link to="/estimates/new" data-tour="estimates-new" className="rounded-xl bg-amber-400 px-4 py-3 text-sm font-semibold text-slate-950 hover:bg-amber-300">+ New estimate</Link> : undefined} /> : <div className="flex items-center justify-between mb-4 sm:mb-6 gap-3">
+        <h1 data-tour="estimates-header" className="text-xl sm:text-2xl font-semibold text-slate-900">Estimates</h1>
+        {canCreate && (
+          <Link
+            to="/estimates/new"
+            data-tour="estimates-new"
+            className="px-4 py-2 text-sm font-medium bg-amber-600 hover:bg-amber-700 text-white rounded-md whitespace-nowrap"
+          >
+            + New
+          </Link>
+        )}
       </div>}
 
       {/* Orders customers built from the shop's catalogs in the portal. Hidden when none wait. */}
@@ -133,12 +152,13 @@ export function EstimatesPage() {
 
       {/* Workflow tabs — common approval stages; full list stays in the dropdown.
           Live counts (by approval status) come from the index tab_counts. */}
-      {easy && <EasyActionCards label="Move an estimate forward" actions={[
+      {easy && <div data-tour="estimates-action-cards"><EasyActionCards label="Move an estimate forward" actions={[
         { key: 'draft', title: 'Finish a draft', description: 'Review the details before sending.' },
         { key: 'sent', title: 'Waiting on them', description: 'Open an estimate to review follow-up options.' },
         { key: 'approved', title: 'Approved', description: 'Review approved work and its next step.' },
         { key: 'expired', title: 'Past its expiry', description: 'Review pricing and terms before sending again.' },
-      ].map(action => ({ ...action, count: estimatesQuery.isError ? undefined : tabCounts?.[action.key], active: status === action.key, onClick: () => { setStatus(action.key as EstimateStatus); setPage(1) } }))} />}
+      ].map(action => ({ ...action, count: estimatesQuery.isError ? undefined : tabCounts?.[action.key], active: status === action.key, onClick: () => { setStatus(action.key as EstimateStatus); setPage(1) } }))} /></div>}
+      <div data-tour="estimates-tabs">
       <WorkflowTabs
         tabs={ESTIMATE_TABS.map((t) => ({
           ...t,
@@ -150,9 +170,10 @@ export function EstimatesPage() {
           setPage(1)
         }}
       />
+      </div>
 
       {/* Filters */}
-      <div data-easy-list-toolbar className="flex items-center gap-2 sm:gap-3 mb-4 flex-wrap">
+      <div data-easy-list-toolbar data-tour="estimates-filters" className="flex items-center gap-2 sm:gap-3 mb-4 flex-wrap">
         <input
           type="search"
           value={q}
@@ -177,53 +198,71 @@ export function EstimatesPage() {
             </option>
           ))}
         </select>
-        {(estimateView === 'cards' || estimateView === 'files') && (
-          <div className="ml-auto inline-flex overflow-hidden rounded-md border border-slate-300 bg-white">
+        <label className="text-xs text-slate-600">Created from<input aria-label="Estimates created from" type="date" value={displayControls.from} onChange={e => setDisplayControls(value => ({ ...value, from: e.target.value }))} className="ml-1 rounded-md border border-slate-300 px-2 py-2 text-sm" /></label>
+        <label className="text-xs text-slate-600">To<input aria-label="Estimates created through" type="date" value={displayControls.to} min={displayControls.from || undefined} onChange={e => setDisplayControls(value => ({ ...value, to: e.target.value }))} className="ml-1 rounded-md border border-slate-300 px-2 py-2 text-sm" /></label>
+        <select aria-label="Sort estimates on current page" value={displayControls.sort} onChange={e => setDisplayControls(value => ({ ...value, sort: e.target.value as EstimateSort }))} className="rounded-md border border-slate-300 px-3 py-2 text-sm"><option value="newest">Newest created</option><option value="oldest">Oldest created</option><option value="customer">Customer A–Z</option></select>
+        <div role="group" aria-label="Estimate view" className="ml-auto inline-flex overflow-hidden rounded-md border border-slate-300 bg-white">
             <button
               type="button"
+              data-tour="estimates-view-rows"
+              aria-pressed={!showBoard && !filingView && estimateView !== 'cards'}
+              onClick={() => { setBoard(false); setEstimateView('compact'); setPage(1) }}
+              className={'px-3 py-2 text-sm font-medium transition-colors ' + (
+                !showBoard && !filingView && estimateView !== 'cards'
+                  ? 'bg-slate-900 text-white'
+                  : 'text-slate-700 hover:bg-slate-50'
+              )}
+            >Rows</button>
+            <button
+              type="button"
+              data-tour="estimates-view-cards"
+              aria-pressed={!showBoard && estimateView === 'cards' && !filingView}
               onClick={() => {
-                setFilingView(false)
                 setBoard(false)
                 setEstimateView('cards')
                 setPage(1)
               }}
               className={
                 'px-3 py-2 text-sm font-medium transition-colors ' +
-                (!filingView ? 'bg-slate-900 text-white' : 'text-slate-700 hover:bg-slate-50')
+                (!showBoard && estimateView === 'cards' && !filingView ? 'bg-slate-900 text-white' : 'text-slate-700 hover:bg-slate-50')
               }
             >
               Cards
             </button>
             <button
               type="button"
+              data-tour="estimates-view-files"
+              aria-pressed={!showBoard && filingView}
               onClick={() => {
-                setFilingView(true)
                 setBoard(false)
                 setEstimateView('files')
                 setPage(1)
               }}
               className={
                 'border-l border-slate-300 px-3 py-2 text-sm font-medium transition-colors ' +
-                (filingView ? 'bg-amber-500 text-white' : 'text-slate-700 hover:bg-slate-50')
+                (!showBoard && filingView ? 'bg-amber-500 text-white' : 'text-slate-700 hover:bg-slate-50')
               }
             >
               Files
             </button>
           </div>
-        )}
 
-        {filingView && !showBoard && (
-          <div className="ml-2 hidden items-center md:flex">
-            <FolderLayoutSwitch value={folderLayout} onChange={setFolderLayout} />
+          <div className="ml-2 flex items-center">
+            <FolderLayoutSwitch value={folderLayout} onChange={(layout) => {
+              setFolderLayout(layout)
+              setBoard(false)
+              setEstimateView('files')
+              setPage(1)
+            }} />
           </div>
-        )}
       </div>
+      <p className="mb-4 text-xs text-slate-500">Created dates and sort apply to the current results page, or each open folder’s current page.</p>
 
       {/* Table */}
-      {easy && <div className="mb-5 flex w-full flex-col items-center gap-2">
+      {easy && <div data-tour="estimates-view" className="mb-5 flex w-full flex-col items-center gap-2">
         <div role="group" aria-label="Estimate view" className="flex flex-wrap justify-center gap-3">
-        <button type="button" aria-pressed={board} onClick={() => setBoard(true)} className={`rounded-lg border px-4 py-2 transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-amber-500 ${board ? 'border-amber-500 bg-amber-500/15 text-amber-900' : 'border-slate-400 bg-transparent text-slate-700 hover:bg-amber-500/5'}`}>Workflow board</button>
-        <button type="button" aria-pressed={!board} onClick={() => setBoard(false)} className={`rounded-lg border px-4 py-2 transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-amber-500 ${!board ? 'border-amber-500 bg-amber-500/15 text-amber-900' : 'border-slate-400 bg-transparent text-slate-700 hover:bg-amber-500/5'}`}>Detailed list & files</button>
+        <button type="button" data-tour="estimates-view-board" aria-pressed={board} onClick={() => setBoard(true)} className={`rounded-lg border px-4 py-2 transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-amber-500 ${board ? 'border-amber-500 bg-amber-500/15 text-amber-900' : 'border-slate-400 bg-transparent text-slate-700 hover:bg-amber-500/5'}`}>Workflow board</button>
+        <button type="button" data-tour="estimates-view-list" aria-pressed={!board} onClick={() => setBoard(false)} className={`rounded-lg border px-4 py-2 transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-amber-500 ${!board ? 'border-amber-500 bg-amber-500/15 text-amber-900' : 'border-slate-400 bg-transparent text-slate-700 hover:bg-amber-500/5'}`}>Detailed list & files</button>
         </div>
         {showBoard && <span className="text-center text-sm text-slate-500">Current page of filtered results. Open an estimate to review and act.</span>}
       </div>}
@@ -232,7 +271,7 @@ export function EstimatesPage() {
       <div role="group" aria-label="Estimate board lane" className="mb-3 flex flex-wrap gap-2 md:hidden">
         {['Drafts', 'Waiting on them', 'Approved', 'Closed / expired'].map(lane => <button key={lane} type="button" data-easy-view-option aria-pressed={mobileLane === lane} onClick={() => setMobileLane(lane)} className="min-h-11 rounded-lg border border-slate-300 px-3 py-2 text-sm">{lane}</button>)}
       </div>
-      <div data-easy-estimate-board className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+      <div data-easy-estimate-board data-tour="estimates-board" className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         {[
           { title: 'Drafts', statuses: ['draft'] },
           { title: 'Waiting on them', statuses: ['sent'] },
@@ -251,23 +290,24 @@ export function EstimatesPage() {
               <p className="text-xs text-slate-500">{estimateDateLabel(est)}</p>
               <NextStepHint est={est} />
               <div className="flex flex-wrap justify-between gap-2 text-sm">
-                <button type="button" className="underline text-slate-600" onClick={() => setPreview(est)} aria-label={`Quick look at ${est.display_number}`}>Quick look</button>
-                <Link to={`/estimates/${est.id}`} className="font-semibold text-amber-800">Open estimate →</Link>
+                <QuickPeek est={est} onPreview={setPreview} />
+                <Link to={`/estimates/${est.id}`} data-tour="estimates-row" data-estimate-status={est.status} className="font-semibold text-amber-800">Open estimate →</Link>
               </div>
             </article>)}
           </section>
         })}
       </div></>)}
-      <div hidden={showBoard || estimatesQuery.isError}>
+      <div hidden={showBoard || estimatesQuery.isError} data-tour="estimates-list">
+      {estimateView === 'cards' && !filingView && (estimatesQuery.isLoading || items.length === 0) && <div role="status" className="rounded-lg border border-slate-200 bg-white p-8 text-center text-sm text-slate-500">{estimatesQuery.isLoading ? 'Loading estimates…' : hasFilters ? 'No estimates match your filters on this page.' : 'No estimates yet.'}</div>}
       {/* Mobile cards */}
-      <div className="md:hidden space-y-2">
+      <div className={filingView || estimateView === 'cards' ? 'hidden' : 'md:hidden space-y-2'}>
         {estimatesQuery.isLoading ? (
           [0, 1, 2].map((i) => (
             <div key={i} className="h-20 bg-slate-100 rounded animate-pulse" />
           ))
         ) : items.length === 0 ? (
           <div className="bg-white border border-slate-200 rounded-lg p-8 text-center text-sm text-slate-500">
-            {q || status
+            {hasFilters
               ? 'No estimates match your filters.'
               : 'No estimates yet.'}
           </div>
@@ -277,6 +317,8 @@ export function EstimatesPage() {
             return (
               <div
                 key={est.id}
+                data-tour="estimates-row"
+                data-estimate-status={est.status}
                 onClick={() => navigate(`/estimates/${est.id}`)}
                 className="flex items-stretch rounded-lg border border-slate-200 bg-white overflow-hidden active:bg-amber-50/60 cursor-pointer"
               >
@@ -306,6 +348,7 @@ export function EstimatesPage() {
                     <span>{estimateDateLabel(est)}</span>
                     <NextStepHint est={est} />
                   </div>
+                  <QuickPeek est={est} onPreview={setPreview} />
                 </div>
               </div>
             )
@@ -315,13 +358,15 @@ export function EstimatesPage() {
 
       {/* Desktop — clickable workflow rows (status stripe + identity, status +
           date, total, chevron). */}
-      {(estimateView === 'cards' || estimateView === 'files') && filingView && (
+      {filingView && (
         <DesktopEstimateFiles
           filingCounts={filingCounts}
           folderLayout={folderLayout}
           status={status}
           search={q}
           onOpen={(id) => navigate(`/estimates/${id}`)}
+          onPreview={setPreview}
+          displayControls={displayControls}
         />
       )}
 
@@ -329,17 +374,18 @@ export function EstimatesPage() {
         <DesktopEstimateCards
           estimates={items}
           onOpen={(id) => navigate(`/estimates/${id}`)}
+          onPreview={setPreview}
         />
       )}
 
-      <div className={(filingView || ((estimateView === 'cards' || estimateView === 'files') && !estimatesQuery.isLoading && items.length > 0) ? 'hidden' : 'hidden md:block') + ' bg-white border border-slate-200 rounded-lg overflow-hidden divide-y divide-slate-100'}>
+      <div className={(filingView || estimateView === 'cards' ? 'hidden' : 'hidden md:block') + ' bg-white border border-slate-200 rounded-lg overflow-hidden divide-y divide-slate-100'}>
         {estimatesQuery.isLoading ? (
           <div className="px-4 py-8 text-center text-slate-500">Loading...</div>
         ) : items.length === 0 ? (
           <div className="px-4 py-8 text-center text-slate-500">
-            {q || status
+            {hasFilters
               ? 'No estimates match your filters.'
-              : 'No estimates yet. Click "New Estimate" to create one.'}
+              : canCreate ? 'No estimates yet. Click "+ New" to create one.' : 'No estimates yet.'}
           </div>
         ) : (
           items.map((est) => {
@@ -347,10 +393,13 @@ export function EstimatesPage() {
             return (
               <div
                 key={est.id}
+                data-tour="estimates-row"
+                data-estimate-status={est.status}
                 onClick={() => navigate(`/estimates/${est.id}`)}
                 role="link"
                 tabIndex={0}
                 onKeyDown={(e) => {
+                  if (e.target !== e.currentTarget) return
                   if (e.key === 'Enter' || e.key === ' ') {
                     e.preventDefault()
                     navigate(`/estimates/${est.id}`)
@@ -369,7 +418,7 @@ export function EstimatesPage() {
                         {estimateTitle(est)}
                       </span>
                     </div>
-                    {estimateView !== 'compact' && (
+                    {(estimateView !== 'compact' || theme === 'focus') && (
                       <div className="text-xs text-slate-500 mt-0.5 truncate">
                         {est.customer?.display_name ?? 'No customer'}
                         {est.customer?.vip && (
@@ -395,6 +444,7 @@ export function EstimatesPage() {
                   </div>
 
                   <RowChevron />
+                  <QuickPeek est={est} onPreview={setPreview} />
                 </div>
               </div>
             )
@@ -405,7 +455,7 @@ export function EstimatesPage() {
       {/* Pagination */}
       </div>
       {meta && !estimatesQuery.isError && meta.last_page > 1 && (!filingView || showBoard) && (
-        <div data-easy-pager className="flex flex-wrap items-center justify-between gap-3 mt-4 text-sm">
+        <div data-easy-pager data-tour="estimates-pager" className="flex flex-wrap items-center justify-between gap-3 mt-4 text-sm">
           <div className="text-slate-600">
             Showing {meta.from ?? 0}–{meta.to ?? 0} of {meta.total}
           </div>
@@ -432,7 +482,7 @@ export function EstimatesPage() {
           </div>
         </div>
       )}
-      {easy && preview && <Modal isOpen onClose={() => setPreview(null)} title={preview.display_number} subtitle="Estimate quick look">
+      {preview && <Modal isOpen onClose={() => setPreview(null)} title={preview.display_number} subtitle="Estimate Quick Peek">
         <Modal.Body>
           <h2 className="text-lg font-semibold">{estimateTitle(preview)}</h2>
           <p className="mt-1 text-slate-600">{preview.customer?.display_name ?? 'No customer'}</p>
@@ -445,7 +495,7 @@ export function EstimatesPage() {
           <div className="mt-4"><NextStepHint est={preview} /></div>
           <p className="mt-5 text-sm text-slate-500">Open the estimate for line items and available actions. Previewing does not send, approve, or convert it.</p>
         </Modal.Body>
-        <Modal.Footer><button type="button" className="rounded-lg border px-4 py-2" onClick={() => setPreview(null)}>Back to board</button><Link to={`/estimates/${preview.id}`} className="rounded-lg bg-amber-400 px-4 py-2 font-semibold">Open estimate →</Link></Modal.Footer>
+        <Modal.Footer><button type="button" className="rounded-lg border px-4 py-2" onClick={() => setPreview(null)}>Close preview</button><Link to={`/estimates/${preview.id}`} className="rounded-lg bg-amber-400 px-4 py-2 font-semibold">Open estimate →</Link></Modal.Footer>
       </Modal>}
     </div>
   )
@@ -472,6 +522,8 @@ function EstimateFolderContents({
   status,
   search,
   onOpen,
+  onPreview,
+  displayControls,
 }: {
   year: string
   month: string
@@ -479,6 +531,8 @@ function EstimateFolderContents({
   status: EstimateStatus | ''
   search: string
   onOpen: (id: string) => void
+  onPreview: (est: Estimate) => void
+  displayControls: EstimateDisplayControls
 }) {
   const [bucket, setBucket] = useState<EstimateBucket>('all')
   const [page, setPage] = useState(1)
@@ -492,12 +546,12 @@ function EstimateFolderContents({
     page,
     per_page: 50,
   })
-  const estimates = data?.data ?? []
+  const estimates = displayEstimates(data?.data ?? [], displayControls)
   const meta = data?.meta
 
   return (
     <div>
-      <div className="mb-3.5 grid grid-cols-2 gap-2.5 lg:grid-cols-4">
+      <div data-tour="estimates-folder-tiles" className="mb-3.5 grid grid-cols-2 gap-2.5 lg:grid-cols-4">
         <FolderStatTile
           tone="all" label="All quoted" count={summary?.count} countNoun="estimate" value={formatFolderMoney(summary?.total_cents ?? 0)}
           sublabel="Everything in this folder" active={bucket === 'all'} onClick={() => setBucket('all')}
@@ -522,12 +576,12 @@ function EstimateFolderContents({
         </div>
       ) : estimates.length === 0 ? (
         <div className="rounded-md border border-dashed border-slate-300 bg-white px-6 py-10 text-center text-sm text-slate-500">
-          {bucket === 'all' ? 'No estimates in this month.' : BUCKET_EMPTY[bucket]}
+          {displayControls.from || displayControls.to ? 'No estimates match the created dates on this folder page.' : bucket === 'all' ? 'No estimates in this month.' : BUCKET_EMPTY[bucket]}
         </div>
       ) : (
         <>
           <div className="grid gap-3 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-            {estimates.map((est) => <EstimateCard key={est.id} est={est} onOpen={() => onOpen(est.id)} />)}
+            {estimates.map((est) => <EstimateCard key={est.id} est={est} onOpen={() => onOpen(est.id)} onPreview={onPreview} />)}
           </div>
           {meta && meta.last_page > 1 && (
             <Pager
@@ -553,6 +607,8 @@ function DesktopEstimateFiles({
   status,
   search,
   onOpen,
+  onPreview,
+  displayControls,
 }: {
   filingCounts: {
     years: Record<string, EstimateFilingSummary>
@@ -562,6 +618,8 @@ function DesktopEstimateFiles({
   status: EstimateStatus | ''
   search: string
   onOpen: (id: string) => void
+  onPreview: (est: Estimate) => void
+  displayControls: EstimateDisplayControls
 }) {
   // Year → Month, the same cabinet as Jobs: a year folder carries the won /
   // open money, each month drills into its own tiles + cards, fetched on open.
@@ -579,7 +637,7 @@ function DesktopEstimateFiles({
         label: ESTIMATE_MONTHS[m - 1] + ' ' + year,
         count: summary.count,
         render: () => (
-          <EstimateFolderContents year={year} month={month} summary={summary} status={status} search={search} onOpen={onOpen} />
+          <EstimateFolderContents year={year} month={month} summary={summary} status={status} search={search} onOpen={onOpen} onPreview={onPreview} displayControls={displayControls} />
         ),
       })
     }
@@ -594,14 +652,14 @@ function DesktopEstimateFiles({
 
   if (folders.length === 0) {
     return (
-      <div className="hidden rounded-lg border border-dashed border-slate-300 bg-white px-6 py-12 text-center text-sm text-slate-500 md:block">
+      <div data-tour="estimates-files" className="rounded-lg border border-dashed border-slate-300 bg-white px-6 py-12 text-center text-sm text-slate-500">
         No estimate folders match these filters.
       </div>
     )
   }
 
   return (
-    <div className="hidden min-w-0 md:block">
+    <div data-tour="estimates-files" className="min-w-0">
       <FolderBrowser folders={folders} layout={folderLayout} countNoun="estimate" emptyFolderText="No estimates in this folder." />
     </div>
   )
@@ -612,12 +670,18 @@ function DesktopEstimateFiles({
  * status up top, title, customer · place, then date and money pinned to the
  * bottom with the next step — so the two cabinets read as one system.
  */
-function EstimateCard({ est, onOpen }: { est: Estimate; onOpen: () => void }) {
+function QuickPeek({ est, onPreview }: { est: Estimate; onPreview: (est: Estimate) => void }) {
+  return <button type="button" aria-label={`Quick Peek at ${est.display_number}`} className="shrink-0 rounded-md border border-slate-300 px-2 py-1 text-xs font-medium text-slate-700 hover:bg-amber-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-amber-500" onClick={(event) => { event.stopPropagation(); onPreview(est) }}>Quick Peek</button>
+}
+
+function EstimateCard({ est, onOpen, onPreview }: { est: Estimate; onOpen: () => void; onPreview: (est: Estimate) => void }) {
   const meta = ESTIMATE_STATUS_META[est.status] ?? ESTIMATE_FALLBACK_META
   const loc = est.service_location
   const place = loc ? [loc.city, loc.state].filter(Boolean).join(', ') : ''
   return (
     <article
+      data-tour="estimates-row"
+      data-estimate-status={est.status}
       onClick={onOpen}
       onKeyDown={(e) => {
         if (e.target !== e.currentTarget) return
@@ -659,6 +723,7 @@ function EstimateCard({ est, onOpen }: { est: Estimate; onOpen: () => void }) {
       <div className="mt-3 flex items-center justify-between gap-2">
         <div className="min-w-0"><NextStepHint est={est} /></div>
         <span className="text-xs font-semibold text-amber-700 opacity-0 transition-opacity group-hover:opacity-100">Open</span>
+        <QuickPeek est={est} onPreview={onPreview} />
       </div>
     </article>
   )
@@ -667,19 +732,24 @@ function EstimateCard({ est, onOpen }: { est: Estimate; onOpen: () => void }) {
 function DesktopEstimateCards({
   estimates,
   onOpen,
+  onPreview,
 }: {
   estimates: Estimate[]
   onOpen: (id: string) => void
+  onPreview: (est: Estimate) => void
 }) {
   return (
-    <div className="hidden md:grid gap-4 lg:grid-cols-2 xl:grid-cols-3">
+    <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
       {estimates.map((est) => {
         const meta = ESTIMATE_STATUS_META[est.status] ?? ESTIMATE_FALLBACK_META
         return (
           <div
             key={est.id}
+            data-tour="estimates-row"
+            data-estimate-status={est.status}
             onClick={() => onOpen(est.id)}
             onKeyDown={(e) => {
+              if (e.target !== e.currentTarget) return
               if (e.key === 'Enter' || e.key === ' ') {
                 e.preventDefault()
                 onOpen(est.id)
@@ -732,6 +802,7 @@ function DesktopEstimateCards({
               <div className="mt-4 flex items-center justify-between gap-3 border-t border-slate-100 pt-3">
                 <span className="text-xs text-slate-500">Next step</span>
                 <NextStepHint est={est} />
+                <QuickPeek est={est} onPreview={onPreview} />
               </div>
             </div>
           </div>
@@ -742,8 +813,8 @@ function DesktopEstimateCards({
 }
 
 // ---------- Next-step hint (List Workflow Slice 3) ----------
-// Read-only "what to do next" from the approval lifecycle. Not clickable
-// yet (phase 2). Null when the estimate is in a settled/terminal state.
+// "What to do next" from the approval lifecycle. Clicking opens the estimate
+// (Convert opens it with the convert window up). Null when settled/terminal.
 type NextStepTone = 'sky' | 'amber' | 'emerald'
 const NEXT_STEP_TONE: Record<NextStepTone, string> = {
   sky: 'bg-sky-100 text-sky-700',
@@ -775,6 +846,7 @@ function NextStepHint({ est }: { est: Estimate }) {
   return (
     <button
       type="button"
+      data-tour="estimates-next-step"
       onClick={(e) => {
         e.stopPropagation()
         navigate(target)

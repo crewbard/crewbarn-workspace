@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef } from 'react'
 import type { Account } from '@/lib/auth'
-import { getRealtimeEcho, resolveTenantId } from '@/lib/realtimeEcho'
+import { getRealtimeEcho, listenPrivate, resolveTenantId } from '@/lib/realtimeEcho'
 
 /**
  * Live AI intake drafts over Reverb — replaces the 5s background poll on the
@@ -40,15 +40,7 @@ export function useRealtimeIntake(
     if (!echo) return
 
     const channelName = `tenant.${tenantId}.intake`
-    echo.private(channelName).listen('.intake.draft', (d: IntakeDraftEvent) => cb.current(d))
-
-    return () => {
-      try {
-        echo.leave(channelName)
-      } catch {
-        /* ignore */
-      }
-    }
+    return listenPrivate(echo, channelName, '.intake.draft', (d: IntakeDraftEvent) => cb.current(d))
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tenantId])
 }

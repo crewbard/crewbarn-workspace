@@ -1,3 +1,4 @@
+import { readSessionToken, StorageUnavailableError } from './deviceProof'
 ﻿import { apiRequest, setStoredToken, clearStoredToken } from './api'
 
 export type AccountRole = 'standard' | 'tester' | 'management' | 'sales'
@@ -22,6 +23,10 @@ export interface Account {
     slug: string
     status: string
     plan: string
+    /** A sub company that has not subscribed: the free Sub plan's limits apply. */
+    on_free_sub_plan?: boolean
+    /** A trade a customer brought in (free): that customer's name. Null otherwise. */
+    invited_by_customer?: string | null
     /** Beta / free-for-life workspaces: bring-your-own keys only — CrewBarn-managed providers hidden. */
     byo_only?: boolean
     /** Franchise feature (FR-3): drives the Franchise Dashboard nav tab. */
@@ -44,6 +49,7 @@ export interface Account {
 }
 
 interface LoginResponse {
+  device_binding?: import('./deviceProof').DeviceBinding
   token: string
   token_type: string
   expires_at: string
@@ -92,7 +98,7 @@ export async function login(
   loginApprovalId?: string,
 ): Promise<LoginResult> {
   const trustedToken =
-    typeof localStorage !== 'undefined' ? localStorage.getItem(TRUSTED_DEVICE_KEY) : null
+    typeof localStorage !== 'undefined' ? readSessionToken(TRUSTED_DEVICE_KEY) : null
 
   const response = await apiRequest<LoginResponse | TwoFactorRequiredResponse>('/v1/auth/login', {
     method: 'POST',
@@ -121,10 +127,10 @@ export async function login(
   }
 
   const ok = response as LoginResponse
-  setStoredToken(ok.token)
+  setStoredToken(ok.token, ok)
   // Persist a freshly-issued trust token for next time.
   if (ok.trusted_device_token && typeof localStorage !== 'undefined') {
-    localStorage.setItem(TRUSTED_DEVICE_KEY, ok.trusted_device_token)
+    try { localStorage.setItem(TRUSTED_DEVICE_KEY, ok.trusted_device_token) } catch { throw new StorageUnavailableError() }
   }
   return { account: ok.account }
 }

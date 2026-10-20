@@ -7,7 +7,7 @@ import type {
   InvoiceMarkPaidInput,
 } from '@/types/invoice'
 
-export async function listInvoices(params: InvoiceListParams = {}): Promise<Invoice[]> {
+function invoiceListQuery(params: InvoiceListParams): URLSearchParams {
   const qs = new URLSearchParams()
   if (params.customer_id)    qs.set('customer_id', params.customer_id)
   if (params.work_order_id)  qs.set('work_order_id', params.work_order_id)
@@ -19,10 +19,32 @@ export async function listInvoices(params: InvoiceListParams = {}): Promise<Invo
   if (params.filing_year)     qs.set('filing_year', String(params.filing_year))
   if (params.filing_month)    qs.set('filing_month', String(params.filing_month))
   if (params.per_page)       qs.set('per_page', String(params.per_page))
+  return qs
+}
+
+/** The first page only (up to per_page, at most 200). */
+export async function listInvoices(params: InvoiceListParams = {}): Promise<Invoice[]> {
+  const qs = invoiceListQuery(params)
   const res = await apiRequest<{ data: Invoice[] }>(
     `/v1/invoices${qs.toString() ? `?${qs.toString()}` : ''}`,
   )
   return res.data
+}
+
+export interface InvoicePage {
+  data: Invoice[]
+  /** Send back as `cursor` (with the same filters) for the next page; null on the last page. */
+  next_cursor: string | null
+}
+
+/** One page of the list, newest first. No cursor is the first page. */
+export async function listInvoicePage(params: InvoiceListParams = {}, cursor?: string | null): Promise<InvoicePage> {
+  const qs = invoiceListQuery(params)
+  if (cursor) qs.set('cursor', cursor)
+  const res = await apiRequest<{ data: Invoice[]; next_cursor?: string | null }>(
+    `/v1/invoices${qs.toString() ? `?${qs.toString()}` : ''}`,
+  )
+  return { data: res.data, next_cursor: res.next_cursor ?? null }
 }
 
 export async function getInvoiceFilingSummary(params: InvoiceListParams = {}): Promise<InvoiceFilingSummary> {
