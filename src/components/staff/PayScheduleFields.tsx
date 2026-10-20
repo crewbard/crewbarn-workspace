@@ -1,20 +1,23 @@
 import { annualSalary, defaultPaySchedule, salaryAmount, salaryPeriods, type PaySchedule, type SalaryPeriod } from '@/lib/paySchedule'
 
 export type SalaryFieldsValue = { annual_salary: string; salary_period?: SalaryPeriod; salary_amount?: string }
-const labels: Record<SalaryPeriod, string> = { annual: 'Per year', monthly: 'Per month', semimonthly: 'Twice a month (24 a year)', biweekly: 'Every 2 weeks (26 a year)', weekly: 'Per week (52 a year)' }
+const labels: Record<SalaryPeriod, string> = { annual: 'A full year', monthly: 'One month (12 payments per year)', semimonthly: 'One twice-monthly payment (24 payments per year)', biweekly: 'One payment every 2 weeks (26 payments per year)', weekly: 'One week (52 payments per year)' }
 const inputClass = 'min-h-11 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm'
 export function SalaryAmountFields({ value, onChange }: { value: SalaryFieldsValue; onChange: (patch: Partial<SalaryFieldsValue>) => void }) {
   const period = value.salary_period ?? 'annual'
+  const amount = value.salary_amount ?? salaryAmount(value.annual_salary, period)
+  const exactTotal = Math.round(Number(amount || 0) * 100) * salaryPeriods[period] === Math.round(Number(value.annual_salary || 0) * 100)
+  const money = (dollars: string) => Number(dollars || 0).toLocaleString('en-US', { style: 'currency', currency: 'USD' })
   return <div className="space-y-2">
     <label className="block text-sm font-semibold">Salary amount before tax ($)
       <input type="number" min="0" step="0.01" className={inputClass} value={value.salary_amount ?? salaryAmount(value.annual_salary, period)} onChange={e => onChange({ salary_amount: e.target.value, annual_salary: annualSalary(e.target.value, period) })} />
     </label>
-    <label className="block text-sm font-semibold">This salary amount is
+    <label className="block text-sm font-semibold">Amount entered is for
       <select className={inputClass} value={period} onChange={e => { const next = e.target.value as SalaryPeriod; onChange({ salary_period: next, salary_amount: salaryAmount(value.annual_salary, next) }) }}>
         {Object.keys(salaryPeriods).map(key => <option key={key} value={key}>{labels[key as SalaryPeriod]}</option>)}
       </select>
     </label>
-    <p className="text-xs text-slate-600">{Number(value.annual_salary || 0).toLocaleString('en-US', { style: 'currency', currency: 'USD' })} per year before tax. Changing the amount period keeps the yearly salary the same; enter a new amount to change their pay.</p>
+    <p className="text-xs text-slate-600">{period !== 'annual' && <>{money(amount)} × {salaryPeriods[period]} payments {exactTotal ? '=' : '≈'} </>}{money(value.annual_salary)} per year before tax. Changing this selection shows the same yearly salary in a different period. Enter a new amount to change their salary. Choose their actual pay dates separately below.</p>
   </div>
 }
 export function PayScheduleFields({ value = { frequency: 'unspecified' }, onChange }: { value?: PaySchedule; onChange: (schedule: PaySchedule) => void }) {

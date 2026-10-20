@@ -45,6 +45,7 @@ import { usePoOverrideGate } from '@/hooks/usePoOverride'
  */
 export function CatalogItemQuickCreate({
   defaultName = '',
+  defaultStocked,
   defaultUnitCostCents = 0,
   defaultSupplierName = '',
   initialDefaultBinId = '',
@@ -60,6 +61,8 @@ export function CatalogItemQuickCreate({
   onClose,
 }: {
   defaultName?: string
+  /** Start with Stocked item unticked (Not stocked in the receive overlay). */
+  defaultStocked?: boolean
   defaultUnitCostCents?: number
   defaultSupplierName?: string
   /** Pre-fill the Default Bin from the calling form. The parent's bin is
@@ -142,7 +145,7 @@ export function CatalogItemQuickCreate({
   const [reorderQuantity, setReorderQuantity] = useState('')
   const [snTracking, setSnTracking] = useState(false)
   const [snPrefix, setSnPrefix] = useState('')
-  const [isStockedItem, setIsStockedItem] = useState(true)
+  const [isStockedItem, setIsStockedItem] = useState(defaultStocked ?? true)
 
   // Stock placement — driven by the Default Bin above. Picking a bin in the
   // Default Bin field both sets the catalog item's default_bin_id AND tells

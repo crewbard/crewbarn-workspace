@@ -48,6 +48,7 @@ const PublicReportPage = lazy(() => import('@/pages/PublicReportPage').then((m) 
 import { DashboardPage } from '@/pages/DashboardPage'
 const CustomersPage = lazy(() => import('@/pages/CustomersPage').then((m) => ({ default: m.CustomersPage })))
 const CustomerCreatePage = lazy(() => import('@/pages/CustomerCreatePage').then((m) => ({ default: m.CustomerCreatePage })))
+const CustomerPartsRecordsPage = lazy(() => import('@/pages/CustomerPartsRecordsPage').then((m) => ({ default: m.CustomerPartsRecordsPage })))
 const CustomerDetailPage = lazy(() => import('@/pages/CustomerDetailPage').then((m) => ({ default: m.CustomerDetailPage })))
 const WorkOrdersPage = lazy(() => import('@/pages/WorkOrdersPage').then((m) => ({ default: m.WorkOrdersPage })))
 const WorkOrderCreatePage = lazy(() => import('@/pages/WorkOrderCreatePage').then((m) => ({ default: m.WorkOrderCreatePage })))
@@ -392,6 +393,7 @@ createRoot(document.getElementById('root')!).render(
               <Route path="/customers" element={<RequirePermission permission="customers.view"><CustomersPage /></RequirePermission>} />
               <Route path="/customers/search" element={<RequirePermission permission="customers.view"><CustomersPage /></RequirePermission>} />
               <Route path="/customers/new" element={<RequirePermission permission="customers.edit"><CustomerCreatePage /></RequirePermission>} />
+              <Route path="/customers/:id/records" element={<RequirePermission permission="customers.view"><CustomerPartsRecordsPage /></RequirePermission>} />
               <Route path="/customers/:id" element={<RequirePermission permission="customers.view"><CustomerDetailPage /></RequirePermission>} />
 
               {/* Coming-soon primary nav placeholders */}

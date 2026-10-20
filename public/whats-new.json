@@ -1,6 +1,35 @@
 {
   "releases": [
     {
+      "version": "2026-10-19zzzzb",
+      "items": [
+        "Employee portal: finish requested onboarding paperwork and find the crew phone app download together in Your setup. The office preview stays read-only. Quick setup no longer asks for extra paperwork.",
+        "Staff pay: salary and hourly saves no longer ask for a hidden commission setting. Both pay screens handle older records with that setting blank.",
+        "Salary entry now explains the amount per payment: twice a month is 24 payments a year; every two weeks is 26. Changing the display period keeps the yearly salary unchanged."
+      ]
+    },
+    {
+      "version": "2026-10-19zzzza",
+      "items": [
+        "Receiving a typed-in line: tick Not stocked to make it a product you track (received, labelled, on the job and the asset) but don't keep on the shelves or reorder. Then Attach to job finds the job, or shows the job when the order came from one.",
+        "Done on a job's order asks Who will hold this part? when the job has more than one tech (lead tech first), and Send to their van uses the usual transfer.",
+        "Parts held for a job now show in the tech's van once the transfer is accepted, and cancelling a job lets go of the parts held for it (nothing is deleted)."
+      ]
+    },
+    {
+      "version": "2026-10-19zzzz",
+      "items": [
+        "Receiving an order that is for a job: the top shows the job, its tech and the asset, the location starts in that tech's van, and Done offers Put on Job # (with the asset picked when the job has one) or Send to the tech's van. Orders for an estimate offer Add to Estimate. Print QR is still there.",
+        "Printed invoices now carry a Parts records QR beside Scan to pay. Signed-in staff who scan it see the customer's parts records: what part, when, where, which asset and which vendor. Price paid shows only for people who can see revenue."
+      ]
+    },
+    {
+      "version": "2026-10-19zzzy",
+      "items": [
+        "Choose spot now also starts with any typed-in line (not a product yet): tap Create product to make it a stocked product, then pick its spot. The counts at the top include those lines."
+      ]
+    },
+    {
       "version": "2026-10-19zzzx",
       "items": [
         "Choose Quick setup (password only) or Full onboarding when adding staff, or send a fresh setup link from their staff settings. Email and text delivery are shown separately. After setup, app users receive the phone-app download link.",

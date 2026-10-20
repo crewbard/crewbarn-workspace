@@ -14,7 +14,7 @@
  * builder's own structure-apply), and purchase-orders/{id}/receive via the
  * Receive panel. Adding places is for inventory.edit only.
  */
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
 import { useNavigate } from 'react-router-dom'
 import type { InventoryBin } from '@/types/inventoryBin'
 import type { InventoryLocation } from '@/types/inventoryLocation'
@@ -55,6 +55,11 @@ export function ReceiveOverlay({
   paused = false,
   mode = 'receive',
   onPicked,
+  forLabel,
+  renderDone,
+  notStocked = false,
+  onNotStocked,
+  jobLink,
   onReceive,
   onClose,
 }: {
@@ -75,6 +80,15 @@ export function ReceiveOverlay({
   /** 'pick': just choose a spot for the panel's "Receive into" (no receiving). */
   mode?: 'receive' | 'pick'
   onPicked?: (bin: InventoryBin) => void
+  /** What the order is for (job, tech, asset), shown beside the title. */
+  forLabel?: ReactNode
+  /** Products step: make the new product tracked but not stocked (is_stocked_item = false). */
+  notStocked?: boolean
+  onNotStocked?: (v: boolean) => void
+  /** Products step, when Not stocked: attach the order to a job (or show the job it is for). */
+  jobLink?: ReactNode
+  /** Extra next steps on Done, e.g. Put on Job # / Send to the tech's van. */
+  renderDone?: (ctx: { bin: InventoryBin; lines: ReceiveOverlayLine[] }) => ReactNode
   onReceive: (bin: InventoryBin) => Promise<ReceiveOutcome>
   onClose: () => void
 }) {
@@ -86,8 +100,10 @@ export function ReceiveOverlay({
   const [chosenStep, setStep] = useState<Step>(mode === 'pick' && initialLocationId ? 'spot' : 'location')
   const [skippedLink, setSkippedLink] = useState(false)
   // Free-text lines come first; once each is a product (or skipped) the flow carries on.
-  const step: Step = mode === 'receive' && !skippedLink && unlinked.length > 0 && chosenStep === 'location' ? 'link' : chosenStep
-  const [chosenLocationId, setLocationId] = useState(initialLocationId ?? '')
+  // Both entries (Put away & receive, Choose spot) start here while any line is still typed in.
+  const step: Step = !skippedLink && unlinked.length > 0 && (chosenStep === 'location' || chosenStep === 'spot') ? 'link' : chosenStep
+  // Untouched = follow the suggested start (it can arrive late, e.g. the tech's van).
+  const [chosenLocationId, setLocationId] = useState('')
   // null = nothing tapped yet: fall back to a just-built spot, then the remembered one.
   const [pickedId, setSelectedId] = useState<string | null>(null)
   const [open, setOpen] = useState<Set<string>>(new Set())
@@ -99,11 +115,13 @@ export function ReceiveOverlay({
   const [builtIds, setBuiltIds] = useState<string[]>([])
   const [busy, setBusy] = useState(false)
   const [receivedPath, setReceivedPath] = useState('')
+  // What went in and where, kept: the lines prop empties once the order refreshes.
+  const [received, setReceived] = useState<{ bin: InventoryBin; lines: ReceiveOverlayLine[] } | null>(null)
   const [merged, setMerged] = useState(false)
   const createLocation = useCreateInventoryLocation()
 
   // Pre-pick: the remembered spot's location, else the panel's, else the only one.
-  const locationId = chosenLocationId || initialBin?.location_id || (locations.length === 1 ? locations[0].id : '')
+  const locationId = chosenLocationId || initialLocationId || initialBin?.location_id || (locations.length === 1 ? locations[0].id : '')
   const location = locations.find((l) => l.id === locationId) ?? null
   const bins = useMemo(() => allBins.filter((b) => b.location_id === locationId), [allBins, locationId])
   const { data: rollup } = useBinStockRollup(locationId || undefined)
@@ -132,6 +150,10 @@ export function ReceiveOverlay({
   const selected = selectedId ? bins.find((b) => b.id === selectedId) ?? null : null
   const selectedPath = selected ? spotPath(allBins, selected.id, location?.name) : ''
   const totalQty = lines.reduce((n, l) => n + l.qty, 0)
+  // The header counts typed-in lines too until they are made products or skipped.
+  const doneQty = received ? received.lines.reduce((n, l) => n + l.qty, 0) : totalQty
+  const countLines = lines.length + (skippedLink ? 0 : unlinked.length)
+  const countQty = totalQty + (skippedLink ? 0 : unlinked.reduce((n, u) => n + u.qty, 0))
 
   const toggleOpen = useCallback((id: string) => {
     const isOpen = effectiveOpen.has(id)
@@ -167,13 +189,14 @@ export function ReceiveOverlay({
     setBusy(true)
     try {
       const path = spotPath(allBins, selected.id, location?.name)
+      const snapshot = { bin: selected, lines }
       const outcome = await onReceive(selected)
-      if (outcome === 'done' || outcome === 'merged') { setReceivedPath(path); setMerged(outcome === 'merged'); setStep('done') }
+      if (outcome === 'done' || outcome === 'merged') { setReceivedPath(path); setReceived(snapshot); setMerged(outcome === 'merged'); setStep('done') }
       else if (outcome === 'conflict') onClose()
     } finally {
       setBusy(false)
     }
-  }, [selected, busy, allBins, location, onReceive, onClose])
+  }, [selected, busy, allBins, location, onReceive, onClose, lines])
 
   const primary = useCallback(() => {
     if (step === 'link') { if (unlinked[0]) onLink?.(unlinked[0].id) }
@@ -208,7 +231,7 @@ export function ReceiveOverlay({
   }
 
   const shownLocations = locations.filter((l) => l.name.toLowerCase().includes(locQuery.trim().toLowerCase()))
-  const showLinkStep = mode === 'receive' && (unlinked.length > 0 || step === 'link')
+  const showLinkStep = unlinked.length > 0 || step === 'link'
   const steps: Array<[Step, string]> = [
     ...(showLinkStep ? [['link', 'Products'] as [Step, string]] : []),
     ['location', 'Location'], ['spot', 'Spot'],
@@ -225,9 +248,10 @@ export function ReceiveOverlay({
         <header className="border-b border-[var(--bins-border-soft)] px-4 py-3 sm:px-5">
           <div className="flex items-center gap-3">
             <h2 className="text-[16px] font-bold">{mode === 'pick' ? 'Choose a spot' : 'Receive delivery'}</h2>
-            <span className="text-[12px] text-[var(--bins-muted)]">{lines.length} line{lines.length === 1 ? '' : 's'} · {totalQty} item{totalQty === 1 ? '' : 's'}</span>
+            <span className="text-[12px] text-[var(--bins-muted)]">{countLines} line{countLines === 1 ? '' : 's'} · {countQty} item{countQty === 1 ? '' : 's'}</span>
             <button type="button" onClick={onClose} aria-label="Close" className="ml-auto h-9 w-9 rounded-lg text-[var(--bins-muted)] hover:bg-[var(--bins-soft)]">✕</button>
           </div>
+          {forLabel && <div data-testid="receive-for" className="mt-1.5 inline-block rounded-md bg-[var(--bins-soft)] px-2 py-0.5 text-[12px] font-semibold">{forLabel}</div>}
           <ol className="mt-2 flex gap-1.5">
             {steps.map(([s, label], i) => (
               <li key={s} className={`flex-1 border-t-[3px] pt-1 text-[11.5px] ${i === stepIndex ? 'border-[var(--bins-accent)] font-bold' : i < stepIndex ? 'border-[var(--bins-accent-line)] text-[var(--bins-muted)]' : 'border-[var(--bins-border)] text-[var(--bins-muted)]'}`}>
@@ -252,6 +276,13 @@ export function ReceiveOverlay({
                   <button type="button" onClick={() => onLink?.(u.id)} className={primaryCls}>Create product</button>
                 </div>
               ))}
+              {onNotStocked && (
+                <label data-testid="not-stocked" className="flex min-h-[48px] cursor-pointer items-start gap-3 rounded-xl border border-[var(--bins-border)] px-3 py-2.5">
+                  <input type="checkbox" className="mt-1 h-5 w-5 accent-[var(--bins-accent)]" checked={notStocked} onChange={(e) => onNotStocked(e.target.checked)} />
+                  <span><span className="font-semibold">Not stocked</span><span className="block text-[12px] text-[var(--bins-muted)]">Tracked (received, labelled, on the job and the asset) but not kept on the shelves or reordered.</span></span>
+                </label>
+              )}
+              {notStocked && jobLink}
               {lines.length > 0 && (
                 <p className="text-[12px] text-[var(--bins-muted)]">Or skip {unlinked.length === 1 ? 'it' : 'them'} for now and receive the other {lines.length} line{lines.length === 1 ? '' : 's'}.</p>
               )}
@@ -329,9 +360,10 @@ export function ReceiveOverlay({
           {step === 'done' && (
             <div className="py-6 text-center">
               <div className="text-[40px] leading-none text-[var(--color-success)]" aria-hidden>✓</div>
-              <h3 className="mt-2 text-[18px] font-bold">{totalQty} item{totalQty === 1 ? '' : 's'} received</h3>
+              <h3 className="mt-2 text-[18px] font-bold">{doneQty} item{doneQty === 1 ? '' : 's'} received</h3>
               <p className="mt-1 text-[13px] text-[var(--bins-muted)]">into <b className="text-[var(--bins-text)]">{receivedPath}</b></p>
               {merged && <p className="mt-1 text-[12.5px] text-[var(--bins-muted)]">Lines you chose to merge went in with the same item's stock where it already was.</p>}
+              {received && renderDone?.(received)}
               {createdIds.length > 0 && (
                 <button type="button" onClick={() => navigate(binLabelPickUrl(createdIds))} className={`${ghostCls} mt-4`}>
                   Print QR for the {createdIds.length} new spot{createdIds.length === 1 ? '' : 's'}

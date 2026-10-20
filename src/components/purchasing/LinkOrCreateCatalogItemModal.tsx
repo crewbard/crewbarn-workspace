@@ -38,6 +38,7 @@ export function LinkOrCreateCatalogItemModal({
   defaultBin = null,
   onClose,
   onLinked,
+  defaultStocked,
 }: {
   poId: string
   line: PoLineForProduct
@@ -46,6 +47,8 @@ export function LinkOrCreateCatalogItemModal({
   defaultBin?: InventoryBin | null
   onClose: () => void
   onLinked?: (item: CatalogItem) => void
+  /** False = the new product starts as Not stocked (receive overlay). */
+  defaultStocked?: boolean
 }) {
   const [mode, setMode] = useState<'create' | 'link'>('create')
   const [error, setError] = useState<string | null>(null)
@@ -87,6 +90,7 @@ export function LinkOrCreateCatalogItemModal({
         initialDefaultBinId={defaultBin?.id ?? ''}
         initialDefaultPickedBin={defaultBin}
         stockComesFromPo
+        defaultStocked={defaultStocked}
         onCreated={(item) => { made.current = true; void link(item) }}
         onClose={() => { if (!made.current) onClose() }}
         extraFooter={

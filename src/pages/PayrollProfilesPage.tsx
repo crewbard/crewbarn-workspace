@@ -31,7 +31,7 @@ type PayrollProfile = {
   salary_period?: SalaryPeriod
   pay_schedule?: PaySchedule
   commission_percent: number
-  commission_basis: 'paid_revenue' | 'gross_revenue' | 'gross_margin'
+  commission_basis: 'paid_revenue' | 'gross_revenue' | 'gross_margin' | null
   parts_commission_percent: number
   supervisor_bonus_percent: number
   parts_commission_max_parts_cents: number
@@ -57,7 +57,7 @@ type ProfileForm = {
   salary_amount?: string
   pay_schedule?: PaySchedule
   commission_percent: string
-  commission_basis: PayrollProfile['commission_basis']
+  commission_basis: NonNullable<PayrollProfile['commission_basis']>
   parts_commission_percent: string
   supervisor_bonus_percent: string
   parts_commission_max_parts: string
@@ -224,7 +224,7 @@ function formFromProfile(profile: PayrollProfile): ProfileForm {
     salary_period: profile.salary_period ?? 'annual',
     pay_schedule: profile.pay_schedule ?? { frequency: 'unspecified' },
     commission_percent: String(profile.commission_percent ?? 0),
-    commission_basis: profile.commission_basis,
+    commission_basis: profile.commission_basis ?? 'paid_revenue',
     parts_commission_percent: String(profile.parts_commission_percent ?? 0),
     supervisor_bonus_percent: String(profile.supervisor_bonus_percent ?? 0),
     parts_commission_max_parts: String((profile.parts_commission_max_parts_cents ?? 0) / 100),
@@ -368,7 +368,7 @@ export function PayrollProfilesPage() {
           salary_period: payload.salary_period ?? 'annual',
           ...(payload.pay_schedule ? { pay_schedule: payload.pay_schedule } : {}),
           commission_percent: Number(payload.commission_percent || 0),
-          commission_basis: payload.commission_basis,
+          ...((payload.pay_type === 'commission' || payload.pay_type === 'hybrid') ? { commission_basis: payload.commission_basis } : {}),
           parts_commission_percent: Number(payload.parts_commission_percent || 0),
           supervisor_bonus_percent: Number(payload.supervisor_bonus_percent || 0),
           parts_commission_max_parts: Number(payload.parts_commission_max_parts || 0),
@@ -577,7 +577,7 @@ export function PayrollProfilesPage() {
                   </label>
                   <label className="grid gap-1 text-sm font-semibold text-slate-700">
                     Commission basis
-                    <select className="rounded-md border border-slate-300 px-3 py-2" value={editorForm.commission_basis} onChange={(e) => setForm({ ...editorForm, commission_basis: e.target.value as PayrollProfile['commission_basis'] })}>
+                    <select className="rounded-md border border-slate-300 px-3 py-2" value={editorForm.commission_basis} onChange={(e) => setForm({ ...editorForm, commission_basis: e.target.value as ProfileForm['commission_basis'] })}>
                       <option value="paid_revenue">Paid revenue</option>
                       <option value="gross_revenue">Gross revenue</option>
                       <option value="gross_margin">Gross margin</option>

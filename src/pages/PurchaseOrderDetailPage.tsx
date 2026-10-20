@@ -9,6 +9,7 @@ import {
   useSupplierCopy,
   useDeletePurchaseOrderItem,
   useReceivePurchaseOrder,
+  purchaseOrderKeys,
 } from '@/hooks/usePurchaseOrders'
 import { useCatalogItems } from '@/hooks/useCatalogItems'
 import { useVendors } from '@/hooks/useVendors'
@@ -24,7 +25,12 @@ import { Modal } from '@/components/ui/Modal'
 import { PERM, usePermissions } from '@/hooks/usePermissions'
 import { ReceiveOverlay, type ReceiveOutcome } from '@/components/inventory/receive/ReceiveOverlay'
 import { rememberSpot, rememberedSpot, spotPath } from '@/lib/receiveSpot'
-import { ApiError, isDeleteCancelled } from '@/lib/api'
+import { ApiError, apiRequest, isDeleteCancelled } from '@/lib/api'
+import { useQuery } from '@tanstack/react-query'
+import { getPoParts } from '@/lib/poParts'
+import { ReceiveJobDone, type JobHolder } from '@/components/inventory/receive/ReceiveJobDone'
+import { AttachJobInline } from '@/components/inventory/receive/AttachJobInline'
+import type { WorkOrder } from '@/types/workOrder'
 import { continueAfterFailedConflictCheck } from '@/lib/conflictCheck'
 import { formatDateValue } from '@/hooks/useTenantTime'
 import type {
@@ -1436,6 +1442,33 @@ function ReceivePanel({ po }: { po: PurchaseOrder }) {
   // "Choose spot" in Receive into: the same overlay, spot step only.
   const [pickingPanelSpot, setPickingPanelSpot] = useState(false)
   const canAddPlaces = usePermissions().has(PERM.INVENTORY_EDIT)
+  // An order for a job or estimate: who it's for, the tech, the van, the asset.
+  const forSomething = !!po.work_order_id || !!po.estimate_id
+  const poParts = useQuery({ queryKey: [...purchaseOrderKeys.detail(po.id), 'parts'], queryFn: () => getPoParts(po.id), enabled: forSomething })
+  const jobId = poParts.data?.job?.id ?? po.work_order_id ?? null
+  const job = useQuery({
+    queryKey: ['work-order', jobId, 'lead-tech'],
+    queryFn: () => apiRequest<{ data: WorkOrder }>(`/v1/work-orders/${jobId}`).then((r) => r.data),
+    enabled: !!jobId,
+  })
+  const tech = job.data?.lead_tech ?? null
+  // Everyone on the job, lead first: whoever will hold the part gets it in their van.
+  const vanOf = (accountId: string) => locations.find((l) => l.type === 'truck' && l.assigned_tech_account_id === accountId) ?? null
+  const holders: JobHolder[] = [
+    ...(tech ? [{ id: tech.id, name: tech.full_name, van: vanOf(tech.id) }] : []),
+    ...(job.data?.crew_members ?? []).filter((m) => m.id !== tech?.id).map((m) => ({ id: m.id, name: m.name, van: vanOf(m.id) })),
+  ]
+  const [notStocked, setNotStocked] = useState(false)
+  const canJobs = usePermissions().hasAny([PERM.JOBS_VIEW, PERM.JOBS_EDIT])
+  const techVan = tech ? locations.find((l) => l.type === 'truck' && l.assigned_tech_account_id === tech.id) ?? null : null
+  const jobAsset = (() => {
+    const a = poParts.data?.assets ?? []
+    const on = a.filter((x) => x.on_job)
+    return on.length === 1 ? on[0].label : on.length > 1 ? ` assets` : null
+  })()
+  const forLabel = poParts.data?.job
+    ? [`Job #${poParts.data.job.number}`, tech ? `Tech: ${tech.full_name}` : null, jobAsset ? `Asset: ${jobAsset}` : null].filter(Boolean).join(' · ')
+    : poParts.data?.estimate ? `Estimate ${poParts.data.estimate.number}` : null
   // When the overlay's receive needs the merge/split question, the overlay
   // waits here until the question is answered, then finishes on Done.
   const conflictWaiter = useRef<((outcome: ReceiveOutcome) => void) | null>(null)
@@ -1628,6 +1661,11 @@ function ReceivePanel({ po }: { po: PurchaseOrder }) {
     || panelBinId
     || firstLine?.catalog_item?.default_bin?.id
     || null
+  // A job's parts go to the job's tech: start in their van when they have one.
+  const overlayStartLoc = techVan?.id || panelLocationId || null
+  const overlayStartSpot = techVan
+    ? (bins.find((b) => b.id === overlayStartBin)?.location_id === techVan.id ? overlayStartBin : null)
+    : overlayStartBin
 
   if (receivable.length === 0) {
     return null
@@ -1890,6 +1928,12 @@ function ReceivePanel({ po }: { po: PurchaseOrder }) {
           lines={overlayLines}
           locations={locations}
           canEdit={canAddPlaces}
+          unlinked={overlayUnlinked}
+          notStocked={notStocked}
+          onNotStocked={canAddPlaces ? setNotStocked : undefined}
+          jobLink={<AttachJobInline poId={po.id} linked={poParts.data?.job ? `Job #${poParts.data.job.number}` : null} canSearch={canJobs} />}
+          onLink={(id) => { const it = items.find((x) => x.id === id); if (it) setNeedsCatalog(it) }}
+          paused={!!needsCatalog}
           initialBinId={panelBinId || null}
           initialLocationId={panelLocationId || null}
           error={null}
@@ -1905,10 +1949,17 @@ function ReceivePanel({ po }: { po: PurchaseOrder }) {
           lines={overlayLines}
           locations={locations}
           canEdit={canAddPlaces}
-          initialBinId={overlayStartBin}
-          initialLocationId={panelLocationId || null}
+          initialBinId={overlayStartSpot}
+          initialLocationId={overlayStartLoc}
+          forLabel={forLabel}
+          renderDone={poParts.data && (poParts.data.job || poParts.data.estimate) ? ({ bin, lines }) => (
+            <ReceiveJobDone poId={po.id} parts={poParts.data!} bin={bin} lines={lines} holders={holders} canEdit={canAddPlaces} />
+          ) : undefined}
           error={error}
           unlinked={overlayUnlinked}
+          notStocked={notStocked}
+          onNotStocked={canAddPlaces ? setNotStocked : undefined}
+          jobLink={<AttachJobInline poId={po.id} linked={poParts.data?.job ? `Job #${poParts.data.job.number}` : null} canSearch={canJobs} />}
           paused={!!needsCatalog || !!pendingReceive}
           onLink={(id) => { const it = items.find((x) => x.id === id); if (it) setNeedsCatalog(it) }}
           onSkipUnlinked={() => setDraftQty((p) => {
@@ -1925,6 +1976,7 @@ function ReceivePanel({ po }: { po: PurchaseOrder }) {
           poId={po.id}
           line={needsCatalog}
           vendorLabel={po.vendor?.label ?? null}
+          defaultStocked={!notStocked}
           // Only a place that takes stock (holds_stock, as in the bin tree and
           // BinRules on the server) becomes the Default Bin.
           defaultBin={[lineBin[needsCatalog.id], filteredBins.find((b) => b.id === panelBinId)]
