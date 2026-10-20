@@ -7,6 +7,7 @@ import { useTheme } from '@/hooks/useTheme'
 import { EasyPageHeading } from '@/components/easy/EasyPageHeading'
 import { tenantDate, useTenantTimezone } from '@/hooks/useTenantTime'
 import type { PaginatedResponse } from '@/types/api'
+import { csvCell } from '@/lib/csvCell'
 
 type ReceiptAttachment = {
   id: string
@@ -74,11 +75,6 @@ function dollars(cents: number | null | undefined) {
 
 function labelForCategory(value: string) {
   return categories.find(([key]) => key === value)?.[1] ?? value
-}
-
-function csvCell(value: unknown): string {
-  const raw = value == null ? '' : String(value)
-  return `"${raw.replace(/"/g, '""')}"`
 }
 
 function downloadCsv(filename: string, headers: string[], rows: unknown[][]) {

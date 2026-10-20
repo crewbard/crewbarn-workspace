@@ -26,7 +26,9 @@ import { PERM, usePermissions } from '@/hooks/usePermissions'
 import { ReceiveOverlay, type ReceiveOutcome } from '@/components/inventory/receive/ReceiveOverlay'
 import { rememberSpot, rememberedSpot, spotPath } from '@/lib/receiveSpot'
 import { ApiError, apiRequest, isDeleteCancelled } from '@/lib/api'
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { addSeller } from '@/lib/purchaseRequests'
+import { SendPurchaseOrder, PurchaseOrderSendLog } from '@/components/purchasing/SendPurchaseOrder'
 import { getPoParts } from '@/lib/poParts'
 import { ReceiveJobDone, type JobHolder } from '@/components/inventory/receive/ReceiveJobDone'
 import { AttachJobInline } from '@/components/inventory/receive/AttachJobInline'
@@ -272,6 +274,7 @@ export function PurchaseOrderDetailPage({ recordId }: { recordId?: string } = {}
         >
           Supplier copy
         </Link>
+        <SendPurchaseOrder poId={po.id} canSend={canEdit} />
         {canEdit && <div data-tour="po-detail-status" className={easy ? 'flex flex-wrap items-center gap-2 rounded-xl bg-white p-2' : 'flex items-center gap-2'}>
           <select
             aria-label="Purchase order status"
@@ -298,6 +301,7 @@ export function PurchaseOrderDetailPage({ recordId }: { recordId?: string } = {}
       </div>
 
       {statusError && <p role="alert" className="mb-4 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">{statusError}</p>}
+      <PurchaseOrderSendLog poId={po.id} />
       {easy && <nav aria-label="Purchase order sections" className="mb-5 flex flex-wrap gap-2">
         <a href="#po-details" className="rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-semibold">Order details</a>
         <a href="#po-items" className="rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-semibold">Items & quantities</a>
@@ -576,6 +580,7 @@ function LineItemsCard({ po, canEdit }: { po: PurchaseOrder; canEdit: boolean })
         <NewLineItemPanel
           poId={po.id}
           vendorLabel={po.vendor?.label ?? null}
+          vendorId={po.vendor_id}
           onClose={() => setAdding(false)}
         />
       )}
@@ -637,7 +642,18 @@ function LineItemRow({
   const [editing, setEditing] = useState(false)
   // Shared query: one fetch for every line. True when the supplier copy has no number for this line.
   const supplierCopy = useSupplierCopy(poId)
-  const noSupplierNumber = !!supplierCopy.data?.lines.find((l) => l.id === item.id)?.missing_part_number
+  const copyLine = supplierCopy.data?.lines.find((l) => l.id === item.id)
+  const noSupplierNumber = !!copyLine?.missing_part_number
+  const qc = useQueryClient()
+  const [savedToVendor, setSavedToVendor] = useState(false)
+  const saveToVendor = async () => {
+    const d = supplierCopy.data
+    if (!d?.vendor_id || !copyLine?.catalog_item_id || !copyLine.supplier_part_number) return
+    await addSeller({ vendor_id: d.vendor_id, catalog_item_id: copyLine.catalog_item_id, vendor_sku: copyLine.supplier_part_number })
+    setSavedToVendor(true)
+    void qc.invalidateQueries({ queryKey: purchaseOrderKeys.supplierCopy(poId) })
+    void qc.invalidateQueries({ queryKey: ['who-sells'] })
+  }
   const updateMutation = useUpdatePurchaseOrderItem(poId)
   const deleteMutation = useDeletePurchaseOrderItem(poId)
   const showPrint =
@@ -767,6 +783,13 @@ function LineItemRow({
             No supplier part number: the supplier copy shows the description only
           </div>
         )}
+        {canEdit && copyLine?.can_save_to_vendor && !savedToVendor && (
+          <button type="button" data-bins-ui data-tour="po-line-save-number" onClick={() => void saveToVendor()}
+            title="Keep this number on the vendor's list for this product, so the next order to them uses it"
+            className="ml-1 mt-1 inline-flex rounded border border-[var(--bins-accent-line)] bg-[var(--bins-accent-soft)] px-1.5 py-0.5 text-[11px] font-medium text-[var(--bins-accent-ink)]">
+            Save {copyLine.supplier_part_number} as {supplierCopy.data?.supplier?.name ?? "the vendor"}&apos;s number
+          </button>
+        )}
       </td>
       <td className="px-3 py-3 text-right tabular-nums">{item.qty_ordered}</td>
       <td className="px-3 py-3 text-right tabular-nums text-slate-500">{item.qty_received}</td>
@@ -819,10 +842,12 @@ function LineItemRow({
 function NewLineItemPanel({
   poId,
   vendorLabel,
+  vendorId,
   onClose,
 }: {
   poId: string
   vendorLabel: string | null
+  vendorId: string | null
   onClose: () => void
 }) {
   const createMutation = useCreatePurchaseOrderItem(poId)
@@ -1058,6 +1083,7 @@ function NewLineItemPanel({
           defaultName={pickerQuery || description}
           defaultUnitCostCents={Math.round(Number(unitDollars) * 100) || 0}
           defaultSupplierName={vendorLabel ?? ''}
+          defaultVendorNumbers={vendorId ? [{ vendor_id: vendorId, vendor_sku: '' }] : undefined}
           stockComesFromPo
           onClose={() => setShowNewProduct(false)}
           onCreated={(item) => {
@@ -1976,6 +2002,7 @@ function ReceivePanel({ po }: { po: PurchaseOrder }) {
           poId={po.id}
           line={needsCatalog}
           vendorLabel={po.vendor?.label ?? null}
+          vendorId={po.vendor_id}
           defaultStocked={!notStocked}
           // Only a place that takes stock (holds_stock, as in the bin tree and
           // BinRules on the server) becomes the Default Bin.

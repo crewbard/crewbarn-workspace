@@ -30,7 +30,15 @@ export type TakeoffLine = {
   vendor_price: { list_price_cents: number | null; last_cost_cents: number | null } | null
   /** Its printed price in the vendor's own catalogs, where they are searchable (CatalogIndex). */
   catalog_price?: { list_price_cents: number; document_id: string; page: number; page_label: string; title: string } | null
+  /** A vendor invoice or PO: the price printed on it. */
+  unit_cost_cents?: number | null
+  price_source?: 'document' | null
+  /** How catalog_item was found: the vendor's part number on their list, the shop's SKU, or the exact name. */
+  match_by?: 'vendor_sku' | 'shop_sku' | 'name' | null
 }
+
+/** A blueprint, or a vendor's invoice / PO read the same way. */
+export type TakeoffKind = 'blueprint' | 'vendor_document'
 
 export type Takeoff = {
   id: string
@@ -39,6 +47,10 @@ export type Takeoff = {
   mime_type: string
   size_bytes: number
   status: TakeoffStatus
+  kind?: TakeoffKind
+  /** A vendor document: its invoice / order number, and the vendor name printed on it. */
+  document_number?: string | null
+  vendor_name_read?: string | null
   error: string | null
   summary: string | null
   lines: TakeoffLine[]
@@ -71,7 +83,7 @@ export type OrderLine = {
   catalog_item_id?: string | null
   /** The price shown on the review page: what was checked is what is ordered. */
   unit_cost_cents?: number | null
-  price_source?: 'typed' | 'catalog' | 'list' | 'last' | 'item' | null
+  price_source?: 'typed' | 'catalog' | 'list' | 'last' | 'item' | 'document' | null
   list_price_cents?: number | null
   source_document_id?: string | null
   source_page?: number | null
@@ -103,7 +115,7 @@ export const orderTakeoff = (id: string, vendorId: string | null, lines: OrderLi
 /** Upload a blueprint; the server starts reading it. Reports how far the upload has got. */
 export function uploadBlueprint(
   file: File,
-  fields: { title?: string; vendor_id?: string; work_order_id?: string; estimate_id?: string },
+  fields: { title?: string; vendor_id?: string; work_order_id?: string; estimate_id?: string; kind?: TakeoffKind },
   onProgress?: (fraction: number) => void,
 ): Promise<Takeoff> {
   const form = new FormData()

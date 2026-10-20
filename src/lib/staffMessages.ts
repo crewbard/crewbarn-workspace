@@ -38,6 +38,21 @@ export function getStaffThread(threadId: string) {
   return apiRequest<{ data: StaffThreadDetail }>(`/v1/staff-messages/${threadId}`)
 }
 
+export const portalThreadsKey = (as: string | null) => ['employee-message-threads', as ?? 'self'] as const
+
+export function listPortalStaffThreads(as: string | null = null) {
+  return apiRequest<{ data: StaffThreadSummary[]; unread_total: number }>(
+    `/v1/me/messages${as ? `?as=${encodeURIComponent(as)}` : ''}`,
+  )
+}
+
+/** Preview reads never advance the employee's read cursor. */
+export function getPortalStaffThread(threadId: string, as: string | null = null) {
+  return apiRequest<{ data: StaffThreadDetail }>(
+    `/v1/me/messages/${encodeURIComponent(threadId)}${as ? `?as=${encodeURIComponent(as)}` : ''}`,
+  )
+}
+
 /** Resolve-or-open a tech's 1:1 thread by their staff account id. */
 export function getTechThread(accountId: string) {
   return apiRequest<{ data: StaffThreadDetail }>(`/v1/staff-messages/tech/${accountId}`)

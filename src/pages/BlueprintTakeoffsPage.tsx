@@ -22,8 +22,12 @@ import {
   type OrderLine,
   type Takeoff,
   type TakeoffLine,
+  type TakeoffKind,
   type TakeoffStatus,
 } from '@/lib/blueprints'
+import { CatalogItemQuickCreate } from '@/components/CatalogItemQuickCreate'
+import type { CatalogItem } from '@/types/catalogItem'
+import '@/components/inventory/bins/bins.css'
 
 /**
  * Parts from a blueprint. Upload a drawing or a door hardware schedule; the
@@ -74,6 +78,8 @@ export function BlueprintTakeoffsPage() {
   const [file, setFile] = useState<File | null>(null)
   const [vendorId, setVendorId] = useState('')
   const [title, setTitle] = useState('')
+  const [kind, setKind] = useState<TakeoffKind>(params.get('kind') === 'vendor_document' ? 'vendor_document' : 'blueprint')
+  const isDoc = kind === 'vendor_document'
   const [progress, setProgress] = useState<number | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [dragging, setDragging] = useState(false)
@@ -102,6 +108,7 @@ export function BlueprintTakeoffsPage() {
         vendor_id: vendorId || undefined,
         work_order_id: workOrderId,
         estimate_id: estimateId,
+        kind,
       }, setProgress)
       navigate(`/purchase-orders/blueprints/${t.id}`)
     } catch (e) {
@@ -123,6 +130,20 @@ export function BlueprintTakeoffsPage() {
 
       {canEdit && (
         <section className="mb-8 rounded-xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
+          <div role="radiogroup" aria-label="What are you uploading" data-tour="bp-kind" data-bins-ui="" className="mb-3 inline-flex rounded-lg border border-[var(--bins-border)] bg-[var(--bins-soft)] p-0.5 text-sm">
+            {([['blueprint', 'A blueprint'], ['vendor_document', 'A vendor invoice or PO']] as const).map(([k, label]) => (
+              <button key={k} type="button" role="radio" aria-checked={kind === k} onClick={() => setKind(k)}
+                className={`rounded-md px-3 py-1.5 font-medium ${kind === k ? 'bg-[var(--bins-surface)] text-[var(--bins-text)] shadow-sm' : 'text-[var(--bins-text-2)]'}`}>
+                {label}
+              </button>
+            ))}
+          </div>
+          {isDoc && (
+            <p data-bins-ui="" className="mb-3 max-w-3xl text-sm text-[var(--bins-text-2)]">
+              CBI reads each line (their part #, what it is, qty, price) and matches it to your products by that vendor&apos;s part number, then your SKU or the name.
+              Lines it can&apos;t match get a Create product button. Nothing is ordered or stocked on its own.
+            </p>
+          )}
           {forWhat && (
             <p className="mb-3 text-sm text-slate-700">
               The draft PO will be for <span className="font-semibold">{forWhat}</span>.
@@ -150,7 +171,7 @@ export function BlueprintTakeoffsPage() {
                   </>
                 ) : (
                   <>
-                    <span className="text-sm font-medium text-slate-800">Drop the blueprint here, or click to choose it</span>
+                    <span className="text-sm font-medium text-slate-800">{isDoc ? 'Drop the invoice or PO here, or click to choose it' : 'Drop the blueprint here, or click to choose it'}</span>
                     <span className="text-xs text-slate-500">PDF or a photo (PNG, JPG), up to 32 MB. A big set reads best as just the schedule sheets.</span>
                   </>
                 )}
@@ -165,7 +186,7 @@ export function BlueprintTakeoffsPage() {
                     onChange={(e) => setVendorId(e.target.value)}
                     className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm focus:border-amber-500 focus:outline-none focus:ring-1 focus:ring-amber-500"
                   >
-                    <option value="">Choose later</option>
+                    <option value="">{isDoc ? 'Read it off the document' : 'Choose later'}</option>
                     {(vendors.data?.data ?? []).map((v) => (
                       <option key={v.id} value={v.id}>{v.label}{withCatalogs.has(v.id) ? ' · has a catalog' : ''}</option>
                     ))}
@@ -189,7 +210,7 @@ export function BlueprintTakeoffsPage() {
                   className="mt-auto inline-flex items-center justify-center gap-2 rounded-md bg-amber-600 px-4 py-2 text-sm font-semibold text-white hover:bg-amber-700 disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   {progress !== null && <IconLoader2 size={16} className="animate-spin" />}
-                  {progress === null ? 'Read the parts off it' : progress < 1 ? `Uploading ${Math.round(progress * 100)}%` : 'Starting the read…'}
+                  {progress === null ? (isDoc ? 'Read the lines off it' : 'Read the parts off it') : progress < 1 ? `Uploading ${Math.round(progress * 100)}%` : 'Starting the read…'}
                 </button>
               </div>
             </div>
@@ -220,6 +241,7 @@ export function BlueprintTakeoffsPage() {
                 <tr key={t.id} className="cursor-pointer hover:bg-slate-50" onClick={() => navigate(`/purchase-orders/blueprints/${t.id}`)}>
                   <td className="px-3 py-2">
                     <Link to={`/purchase-orders/blueprints/${t.id}`} onClick={(e) => e.stopPropagation()} className="font-medium text-slate-900 hover:underline">{t.title}</Link>
+                    {t.kind === 'vendor_document' && <span data-bins-ui="" className="ml-2 rounded bg-[var(--bins-accent-soft)] px-1.5 py-0.5 text-[11px] font-medium text-[var(--bins-accent-ink)]">Vendor document{t.document_number ? ` #${t.document_number}` : ''}</span>}
                     <div className="text-xs text-slate-500">{[t.created_by, t.created_at && new Date(t.created_at).toLocaleDateString()].filter(Boolean).join(' · ')}</div>
                   </td>
                   <td className="px-3 py-2">
@@ -267,6 +289,7 @@ type Price = { cents: number | null; how: string; source: OrderLine['price_sourc
 function priceOf(row: Row, found: CatalogPrice | undefined, discount: number | null | undefined): Price {
   const typed = cents(row.cost)
   if (typed !== null) return { cents: typed, how: 'You set it', source: 'typed' }
+  if (row.price_source === 'document' && row.unit_cost_cents != null) return { cents: row.unit_cost_cents, how: 'On the document', source: 'document' }
   if (found) return { cents: lessDiscount(found.list_price_cents, discount), how: `${found.catalog_title}, p. ${found.source_page_label}`, source: 'catalog', list: found.list_price_cents, found }
   const vp = row.vendor_price
   if (vp?.list_price_cents != null) return { cents: lessDiscount(vp.list_price_cents, discount), how: 'Their list price', source: 'list', list: vp.list_price_cents }
@@ -312,8 +335,11 @@ export function BlueprintTakeoffPage() {
   const [look, setLook] = useState<{ n: number; lines: TakeoffLine[] | null }>({ n: 0, lines: null })
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  // Products made here from an unmatched line, by line key.
+  const [made, setMade] = useState<Record<string, { id: string; name: string; owner_cost_cents: number | null }>>({})
+  const [creating, setCreating] = useState<Row | null>(null)
 
-  const rows = (t?.lines ?? []).map((l) => toRow(l, edits[l.key]))
+  const rows = (t?.lines ?? []).map((l) => toRow(made[l.key] ? { ...l, catalog_item: made[l.key], match_by: null } : l, edits[l.key]))
 
   /*
    * Priced from the vendor's catalogs once the list is in, and again when
@@ -401,6 +427,14 @@ export function BlueprintTakeoffPage() {
   }
 
   const forWhat = forLabel(t)
+  const isDoc = t.kind === 'vendor_document'
+  const matchLabel = { vendor_sku: `${t.vendor?.label ?? 'Vendor'} part #`, shop_sku: 'your SKU', name: 'the name' } as const
+
+  // The vendor's number is saved by the New product window itself (its vendor rows), once.
+  const created = (row: Row, item: CatalogItem) => {
+    setCreating(null)
+    setMade((m) => ({ ...m, [row.key]: { id: item.id, name: item.name, owner_cost_cents: item.pricing?.owner_cost_cents ?? null } }))
+  }
 
   return (
     <div data-focus-page="blueprint-takeoff" className="mx-auto max-w-7xl px-4 py-6 sm:px-6">
@@ -408,6 +442,12 @@ export function BlueprintTakeoffPage() {
       <div className="mt-1 flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0">
           <h1 className="text-2xl font-semibold text-slate-900 [text-wrap:balance]">{t.title}</h1>
+          {isDoc && (
+            <p data-bins-ui="" data-tour="bp-doc-meta" className="mt-1 text-sm text-[var(--bins-text-2)]">
+              Vendor document{t.document_number ? ` #${t.document_number}` : ''}
+              {t.vendor_name_read ? ` · printed vendor: ${t.vendor_name_read}` : ''}
+            </p>
+          )}
           <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-slate-600">
             <StatusPill status={t.status} />
             <button type="button" onClick={() => void openBlueprintFile(t.id).catch((e: Error) => setError(e.message))} className="text-amber-700 underline underline-offset-2 hover:text-amber-900">
@@ -542,7 +582,13 @@ export function BlueprintTakeoffPage() {
                         <td className="px-2 py-2 align-top">
                           <input value={row.desc} disabled={!editable || !row.include} onChange={(e) => change(row.key, { desc: e.target.value })} className="w-full min-w-48 rounded border border-slate-300 px-2 py-1 disabled:border-transparent disabled:bg-transparent" />
                           {row.where && <div className="mt-0.5 text-xs text-slate-500">{row.where}</div>}
-                          {row.catalog_item && <div className="mt-0.5 text-xs text-emerald-700">You stock this: {row.catalog_item.name}</div>}
+                          {row.catalog_item && <div className="mt-0.5 text-xs text-emerald-700">You stock this: {row.catalog_item.name}{row.match_by ? ` (matched by ${matchLabel[row.match_by]})` : ''}</div>}
+                          {!row.catalog_item && isDoc && editable && row.include && (
+                            <button type="button" data-bins-ui="" data-tour="bp-create-product" onClick={() => setCreating(row)}
+                              className="mt-1 rounded border border-[var(--bins-accent-line)] bg-[var(--bins-accent-soft)] px-2 py-0.5 text-xs font-medium text-[var(--bins-accent-ink)]">
+                              Not in your products: Create product
+                            </button>
+                          )}
                         </td>
                         <td className="px-2 py-2 align-top text-right">
                           <input
@@ -587,6 +633,18 @@ export function BlueprintTakeoffPage() {
         </>
       )}
 
+      {creating && (
+        <CatalogItemQuickCreate
+          title="New product from the vendor document"
+          defaultName={creating.desc}
+          defaultUnitCostCents={creating.unit_cost_cents ?? 0}
+          defaultSupplierName={t.vendor?.label ?? t.vendor_name_read ?? ''}
+          defaultVendorNumbers={t.vendor ? [{ vendor_id: t.vendor.id, vendor_sku: creating.part.trim() }] : undefined}
+          stockComesFromPo
+          onCreated={(item) => created(creating, item)}
+          onClose={() => setCreating(null)}
+        />
+      )}
       {prices.error && <p className="mt-3 text-sm text-red-700">The catalog could not be read: {prices.error instanceof Error ? prices.error.message : 'try again'}.</p>}
       {error && <p className="mt-3 text-sm text-red-700">{error}</p>}
     </div>

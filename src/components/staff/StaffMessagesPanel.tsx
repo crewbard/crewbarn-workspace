@@ -3,6 +3,8 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   getStaffThread,
   getTechThread,
+  getPortalStaffThread,
+  portalThreadsKey,
   sendStaffMessage,
   type StaffMessageDto,
 } from '@/lib/staffMessages'
@@ -18,21 +20,27 @@ export function StaffMessagesPanel({
   techAccountId,
   onChanged,
   className,
+  portalAs,
+  readOnly: readOnlyProp = false,
 }: {
   threadId?: string
   techAccountId?: string
   onChanged?: () => void
   className?: string
+  /** Undefined uses the office API; null is the signed-in employee's inbox. */
+  portalAs?: string | null
+  readOnly?: boolean
 }) {
+  const readOnly = readOnlyProp || typeof portalAs === 'string'
   const queryClient = useQueryClient()
   const [draft, setDraft] = useState('')
   const scrollRef = useRef<HTMLDivElement | null>(null)
 
-  const key = ['staff-thread', threadId ?? `tech:${techAccountId}`] as const
+  const key = ['staff-thread', threadId ?? `tech:${techAccountId}`, portalAs === undefined ? 'staff' : 'portal', portalAs ?? 'self', readOnly ? 'readonly' : 'interactive'] as const
   const q = useQuery({
     queryKey: key,
-    queryFn: () => (threadId ? getStaffThread(threadId) : getTechThread(techAccountId!)),
-    enabled: Boolean(threadId || techAccountId),
+    queryFn: () => portalAs !== undefined ? getPortalStaffThread(threadId!, portalAs) : (threadId ? getStaffThread(threadId) : getTechThread(techAccountId!)),
+    enabled: portalAs !== undefined ? Boolean(threadId) : Boolean(threadId || techAccountId),
     refetchInterval: 10000,
   })
 
@@ -41,23 +49,36 @@ export function StaffMessagesPanel({
   const messages = detail?.messages ?? []
 
   useEffect(() => {
+    if (portalAs !== null || readOnly || !q.dataUpdatedAt || !q.data || q.isError) return
+    void queryClient.invalidateQueries({ queryKey: portalThreadsKey(null) })
+    void queryClient.invalidateQueries({ queryKey: ['me', 'portal'] })
+  }, [portalAs, readOnly, q.dataUpdatedAt, q.data, q.isError, queryClient])
+
+  useEffect(() => {
     const el = scrollRef.current
     if (el) el.scrollTop = el.scrollHeight
   }, [messages.length])
 
   const send = useMutation({
-    mutationFn: (body: string) => sendStaffMessage(resolvedThreadId!, body),
+    mutationFn: (body: string) => {
+      if (readOnly) throw new Error('Messages are read-only in preview.')
+      return sendStaffMessage(resolvedThreadId!, body)
+    },
     onSuccess: () => {
       setDraft('')
       queryClient.invalidateQueries({ queryKey: key })
       queryClient.invalidateQueries({ queryKey: ['staff-threads'] })
+      if (portalAs === null) {
+        queryClient.invalidateQueries({ queryKey: portalThreadsKey(null) })
+        queryClient.invalidateQueries({ queryKey: ['me', 'portal'] })
+      }
       onChanged?.()
     },
   })
 
   const submit = () => {
     const body = draft.trim()
-    if (!body || !resolvedThreadId || send.isPending) return
+    if (readOnly || !body || !resolvedThreadId || !detail || q.isError || send.isPending) return
     send.mutate(body)
   }
 
@@ -66,14 +87,17 @@ export function StaffMessagesPanel({
       <div ref={scrollRef} className="min-h-0 flex-1 space-y-2 overflow-y-auto bg-slate-50 px-3 py-3">
         {q.isLoading ? (
           <div className="text-sm text-slate-400">Loading…</div>
+        ) : q.isError ? (
+          <div role="alert" className="py-8 text-center text-sm text-rose-700">We could not load this conversation. <button type="button" className="min-h-11 underline" onClick={() => void q.refetch()}>Try again</button></div>
         ) : messages.length === 0 ? (
-          <div className="py-8 text-center text-sm text-slate-400">No messages yet. Say hello.</div>
+          <div className="py-8 text-center text-sm text-slate-400">{readOnly ? 'No messages yet.' : 'No messages yet. Say hello.'}</div>
         ) : (
           messages.map((m) => <Bubble key={m.id} m={m} />)
         )}
       </div>
 
-      <div className="border-t border-slate-200 bg-white p-2.5">
+      {!readOnly && <div className="border-t border-slate-200 bg-white p-2.5">
+        {send.isError && <p role="alert" className="mb-2 text-sm text-rose-700">We could not send your message. Please try again.</p>}
         <div className="flex items-end gap-2">
           <textarea
             value={draft}
@@ -91,13 +115,13 @@ export function StaffMessagesPanel({
           <button
             type="button"
             onClick={submit}
-            disabled={draft.trim() === '' || send.isPending || !resolvedThreadId}
+            disabled={draft.trim() === '' || send.isPending || !resolvedThreadId || !detail || q.isError}
             className="flex-shrink-0 rounded-md bg-amber-500 px-4 py-2 text-sm font-semibold text-white hover:bg-amber-600 disabled:cursor-not-allowed disabled:bg-slate-300"
           >
             {send.isPending ? 'Sending…' : 'Send'}
           </button>
         </div>
-      </div>
+      </div>}
     </div>
   )
 }

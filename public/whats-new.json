@@ -1,6 +1,39 @@
 {
   "releases": [
     {
+      "version": "2026-10-20d",
+      "items": [
+        "Vendor part numbers: on a product (new or edit, including New product from receiving, a PO line, Bins, stock and a vendor invoice), Add vendor and type that vendor's own part number. From a PO or invoice the vendor and their number are filled in. Your SKU and the Supplier field stay as they are.",
+        "Purchase orders: Send to vendor emails the supplier copy as a PDF with their part numbers, only when you press Send. Lines with no part number for that vendor are flagged first. A draft becomes Ordered when it goes, and the order shows who it went to and when. PDF downloads the same copy.",
+        "A part number typed on a PO line can be saved as that vendor's number with one tap, so the next order uses it.",
+        "Receiving tags what came in with the PO's vendor. Scanning a labelled part shows who it came from, the PO and their part number.",
+        "Upload a vendor invoice or PO (Purchase orders > Parts from a blueprint > A vendor invoice or PO). CBI reads each line, matches it to your products by the vendor's part number, your SKU or the name, and offers Create product for the rest."
+      ]
+    },
+    {
+      "version": "2026-10-20c",
+      "items": [
+        "Employee portal messages now show Team and Office conversations together, with unread counts for each. The badge and the inbox cover the same conversations.",
+        "The office preview can read existing conversations for staff who have not signed in yet. Previewing does not mark their messages as read.",
+        "Messages now show a retry option when a conversation cannot be loaded, instead of incorrectly saying there are no messages. Long conversations open with the most recent messages."
+      ]
+    },
+    {
+      "version": "2026-10-20b",
+      "items": [
+        "CBI rules: Tool Shed > CBI AI > Your CBI rules is one plain page of your company's rules for CBI, started with eight everyday rules plus your trade's (HVAC, plumbing, electrical or landscaping). Owners and admins edit it; everyone who uses CBI can read it. History keeps every version and Restore never loses one.",
+        "CrewBarn's safety rules (P1 to P7) sit locked above your rules. A company rule or lesson that would break one is ignored and marked.",
+        "When you correct CBI it answers with Saved, Sent to your admin, or Can't and why. It checks the correction against the safety rules and your rules first, and a clash waits for an admin, who can keep it with a reason.",
+        "New role switch: Correct CBI directly. A correction that passes the checks is used straight away (money lessons still wait for a person). It is off for techs unless you turn it on."
+      ]
+    },
+    {
+      "version": "2026-10-20a",
+      "items": [
+        "Spreadsheet exports (reports, accounting, data export, bank match, expenses): a cell that starts with =, +, - or @ now starts with an apostrophe, so Excel and Sheets show it as text instead of running it as a formula. Numbers and amounts are unchanged, and the import wizard reads these files back in as they were."
+      ]
+    },
+    {
       "version": "2026-10-19zzzzb",
       "items": [
         "Employee portal: finish requested onboarding paperwork and find the crew phone app download together in Your setup. The office preview stays read-only. Quick setup no longer asks for extra paperwork.",

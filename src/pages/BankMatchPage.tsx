@@ -7,6 +7,7 @@ import { useTheme } from '@/hooks/useTheme'
 import { EasyPageHeading } from '@/components/easy/EasyPageHeading'
 import { tenantDate, useTenantTimezone } from '@/hooks/useTenantTime'
 import type { PaginatedResponse } from '@/types/api'
+import { csvCell } from '@/lib/csvCell'
 
 type BankSuggestion = {
   matched_type: 'payment' | 'expense' | 'purchase_order' | 'vendor_bill' | 'other' | 'invoice'
@@ -90,11 +91,6 @@ function dollars(cents: number | null | undefined) {
 function signedDollars(cents: number) {
   const formatted = dollars(Math.abs(cents))
   return cents < 0 ? `-${formatted}` : formatted
-}
-
-function csvCell(value: unknown): string {
-  const raw = value == null ? '' : String(value)
-  return `"${raw.replace(/"/g, '""')}"`
 }
 
 function downloadCsv(filename: string, headers: string[], rows: unknown[][]) {

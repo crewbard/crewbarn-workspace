@@ -121,6 +121,7 @@ export const TOOL_SHED_SECTIONS: ToolShedSection[] = [
       // cluster keeps its way in without burying the rest of Connections.
       { label: 'CBI AI', to: '/tool-shed/ai', requires: PERM.SETTINGS_EDIT },
       { label: 'CBI lesson review', to: '/tool-shed/ai/memory' },
+      { label: 'CBI rules', to: '/tool-shed/ai/rules', requires: PERM.AI_USE },
       { label: 'Storage & Maps', to: '/tool-shed/storage-maps', requires: PERM.SETTINGS_VIEW },
       { label: 'GPS Devices', to: '/tool-shed/gps', requires: PERM.JOBS_VIEW },
       { label: 'Label Printer', to: '/tool-shed/label-printer', requires: PERM.SETTINGS_VIEW },

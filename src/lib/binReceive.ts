@@ -46,6 +46,7 @@ export interface ReceivableRow {
   poId: string
   poNumber: string
   vendor: string
+  vendorId: string | null
   date: string | null
   line: ReceivableLine
   remaining: number
@@ -70,6 +71,7 @@ export function receivableRows(orders: readonly ReceivableOrder[], targetId: str
         poId: po.id,
         poNumber: po.po_number,
         vendor: po.vendor?.name ?? '',
+        vendorId: po.vendor?.id ?? null,
         date: po.order_date,
         line,
         remaining,

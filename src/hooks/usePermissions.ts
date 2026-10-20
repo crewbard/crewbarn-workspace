@@ -174,5 +174,7 @@ export const PERM = {
   AI_LEARN_SUGGEST: 'ai.learn.suggest',
   AI_LEARN_REVIEW: 'ai.learn.review',
   AI_LEARN_MANAGE: 'ai.learn.manage',
+  AI_LEARN_CORRECT: 'ai.learn.correct',
+  AI_RULES_EDIT: 'ai.rules.edit',
   MOBILE_ACCESS: 'mobile.access',
 } as const

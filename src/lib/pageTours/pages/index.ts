@@ -71,6 +71,7 @@ import { PAGE_TOUR as AI_VOICE } from './aiVoice'
 import { PAGE_TOUR as AI_ALLOWED } from './aiAllowed'
 import { PAGE_TOUR as AI_LEARNING } from './aiLearning'
 import { PAGE_TOUR as AI_MEMORY } from './aiMemory'
+import { PAGE_TOUR as AI_RULES } from './aiRules'
 import { PAGE_TOUR as AI_ACTIVITY } from './aiActivity'
 import { PAGE_TOUR as CBI_AI } from './cbiAi'
 import { PAGE_TOUR as AREA_CONNECTIONS } from './areaConnections'
@@ -243,6 +244,7 @@ export const PAGE_TOURS: PageTour[] = [
   AI_ALLOWED,
   AI_LEARNING,
   AI_MEMORY,
+  AI_RULES,
   AI_ACTIVITY,
   CBI_AI,
   AREA_CONNECTIONS,

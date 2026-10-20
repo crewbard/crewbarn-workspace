@@ -5,6 +5,7 @@ import { API_URL, apiRequest, getActingTenant, getFranchiseActAs, getStoredToken
 import { assertFileResponse } from '@/lib/fileResponse'
 import { useTheme } from '@/hooks/useTheme'
 import { EasyPageHeading } from '@/components/easy/EasyPageHeading'
+import { csvCell } from '@/lib/csvCell'
 
 type AgingBucket = {
   bucket: string
@@ -599,15 +600,6 @@ function searchableReportText(row: unknown): string {
     .filter((value) => value !== null && value !== undefined)
     .map((value) => String(value).toLowerCase())
     .join(' ')
-}
-
-function csvCell(value: unknown): string {
-  const raw = value == null
-    ? ''
-    : typeof value === 'object'
-      ? JSON.stringify(value)
-      : String(value)
-  return `"${raw.replace(/"/g, '""')}"`
 }
 
 function reportFileSlug(title: string): string {

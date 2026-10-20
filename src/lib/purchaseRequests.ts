@@ -192,6 +192,16 @@ export const addSeller = (body: {
   preferred?: boolean
 }) => apiRequest<{ item: Seller }>(VI, { method: 'POST', body }).then((r) => r.item)
 
+/** A vendor and their own part number for a product that is not saved yet. */
+export type DraftVendorNumber = { vendor_id: string; vendor_sku: string }
+
+/** Save a new product's vendor numbers once it has an id. */
+export async function saveDraftVendorNumbers(catalogItemId: string, rows: DraftVendorNumber[]): Promise<void> {
+  for (const r of rows) {
+    await addSeller({ vendor_id: r.vendor_id, catalog_item_id: catalogItemId, vendor_sku: r.vendor_sku || undefined })
+  }
+}
+
 export const removeSeller = (id: string) => apiRequest<{ ok: boolean }>(`${VI}/${encodeURIComponent(id)}`, { method: 'DELETE' })
 
 /** What one costs from a vendor nobody has bought it from yet: list less their discount, else the item's own cost. */

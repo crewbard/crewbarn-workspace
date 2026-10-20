@@ -170,6 +170,20 @@ export interface SupplierCopyLine {
   unit_cost_cents: number
   line_total_cents: number
   missing_part_number: boolean
+  /** Where the number came from: the vendor's list, the product's Supplier SKU, or typed on this line. */
+  number_source: 'vendor_list' | 'product_supplier' | 'line' | null
+  catalog_item_id: string | null
+  /** Typed on the line and not on this vendor's list yet: offer to save it there. */
+  can_save_to_vendor: boolean
+}
+
+export interface PurchaseOrderSendEvent {
+  kind: 'sent' | 'send_failed' | 'pdf_downloaded' | string
+  to: string | null
+  cc: string[]
+  error: string | null
+  by: string | null
+  at: string | null
 }
 
 export interface SupplierCopy {
@@ -182,6 +196,9 @@ export interface SupplierCopy {
   shop: { name: string | null; address: string | null; phone: string | null; email: string | null; logo_url: string | null }
   supplier: { name: string; account_number: string | null; phone: string | null; email: string | null; address: string[]; payment_terms: string | null } | null
   lines: SupplierCopyLine[]
+  vendor_id: string | null
+  /** What Send needs: the vendor's email on file, why it can't go yet, when it last went, and the log. */
+  send: { to: string | null; blocker: string | null; sent_at: string | null; log: PurchaseOrderSendEvent[] }
   missing_part_numbers: number
   money: { subtotal_cents: number; tax_cents: number | null; shipping_cents: number | null; total_cents: number }
 }

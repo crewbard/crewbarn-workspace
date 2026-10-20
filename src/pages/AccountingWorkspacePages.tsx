@@ -7,6 +7,7 @@ import { Link } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { API_URL, apiRequest, getActingTenant, getFranchiseActAs, getStoredToken } from '@/lib/api'
 import { assertFileResponse } from '@/lib/fileResponse'
+import { csvCell } from '@/lib/csvCell'
 
 type WorkspaceAction = {
   label: string
@@ -449,11 +450,6 @@ function humanize(value: string | null | undefined) {
 function dollarsToCents(value: string): number {
   const parsed = Number(value || 0)
   return Number.isFinite(parsed) ? Math.round(parsed * 100) : 0
-}
-
-function csvCell(value: unknown): string {
-  const raw = value == null ? '' : String(value)
-  return `"${raw.replace(/"/g, '""')}"`
 }
 
 function htmlEscape(value: unknown): string {

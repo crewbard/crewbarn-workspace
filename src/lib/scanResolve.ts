@@ -24,6 +24,19 @@ export interface ScannedStockUnit {
   current_bin_id: string | null
   catalog_item?: { id: string; name?: string | null; sku?: string | null; unit?: string | null } | null
   current_bin?: { id: string; path_label?: string | null; name?: string | null } | null
+  /** Who it was bought from: the PO's vendor, tagged on receive. */
+  vendor_id?: string | null
+  vendor?: { id: string; name: string | null } | null
+  bought_on?: { po_number: string | null; vendor_part_number: string | null } | null
+}
+
+/** "From Johnstone · PO 1042 · their # J-CAP455", or null when it was not bought on a PO. */
+export function boughtFrom(unit: ScannedStockUnit): string | null {
+  if (!unit.vendor?.name) return null
+  const parts = [`From ${unit.vendor.name}`]
+  if (unit.bought_on?.po_number) parts.push(`PO ${unit.bought_on.po_number}`)
+  if (unit.bought_on?.vendor_part_number) parts.push(`their # ${unit.bought_on.vendor_part_number}`)
+  return parts.join(' · ')
 }
 
 export interface ScannedBin {
@@ -64,9 +77,9 @@ export async function resolveScan(payload: string): Promise<ScanResult> {
       return {
         kind: 'stock_unit',
         unit,
-        label: unit.catalog_item?.name
+        label: (unit.catalog_item?.name
           ? `Scanned ${unit.catalog_item.name}`
-          : 'Scanned a tracked unit',
+          : 'Scanned a tracked unit') + (boughtFrom(unit) ? ` (${boughtFrom(unit)})` : ''),
       }
     } catch {
       // A printed-but-deleted label, or a label from another tenant. Say so

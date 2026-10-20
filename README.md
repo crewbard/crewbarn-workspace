@@ -10,7 +10,7 @@ nothing itself.
 
 ## What is and is not here
 
-Here: 217 routes covering the work. 97 pages.
+Here: 218 routes covering the work. 97 pages.
 
 Not here, and genuinely absent rather than hidden — seats and billing, API
 tokens, provider keys and integrations, encryption, security settings,

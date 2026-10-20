@@ -35,6 +35,22 @@ export async function listPurchaseOrders(
 }
 
 /** The order as the supplier sees it (34.257). */
+/** POST /v1/purchase-orders/{id}/send: email the supplier copy PDF to the vendor. Only on a user's Send. */
+export async function sendPurchaseOrder(id: string, body: {
+  to?: string
+  cc?: string[]
+  message?: string
+  confirm_missing?: boolean
+  save_email_to_vendor?: boolean
+}): Promise<{ data: SupplierCopy; status: string; message: string }> {
+  return apiRequest(`/v1/purchase-orders/${id}/send`, { method: 'POST', body })
+}
+
+/** GET /v1/purchase-orders/{id}/pdf: the supplier copy as a PDF file. */
+export async function downloadPurchaseOrderPdf(id: string): Promise<Blob> {
+  return apiRequest<Blob>(`/v1/purchase-orders/${id}/pdf`, { responseType: 'blob' })
+}
+
 export async function getSupplierCopy(id: string): Promise<SupplierCopy> {
   const res = await apiRequest<{ data: SupplierCopy }>(`/v1/purchase-orders/${id}/supplier-copy`)
   return res.data

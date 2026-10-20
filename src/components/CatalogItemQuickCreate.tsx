@@ -23,6 +23,8 @@ import type { InventoryBin } from '@/types/inventoryBin'
 import type { CatalogItem, PartSource } from '@/types/catalogItem'
 import { PoOverrideBox } from '@/components/inventory/PoOverrideBox'
 import { usePoOverrideGate } from '@/hooks/usePoOverride'
+import { VendorNumbersEditor } from '@/components/parts/VendorNumbersEditor'
+import { saveDraftVendorNumbers, type DraftVendorNumber } from '@/lib/purchaseRequests'
 
 /**
  * Inline "+ New product" overlay used by every picker that needs to
@@ -53,6 +55,7 @@ export function CatalogItemQuickCreate({
   defaultInitialQty = '',
   defaultSku = '',
   defaultLongDescription = '',
+  defaultVendorNumbers,
   stockComesFromPo = false,
   title = 'New product',
   extraFooter,
@@ -75,6 +78,8 @@ export function CatalogItemQuickCreate({
   /** The vendor's part number or the line's SKU, when made from a PO line. */
   defaultSku?: string
   defaultLongDescription?: string
+  /** Vendor rows to start with (the PO's vendor and the line's number, an invoice line). Saved once the product exists. */
+  defaultVendorNumbers?: DraftVendorNumber[]
   /** Made from a purchase-order line: the stock arrives by receiving that
    *  line, so there is no starting quantity and nothing is placed here. */
   stockComesFromPo?: boolean
@@ -110,6 +115,9 @@ export function CatalogItemQuickCreate({
   const [pickedBin, setPickedBin] = useState<InventoryBin | null>(initialDefaultPickedBin)
   const [showBinPicker, setShowBinPicker] = useState(false)
   const [supplierName, setSupplierName] = useState(defaultSupplierName)
+  const [vendorDraft, setVendorDraft] = useState<DraftVendorNumber[]>(
+    () => (defaultVendorNumbers ?? []).filter((r, i, all) => r.vendor_id && all.findIndex((x) => x.vendor_id === r.vendor_id) === i),
+  )
   const [ownerCostDollars, setOwnerCostDollars] = useState(
     defaultUnitCostCents ? (defaultUnitCostCents / 100).toFixed(2) : ''
   )
@@ -220,6 +228,18 @@ export function CatalogItemQuickCreate({
         is_stocked_item: isStockedItem,
         active: true,
       })
+
+      // Each vendor's own number, now that the product has an id. Same
+      // fail-soft rule as the image: the product is real either way.
+      if (vendorDraft.length > 0) {
+        try {
+          await saveDraftVendorNumbers(created.id, vendorDraft)
+          queryClient.invalidateQueries({ queryKey: ['who-sells'] })
+        } catch (vendorErr) {
+          const msg = vendorErr instanceof Error ? vendorErr.message : String(vendorErr)
+          alert(`Product was created, but a vendor part number did not save: ${msg}\n\nAdd it from Tool Shed → Product Catalog.`)
+        }
+      }
 
       // If the user picked an image, upload it now that we have an item id.
       // A failed upload doesn't roll the item back — the product is real,
@@ -465,6 +485,7 @@ export function CatalogItemQuickCreate({
               />
             </Field>
           </div>
+          <VendorNumbersEditor compact draft={vendorDraft} onDraftChange={setVendorDraft} shopSku={sku} />
 
           {/* What the customer pays. Kept together and ahead of owner cost
               so the two prices are not mistaken for each other. */}

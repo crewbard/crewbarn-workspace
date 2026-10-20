@@ -555,6 +555,7 @@ createRoot(document.getElementById('root')!).render(
               <Route path="/tool-shed/ai/allowed" element={<ExternalAppRedirect origin="https://connect.crewbarn.com" />} />
               <Route path="/tool-shed/ai/learning" element={<ExternalAppRedirect origin="https://connect.crewbarn.com" />} />
               <Route path="/tool-shed/ai/memory" element={<ExternalAppRedirect origin="https://connect.crewbarn.com" />} />
+              <Route path="/tool-shed/ai/rules" element={<ExternalAppRedirect origin="https://connect.crewbarn.com" />} />
               <Route path="/tool-shed/ai/voice" element={<ExternalAppRedirect origin="https://connect.crewbarn.com" />} />
               <Route path="/tool-shed/ai/activity" element={<ExternalAppRedirect origin="https://connect.crewbarn.com" />} />
               <Route path="/tool-shed/settings-location" element={<ExternalAppRedirect origin="https://connect.crewbarn.com" />} />

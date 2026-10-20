@@ -95,6 +95,7 @@ export const TOUR_ROUTES: string[] = [
   "^/tool-shed/ai/memory/?$",
   "^/tool-shed/ai/provider$",
   "^/tool-shed/ai/provider/?$",
+  "^/tool-shed/ai/rules/?$",
   "^/tool-shed/ai/voice$",
   "^/tool-shed/ai/voice/?$",
   "^/tool-shed/api-endpoints$",

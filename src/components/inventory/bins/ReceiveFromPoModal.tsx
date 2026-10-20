@@ -371,6 +371,7 @@ export function ReceiveFromPoModal({
           poId={creating.poId}
           line={creating.line}
           vendorLabel={creating.vendor || null}
+          vendorId={creating.vendorId}
           // Its home is where it is being received: the spot this line goes to.
           // Same rule as Add to bin (addStockVerdict): a rack or shelf that only
           // holds other places is no Default Bin; the picker is left for it.

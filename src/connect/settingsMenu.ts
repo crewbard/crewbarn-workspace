@@ -435,6 +435,7 @@ export const SETTINGS_MENU: Record<SectionKey, { groups: MenuGroup[] }> = {
       items: [
         { label: 'Learning policy', to: '/tool-shed/ai/learning', blurb: 'Controls for allowed learning sources and retention.', icon: IconSchool, movedFrom: 'Connections' },
         { label: 'Knowledge & review', to: '/tool-shed/ai/memory', blurb: 'Review queued lessons and authorized saved knowledge.', icon: IconBrain, movedFrom: 'Connections' },
+        { label: 'Company rules', to: '/tool-shed/ai/rules', blurb: 'Your rules for how CBI works, under CrewBarn safety rules.', icon: IconSchool },
       ],
     },
     {

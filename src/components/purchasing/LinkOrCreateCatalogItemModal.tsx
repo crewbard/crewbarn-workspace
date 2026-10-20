@@ -35,6 +35,7 @@ export function LinkOrCreateCatalogItemModal({
   poId,
   line,
   vendorLabel,
+  vendorId = null,
   defaultBin = null,
   onClose,
   onLinked,
@@ -43,6 +44,8 @@ export function LinkOrCreateCatalogItemModal({
   poId: string
   line: PoLineForProduct
   vendorLabel: string | null
+  /** The PO's vendor: the line's number becomes that vendor's part number on the new product. */
+  vendorId?: string | null
   /** Where the line is being received: becomes the new product's Default Bin. */
   defaultBin?: InventoryBin | null
   onClose: () => void
@@ -84,7 +87,8 @@ export function LinkOrCreateCatalogItemModal({
         title={`New product for "${line.description}"`}
         defaultName={line.description}
         defaultLongDescription={line.part_number ? `Vendor part number: ${line.part_number}` : ''}
-        defaultSku={line.part_number ?? ''}
+        // The line's number is the vendor's, not the shop's SKU (a blank SKU is generated).
+        defaultVendorNumbers={vendorId ? [{ vendor_id: vendorId, vendor_sku: line.part_number ?? '' }] : undefined}
         defaultSupplierName={vendorLabel ?? ''}
         defaultUnitCostCents={line.unit_cost_cents ?? 0}
         initialDefaultBinId={defaultBin?.id ?? ''}

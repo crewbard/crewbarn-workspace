@@ -35,6 +35,8 @@ import { isCountableUnit, formatQty } from "@/lib/unitsOfMeasure"
 import { PERM, usePermissions } from "@/hooks/usePermissions"
 import { AddToCartButton } from "@/components/parts/AddToCartButton"
 import { WhoSellsThis } from "@/components/parts/WhoSellsThis"
+import { VendorNumbersEditor } from "@/components/parts/VendorNumbersEditor"
+import { saveDraftVendorNumbers, type DraftVendorNumber } from "@/lib/purchaseRequests"
 import { OpenOrders, RecentMovements, StockByPlace } from "@/components/catalog/ProductOverlaySections"
 import { useInventorySettings } from "@/hooks/useInventorySettings"
 import { FitsSection, FitsEditor, DraftBadge, useFitsDraft } from "@/components/fitment/FitsSection"
@@ -691,6 +693,7 @@ function CreateModal({ onClose }: { onClose: () => void }) {
   // Chosen and cropped before the product exists; uploaded the moment it does.
   const [pendingImage, setPendingImage] = useState<File | null>(null)
   const [imageError, setImageError] = useState<string | null>(null)
+  const [vendorDraft, setVendorDraft] = useState<DraftVendorNumber[]>([])
 
   // A blank SKU is generated on save (formStateToInput), same as quick-create.
   const canSave =
@@ -701,6 +704,14 @@ function CreateModal({ onClose }: { onClose: () => void }) {
   const handleSave = () => {
     createMutation.mutate(formStateToInput(form), {
       onSuccess: async (created) => {
+        if (vendorDraft.length > 0) {
+          try {
+            await saveDraftVendorNumbers(created.id, vendorDraft)
+          } catch {
+            setImageError("The product was created, but a vendor part number did not save. Add it from Edit.")
+            return
+          }
+        }
         if (!pendingImage) {
           onClose()
           return
@@ -736,6 +747,8 @@ function CreateModal({ onClose }: { onClose: () => void }) {
         onChange={setForm}
         pendingImage={pendingImage}
         onPendingImageChange={setPendingImage}
+        vendorDraft={vendorDraft}
+        onVendorDraftChange={setVendorDraft}
       />
       {imageError && (
         <div className="px-6 pt-4">
@@ -886,6 +899,8 @@ function ProductForm({
   existingItem,
   pendingImage = null,
   onPendingImageChange,
+  vendorDraft,
+  onVendorDraftChange,
 }: {
   form: ProductFormState
   onChange: (next: ProductFormState) => void
@@ -895,6 +910,8 @@ function ProductForm({
   existingItem?: CatalogItem
   pendingImage?: File | null
   onPendingImageChange?: (file: File | null) => void
+  vendorDraft?: DraftVendorNumber[]
+  onVendorDraftChange?: (rows: DraftVendorNumber[]) => void
 }) {
   const { data: categoriesData } = useProductCatalogCategories({ active: true })
   const { data: taxClassesData } = useTaxClasses({ active: true, per_page: 100 })
@@ -1167,6 +1184,12 @@ function ProductForm({
             />
           </Field>
         </div>
+        <VendorNumbersEditor
+          catalogItemId={existingItem?.id}
+          draft={vendorDraft}
+          onDraftChange={onVendorDraftChange}
+          shopSku={form.sku}
+        />
       </div>
 
       <div className="border-t border-slate-100 pt-4" data-tour="prod-f-warranty">

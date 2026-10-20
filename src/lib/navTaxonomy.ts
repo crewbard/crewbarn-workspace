@@ -196,6 +196,7 @@ export const NAV_CATEGORIES: NavCategory[] = [
           { to: '/tool-shed/company-info', label: 'Company info', requires: 'settings_company.view' },
           { to: '/tool-shed/integrations', label: 'Integrations', requires: PERM.SETTINGS_VIEW },
           { to: '/tool-shed/ai/memory', label: 'CBI lesson review' },
+          { to: '/tool-shed/ai/rules', label: 'CBI rules', requires: PERM.AI_USE },
           { to: '/me/account', label: 'My account' },
         ],
       },

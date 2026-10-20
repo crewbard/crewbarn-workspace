@@ -1,4 +1,5 @@
 import { AuthedAudio } from '@/components/comms/AuthedAudio'
+import { CbiReplyChip, type CbiReplyVerdict } from '@/components/cbi/CbiReplyChip'
 import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from 'react'
 import { useMutation, useQuery } from '@tanstack/react-query'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
@@ -116,6 +117,8 @@ interface ChatMessage {
   form?: DoItForm | null
   /** Already read aloud while it was being written (streamed). */
   spoken?: boolean
+  /** The answer to a correction: Saved, Sent to your admin, or Can't. */
+  chip?: CbiReplyVerdict | null
 }
 
 /** A photo waiting to go with the next question. */
@@ -145,6 +148,7 @@ interface AiLearningCorrectionResp {
     risk_level?: 'low' | 'medium' | 'high'
   }
   message: string
+  verdict?: CbiReplyVerdict
 }
 
 /**
@@ -506,6 +510,7 @@ function ChatOverlay({
         {
           role: 'assistant',
           content: resp.message,
+          chip: resp.verdict ?? null,
         },
       ])
     },
@@ -854,7 +859,7 @@ function ChatOverlay({
               <div className="flex items-center justify-between gap-3">
                 <div>
                   <div className="text-xs font-semibold uppercase tracking-wide text-amber-800">Teach CBI</div>
-                  <p className="text-[11px] text-slate-500">Save a shop rule or correction. Learning settings decide whether it needs approval.</p>
+                  <p className="text-[11px] text-slate-500">Save a shop rule or correction. CBI checks it against CrewBarn safety rules and your company rules first.</p>
                 </div>
                 <button
                   type="button"
@@ -1049,6 +1054,7 @@ function MessageBubble({
             </button>
           ))}
           {!isUser && message.form && <DoItFormCard form={message.form} onGo={onGo} busy={busy} />}
+          {!isUser && message.chip && <CbiReplyChip verdict={message.chip} />}
           {!isUser && message.resource_links && message.resource_links.length > 0 && (
             <div className="mt-2 flex flex-wrap gap-1.5">
               {message.resource_links.map((link) => (

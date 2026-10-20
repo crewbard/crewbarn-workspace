@@ -20,5 +20,6 @@ export function cbiLearningAccess(route: string, has: (permission: string) => bo
   const path = route.split(/[?#]/)[0]
   if (path === '/tool-shed/ai/memory') return has('ai.use') && ['ai.learn.review', 'ai.learn.suggest'].some(has)
   if (path === '/tool-shed/ai/learning') return has('ai.use') && has('ai.learn.manage')
+  if (path === '/tool-shed/ai/rules') return has('ai.use')
   return undefined
 }
