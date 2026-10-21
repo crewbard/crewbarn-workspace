@@ -9,6 +9,7 @@
 import QRCode from 'qrcode'
 import { THERMAL_SIZES, type ThermalSizeKey, type ThermalSize } from '@/lib/thermalLabels'
 import type { PdfLabel } from '@/lib/pdfLabels'
+import { faceOf } from '@/lib/labelFaceFields'
 
 const DEFAULT_DPI = 300
 
@@ -98,40 +99,18 @@ async function renderLabelToDataUrl(
     const qx = padPx
     const qy = padPx
     ctx.drawImage(qrImg, qx, qy, qrPxOnLabel, qrPxOnLabel)
-
-    const textX = qx + qrPxOnLabel + Math.round(0.08 * dpi)
-    const textWidth = canvas.width - textX - padPx
-    let y = qy + Math.round(0.13 * dpi)
-
-    if (label.title) {
-      ctx.textAlign = 'left'
-      ctx.textBaseline = 'top'
-      ctx.font = `bold ${Math.round(0.13 * dpi)}px Helvetica, Arial, sans-serif`
-      const titleLines = wrapText(ctx, label.title, textWidth)
-      for (const line of titleLines.slice(0, 2)) {
-        ctx.fillText(line, textX, y)
-        y += Math.round(0.15 * dpi)
-      }
-    }
-    if (label.subtitle && size.showFullText) {
-      ctx.font = `${Math.round(0.1 * dpi)}px Helvetica, Arial, sans-serif`
-      ctx.fillText(truncate(label.subtitle, 32), textX, y)
-      y += Math.round(0.12 * dpi)
-    }
-    if (size.showFullText && label.details) {
-      ctx.font = `${Math.round(0.085 * dpi)}px Helvetica, Arial, sans-serif`
-      const lineH = Math.round(0.1 * dpi)
-      const bottom = canvas.height - padPx
-      for (const line of label.details) {
-        if (y > bottom) break
-        const wrapped = wrapText(ctx, line, textWidth)
-        const remaining = Math.max(1, Math.floor((bottom - y) / lineH))
-        for (const w of wrapped.slice(0, remaining)) {
-          ctx.fillText(w, textX, y)
-          y += lineH
-        }
-      }
-    }
+    // The same words the preview shows: name, code, type badge, place.
+    // Printing used to read only title/subtitle/details, so a label sent
+    // from the studio (code/tag/path) came out as a QR and a small name.
+    const textX = qx + qrPxOnLabel + Math.round(0.07 * dpi)
+    drawFaceColumn(ctx, label, {
+      x: textX,
+      y: qy,
+      width: canvas.width - textX - padPx,
+      bottom: canvas.height - padPx,
+      dpi,
+      full: Boolean(size.showFullText),
+    })
   } else {
     // Tall/large
     const qx = (canvas.width - qrPxOnLabel) / 2
@@ -149,15 +128,22 @@ async function renderLabelToDataUrl(
         y += Math.round(0.27 * dpi)
       }
     }
-    if (label.subtitle) {
+    const face = faceOf(label)
+    if (face.code && face.code !== label.title) {
+      ctx.font = `bold ${Math.round(0.14 * dpi)}px ${MONO}`
+      ctx.fillText(truncate(face.code, 40), canvas.width / 2, y)
+      y += Math.round(0.2 * dpi)
+    }
+    if (face.tag) {
       ctx.font = `${Math.round(0.15 * dpi)}px Helvetica, Arial, sans-serif`
-      ctx.fillText(label.subtitle, canvas.width / 2, y)
+      ctx.fillText(face.tag, canvas.width / 2, y)
       y += Math.round(0.22 * dpi)
     }
-    if (label.details) {
+    const tallLines = label.path ? [label.path] : (label.details ?? [])
+    if (tallLines.length) {
       ctx.font = `${Math.round(0.12 * dpi)}px Helvetica, Arial, sans-serif`
       const bottom = canvas.height - padPx
-      for (const line of label.details) {
+      for (const line of tallLines) {
         if (y > bottom) break
         ctx.fillText(truncate(line, 60), canvas.width / 2, y)
         y += Math.round(0.18 * dpi)
@@ -166,6 +152,102 @@ async function renderLabelToDataUrl(
   }
 
   return canvas.toDataURL('image/png')
+}
+
+const SANS = 'Helvetica, Arial, sans-serif'
+const MONO = '"Courier New", Courier, monospace'
+
+/**
+ * The text beside the QR on a wide roll label, top to bottom: the name
+ * (shrunk to fit, up to two lines), the code, the type as a solid black
+ * badge, then the place, wrapped into whatever room is left.
+ * Black on white only: this becomes a 1-bit thermal raster.
+ * Exported for the tests.
+ */
+export function drawFaceColumn(
+  ctx: CanvasRenderingContext2D,
+  label: PdfLabel,
+  box: { x: number; y: number; width: number; bottom: number; dpi: number; full: boolean },
+): void {
+  const { x, width, bottom, dpi, full } = box
+  const face = faceOf(label)
+  let y = box.y
+  ctx.textAlign = 'left'
+  ctx.textBaseline = 'top'
+  ctx.fillStyle = '#000000'
+
+  // Name: as big as fits, 0.17" down to 0.09".
+  if (face.name) {
+    let px = Math.round(0.17 * dpi)
+    const min = Math.round(0.09 * dpi)
+    for (; px >= min; px -= 2) {
+      ctx.font = `bold ${px}px ${SANS}`
+      const lines = wrapText(ctx, face.name, width)
+      if (lines.length <= 2 && lines.every((l) => ctx.measureText(l).width <= width)) break
+    }
+    px = Math.max(px, min)
+    ctx.font = `bold ${px}px ${SANS}`
+    const lines = fitLines(ctx, wrapText(ctx, face.name, width), 2, width)
+    for (const line of lines) {
+      ctx.fillText(line, x, y)
+      y += Math.round(px * 1.12)
+    }
+  }
+
+  // Code, in a typewriter face, when it says something the name does not.
+  if (face.code && face.code !== face.name) {
+    const px = Math.round(0.085 * dpi)
+    ctx.font = `bold ${px}px ${MONO}`
+    ctx.fillText(fitLines(ctx, [face.code], 1, width)[0], x, y + Math.round(0.01 * dpi))
+    y += Math.round(px * 1.25)
+  }
+
+  // Type badge: white letters on solid black.
+  if (face.tag && full) {
+    const px = Math.round(0.07 * dpi)
+    const padX = Math.round(0.025 * dpi)
+    const padY = Math.round(0.012 * dpi)
+    ctx.font = `bold ${px}px ${SANS}`
+    const text = fitLines(ctx, [face.tag.toUpperCase()], 1, width - padX * 2)[0]
+    const w = Math.min(width, ctx.measureText(text).width + padX * 2)
+    const h = px + padY * 2
+    y += Math.round(0.015 * dpi)
+    ctx.fillRect(x, y, w, h)
+    ctx.fillStyle = '#ffffff'
+    ctx.fillText(text, x + padX, y + padY + 1)
+    ctx.fillStyle = '#000000'
+    y += h + Math.round(0.02 * dpi)
+  }
+
+  // Where it is: the rest of the room.
+  const where = label.path ? [label.path] : face.path ? [face.path] : []
+  if (full && where.length) {
+    const px = Math.round(0.072 * dpi)
+    const lineH = Math.round(px * 1.18)
+    ctx.font = `${px}px ${SANS}`
+    const room = Math.max(0, Math.floor((bottom - y) / lineH))
+    if (room > 0) {
+      const lines = fitLines(ctx, where.flatMap((w) => wrapText(ctx, w, width)), room, width)
+      for (const line of lines) {
+        ctx.fillText(line, x, y)
+        y += lineH
+      }
+    }
+  }
+}
+
+/** At most `max` lines; the last one ends in "…" when anything was cut. */
+function fitLines(ctx: CanvasRenderingContext2D, lines: string[], max: number, width: number): string[] {
+  const out = lines.slice(0, max)
+  const cut = lines.length > max
+  for (let i = 0; i < out.length; i++) {
+    const last = i === out.length - 1
+    let line = out[i]
+    if (ctx.measureText(line).width <= width && !(last && cut)) continue
+    while (line.length > 1 && ctx.measureText(line + '…').width > width) line = line.slice(0, -1)
+    out[i] = line + '…'
+  }
+  return out
 }
 
 function loadImage(src: string): Promise<HTMLImageElement> {

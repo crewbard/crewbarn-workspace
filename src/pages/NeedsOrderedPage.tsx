@@ -10,6 +10,8 @@ import { PERM, usePermissions } from '@/hooks/usePermissions'
 import { tenantDate, useTenantTimezone } from '@/hooks/useTenantTime'
 import { ApiError } from '@/lib/api'
 import type { LowStockItem } from '@/types/lowStock'
+import { OrderFilterChips } from '@/components/parts/OrderFilterChips'
+import { applyFilter, filterCounts, lowItemKinds, type OrderFilter } from '@/lib/startPo'
 import type { Vendor } from '@/types/vendor'
 import { useTheme } from '@/hooks/useTheme'
 import { EasyPageHeading } from '@/components/easy/EasyPageHeading'
@@ -37,7 +39,11 @@ export function NeedsOrderedPage() {
   const navigate = useNavigate()
 
   const lowStockQuery = useLowStock(true)
-  const items: LowStockItem[] = lowStockQuery.data ?? []
+  const allItems: LowStockItem[] = useMemo(() => lowStockQuery.data ?? [], [lowStockQuery.data])
+  // All / For stock / For jobs / For estimates: ticking and ordering follow what is shown.
+  const [filter, setFilter] = useState<OrderFilter>('all')
+  const counts = useMemo(() => filterCounts(allItems, lowItemKinds), [allItems])
+  const items = useMemo(() => applyFilter(allItems, filter, lowItemKinds), [allItems, filter])
 
   // Per-row state: selected? + qty (defaults to suggested_qty)
   const [selected, setSelected] = useState<Record<string, boolean>>({})
@@ -52,7 +58,7 @@ export function NeedsOrderedPage() {
     // we haven't already touched, so user edits aren't clobbered.
     setQtys((prev) => {
       const next = { ...prev }
-      for (const it of items) {
+      for (const it of allItems) {
         if (next[it.id] === undefined) {
           // What's already on order comes off, so a ticked row doesn't order it twice.
           next[it.id] = String(Math.max(0, Math.ceil((it.suggested_qty || 0) - (it.on_order_qty || 0))))
@@ -60,7 +66,7 @@ export function NeedsOrderedPage() {
       }
       return next
     })
-  }, [items])
+  }, [allItems])
 
   const selectedCount = useMemo(
     () => items.filter((it) => selected[it.id] && Number(qtys[it.id]) > 0).length,
@@ -134,7 +140,7 @@ export function NeedsOrderedPage() {
         </p>
       </div>}
       {easy && !lowStockQuery.isLoading && !lowStockQuery.isError && <section aria-label="Reorder summary" className="grid gap-3 sm:grid-cols-2">
-        <div className="rounded-xl border border-slate-200 bg-white p-4"><p className="text-sm text-slate-500">Items at their reorder threshold</p><p className="mt-1 text-2xl font-semibold">{items.length}</p></div>
+        <div className="rounded-xl border border-slate-200 bg-white p-4"><p className="text-sm text-slate-500">Items at their reorder threshold</p><p className="mt-1 text-2xl font-semibold">{allItems.length}</p></div>
         <div className="rounded-xl border border-slate-200 bg-white p-4"><p className="text-sm text-slate-500">Selected with a positive quantity</p><p className="mt-1 text-2xl font-semibold">{selectedCount}</p></div>
       </section>}
       </div>
@@ -153,7 +159,17 @@ export function NeedsOrderedPage() {
         </div>
       )}
 
-      {!lowStockQuery.isLoading && !lowStockQuery.isError && items.length === 0 && (
+      {!lowStockQuery.isLoading && !lowStockQuery.isError && allItems.length > 0 && (
+        <OrderFilterChips value={filter} counts={counts} onChange={setFilter} />
+      )}
+
+      {!lowStockQuery.isLoading && !lowStockQuery.isError && allItems.length > 0 && items.length === 0 && (
+        <div className="bg-white border border-slate-200 rounded-xl shadow-sm p-8 text-center text-sm text-slate-600">
+          Nothing low is waiting for that right now. <button type="button" className="underline" onClick={() => setFilter('all')}>Show all</button>
+        </div>
+      )}
+
+      {!lowStockQuery.isLoading && !lowStockQuery.isError && allItems.length === 0 && (
         <div data-tour="needs-empty" className="bg-white border border-slate-200 rounded-xl shadow-sm p-12 text-center">
           <p className="text-sm text-slate-600">
             ✓ Nothing to reorder right now. Every stocked item is above its threshold.

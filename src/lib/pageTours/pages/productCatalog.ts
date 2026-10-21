@@ -13,7 +13,7 @@ import type { PageTour } from '../types'
  */
 const t = (id: string) => `[data-tour="${id}"]`
 const FORM = t('prod-form')
-const VIEW = t('prod-view')
+const VIEW = t('prod-view-top')
 const EDITING = t('prod-delete')
 const searching = (page: { find: (s: string) => HTMLElement | null }) =>
   !!((page.find(`${t('prod-search')} input`) as HTMLInputElement | null)?.value ?? '').trim()
@@ -35,7 +35,7 @@ export const PAGE_TOUR: PageTour = {
     {
       id: 'search', selector: t('prod-search'),
       title: 'Search',
-      say: 'Search by name, SKU or part number. The slash key jumps here too.',
+      say: 'Search by name, SKU or part number. Use the quick filters to find low stock, out-of-stock items or missing prices. No price means check the item before quoting. Where Fits is available, narrow products to the equipment they fit. Clear filters if an item seems missing.',
     },
     {
       id: 'tiles', selector: t('prod-category-tiles'), when: t('prod-category-tile'),
@@ -111,7 +111,8 @@ export const PAGE_TOUR: PageTour = {
     { id: 'codes', selector: t('prod-f-codes'), title: 'Barcode and QR', say: 'The barcode on the box, so a scan finds it, and an optional QR value of your own.' },
     { id: 'short', selector: t('prod-f-short'), title: 'Short description', say: 'The short description is what customers see on invoices and stickers.' },
     { id: 'bin', selector: t('prod-f-bin'), title: 'Default bin', say: 'Where this lives on the shelf, so your team knows where to put it away.' },
-    { id: 'pricing', selector: t('prod-f-pricing'), title: 'Price, cost and tax', say: 'The customer price, your cost and the tax class. Your cost is also what your stock is valued at.' },
+    { id: 'pricing', selector: t('prod-f-pricing'), title: 'Price, cost and tax', say: 'Enter the customer price, your cost and the tax class. Check missing prices before quoting. Your cost also values stock. After saving, reopen the product and try it on a draft estimate to check price and tax.' },
+    { id: 'fits', selector: t('prod-f-fits'), title: 'What it fits', say: 'When your trade has a fitment profile, add the equipment or vehicle details this product fits. Review draft fitment details before relying on them, then save the product and check it with the Fits filter.' },
     { id: 'reorder', selector: t('prod-f-reorder'), title: 'Reorder point', say: 'When what’s on hand drops to the reorder point, the product turns red and lands on Needs ordered.' },
     { id: 'supplier', selector: t('prod-f-supplier'), title: 'Supplier', say: 'Who you buy it from and their part number. A supplier that matches one of your vendors is picked for you when you order.' },
     { id: 'warranty', selector: t('prod-f-warranty'), title: 'Warranty', say: 'Warranty days from the maker, your company and the labor. Coverage starts when it’s sold on an invoice.' },

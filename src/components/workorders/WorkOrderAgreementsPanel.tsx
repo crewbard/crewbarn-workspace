@@ -6,6 +6,7 @@ import type { ApiError } from '@/lib/api'
 import { assertFileResponse } from '@/lib/fileResponse'
 import { SignaturePad, type SignaturePadHandle } from '@/components/SignaturePad'
 import { useTheme } from '@/hooks/useTheme'
+import { useNow } from '@/lib/useNow'
 
 /**
  * Service-agreements workflow on a WO. Mirrors the inspections panel
@@ -686,6 +687,7 @@ function SendAgreementModal({
   onClose: () => void
   onSent: () => void
 }) {
+  const now = useNow(60_000)
   const [email, setEmail] = useState(initialEmail)
   // 0 means "never" in the payload; default 30 matches the old hardcoded behavior.
   const [expiresInDays, setExpiresInDays] = useState<number>(30)
@@ -705,7 +707,7 @@ function SendAgreementModal({
   })
 
   const expiryHint = expiresInDays > 0
-    ? `Link expires ${new Date(Date.now() + expiresInDays * 86_400_000).toLocaleDateString()}.`
+    ? `Link expires ${new Date(now + expiresInDays * 86_400_000).toLocaleDateString()}.`
     : 'Link does not expire.'
 
   return (

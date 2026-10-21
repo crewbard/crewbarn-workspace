@@ -167,9 +167,9 @@ export const MONEY_TOURS: GuidedTour[] = [
       { selector: '[data-tour="pay-profiles-header"]', title: 'How each person is paid', say: 'Set how each person is paid so the money pages can work out labor cost and margin.' },
       { selector: '[data-tour="pay-profiles-staff"]', title: 'Pick a person', say: 'Find the person you want to change. The badge shows whether they’re included in payroll reports.' },
       { selector: '[data-tour="pay-profiles-tabs"]', title: 'Rates and tabs', say: 'Their current rates are on one line. Switch between pay rules and the weekly schedule.', optional: 'Pick a person first' },
-      { selector: '[data-tour="pay-profiles-rules"]', title: 'Pay rules', say: 'Pick how they’re paid, then fill the numbers that apply. The calculator previews the total before any territory bonus, which depends on other people’s jobs.', optional: 'Open Pay rules to see this' },
+      { selector: '[data-tour="pay-profiles-rules"]', title: 'Pay rules', say: 'Choose how they are paid. For salary, check the yearly total: twice a month is 24 payments; every two weeks is 26. Changing the amount period preserves the yearly salary; enter a new amount to change pay. Choose actual payment dates separately. Check health insurance shares and whether the company cost is already included. The calculator does not include territory bonuses.', optional: 'Open Pay rules to see this' },
       { selector: '[data-tour="pay-profiles-schedule"]', title: 'Work schedule', say: 'Click hours on or off for each day. Weekly hours update to match.', optional: 'Open Work schedule to see this' },
-      { selector: '[data-tour="pay-profiles-save"]', title: 'Save', say: 'Save when you’re happy, and you’ll see a confirmation or the reason it didn’t save. Changes only affect future payroll and reports. If you can only view staff, the Save button is hidden.', optional: 'Pick a person first' },
+      { selector: '[data-tour="pay-profiles-save"]', title: 'Save', say: 'Press Save profile and wait for confirmation or an error. Reopen the person and check salary, payment dates and insurance. Review the payroll preview before posting: saving a profile does not post pay or deduct insurance. If you can only view staff, Save is hidden.', optional: 'Pick a person first' },
     ],
   },
 

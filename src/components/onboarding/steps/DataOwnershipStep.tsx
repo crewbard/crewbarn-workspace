@@ -217,7 +217,7 @@ export function DataOwnershipStep({ complete, onMarkStep, onboarding, saving }: 
             </div>
 
             {!storageDone && (
-              <details className="mt-4" data-tour="onboarding-storage-manual">
+              <details className="mt-4" data-guide="storage-manual" data-tour="onboarding-storage-manual">
                 <summary className="cursor-pointer text-sm font-semibold text-slate-600 hover:text-navy-900">
                   Or type the values in yourself
                 </summary>
@@ -273,7 +273,7 @@ export function DataOwnershipStep({ complete, onMarkStep, onboarding, saving }: 
               Restricting the key by website is what stops anyone else using it and running up your bill. Copy every
               one of these into Google exactly as it is — a missing one means maps stop working in that place.
             </p>
-            <div className="mt-3 space-y-3" data-guide="maps-block">
+            <div className="mt-3 space-y-3" data-guide="maps-block" data-guide-saved={mapsKeySaved ? 'yes' : 'no'}>
               <div className="space-y-3" data-tour="onboarding-maps-referrers">
                 {crewbarnReferrers.map((value) => (
                   <CopyValueBox key={value} label={value.includes('crewbarn.tv') ? 'CrewBarn shop TV' : 'CrewBarn'} value={value} />

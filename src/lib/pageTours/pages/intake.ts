@@ -84,7 +84,7 @@ export const PAGE_TOUR: PageTour = {
     {
       id: 'job', selector: t('intake-job'), when: OPEN,
       title: 'The job',
-      say: 'The job or estimate AI put together.',
+      say: 'Check the work AI put together. When Review pricing is available, open it and check the items, quantities, work hours, warnings and missing information before preparing an estimate. A temporary pricing preview is not saved and does not change the catalog or send a quote.',
     },
     {
       id: 'address', selector: t('intake-address'), when: OPEN,

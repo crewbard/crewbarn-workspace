@@ -27,6 +27,8 @@ import { BinDetailPanel } from './BinDetailPanel'
 import { BinContextMenu } from './BinContextMenu'
 import { ReceiveFromPoModal } from './ReceiveFromPoModal'
 import { SetCapacityModal } from './SetCapacityModal'
+import { StartPoFromBinModal } from './StartPoFromBinModal'
+import { PERM, usePermissions } from '@/hooks/usePermissions'
 import { restoreCapacities } from './restoreCapacities'
 import { BulkAddRowsModal } from '@/components/inventory/structure/BulkAddRowsModal'
 import { canUndo, undoCreatedPlaces } from '@/lib/structureTemplates'
@@ -75,6 +77,22 @@ function writeLocal(key: string, value: string) {
   try { localStorage.setItem(key, value) } catch { /* private mode */ }
 }
 
+
+const WIDE_QUERY = '(min-width: 1440px)'
+const ROOMY_QUERY = '(min-width: 1024px)'
+
+function useMedia(query: string) {
+  const [on, setOn] = useState(() => typeof window === 'undefined' || window.matchMedia(query).matches)
+  useEffect(() => {
+    const mq = window.matchMedia(query)
+    const change = () => setOn(mq.matches)
+    change()
+    mq.addEventListener('change', change)
+    return () => mq.removeEventListener('change', change)
+  }, [query])
+  return on
+}
+
 export function BinsExplorer<B extends TreeBin>(props: BinsExplorerProps<B>) {
   const { locations, bins, rollup, canEdit, poRequired } = props
   const navigate = useNavigate()
@@ -100,6 +118,9 @@ export function BinsExplorer<B extends TreeBin>(props: BinsExplorerProps<B>) {
   const [menu, setMenu] = useState<{ id: string; at: { x: number; y: number } } | null>(null)
   const [poTarget, setPoTarget] = useState<{ id: string; from: string } | null>(null)
   const [capIds, setCapIds] = useState<string[] | null>(null)
+  const [startPoId, setStartPoId] = useState<string | null>(null)
+  const perms = usePermissions()
+  const canOrder = perms.has(PERM.INVENTORY_EDIT) || perms.has(PERM.INVENTORY_ORDER)
   const [rowIds, setRowIds] = useState<string[] | null>(null)
   /** Add product: open, and where from (null = start with the product). */
   const [toast, setToast] = useUndoToast()
@@ -107,15 +128,12 @@ export function BinsExplorer<B extends TreeBin>(props: BinsExplorerProps<B>) {
   const searchRef = useRef<HTMLInputElement>(null)
   const listWrap = useRef<HTMLDivElement>(null)
   const [listHeight, setListHeight] = useState(520)
-  // One detail panel at a time: beside the list on a wide screen, a bottom
-  // sheet on a phone.
-  const [wide, setWide] = useState(() => typeof window === 'undefined' || window.matchMedia('(min-width: 1024px)').matches)
-  useEffect(() => {
-    const mq = window.matchMedia('(min-width: 1024px)')
-    const on = () => setWide(mq.matches)
-    mq.addEventListener('change', on)
-    return () => mq.removeEventListener('change', on)
-  }, [])
+  // One detail panel at a time: beside the list on a wide screen (1440px
+  // and up), sliding in from the right on a 1080p-sized window, and a
+  // bottom sheet on a phone. A fixed column beside the racks squashed them
+  // on a 27" 1080p monitor.
+  const wide = useMedia(WIDE_QUERY)
+  const roomy = useMedia(ROOMY_QUERY)
 
   useEffect(() => { writeLocal(VIEW_KEY, view) }, [view])
   useEffect(() => {
@@ -191,7 +209,7 @@ export function BinsExplorer<B extends TreeBin>(props: BinsExplorerProps<B>) {
   }, [tree, hintSeen])
 
   const { data: overrideStatus } = usePoOverrideStatus(canEdit && poRequired)
-  const rules = { canEdit, poRequired, openPoLines }
+  const rules = { canEdit, poRequired, openPoLines, canOrder }
   const runAction = (action: MenuId | 'move' | 'edit', nodeId: string, targetId?: string) => {
     const n = tree.nodes.get(nodeId)
     const bin = binById.get(nodeId)
@@ -205,6 +223,7 @@ export function BinsExplorer<B extends TreeBin>(props: BinsExplorerProps<B>) {
       return
     }
     if (action === 'capacity') { setCapIds([nodeId]); return }
+    if (action === 'start-po') { if (canOrder) setStartPoId(nodeId); return }
     if (action === 'add-row' && bin) {
       const kids = n.children.map((c) => tree.nodes.get(c)!).filter(Boolean)
       const kind = childWord(tree, nodeId)
@@ -286,7 +305,7 @@ export function BinsExplorer<B extends TreeBin>(props: BinsExplorerProps<B>) {
   // Keyboard: arrows move, Enter picks, / searches, R and T switch views,
   // X ticks, the menu key opens the menu, Esc steps back.
   const onKeyDown = (e: React.KeyboardEvent) => {
-    if (menu || poTarget || capIds || rowIds) return
+    if (menu || poTarget || capIds || rowIds || startPoId) return
     if (e.key === 'Escape') {
       if (isTyping(e.target) && query) { setQuery(''); return }
       if (selectMode) { setSelectMode(false); setTicked(new Set()); return }
@@ -337,6 +356,20 @@ export function BinsExplorer<B extends TreeBin>(props: BinsExplorerProps<B>) {
   const menuNode = menu ? tree.nodes.get(menu.id) : null
   const detail = selectedId ? tree.nodes.get(selectedId) : null
   const noBins = bins.length === 0
+
+  const kbd = 'rounded border px-1'
+  const keyHints = (
+    <>
+      <span className="block"><kbd className={kbd}>↑</kbd> <kbd className={kbd}>↓</kbd> move · <kbd className={kbd}>→</kbd> open · <kbd className={kbd}>Enter</kbd> pick</span>
+      <span className="block"><kbd className={kbd}>/</kbd> find · <kbd className={kbd}>R</kbd> racks · <kbd className={kbd}>T</kbd> list · <kbd className={kbd}>X</kbd> tick</span>
+    </>
+  )
+  const totalsTiles = (
+    <>
+      <div className="rounded-lg bg-[var(--bins-softer)] p-2.5"><div className="text-[16px] font-bold text-[var(--bins-text)]">{fmtNum(totals.places)}</div><div className="text-[11px]">places</div></div>
+      <div className="rounded-lg bg-[var(--bins-softer)] p-2.5"><div className="text-[16px] font-bold text-[var(--bins-text)]">{fmtNum(totals.amount)}</div><div className="text-[11px]">units stored</div></div>
+    </>
+  )
 
   return (
     <div data-bins-ui onKeyDown={onKeyDown} tabIndex={-1} className="outline-none">
@@ -434,9 +467,21 @@ export function BinsExplorer<B extends TreeBin>(props: BinsExplorerProps<B>) {
         </div>
       )}
 
+      {/* Not wide enough for a side column: the same hints and totals as one thin strip. */}
+      {roomy && !wide && !(narrowing && filter.matches.size === 0) && (
+        <div data-tour="inv-bins-strip" className="flex flex-wrap items-center gap-x-5 gap-y-1 border-b border-[var(--bins-border-soft)] px-4 py-2 text-[12px] text-[var(--bins-muted)]">
+          <span className="font-semibold text-[var(--bins-text-2)]">Pick a place to open it.</span>
+          <span className="flex flex-wrap gap-x-3">{keyHints}</span>
+          <span className="ml-auto flex gap-4">
+            <span><b className="text-[13px] text-[var(--bins-text)]">{fmtNum(totals.places)}</b> places</span>
+            <span><b className="text-[13px] text-[var(--bins-text)]">{fmtNum(totals.amount)}</b> units stored</span>
+          </span>
+        </div>
+      )}
+
       {/* Body: list or racks, with the detail panel beside it on a wide screen. */}
       {!(narrowing && filter.matches.size === 0) && (
-        <div data-easy-split="" className="lg:grid lg:grid-cols-[minmax(0,1fr)_380px]">
+        <div data-easy-split="" className="min-[1440px]:grid min-[1440px]:grid-cols-[minmax(0,1fr)_clamp(320px,24vw,640px)]">
           <div ref={listWrap} className={view === 'tree' ? 'h-[max(420px,calc(100vh-330px))]' : 'max-h-[max(420px,calc(100vh-330px))] overflow-y-auto'}>
             {view === 'tree' ? (
               <BinTreeRows
@@ -449,7 +494,7 @@ export function BinsExplorer<B extends TreeBin>(props: BinsExplorerProps<B>) {
                 onPick={selectMode ? tick : pick} onMenu={openMenu} onAddRoot={props.onAddRoot} canEdit={canEdit} />
             )}
           </div>
-          <aside className="hidden border-l border-[var(--bins-border-soft)] lg:block">
+          <aside className="hidden border-l border-[var(--bins-border-soft)] min-[1440px]:block">
             {detail && wide ? (
               <div className="sticky top-0 h-[max(420px,calc(100vh-330px))]">
                 <BinDetailPanel tree={tree} id={detail.id} menu={contextMenu(tree, detail.id, rules)} onPick={pick} onMenu={openMenu}
@@ -460,22 +505,29 @@ export function BinsExplorer<B extends TreeBin>(props: BinsExplorerProps<B>) {
               <div className="p-6 text-[13px] text-[var(--bins-muted)]">
                 <p className="font-semibold text-[var(--bins-text-2)]">Pick a place to see it here.</p>
                 <p className="mt-1">You'll see what's in it, how full it is, and buttons for labels, adding rows and receiving stock.</p>
-                <dl className="mt-4 space-y-1 text-[12px]">
-                  <div><kbd className="rounded border px-1">↑</kbd> <kbd className="rounded border px-1">↓</kbd> move · <kbd className="rounded border px-1">→</kbd> open · <kbd className="rounded border px-1">Enter</kbd> pick</div>
-                  <div><kbd className="rounded border px-1">/</kbd> find · <kbd className="rounded border px-1">R</kbd> racks · <kbd className="rounded border px-1">T</kbd> list · <kbd className="rounded border px-1">X</kbd> tick</div>
-                </dl>
-                <div className="mt-4 grid grid-cols-2 gap-2">
-                  <div className="rounded-lg bg-[var(--bins-softer)] p-2.5"><div className="text-[16px] font-bold text-[var(--bins-text)]">{fmtNum(totals.places)}</div><div className="text-[11px]">places</div></div>
-                  <div className="rounded-lg bg-[var(--bins-softer)] p-2.5"><div className="text-[16px] font-bold text-[var(--bins-text)]">{fmtNum(totals.amount)}</div><div className="text-[11px]">units stored</div></div>
-                </div>
+                <dl className="mt-4 space-y-1 text-[12px]">{keyHints}</dl>
+                <div className="mt-4 grid grid-cols-2 gap-2">{totalsTiles}</div>
               </div>
             )}
           </aside>
         </div>
       )}
 
+      {/* A 1080p-sized window: the panel slides in from the right over the racks. */}
+      {detail && !wide && roomy && (
+        <div>
+          <div className="fixed inset-0 z-[110] bg-[color-mix(in_srgb,var(--bins-dark)_25%,transparent)]" onClick={() => setSelectedId(null)} />
+          <div role="dialog" aria-label={detail.label} data-tour="inv-bins-slideover"
+            className="fixed inset-y-0 right-0 z-[111] w-[min(420px,92vw)] overflow-hidden border-l border-[var(--bins-border)] bg-[var(--bins-surface)] shadow-2xl">
+            <BinDetailPanel tree={tree} id={detail.id} menu={contextMenu(tree, detail.id, rules)} onPick={pick} onMenu={openMenu}
+              onAction={(a) => runAction(a, detail.id)}
+              onAddRoot={props.onAddRoot} canEdit={canEdit} onClose={() => setSelectedId(null)} />
+          </div>
+        </div>
+      )}
+
       {/* Phones: the panel comes up from the bottom. */}
-      {detail && !wide && (
+      {detail && !wide && !roomy && (
         <div>
           <div className="fixed inset-0 z-[110] bg-[color-mix(in_srgb,var(--bins-dark)_35%,transparent)]" onClick={() => setSelectedId(null)} />
           <div role="dialog" aria-label={detail.label} className="fixed inset-x-0 bottom-0 z-[111] h-[78vh] overflow-hidden rounded-t-2xl bg-[var(--bins-surface)] shadow-2xl">
@@ -512,6 +564,9 @@ export function BinsExplorer<B extends TreeBin>(props: BinsExplorerProps<B>) {
       {poTarget && tree.nodes.has(poTarget.id) && (
         <ReceiveFromPoModal tree={tree} targetId={poTarget.id} targets={stockTargets(tree, poTarget.from)} onClose={closePo}
           onWithoutPo={overrideStatus?.can_override ? (id) => { closePo(); props.onAddStock({ bin: binById.get(id) ?? null, locationId: tree.nodes.get(id)?.locationId ?? null }) } : undefined} />
+      )}
+      {startPoId && tree.nodes.get(startPoId) && (
+        <StartPoFromBinModal node={tree.nodes.get(startPoId)!} onClose={() => setStartPoId(null)} />
       )}
       {capIds && (
         <SetCapacityModal tree={tree} ids={capIds} onClose={() => setCapIds(null)}

@@ -16,7 +16,7 @@ export const PAGE_TOUR: PageTour = {
   route: '^/tool-shed/employee-settings/?$',
   intro: {
     page: 'Employee settings',
-    purpose: 'The defaults for everyone who works here: quiet hours, task reminder emails, and how far back daily duties look.',
+    purpose: 'The defaults for everyone who works here: quiet days and hours, task reminder emails, and how far back daily duties look.',
     covers: ['Quiet hours', 'Task reminder emails', 'Where daily duties start', 'Each person’s own settings'],
   },
   steps: [
@@ -28,7 +28,7 @@ export const PAGE_TOUR: PageTour = {
     {
       id: 'quiet', selector: t('employee-settings-quiet'),
       title: 'Quiet hours',
-      say: 'Between these times nobody gets task reminder emails, phones don’t buzz, and CBI doesn’t call a tech or a customer. Reminders go out when quiet hours end. A tech running late for a job still gets the alert.',
+      say: 'Choose the weekdays and start and end times in your company’s timezone, then press Save quiet hours. Read the saved days and times below it. These reminders wait until quiet hours end; late-tech alerts still go out. A person can have different quiet days and hours on their staff record.',
     },
     {
       id: 'emails', selector: t('employee-settings-emails'),

@@ -527,3 +527,21 @@ export function rowTargets(tree: BinTree, picked: readonly string[]): string[] {
     })
   })
 }
+
+/**
+ * Building from the layers in a place that already has R1: should the outer
+ * codes move on to the next free ones by themselves? Only once per layer
+ * shape and place (so Undo sticks and nothing loops), never after the user
+ * chose to add into the existing ones, and only once we know what is there.
+ */
+export function shouldAutoNextFree(o: { fromLayers: boolean; existingLoaded: boolean; clashes: number; declined: boolean; tried: boolean }): boolean {
+  return o.fromLayers && o.existingLoaded && o.clashes > 0 && !o.declined && !o.tried
+}
+
+/** "R1 is taken, so this is R2." for the note under the drawing. */
+export function nextFreeNote(moved: ReadonlyArray<{ from: string; to: string }>): string {
+  if (moved.length === 0) return ''
+  if (moved.length === 1) return `${moved[0].from} is taken, so this is ${moved[0].to}.`
+  const list = (xs: string[]) => (xs.length > 3 ? `${xs.slice(0, 3).join(', ')}…` : xs.join(', '))
+  return `${list(moved.map((m) => m.from))} are taken, so these are ${list(moved.map((m) => m.to))}.`
+}

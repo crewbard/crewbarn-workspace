@@ -313,7 +313,7 @@ export const SETTINGS_FILMS: PageFilm[] = [
         { title: 'Priya Shah', meta: 'Office', chip: 'Signs in', tone: 'green' },
         { title: 'Sam Ortiz', meta: 'Helper', chip: 'No sign-in', tone: 'gray' },
       ] } },
-      { id: 'person', title: 'One person', say: 'Open someone to set their rules and pay, and see their scorecard and timesheet.', visual: { kind: 'chips', chips: ['Role', 'Field rules', 'Pay', 'Scorecard', 'Timesheet'] } },
+      { id: 'person', title: 'One person', say: 'Choose Quick setup or Full onboarding, and check the email and mobile number for their private setup link. Open their record to set access, rules and pay. Pay saves separately from their staff settings.', visual: { kind: 'chips', chips: ['Role', 'Field rules', 'Pay', 'Scorecard', 'Timesheet'] } },
       { id: 'go', say: 'Let’s walk through it.', visual: { kind: 'go' } },
     ],
   },

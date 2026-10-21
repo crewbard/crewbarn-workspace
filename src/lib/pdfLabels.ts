@@ -10,6 +10,7 @@
 import { jsPDF } from 'jspdf'
 import QRCode from 'qrcode'
 import { THERMAL_SIZES, computeSheetGrid, type ThermalSizeKey } from '@/lib/thermalLabels'
+import { faceOf } from '@/lib/labelFaceFields'
 
 export interface PdfLabel {
   /** What the QR encodes — typically a code or scan URL. */
@@ -37,29 +38,6 @@ export interface PdfLabel {
   note?: string
 }
 
-/** The face fields, whichever shape the caller sent. */
-function faceOf(label: PdfLabel): {
-  name: string
-  code?: string
-  tag?: string
-  path?: string
-  company?: string
-  phone?: string
-  note?: string
-} {
-  const details = label.details ?? []
-  return {
-    name: label.title,
-    code: label.code ?? details.find((d) => /^(SKU|SN)[: ]/i.test(d)),
-    tag: label.tag ?? label.subtitle,
-    // A path is the detail line with separators in it; failing that, the
-    // last one, which is where these pages have always put it.
-    path: label.path ?? details.find((d) => d.includes('\u203a') || d.includes('>')) ?? details[details.length - 1],
-    company: label.company,
-    phone: label.phone,
-    note: label.note,
-  }
-}
 
 /**
  * Build a jsPDF document of labels at the given thermal size.

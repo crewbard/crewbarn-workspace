@@ -16,7 +16,7 @@ export const SETTINGS_MORE_FILMS: PageFilm[] = [
       name('This is CBI, your assistant. Everything about it is set up on this one page.', 'CBI AI', 'Your assistant, your rules', 'AI'),
       { id: 'does', title: 'What it does', say: 'It reads photos and messy notes, drafts texts and jobs, and learns how your company works.', visual: { kind: 'thread', contact: 'CBI', messages: [
         { from: 'us', text: 'Book Jordan Lee for a repair visit Thursday morning.' },
-        { from: 'them', text: 'Done. Repair visit for Jordan Lee, Thursday 9:00 with Sam. Want me to text a confirmation?' },
+        { from: 'them', text: 'Here is a draft repair visit for Jordan Lee. Check the time and technician before saving or sending a confirmation.' },
       ] } },
       { id: 'parts', title: 'Three parts', say: 'Teach it your way of working, choose the jobs it helps with, and set up the AI behind it.', visual: { kind: 'chips', chips: ['Teach CBI', 'Skills', 'Setup', 'Learning', 'Voice'] } },
       { id: 'steps', title: 'Getting it going', say: 'Three steps get it started: an AI account and key, the main switch, and showing it in your menus.', visual: { kind: 'pipeline', stages: ['Provider', 'Key', 'Switch on', 'In your menus'], card: 'CBI' } },
@@ -28,11 +28,11 @@ export const SETTINGS_MORE_FILMS: PageFilm[] = [
     film: [
       name('Here you pick which AI company does the thinking for your assistant.', 'Which AI does the thinking', undefined, 'AI'),
       { id: 'yours', title: 'Your own account', say: 'You bring your own account, so what it costs goes to them, not to us.', visual: { kind: 'text', headline: 'Your account, your bill', body: 'CrewBarn never marks up what the AI costs.' } },
-      { id: 'choices', title: 'Four choices', say: 'There are four choices. Some can also do things for you, like book a job or draft a text.', visual: { kind: 'list', heading: 'AI companies', rows: [
-        { title: 'Claude', meta: 'Reads photos and notes, books jobs', chip: 'Recommended', tone: 'green' },
-        { title: 'ChatGPT', meta: 'Acts for you, turns calls into text', chip: 'Acts', tone: 'blue' },
-        { title: 'Gemini', meta: 'Cheapest for heavy use', chip: 'Reads only', tone: 'gray' },
-        { title: 'Azure', meta: 'For companies on Microsoft', chip: 'Reads only', tone: 'gray' },
+      { id: 'choices', title: 'Four choices', say: 'Read the current choices and supported features here. Pick your provider, add its key, and test the connection before relying on it.', visual: { kind: 'list', heading: 'AI companies', rows: [
+        { title: 'Claude', meta: 'Check supported actions before use', chip: 'Recommended', tone: 'green' },
+        { title: 'ChatGPT', meta: 'Check supported actions and transcription', chip: 'Acts', tone: 'blue' },
+        { title: 'Gemini', meta: 'Check current supported features', chip: 'Review features', tone: 'gray' },
+        { title: 'Azure', meta: 'For companies on Microsoft', chip: 'Review features', tone: 'gray' },
       ] } },
       go('Let’s look at the choices.'),
     ],
@@ -395,7 +395,7 @@ export const SETTINGS_MORE_FILMS: PageFilm[] = [
     film: [
       name('Put in what it really costs to run your business, and see the hourly rate you need.', 'Cost model', undefined, 'Money'),
       { id: 'costs', title: 'Your costs', say: 'Add your monthly costs, like trucks, insurance and the office.', visual: { kind: 'money', title: 'Monthly overhead', lines: [{ label: 'Trucks and fuel', amount: 2400 }, { label: 'Insurance', amount: 850 }, { label: 'Office and phones', amount: 1100 }], stamp: '' } },
-      { id: 'rate', title: 'Your rate', say: 'It works out your break-even per hour, and the rate that makes your margin.', visual: { kind: 'tiles', tiles: [
+      { id: 'rate', title: 'Your rate', say: 'It works out break-even and a target that covers modeled costs, profit and a separate growth reserve. Check company insurance shares are counted once. Save your assumptions, then read the updated rates and warnings.', visual: { kind: 'tiles', tiles: [
         { label: 'Monthly overhead', value: 4350, prefix: '$' }, { label: 'Break-even', value: 48, prefix: '$', suffix: '/hr' }, { label: 'Target rate', value: 85, prefix: '$', suffix: '/hr', tone: 'green' },
       ] } },
       go(),

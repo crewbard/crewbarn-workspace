@@ -5,10 +5,18 @@
  * whatever sits under that is a "shelf", and the places on a shelf are tiles.
  */
 import { useState } from 'react'
-import type { BinTree, TreeNode } from '@/lib/binTree'
+import { unitsLine, type BinTree, type TreeNode } from '@/lib/binTree'
 import { BinTile, type MenuOpener } from './BinTile'
 import { TypeIcon } from './binUi'
 import { fmtNum } from './binStyle'
+
+
+/**
+ * Racks sit side by side only when each one still has room for about five
+ * or six bins in a row; otherwise each rack takes the full width. A fixed
+ * two-column split squashed every rack on a 1080p monitor.
+ */
+const RACK_COLUMNS = 'repeat(auto-fill, minmax(min(100%, 34rem), 1fr))'
 
 export function BinRackView({
   tree, locationIds, visible, selectedId, onPick, onMenu, onAddRoot, canEdit,
@@ -76,37 +84,37 @@ export function BinRackView({
               <div className="flex flex-wrap items-center gap-3 rounded-xl border-[1.5px] border-dashed border-[var(--bins-border)] p-4 text-[13px] text-[var(--bins-muted)]">
                 Nothing set up here yet.
                 {canEdit && onAddRoot && (
-                  <button type="button" onClick={() => onAddRoot(locId)} className="ml-auto rounded-lg bg-amber-500 px-3 py-2 text-[13px] font-semibold text-white hover:bg-amber-600">
+                  <button type="button" onClick={() => onAddRoot(locId)} className="ml-auto rounded-lg bg-[var(--bins-accent)] px-3 py-2 text-[13px] font-semibold text-[var(--bins-surface)] hover:bg-[var(--bins-accent-strong)]">
                     + Add root bin
                   </button>
                 )}
               </div>
             )}
-            <div className="grid gap-4 xl:grid-cols-2">
+            <div className="grid gap-4" style={{ gridTemplateColumns: RACK_COLUMNS }}>
               {racks.map((rack) => {
                 const shelves = kids(rack)
                 const direct = shelves.filter((s) => s.children.length === 0)
                 const lines = shelves.filter((s) => s.children.length > 0)
                 return (
-                  <div key={rack.id} className="rounded-xl border border-[var(--bins-border)] bg-[var(--bins-surface)] p-3 shadow-sm sm:p-4">
+                  <div key={rack.id} className="@container rounded-xl border border-[var(--bins-border)] bg-[var(--bins-surface)] p-3 shadow-sm sm:p-4">
                     <button type="button" onClick={() => onPick(rack.id)}
                       onContextMenu={(e) => { e.preventDefault(); onMenu(rack.id, { x: e.clientX, y: e.clientY }) }}
-                      className={`mb-2 flex w-full items-center gap-2 rounded-lg px-1.5 py-1 text-left hover:bg-[var(--bins-soft)] ${selectedId === rack.id ? 'bg-amber-50' : ''}`}>
+                      className={`mb-2 flex w-full items-center gap-2 rounded-lg px-1.5 py-1 text-left hover:bg-[var(--bins-soft)] ${selectedId === rack.id ? 'bg-[var(--bins-accent-soft)]' : ''}`}>
                       <TypeIcon type={rack.type} size={24} />
                       <span className="font-semibold text-[var(--bins-text)]">{rack.label}</span>
                       {rack.code && rack.code !== rack.label && <code className="rounded bg-[var(--bins-soft)] px-1.5 text-[11.5px] text-[var(--bins-muted)]">{rack.code}</code>}
                       <span className="ml-auto text-[12px] tabular-nums text-[var(--bins-muted)]">
-                        {fmtNum(rack.total.amount)}{rack.capacity ? ` / ${fmtNum(rack.capacity)}` : ''} units
+                        {unitsLine(rack)}
                       </span>
                     </button>
                     <div className="space-y-2.5">
                       {lines.map((shelf) => (
-                        <div key={shelf.id} className="grid gap-2 sm:grid-cols-[92px_minmax(0,1fr)]">
+                        <div key={shelf.id} className="grid gap-2 @[26rem]:grid-cols-[92px_minmax(0,1fr)]">
                           <button type="button" onClick={() => onPick(shelf.id)}
                             onContextMenu={(e) => { e.preventDefault(); onMenu(shelf.id, { x: e.clientX, y: e.clientY }) }}
-                            className={`flex items-center gap-1.5 rounded-md px-1.5 py-1 text-left text-[12.5px] font-semibold text-[var(--bins-text-2)] hover:bg-[var(--bins-soft)] sm:flex-col sm:items-start sm:gap-0 ${selectedId === shelf.id ? 'bg-amber-50 shadow-[inset_3px_0_0_var(--bins-accent)]' : ''}`}>
+                            className={`flex items-center gap-1.5 rounded-md px-1.5 py-1 text-left text-[12.5px] font-semibold text-[var(--bins-text-2)] hover:bg-[var(--bins-soft)] @[26rem]:flex-col @[26rem]:items-start @[26rem]:gap-0 ${selectedId === shelf.id ? 'bg-[var(--bins-accent-soft)] shadow-[inset_3px_0_0_var(--bins-accent)]' : ''}`}>
                             {shelf.label}
-                            <span className="text-[11px] font-normal text-[var(--bins-muted)]">{fmtNum(shelf.total.amount)} units</span>
+                            <span className="text-[11px] font-normal text-[var(--bins-muted)]">{unitsLine(shelf, true)}</span>
                           </button>
                           <div>{tiles(kids(shelf))}</div>
                         </div>

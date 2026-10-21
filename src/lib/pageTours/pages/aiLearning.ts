@@ -42,9 +42,9 @@ export const PAGE_TOUR: PageTour = {
     },
     {
       id: 'sources', selector: t('ai-learning-sources'), title: 'Where it may look',
-      say: 'Only the places you tick: your corrections, what you ask CBI, calls, texts and emails, job notes, and quotes and invoices. It never reads anything else.',
+      say: 'These choices control where learning looks for lessons: your corrections, CBI questions, calls, texts, emails, job notes, quotes and invoices. Choose the sources you want learning to use; each switch saves immediately. Wait for it to finish and check for an error. These choices do not replace permissions for using CBI on an individual record.',
       variants: [
-        { when: `!${ON}`, say: 'Once learning is on, it only looks in the places you tick here, and nowhere else.' },
+        { when: `!${ON}`, say: 'Once learning is on, the places you tick here are its sources for new lessons.' },
       ],
     },
     {
@@ -60,7 +60,7 @@ export const PAGE_TOUR: PageTour = {
     {
       id: 'footer', selector: t('ai-learning-footer'),
       title: 'Read what it learned',
-      say: 'Everything it has remembered is on the next page, What AI has learned.',
+      say: 'Open What AI has learned, check a lesson against its source, then approve, correct or reject it. Check the saved result before relying on the lesson in a new CBI question.',
     },
   ],
 }

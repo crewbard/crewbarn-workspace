@@ -47,7 +47,7 @@ export const PAGE_TOUR: PageTour = {
       say: 'Launch readiness shows how far along you are, and counts your tools, staff, stock locations and catalog.',
       variants: [
         { when: progress('none'), say: 'Launch readiness shows how far along you are. You’re just getting started, so it fills in as you finish each step.' },
-        { when: progress('done'), say: 'Launch readiness is full. Every step is done, and you’re ready to work.' },
+        { when: progress('done'), say: 'Launch readiness is full. Review your saved settings, then try a test customer, job and estimate with made-up details before using the setup for real work.' },
       ],
     },
     {

@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { apiRequest, ApiError } from '@/lib/api'
+import { useNow } from '@/lib/useNow'
 
 /**
  * A customer asked from their portal to move this visit.
@@ -27,6 +28,7 @@ interface MoveRequest {
 const RECENT_MS = 14 * 24 * 60 * 60 * 1000
 
 export function RescheduleRequestsPanel({ workOrderId, canEdit }: { workOrderId: string; canEdit: boolean }) {
+  const now = useNow(60_000)
   const qc = useQueryClient()
   const key = ['work-order-reschedule-requests', workOrderId]
   const q = useQuery({
@@ -53,7 +55,7 @@ export function RescheduleRequestsPanel({ workOrderId, canEdit }: { workOrderId:
   const rows = q.data?.data ?? []
   const pending = rows.find((r) => r.status === 'pending')
   const recent = !pending
-    ? rows.find((r) => r.decided_at && Date.now() - new Date(r.decided_at).getTime() < RECENT_MS)
+    ? rows.find((r) => r.decided_at && now - new Date(r.decided_at).getTime() < RECENT_MS)
     : undefined
 
   if (!pending && !recent) return null

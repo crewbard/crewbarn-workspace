@@ -1,5 +1,5 @@
 {
-  "version": 8,
+  "version": 9,
   "title": "Your CrewBarn launch path",
   "intro": "Here is the whole onboarding journey. We will light up one stop at a time so you can see what you are setting up and why it matters.",
   "voice": {
@@ -361,7 +361,7 @@
           "detail": "By typing or by voice, on any page"
         }
       ],
-      "narration": "It all starts with the phone. Calls, texts and email land in one shared inbox. Calls get recorded and turned into text, and CBI, the assistant built into CrewBarn, drafts the job from the conversation. Who, where, what, when. Nothing gets saved until you say so. You can even just ask it, who's free tomorrow at two, and it'll find out."
+      "narration": "Once your phone and email providers are connected, calls, texts and email can be handled in CrewBarn. Call recordings can become transcripts when recording and transcription are configured. CBI can help draft a job from the conversation: who, where, what and when. Review the draft and its details before using it."
     },
     {
       "id": "intro.5",
@@ -631,13 +631,13 @@
           "detail": "Hours, jobs and profit"
         }
       ],
-      "narration": "Then the best part. Getting paid. Invoice right from the job, take a card on the phone, or text a pay link. Payments drop into your books and match up with your bank. Expenses, sales tax, payroll and reports all live in the same place, so tax time is a lot less scary."
+      "narration": "You can prepare an invoice from a job and collect payment through the methods your company has configured. Check the invoice, payment provider and receipt before taking real payments. Accounting also helps you review costs and payroll. Set the pay schedule and any employee health insurance correctly. In the company cost model, profit is your target after modeled costs; growth is a separate reserve target. Those targets help plan prices; they do not move money."
     },
     {
       "id": "intro.15",
       "label": "Your crew and permissions",
       "icon": "people",
-      "title": "Everyone sees exactly what they should",
+      "title": "Choose what each person can access",
       "sub": "Roles decide who can view, edit, delete or send, area by area.",
       "where": "Tool Shed › Roles and Permissions, and Staff and Crews.",
       "points": [
@@ -658,7 +658,7 @@
           "detail": "The people side, too"
         }
       ],
-      "narration": "Everybody works in CrewBarn, but nobody sees more than they should. You set roles, and each role decides who can view, edit, delete or send, area by area. A tech can close their job without seeing your profit margins. The office can bill without touching payroll. Crews, hiring, time off and the time clock all live here too."
+      "narration": "Start each person with the access their work needs. Quick setup lets them choose a password; full onboarding also collects contact details and optional documents. In Staff and Crews, review their role, individual permissions and quiet days and hours. Review pay separately: twice monthly means twenty-four payments a year, while every two weeks means twenty-six. App users finish their setup and use Download app from their home page, then sign in with the same login."
     },
     {
       "id": "intro.16",
@@ -686,14 +686,14 @@
         },
         {
           "title": "CBI asks first",
-          "detail": "Nothing changes until you Confirm"
+          "detail": "Read the proposed action before confirming"
         },
         {
           "title": "Locations stay private",
           "detail": "Customers get an ETA, never a live dot"
         }
       ],
-      "narration": "Accountability is built in, and it protects everybody. Tools get checked in and out, so you always know who has the good drill. Big deletes need a second person to approve. Every change is in the audit log, with who and when. If someone leaves, their history stays. And CBI never changes a thing until a person presses Confirm."
+      "narration": "Accountability helps you track who did what. Tools can be checked in and out, staff history stays when someone leaves, and audit records help you review supported changes. Before giving someone access, check their role and individual permissions. When CBI offers an action, read the proposed change and confirm only when it is right."
     },
     {
       "id": "intro.17",
@@ -764,7 +764,7 @@
       "points": [
         {
           "title": "On my way and reminders",
-          "detail": "Customers always know"
+          "detail": "Check timing and delivery"
         },
         {
           "title": "Past-due nudges",
@@ -779,7 +779,7 @@
           "detail": "One tap, no surprises"
         }
       ],
-      "narration": "And CrewBarn does the chasing, so you don't have to. On my way texts. Appointment reminders. Past-due nudges. Review requests after a happy customer pays. You read every message before it's switched on, and you can pause it on any single job with one tap."
+      "narration": "Quick settings let you choose reminders, follow-ups, past-due nudges and missed-call texts. Answer each question, save your answers, then check the timing, wording and delivery channel on the Automations page. A saved yes still needs a working provider. Set company and staff quiet days and hours so routine messages respect the schedule you chose."
     },
     {
       "id": "intro.20",
@@ -820,7 +820,7 @@
       "id": "intro.21",
       "label": "A guide on every page",
       "icon": "compass",
-      "title": "Every page has its own map and tour",
+      "title": "Find help where you are working",
       "sub": "Stuck anywhere? Tap the question mark on that page.",
       "where": "The question mark in the top bar, on every page.",
       "flow": [
@@ -831,7 +831,7 @@
         "Payment",
         "Settings"
       ],
-      "narration": "One last thing. Every page in CrewBarn has its own roadmap and a guided tour, just like this one. Your first customer, a job, a quote, an invoice, getting paid, and every setting. Whenever you're not sure, tap the question mark. Alright, enough talk. Let me show you the road to getting set up."
+      "narration": "When you need help, open the question mark on the page for the help and tours available there. Use them to learn where a setting lives and what to check after saving. Now let me show you the road to setting up your company."
     }
   ],
   "pageTour": [
@@ -852,9 +852,9 @@
     {
       "id": "page.progress",
       "element": "[data-tour=\"onboarding-progress\"]",
-      "title": "Your launch meter",
-      "description": "Fills up as your shop takes shape. Walk away anytime — it keeps your place.",
-      "narration": "This bar is your launch meter. Every step you finish fills it up a little more. And if a customer calls and you've gotta run, that's fine. It'll be right here when you get back."
+      "title": "Your setup progress",
+      "description": "Shows saved choices and existing setup data. Review prices and test the features you will use.",
+      "narration": "This bar shows saved setup choices and data already present. A full bar does not mean your prices were reviewed or your providers were tested. You can leave and return to the checklist."
     },
     {
       "id": "page.stages",
@@ -868,7 +868,7 @@
       "element": "[data-tour=\"onboarding-current-stage\"]",
       "title": "Where the work happens",
       "description": "What to pick, why it matters, and the button that moves you forward.",
-      "narration": "And this big card is where the real work happens. It tells you what to pick, why it matters, and which button moves you forward. Nothing changes until you hit save. You're always the one holding the keys."
+      "narration": "This card explains the current setup step. Read the instructions, enter the details, and use its save or action button when ready. Some actions, such as sending an invite or connecting storage, take effect immediately when you press them. Check the result before moving on."
     },
     {
       "id": "page.navigation",
@@ -914,7 +914,7 @@
       "shortTitle": "Trade pack",
       "title": "Start with a pack for your trade",
       "description": "Choose the primary trade once. CrewBarn prepares useful statuses, job types, catalog rows, locations, fields, and templates for that kind of work.",
-      "narration": "Pick your trade, and CrewBarn loads up a starter pack — job types, statuses, a starter catalog, templates. So you're not starting from a blank page.",
+      "narration": "Review the pack for the trade selected at signup. Applying it adds starting job types, statuses, catalog items and locations. Check the preview, apply the pack, and review its starting data before using it for real work.",
       "color": "emerald"
     },
     {
@@ -975,49 +975,51 @@
     }
   ],
   "setupLines": {
-    "setup.start": "Okay, let's set up your company together. I'll go down the list one step at a time, and I'll stop whenever there's something for you to do. You can skip anything and come back to it.",
+    "setup.storage.manual": "Use the values from your existing Cloudflare R2 bucket: account ID, bucket name, access key ID and secret key. The endpoint is worked out from the account ID unless you enter another one. Add a public address only if your bucket uses one. These values are saved with Save and carry on; entering them does not test an upload.",
+    "setup.wait.manualstorage": "Fill in the account ID, bucket name, access key ID and secret key.",
+    "setup.start": "Okay, let's set up your company together. I'll go down the list and pause when there's something to enter or save. You can leave optional work for later. A saved step records your choices; it does not prove that a provider is working. We'll check those before real work.",
     "setup.beta.1": "First, the beta agreement. You're testing CrewBarn for free, so we need the terms accepted before anything gets set up. Give them a read, and accept when you're ready.",
     "setup.ai.1": "First up, AI. You don't need to know anything about AI models. We've already picked the best one for each job, so you just bring an account. We recommend Claude. It reads photos and messy notes well, and it can take actions for you. The one exception is call recordings. Those turn into text with OpenAI, so that key is optional.",
     "setup.ai.2": "Okay, let's pause and get your key. Tap the link, sign in, and create a key. Copy it, come back to this tab, and paste it in the box. I'll wait right here.",
-    "setup.ai.2.done": "Got it. That key looks right.",
+    "setup.ai.2.done": "The key has the expected shape. Save it next, then test the connection in AI settings before relying on it.",
     "setup.ai.2.back": "Welcome back. Go ahead and paste your key in the box.",
     "setup.ai.3": "One optional extra. If you record calls and want them turned into text, add an OpenAI key the same way. Or skip it for now.",
-    "setup.ai.3.done": "Perfect. Call transcripts are on.",
+    "setup.ai.3.done": "That looks like an OpenAI key. It still needs saving. Transcripts also need recording and a working provider connection.",
     "setup.ai.4": "That's it for AI. Press Save and carry on.",
     "setup.storage.1": "Next, where your job photos, documents and maps live. We recommend your own accounts. Cloudflare for the photos, Google for the maps. They're free to start, the bills come to you, and the files are always yours.",
-    "setup.storage.2": "Cloudflare first. CrewBarn can set it all up, it just needs a key from your Cloudflare account. Tap Open Connect Cloudflare. Most of the permissions are already picked for you. There are three things Cloudflare won't fill in, so add them by hand. Cloudflare Pages, set to Edit. Zone resources, set to All zones. And your account. Create the token, paste it there, then come back to this tab.",
-    "setup.storage.2.done": "Cloudflare's connected.",
+    "setup.storage.2": "Cloudflare first. Open Connect Cloudflare and follow its current permissions checklist. Create the token, paste it there, connect, and come back here. If your IT team has already made a bucket and keys, open Or type the values in yourself instead. Keep the secret key private.",
+    "setup.storage.2.done": "You can continue with the connected account or the manual bucket form. Storage is only ready after its setup has been saved and checked.",
     "setup.storage.2.back": "Welcome back. Let me check the connection.",
     "setup.storage.3": "Now pick your domain, and press Set up my storage. CrewBarn makes your private file bucket and fills in the keys, all inside your own Cloudflare account.",
-    "setup.storage.3.done": "All set up in your Cloudflare.",
-    "setup.storage.4": "Last piece, maps. Google doesn't let us set this one up for you. In Google Cloud, turn on the Maps JavaScript API, Places API and Geocoding API. Create a key, restrict it to the website addresses shown here, then paste it in the box.",
-    "setup.storage.4.done": "Maps key looks right.",
+    "setup.storage.3.done": "Continue with the bucket settings shown here. After saving, try a file upload before relying on it for customer photos.",
+    "setup.storage.4": "For maps, follow the Google checklist shown here in order: choose a project, attach billing and a budget alert, enable the listed APIs, then create and restrict the key. Copy every website address shown, including your own site if you use one. Paste the key below. If a key is already saved, leave the box blank to keep it.",
+    "setup.storage.4.done": "A saved key is available, or the new key has the expected shape. That is not a connection test. After saving, use Test key in Storage and maps, then check an address on your dispatch map.",
     "setup.storage.4.back": "Welcome back. Paste your Maps key in the box.",
-    "setup.storage.5": "Good. Press Save and carry on.",
-    "setup.company.1": "Now make it look like your company. Your name and phone number at least. Add your email, address and logo too, and pick your color. This is what customers see on every estimate and invoice.",
+    "setup.storage.5": "Press Save and carry on. If you entered bucket values by hand, every required storage field must be filled in. Check for a saved result; if an error appears, fix it here before moving on.",
+    "setup.company.1": "Enter your company name, phone, email and address. Those four fields are required. Add your logo and choose your color too. Check the preview, then save; these details appear on estimates and invoices.",
     "setup.company.1.done": "Looking good.",
     "setup.company.2": "Press Save and carry on when you're happy with it.",
     "setup.trade.done": "Your trade pack is already in. Your trade was locked when you signed up, but you can always add your own job types, statuses and catalog items on top.",
     "setup.trade.1": "This is your trade pack. You picked your trade when you signed up, and it's locked now, so this loads the starter set for it. Job types, statuses, a catalog and locations. Press Apply the starter pack.",
     "setup.tools.1": "Now the tools, trucks and software your company owns. We've suggested what a company in your trade usually has. Tick what you've got, add a note if you like, and press Add these and carry on.",
     "setup.stock.1": "Now the stock you keep on the shelf. Tick what you carry, put in rough counts, and say when you'd like a reminder to reorder. Then press Add these and carry on.",
-    "setup.crew.1": "Time to bring your crew in. Add a name and email, pick their role, and send the invite. They set their own password. If it's just you for now, press I will do this later.",
-    "setup.comms.1": "Now, how customers reach you. Pick a CrewBarn number for calls and texts, or choose one later. Texting starts once the number's registration is approved.",
-    "setup.price.1": "Check your prices. Open the service catalog, look over what the starter pack loaded, then come back and confirm.",
+    "setup.crew.1": "Add their name and email, choose their role, and send the invite. This is quick setup: they choose their own password without personal forms. Check whether the email was sent; if it failed, share the setup link privately. In Staff and Crews you can choose full onboarding for contact details and optional documents, review pay and access, and set quiet days and hours. App users should finish setup, open Download app from Your setup, and sign in with the same login. If it is just you, choose I will do this later.",
+    "setup.comms.1": "Choose a CrewBarn number here if it is available on your plan, or choose a number later. Beta accounts bring their own providers through Communication settings. Complete registration before expecting outbound texting. Configure email there too, and test a call, a text and an email with someone you have agreed to test with before relying on them.",
+    "setup.price.1": "Open the service and product catalogs. A starter pack gives you draft data, not checked prices. Review what you sell, costs, tax and selling prices, then save changes. For the company picture, review overhead, profit target and growth reserve in the cost model. Check staff pay schedules and health insurance separately before trusting labor costs. Come back when you have checked a sample estimate.",
     "setup.autos.1": "Quick settings. Answer yes or no to each one: reminders, follow-ups, missed-call texts and the rest. Nothing a customer gets is switched on unless you say yes. Then save your answers.",
-    "setup.launch.1": "Last step. Have a look over everything. Anything you skipped is waiting for you in Connect, and none of it stops you starting. When you're ready, confirm, and you're open for business.",
+    "setup.launch.1": "Before real work, review even the steps already marked saved. Use made-up details for a test job, check an estimate and invoice, and verify storage, maps and the communication channels you plan to use. Check that a staff member can finish setup and reach the right app with the right access. Leave optional tools for later, but resolve anything your first job needs. Finish setup records your decision; it does not send a customer message or test a provider.",
     "setup.saved": "Saved. Nice work.",
     "setup.skipped": "No problem. We'll skip that for now.",
     "setup.locked": "That one opens once the steps before it are done, so we'll come back to it.",
-    "setup.finish": "That's the whole list. Anything you skipped is still there whenever you want it. Nice work.",
+    "setup.finish": "That is the setup list. Return to anything you left for later. Before taking real work, check the saved settings and run through a test job with the features your shop will use.",
     "setup.wait.agreement": "Accept the agreement to carry on.",
     "setup.wait.key": "I’ll wait while you get it.",
     "setup.wait.openai": "Paste an OpenAI key, or skip.",
     "setup.wait.save": "Press Save and carry on.",
-    "setup.wait.cloudflare": "Waiting for Cloudflare to connect.",
+    "setup.wait.cloudflare": "Connect Cloudflare, or open the manual bucket form.",
     "setup.wait.setupstorage": "Press Set up my storage.",
-    "setup.wait.maps": "Paste your Google Maps key.",
-    "setup.wait.company": "Company name and phone are the must-haves.",
+    "setup.wait.maps": "Paste a Maps key, or keep the key already saved.",
+    "setup.wait.company": "Fill in your company name, phone, email and address.",
     "setup.wait.trade": "Press Apply the starter pack.",
     "setup.wait.tools": "Tick your tools, then press Add these and carry on.",
     "setup.wait.stock": "Tick your stock, then press Add these and carry on.",
@@ -1362,7 +1364,7 @@
           "agreement?",
           "agreement"
         ],
-        "narration": "Here's the whole road to getting set up. You've already done the start. You made your account, we checked you're the owner, and you signed the agreement.",
+        "narration": "Here is the road to getting set up. Start with your account and company access, and accept the agreement if your account requires one. The checklist shows what is saved for your company.",
         "done": true
       },
       {
@@ -1416,7 +1418,7 @@
           "preview",
           "defaults"
         ],
-        "narration": "Your trade pack fills in job types, statuses, a catalog and locations. You've already got this one."
+        "narration": "Your trade pack can fill in job types, statuses, a catalog and locations. Check whether it has been applied. Its starting data still needs your review."
       },
       {
         "id": "road.6",
@@ -1486,7 +1488,7 @@
           "validate",
           "live"
         ],
-        "narration": "And last, a launch review, a test job from start to invoice, and you're live. That's the road. I'll walk you through each step, and you can skip anything and come back. Ready? Let's go.",
+        "narration": "Finish with a launch review and a test job from start to invoice. Check the providers and features you need before taking real work. You can return to optional setup later; a completed checklist alone is not a provider test.",
         "zoomOutAt": 78
       }
     ]

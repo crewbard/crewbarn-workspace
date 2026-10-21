@@ -651,8 +651,10 @@
 [data-easy-workspace] [data-easy-auto-grid] {
   grid-template-columns: repeat(auto-fill, minmax(min(100%, 15rem), 1fr));
 }
-@media (min-width: 1024px) {
+/* The Bins side panel only sits beside the racks from 1440px; below that it
+   slides in, so a 1080p window keeps its width for the racks. */
+@media (min-width: 1440px) {
   [data-easy-workspace] [data-easy-split] {
-    grid-template-columns: minmax(0, 1fr) clamp(380px, 26vw, 640px);
+    grid-template-columns: minmax(0, 1fr) clamp(320px, 24vw, 640px);
   }
 }

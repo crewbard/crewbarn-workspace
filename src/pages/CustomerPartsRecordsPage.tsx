@@ -68,7 +68,7 @@ export function CustomerPartsRecordsPage() {
                   <div className="text-xs text-[var(--color-muted-foreground,#64748b)]">{[r.partNumber, r.serial && `SN ${r.serial}`, r.removed && 'Taken off'].filter(Boolean).join(' · ')}</div></td>
                 <td className="px-3 py-2">{day(r.installedAt)}</td>
                 <td className="px-3 py-2">{r.job ? <Link className="underline" to={`/jobs/${r.job.id}`}>Job #{r.job.number}</Link> : '—'}<div className="text-xs text-[var(--color-muted-foreground,#64748b)]">{r.where}</div></td>
-                <td className="px-3 py-2"><Link className="underline" to={`/assets/${r.asset.id}`}>{r.asset.name}</Link></td>
+                <td className="px-3 py-2"><Link className="underline" to={`/assets?id=${encodeURIComponent(r.asset.id)}`}>{r.asset.name}</Link></td>
                 <td className="px-3 py-2">{po?.vendor?.label ?? (r.po ? (canOrders ? '…' : '—') : 'Added by hand')}{r.po && canOrders && <div className="text-xs"><Link className="underline" to={`/purchase-orders/${r.po.id}`}>{r.po.po_number}</Link></div>}</td>
                 {canCost && <td className="px-3 py-2 text-right">{line ? money(line.unit_cost_cents) : '—'}</td>}
               </tr>

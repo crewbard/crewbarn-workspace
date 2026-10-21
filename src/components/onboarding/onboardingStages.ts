@@ -130,12 +130,12 @@ export function buildOnboardingStages(onboarding: OnboardingStatus): OnboardingS
       title: 'Get your crew in',
       summary: 'Office, dispatchers, techs and managers.',
       detail:
-        'Everyone who needs a login. They get an email and set their own password; techs use the phone app. Skills, time off and the rest can wait until they are in.',
+        'Invite each person with their own email and role. This step uses quick password setup. For full onboarding, contact details and optional documents, open Staff & Crews. Review pay, access and quiet days there; app users should finish their setup and check Download app on their home page.',
       primaryLabel: 'Staff and crews',
       primaryPath: '/tool-shed/staff',
       complete: stepComplete(steps, 'staff'),
       locked: betaLocked,
-      bullets: ['They set their own password', 'You choose what each can see', 'Techs get the phone app'],
+      bullets: ['Quick password setup here', 'Full onboarding in Staff & Crews', 'Check access and app sign-in'],
     },
     {
       key: 'communications',
@@ -156,7 +156,7 @@ export function buildOnboardingStages(onboarding: OnboardingStatus): OnboardingS
       title: 'Check what you sell, and for how much',
       summary: 'The starter list should match your real work.',
       detail:
-        'The pack gave you a starting list of services and prices. Go through it once, so the quotes and invoices your crew builds come out right the first time.',
+        'The pack gave you starting services and prices. A completed checklist does not mean those prices have been reviewed. Check services, products, costs and tax, save your changes, then check a sample estimate. Review overhead, profit target and growth reserve in the company cost model, and staff pay and health insurance before trusting labor costs.',
       primaryLabel: 'Service catalog',
       primaryPath: '/catalog/services',
       secondaryLabel: 'Product catalog',
@@ -185,12 +185,12 @@ export function buildOnboardingStages(onboarding: OnboardingStatus): OnboardingS
       title: 'Have a look, then go',
       summary: 'One last check before real customers turn up.',
       detail:
-        'A quick pass over everything you have set up. Anything you skipped is waiting in the Tool Shed whenever you want it — none of it stops you starting.',
+        'Review saved settings and anything left for later. Use made-up details to try a job, estimate and invoice. Check an upload, a map address and each communication channel you will use. A completed checklist records setup choices; it does not prove providers are working. Resolve anything your first real job needs.',
       primaryLabel: 'Open dashboard',
       primaryPath: '/',
       complete: stepComplete(steps, 'launch_review') || onboarding.progress_percent >= 100,
       locked: betaLocked,
-      bullets: ['See what is done', 'Fix anything you missed', 'Start taking real work'],
+      bullets: ['Review saved settings', 'Run a test job', 'Verify the features you will use'],
     },
   )
 

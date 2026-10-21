@@ -3,7 +3,7 @@
  * the detail panel. Right-click, a long press on a phone, or the menu key
  * (Shift+F10) opens the place's menu.
  */
-import { toneFor, type TreeNode } from '@/lib/binTree'
+import { pillFill, toneFor, type TreeNode } from '@/lib/binTree'
 import { fmtNum, toneInk, toneLabel, toneStyle } from './binStyle'
 import { useMenuGestures, type MenuOpener } from './useMenuGestures'
 
@@ -34,6 +34,8 @@ export function BinTile({
   const ink = toneInk(tone)
   const { fired, handlers } = useMenuGestures(node.id, onMenu)
   const amount = node.total.amount
+  // A bin with rows shows its fill in the row pills only; the tile stays plain.
+  const pills = !!(showRows && rowNodes && rowNodes.length > 0)
   const title = `${node.bin?.path_label || node.label} · ${amount > 0 ? `${fmtNum(amount)}${node.capacity ? ` of ${fmtNum(node.capacity)}` : ''} units` : 'empty'} · ${toneLabel(tone)}. Right-click or press and hold for more.`
   return (
     <div className="relative">
@@ -51,7 +53,9 @@ export function BinTile({
         className={`flex w-full flex-col justify-between rounded-lg border border-black/10 text-left transition-shadow hover:shadow-md focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-400 ${
           size === 'sm' ? 'min-h-[48px] px-2 py-1.5' : 'min-h-[64px] px-2.5 py-2'
         } ${selected ? 'outline outline-[2.5px] outline-offset-1 outline-amber-500' : ''}`}
-        style={{ ...toneStyle(tone), color: ink, touchAction: 'manipulation', WebkitTouchCallout: 'none' }}
+        style={pills
+          ? { background: 'var(--bins-surface)', borderColor: 'var(--bins-border)', color: 'var(--bins-text)', touchAction: 'manipulation', WebkitTouchCallout: 'none' }
+          : { ...toneStyle(tone), color: ink, touchAction: 'manipulation', WebkitTouchCallout: 'none' }}
       >
         <span className={`block truncate font-bold ${size === 'sm' ? 'text-[12px]' : 'text-[13px]'}`}>{node.code || node.label}</span>
         {subtitle && <span className="block truncate text-[11.5px] opacity-80">{subtitle}</span>}
@@ -64,10 +68,16 @@ export function BinTile({
           </span>
         )}
         {showRows && rowNodes && rowNodes.length > 0 && (
-          <span aria-hidden className="mt-1 flex gap-[2px]">
+          <span aria-hidden className="mt-1.5 flex gap-[3px]" data-row-pills>
             {rowNodes.slice(0, 12).map((r) => {
-              const t = toneFor(r, rowNodes)
-              return <span key={r.id} className="h-1.5 flex-1 rounded-sm border border-black/10" style={toneStyle(t)} />
+              const f = pillFill(r)
+              return (
+                <span key={r.id} data-pill title={`${r.code || r.label}: ${fmtNum(r.total.amount)}${r.capacity ? ` of ${fmtNum(r.capacity)}` : ''}`}
+                  className="flex h-2 flex-1 overflow-hidden rounded-full border border-[var(--bins-border)] bg-[var(--bins-soft)]">
+                  {f && <span className="h-full" style={{ width: `${f.stored * 100}%`, background: 'var(--bins-stored)' }} />}
+                  {f && <span className="h-full" style={{ width: `${f.room * 100}%`, background: 'var(--bins-room)' }} />}
+                </span>
+              )
             })}
           </span>
         )}

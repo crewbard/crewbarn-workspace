@@ -259,7 +259,7 @@ export const TUTORIAL: TutorialData = {
     {
       id: 'prod-search', chapter: 'products', route: PROD, selector: t('prod-search'),
       title: 'Search',
-      say: 'Search by name, SKU or part number. The slash key jumps here too.',
+      say: 'Search by name, SKU or part number. Quick filters find low stock, out-of-stock items and missing prices. Where Fits is available, narrow products by the equipment they fit. Clear filters if something seems missing.',
     },
     {
       id: 'prod-tiles', chapter: 'products', route: PROD, selector: t('prod-category-tiles'),
@@ -297,7 +297,7 @@ export const TUTORIAL: TutorialData = {
     },
     {
       id: 'prod-row', chapter: 'products', route: PROD, selector: t('prod-row'),
-      wait: { appear: t('prod-view') }, doIt: t('prod-row'),
+      wait: { appear: t('prod-view-top') }, doIt: t('prod-row'),
       yourTurn: 'Click any product row.',
       title: 'Open a product',
       say: 'Click any row to see everything about that product. It’s just for looking.',
@@ -319,7 +319,7 @@ export const TUTORIAL: TutorialData = {
     },
     {
       id: 'prod-view-close', chapter: 'products', route: PROD, selector: t('prod-view-close'),
-      wait: { gone: t('prod-view') }, doIt: t('prod-view-close'),
+      wait: { gone: t('prod-view-top') }, doIt: t('prod-view-close'),
       yourTurn: 'Click Close.',
       title: 'Close',
       say: 'Close it, and let’s add a new product.',
@@ -643,7 +643,7 @@ export const TUTORIAL: TutorialData = {
     {
       id: 'cost-guide-banner', chapter: 'cost', route: COST, selector: t('cost-guide-banner'),
       title: 'Go through it together',
-      say: 'Until you’ve been through it, this banner offers eleven short questions. Skip anything you don’t know, and watch your break-even move as you answer.',
+      say: 'Until you’ve been through it, this banner offers questions about your costs. Skip anything you don’t know, and watch your break-even move as you answer.',
     },
     {
       id: 'cost-actions', chapter: 'cost', route: COST, selector: t('cost-actions'),
@@ -653,7 +653,7 @@ export const TUTORIAL: TutorialData = {
     {
       id: 'cost-metrics', chapter: 'cost', route: COST, selector: t('cost-metrics'),
       title: 'Your numbers',
-      say: 'Across the top: your monthly overhead, where it comes from, and your break-even per hour. The green tile is your target rate, break-even with your margin on top.',
+      say: 'Across the top: your monthly overhead, where it comes from, and your break-even per hour. The green tile is your target rate after the modeled costs, profit target and separate growth reserve.',
     },
     {
       id: 'cost-assumptions', chapter: 'cost', route: COST, selector: t('cost-assumptions'),
@@ -666,9 +666,9 @@ export const TUTORIAL: TutorialData = {
       say: 'Expected monthly billable hours is the big one: how many hours your team actually charges for in a month. Be honest about it.',
     },
     {
-      id: 'cost-margins', chapter: 'cost', route: COST, selector: t('cost-field-gross-margin'),
+      id: 'cost-margins', chapter: 'cost', route: COST, selector: t('cost-field-profit-target'),
       title: 'Margins',
-      say: 'Gross and net margin are what you aim to keep. They lift your target rate above break-even.',
+      say: 'Profit is what you aim to keep after modeled costs and a separate growth reserve. Leave growth at zero if you do not want it. Together profit and growth must stay below 95 percent. The additional pricing floor is compared with that target, rather than multiplied on top.',
     },
     {
       id: 'cost-minimums', chapter: 'cost', route: COST, selector: t('cost-field-minimum-service-call'),
@@ -683,7 +683,7 @@ export const TUTORIAL: TutorialData = {
     {
       id: 'cost-save', chapter: 'cost', route: COST, selector: t('cost-assumptions-save'),
       title: 'Save assumptions',
-      say: 'Save assumptions updates your rates. We’ll leave it.',
+      say: 'Save assumptions keeps these choices. Wait for confirmation, then check the updated rates and employee insurance summary. Confirm whether each company share is already in payroll or overhead before adding it to the cost model. Resolve incomplete costs before relying on a full cost-based price. We will leave it this time.',
     },
     {
       id: 'cost-breakdown', chapter: 'cost', route: COST, selector: t('cost-breakdown'),

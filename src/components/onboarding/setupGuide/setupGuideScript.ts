@@ -44,7 +44,13 @@ export type GuideBeat = {
   cloudflarePerms?: boolean
 }
 
-export type GuideStage = { key: string; beats: GuideBeat[] }
+export type GuideStage = { key: string; beats: GuideBeat[]; reviewWhenSaved?: boolean }
+
+/** Existing records can satisfy setup without replacing the user's review. */
+export const requiresSavedReview = (stage: GuideStage, complete: boolean) => !!stage.reviewWhenSaved && complete
+export const shouldSkipGuideStage = (stage: GuideStage, complete: boolean) =>
+  complete && !requiresSavedReview(stage, complete) && !stage.beats.some((beat) => beat.line.endsWith('.done'))
+export const shouldAdvanceSavedStage = (complete: boolean, reviewAlreadySaved: boolean) => complete && !reviewAlreadySaved
 
 const KEY_LINKS: Record<string, [string, string]> = {
   anthropic: ['Create a Claude API key', 'https://console.anthropic.com/settings/keys'],
@@ -80,6 +86,13 @@ export const CLOUDFLARE_PERMS: Array<{ auto: boolean; what: string }> = [
 const provider = (g: GuideCtx) => g.attr('ai-key-field', 'provider') || 'anthropic'
 const byo = (g: GuideCtx) => (g.attr('storage-choice', 'mode') || 'byo') === 'byo'
 const cloudflare = (g: GuideCtx) => g.attr('cloudflare', 'state')
+/** Choosing the manual form changes the guide, never the save validation. */
+export const manualStorageSelected = (g: GuideCtx) => g.el('storage-manual')?.hasAttribute('open') === true
+export const manualStorageEntered = (g: GuideCtx) => [0, 1, 2, 3].every((index) => g.value('storage-manual', index).length > 0)
+export const mapsKeyEnteredOrSaved = (g: GuideCtx) => {
+  const key = g.value('maps-block', -1)
+  return key ? /^AIza[0-9A-Za-z_-]{30,}$/.test(key) : g.attr('maps-block', 'saved') === 'yes'
+}
 
 export const SETUP_GUIDE: GuideStage[] = [
   { key: 'beta_agreement', beats: [
@@ -101,14 +114,16 @@ export const SETUP_GUIDE: GuideStage[] = [
     { line: 'setup.storage.1', el: 'storage-choice', title: 'Where your files live' },
     { line: 'setup.storage.2', el: 'cloudflare', title: 'Connect Cloudflare', cloudflarePerms: true,
       when: (g) => byo(g) && cloudflare(g) === 'none',
-      until: (g) => cloudflare(g) === 'connected' || cloudflare(g) === 'done',
+      until: (g) => manualStorageSelected(g) || cloudflare(g) === 'connected' || cloudflare(g) === 'done',
       links: () => [['Open Connect Cloudflare', `${CONNECT_URL}/tool-shed/cloudflare`]],
       waiting: 'setup.wait.cloudflare', done: 'setup.storage.2.done', back: 'setup.storage.2.back' },
     { line: 'setup.storage.3', el: 'cloudflare', title: 'Let CrewBarn do the rest',
-      when: (g) => byo(g) && cloudflare(g) === 'connected',
-      until: (g) => cloudflare(g) === 'done', waiting: 'setup.wait.setupstorage', done: 'setup.storage.3.done' },
+      when: (g) => byo(g) && !manualStorageSelected(g) && cloudflare(g) === 'connected',
+      until: (g) => manualStorageSelected(g) || cloudflare(g) === 'done', waiting: 'setup.wait.setupstorage', done: 'setup.storage.3.done' },
+    { line: 'setup.storage.manual', el: 'storage-manual', title: 'Your existing bucket',
+      when: manualStorageSelected, until: manualStorageEntered, waiting: 'setup.wait.manualstorage' },
     { line: 'setup.storage.4', el: 'maps-block', title: 'One Google key for maps', when: byo,
-      until: (g) => /^AIza[0-9A-Za-z_-]{30,}$/.test(g.value('maps-block', -1)),
+      until: mapsKeyEnteredOrSaved,
       links: () => [['Open Google Cloud credentials', 'https://console.cloud.google.com/google/maps-apis/credentials']],
       waiting: 'setup.wait.maps', done: 'setup.storage.4.done', back: 'setup.storage.4.back' },
     { line: 'setup.storage.5', el: 'step-save', title: 'Save it', until: (g) => g.complete('data_ownership'), waiting: 'setup.wait.save' },
@@ -116,7 +131,7 @@ export const SETUP_GUIDE: GuideStage[] = [
   { key: 'company_profile', beats: [
     // Inputs in order: name, phone, email, address, website.
     { line: 'setup.company.1', el: 'company-fields', title: 'Your company, your look',
-      until: (g) => g.value('company-fields', 0).trim().length > 1 && g.value('company-fields', 1).replace(/\D/g, '').length >= 10,
+      until: (g) => [0, 1, 2, 3].every((index) => g.value('company-fields', index).trim().length > 0),
       waiting: 'setup.wait.company', done: 'setup.company.1.done' },
     { line: 'setup.company.2', el: 'step-save', title: 'Save it', until: (g) => g.complete('company_profile'), waiting: 'setup.wait.save' },
   ] },
@@ -137,13 +152,13 @@ export const SETUP_GUIDE: GuideStage[] = [
   { key: 'communications', beats: [
     { line: 'setup.comms.1', el: 'comms-choices', title: 'How customers reach you', until: (g) => g.complete('communications'), waiting: 'setup.wait.comms' },
   ] },
-  { key: 'services_pricebook', beats: [
+  { key: 'services_pricebook', reviewWhenSaved: true, beats: [
     { line: 'setup.price.1', el: 'stage-body', title: 'Check your prices', until: (g) => g.complete('services_pricebook'), waiting: 'setup.wait.confirm' },
   ] },
-  { key: 'automations', beats: [
+  { key: 'automations', reviewWhenSaved: true, beats: [
     { line: 'setup.autos.1', el: 'stage-body', title: 'Quick settings', until: (g) => g.complete('automations'), waiting: 'setup.wait.confirm' },
   ] },
-  { key: 'launch_review', beats: [
+  { key: 'launch_review', reviewWhenSaved: true, beats: [
     { line: 'setup.launch.1', el: 'stage-body', title: 'Have a look, then go', until: (g) => g.complete('launch_review'), waiting: 'setup.wait.confirm' },
   ] },
 ]

@@ -26,4 +26,7 @@
   --bins-type-bin: #d06a0c;
   --bins-type-row: #5b677c;
   --bins-type-other: #5b677c;
+  /* Row pills: stored is success, room left is danger, from the app theme. */
+  --bins-stored: var(--color-success, #15803d);
+  --bins-room: var(--color-danger, #b91c1c);
 }

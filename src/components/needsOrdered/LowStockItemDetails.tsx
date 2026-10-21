@@ -91,6 +91,19 @@ function waitingText(it: LowStockItem): string | null {
   return `Waiting on it: ${parts.join(', ')}`
 }
 
+/** One link per job or estimate waiting on it (the number, opening it). */
+function waitingLinks(it: LowStockItem): Array<{ to: string; label: string }> {
+  const seen = new Set<string>()
+  const out: Array<{ to: string; label: string }> = []
+  for (const w of it.jobs_waiting?.for ?? []) {
+    const to = w.work_order_id ? `/jobs/${encodeURIComponent(w.work_order_id)}` : w.estimate_id ? `/estimates/${encodeURIComponent(w.estimate_id)}` : null
+    if (!to || seen.has(to)) continue
+    seen.add(to)
+    out.push({ to, label: w.label })
+  }
+  return out.slice(0, 4)
+}
+
 /** A generic picture, for a part with no photo yet (Order parts). */
 function NoPictureIcon() {
   return (
@@ -236,6 +249,9 @@ export function ItemFacts({ it, tour }: { it: LowStockItem; tour?: boolean }) {
           {waiting && (
             <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-medium text-amber-800">{waiting}</span>
           )}
+          {waitingLinks(it).map((w) => (
+            <Link key={w.to} to={w.to} className="text-[11.5px] font-medium text-sky-700 hover:underline" data-waiting-link>{w.label}</Link>
+          ))}
         </div>
       )}
     </div>

@@ -2,6 +2,7 @@ import { useMemo } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { apiRequest } from '@/lib/api'
 import type { Estimate } from '@/types/estimate'
+import { useNow } from '@/lib/useNow'
 
 /**
  * Chronological timeline for an estimate. Mirrors WorkOrderHistoryPanel's
@@ -44,6 +45,7 @@ function fmt(iso: string | null | undefined): string {
 }
 
 export function EstimateHistoryPanel({ estimate }: { estimate: Estimate }) {
+  const now = useNow(60_000)
   const attachQ = useQuery({
     queryKey: ['estimate-attachments', estimate.id],
     queryFn: () =>
@@ -105,7 +107,7 @@ export function EstimateHistoryPanel({ estimate }: { estimate: Estimate }) {
     // if the status hasn't been flipped yet (e.g. between sweeps).
     if (
       estimate.expires_at &&
-      new Date(estimate.expires_at).getTime() < Date.now() &&
+      new Date(estimate.expires_at).getTime() < now &&
       !estimate.approved_at &&
       !estimate.rejected_at
     ) {
@@ -173,7 +175,7 @@ export function EstimateHistoryPanel({ estimate }: { estimate: Estimate }) {
     return out
       .filter((e) => !!e.at)
       .sort((a, b) => new Date(b.at).getTime() - new Date(a.at).getTime())
-  }, [estimate, attachQ.data])
+  }, [estimate, attachQ.data, now])
 
   return (
     <section data-tour="estimate-timeline" className="bg-white border border-slate-200 rounded-xl p-5">

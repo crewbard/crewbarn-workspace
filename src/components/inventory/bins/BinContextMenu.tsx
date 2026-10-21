@@ -19,6 +19,8 @@ const ICONS: Record<MenuId, string> = {
   print: 'M6 9V3h12v6M6 18H4v-7h16v7h-2M8 14h8v7H8z',
   capacity: 'M4 20h16M6 16V9M10 16V5M14 16v-4M18 16V8',
   catalog: 'M4 6h16M4 12h16M4 18h10',
+  edit: 'M4 20h4L19 9l-4-4L4 16v4zM14 6l4 4',
+  'start-po': 'M6 2h9l5 5v15H6zM14 2v6h6M9 13h8M9 17h5',
   details: 'M12 8h.01M11 12h1v5h1M12 22a10 10 0 1 0 0-20 10 10 0 0 0 0 20z',
 }
 

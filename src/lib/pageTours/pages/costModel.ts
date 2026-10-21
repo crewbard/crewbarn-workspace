@@ -28,7 +28,7 @@ export const PAGE_TOUR: PageTour = {
     { id: 'readonly', selector: t('cost-readonly'), title: 'View only', say: 'You can read these numbers, but changing them needs permission to edit settings.' },
     {
       id: 'guide', selector: t('cost-guide-banner'), title: 'Go through it together',
-      say: 'Not sure where to start? Start the questions walks you through eleven short screens, and you watch your break-even move as you answer.',
+      say: 'Not sure where to start? Start the questions walks you through your costs one step at a time, and you watch your break-even move as you answer.',
     },
     { id: 'actions', selector: t('cost-actions'), title: 'Walk through, or add one', say: 'Walk me through it asks the questions again. Add cost adds a single cost yourself.' },
     {
@@ -41,10 +41,10 @@ export const PAGE_TOUR: PageTour = {
     },
     { id: 'assumptions', selector: t('cost-assumptions'), title: 'Pricing assumptions', say: 'These turn your monthly costs into hourly rates.' },
     { id: 'hours', selector: field('expected-monthly-billable-hours'), title: 'Billable hours', say: 'The big one: how many hours your team actually charges for in a month. Be honest about it.' },
-    { id: 'margins', selector: field('gross-margin'), title: 'Margins', say: 'What you aim to keep. It lifts your target rate above break-even.' },
-    { id: 'minimums', selector: field('minimum-service-call'), title: 'Minimums', say: 'Your floors: the least you want from any job or service call.' },
+    { id: 'margins', selector: field('profit-target'), title: 'Margins', say: 'Profit is the share you aim to keep after modeled costs and a separate growth reserve. Set growth to zero if you do not want that reserve. Profit and growth together must stay below 95 percent.' },
+    { id: 'minimums', selector: field('minimum-service-call'), title: 'Minimums', say: 'Set the minimum service call and job profit you want. The additional pricing floor is compared with the profit-and-growth target rather than multiplied on top of it.' },
     { id: 'markup', selector: field('material-markup'), title: 'Markups', say: 'Material markup matters most: an item with no price starts at its cost plus this markup.' },
-    { id: 'save', selector: t('cost-assumptions-save'), title: 'Save assumptions', say: 'Save assumptions updates your rates.' },
+    { id: 'save', selector: t('cost-assumptions-save'), title: 'Save assumptions', say: 'Press Save assumptions, wait for confirmation, then check the updated rates. Review the employee health insurance summary too: only add company shares not already counted in payroll or overhead. Resolve incomplete costs before relying on a full cost-based price.' },
     { id: 'breakdown', selector: t('cost-breakdown'), title: 'Monthly breakdown', say: 'Your monthly costs grouped by type, biggest first.' },
     {
       id: 'inventory', selector: t('cost-inventory'), title: 'What stock costs to hold',

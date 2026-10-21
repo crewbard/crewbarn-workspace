@@ -87,8 +87,10 @@ export function CrewStep({ complete, onMarkStep, saving }: StepProps) {
       )}
 
       <p className="text-[15px] leading-relaxed text-slate-600">
-        Anyone who needs to sign in. They pick their own password from the invite — you never set one for them, and
-        you never see it. Techs use the phone app with the same login.
+        This sends quick setup: they choose their own password without personal forms. Use their own email address
+        and choose a role that matches their work. For full onboarding with contact details and optional documents,
+        open <a href="/tool-shed/staff?onboarding=peek" target="_blank" rel="noopener noreferrer" className="font-semibold text-amber-800 underline">Staff &amp; Crews</a> in a new tab.
+        Review their pay, permissions and quiet days and hours there too, then return here.
       </p>
 
       {staffMembers.length > 0 && (
@@ -235,7 +237,7 @@ export function CrewStep({ complete, onMarkStep, saving }: StepProps) {
         >
           {staffMembers.length > 0 ? 'Done — carry on' : 'I will do this later'}
         </button>
-        <span className="text-sm text-slate-500">You can invite the rest whenever you like.</span>
+        <span className="text-sm text-slate-500">After they finish setup, app users can open Download app under Your setup on their home page and sign in with the same login. Check delivery results for email and text links; sending a link does not mean they have finished setup.</span>
       </div>
     </div>
   )

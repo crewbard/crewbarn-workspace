@@ -27,12 +27,12 @@ export const PAGE_TOUR: PageTour = {
     {
       id: 'header', selector: t('staff-header'),
       title: 'Staff & crews',
-      say: 'Everyone on your team lives here: office staff who sign in, and crew members who don’t.',
+      say: 'Everyone on your team lives here, whether they use the full app, the employee portal, or no login.',
     },
     {
       id: 'three', selector: t('staff-three-choices'),
       title: 'Three separate choices',
-      say: 'Keep these apart in your head. App access decides if they can sign in, their role decides what they can do, and working as a technician puts them on the schedule.',
+      say: 'Keep these apart in your head. App access decides whether they use the full app; employee portal access is chosen separately, their role decides what they can do, and working as a technician puts them on the schedule.',
     },
     {
       id: 'tabs', selector: t('staff-tabs'),
@@ -46,7 +46,7 @@ export const PAGE_TOUR: PageTour = {
     },
     {
       id: 'add', selector: t('staff-add'), title: 'Add someone',
-      say: 'Add someone brings in a new person. You can invite them to sign in, or just add them as crew with no login.',
+      say: 'Add someone starts their record. Choose app access and employee portal separately, then choose Quick setup for a password or Full onboarding for contact details and optional employee documents. Their private setup link goes by email and text when those channels are available.',
     },
     {
       id: 'view-only', when: `!${t('staff-add')}`, selector: t('staff-list'),
@@ -100,12 +100,12 @@ export const PAGE_TOUR: PageTour = {
     {
       id: 'field-app', selector: t('staff-edit-fieldapp'), when: EDITOR,
       title: 'Field app',
-      say: 'Lets them sign in to the phone app, clock in automatically and lead jobs.',
+      say: 'Lets them sign in to the phone app and work field jobs. Automatic clock-in also needs the company rule and phone location setup. After they finish setup, app users receive the download link.',
     },
     {
       id: 'portal', selector: t('staff-edit-portal'), when: EDITOR,
       title: 'Employee portal',
-      say: 'The employee portal is a simple web page for their schedule, pay stubs and time off. Good for people who never use the field app.',
+      say: 'The employee portal is their own web page for jobs, tasks, pay, time off and messages. Choose it separately from phone-app access. Check their email and mobile number before sending their setup link.',
     },
     {
       id: 'connect', selector: t('staff-edit-connect'), when: EDITOR,
@@ -130,7 +130,12 @@ export const PAGE_TOUR: PageTour = {
     {
       id: 'pay', selector: t('staff-pay'), when: EDITOR,
       title: 'Pay',
-      say: 'What this person costs you: wage, commission and time off balances. It feeds payroll, and shows whether a job made money.',
+      say: 'Set their wage, commission, payment dates and optional health insurance here. For salary, check the yearly total: twice a month is 24 payments; every two weeks is 26. Pay has its own Save button.',
+    },
+    {
+      id: 'quiet', selector: t('staff-edit-employee-settings'), when: EDITOR,
+      title: 'Their quiet days and reminders',
+      say: 'Keep the company defaults, choose no quiet hours, or set this person’s own weekdays and times. Check the task email choices too. Save the staff settings, then reopen the person to check the saved days and hours. Late-tech alerts still come through.',
     },
     {
       id: 'permissions', selector: t('staff-edit-permissions'), when: EDITOR,
@@ -150,7 +155,7 @@ export const PAGE_TOUR: PageTour = {
     {
       id: 'save', selector: t('staff-edit-save'), when: EDITOR,
       title: 'Save or cancel',
-      say: 'Save keeps your changes. Cancel closes this and leaves the person exactly as they were.',
+      say: 'Save keeps the staff settings in this window. Pay has its own Save button, so save pay separately. Cancel discards staff changes you have not saved; it does not undo pay you already saved. Reopen the person to check the saved choices.',
     },
 
     // ── Scorecard (closes the editor first) ──

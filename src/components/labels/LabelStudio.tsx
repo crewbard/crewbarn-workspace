@@ -250,6 +250,22 @@ export function LabelStudio(props: LabelStudioProps) {
     }
   }
 
+  const doPrint = useBridge ? printViaBridge : () => props.onPrint(selected)
+  const printDisabled = total === 0 || Boolean(props.busy) || bridgeBusy
+
+  // The bar's printer words come from the real Print Bridge check, never a
+  // fixed "Ready". Sticker sheets and plain paper always use the print window.
+  const barLight: BridgeLight = isRoll ? status.light : 'grey'
+  const printerWords = !isRoll
+    ? 'Print window (sticker sheet or paper)'
+    : viaWindow && status.ready
+      ? 'Print window this time'
+      : status.title
+  const openSetup = () => {
+    setSetupOpen(true)
+    setTimeout(() => document.getElementById('label-printer-setup')?.scrollIntoView({ behavior: 'smooth', block: 'nearest' }), 0)
+  }
+
   const pick = (next: ThermalSizeKey) => {
     rememberThermalSize(next)
     props.onSize(next)
@@ -276,10 +292,48 @@ export function LabelStudio(props: LabelStudioProps) {
       <div className="flex min-h-0 grow flex-col lg:flex-row">
         {/* What will come out */}
         <div data-tour="labels-preview" className="no-print flex min-w-0 grow flex-col items-center gap-3 p-6">
-          <span className="inline-flex items-center gap-2 rounded-full bg-navy-900 px-3.5 py-1.5 text-[13px] font-bold text-white">
-            <span className="h-2 w-2 rounded-full bg-emerald-400" aria-hidden />
-            {isRoll ? 'Label roll' : isSheet ? 'Sticker sheet' : 'Plain paper'} · {spec.label.split('·').pop()?.trim()}
-          </span>
+          {/* One slim bar: which printer and is it ready, what paper, how
+              many labels, and Print, so nothing needs a scroll to find. */}
+          <div
+            data-tour="labels-status"
+            data-light={barLight}
+            role="status"
+            className="flex w-full flex-wrap items-center gap-x-3 gap-y-2 rounded-xl border border-[var(--color-slate-200)] bg-[var(--color-white)] px-3 py-2 shadow-sm"
+          >
+            <span className="flex min-w-0 items-center gap-2">
+              <span aria-hidden className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ background: LIGHT_VAR[barLight] }} />
+              <span className="sr-only">Printer: {LIGHT_WORD[barLight]}. </span>
+              <span className="min-w-0 truncate text-[13px] font-bold text-[var(--color-navy-900)]" title={printerWords}>
+                {printerWords}
+              </span>
+            </span>
+            {isRoll && !status.ready && check.running !== null && !showSetup && (
+              <button
+                type="button"
+                onClick={openSetup}
+                className="text-[12px] font-semibold text-[var(--accent-700)] underline"
+              >
+                Set up
+              </button>
+            )}
+            <span className="flex flex-wrap items-center gap-1.5">
+              <span className="rounded-full bg-[var(--color-slate-100)] px-2.5 py-0.5 text-[12px] font-semibold text-[var(--color-slate-700)]">
+                {isRoll ? 'Label roll' : isSheet ? 'Sticker sheet' : 'Plain paper'} · {spec.label.split('·').pop()?.trim()}
+              </span>
+              <span className="rounded-full bg-[var(--color-slate-100)] px-2.5 py-0.5 text-[12px] font-semibold tabular-nums text-[var(--color-slate-700)]">
+                {picking ? `${chosenFaces.length} of ${faces.length} labels` : `${faces.length} label${faces.length === 1 ? '' : 's'}`}
+                {copies > 1 ? ` × ${copies}` : ''}
+              </span>
+            </span>
+            <button
+              type="button"
+              onClick={doPrint}
+              disabled={printDisabled}
+              className="ml-auto flex shrink-0 items-center gap-1.5 rounded-lg bg-[var(--accent-500)] px-3.5 py-1.5 text-[13px] font-bold text-[var(--color-white)] hover:bg-[var(--accent-600)] disabled:opacity-50"
+            >
+              🖨 {bridgeBusy ? 'Sending…' : (props.busy ?? printWords)}
+            </button>
+          </div>
 
           {isSheet && grid ? (
             <SheetPreview faces={chosenFaces} size={size} grid={grid} gap={gap} copies={copies} />
@@ -517,8 +571,8 @@ export function LabelStudio(props: LabelStudioProps) {
 
               <button
                 type="button"
-                onClick={useBridge ? printViaBridge : () => props.onPrint(selected)}
-                disabled={total === 0 || Boolean(props.busy) || bridgeBusy}
+                onClick={doPrint}
+                disabled={printDisabled}
                 className="flex w-full items-center justify-center gap-2 rounded-xl bg-amber-500 px-5 py-3.5 text-base font-bold text-white hover:bg-amber-600 disabled:opacity-50"
               >
                 🖨 {bridgeBusy ? 'Sending…' : (props.busy ?? printWords)}
@@ -588,6 +642,14 @@ const LIGHT_DOT: Record<BridgeLight, string> = {
   amber: 'bg-amber-400',
   red: 'bg-rose-500',
   grey: 'bg-slate-300',
+}
+
+/** The same lights as LIGHT_DOT, as theme colours for inline styles. */
+const LIGHT_VAR: Record<BridgeLight, string> = {
+  green: 'var(--color-emerald-500)',
+  amber: 'var(--color-amber-400)',
+  red: 'var(--color-rose-500)',
+  grey: 'var(--color-slate-300)',
 }
 
 const LIGHT_WORD: Record<BridgeLight, string> = {
@@ -687,30 +749,13 @@ function ShapeSwatch({ w, h }: { w: number; h: number }) {
 }
 
 function RollPreview({ faces, size, picking }: { faces: LabelFaceData[]; size: ThermalSizeKey; picking: boolean }) {
-  // With several labels, they are all in the grid below this header,
-  // each with its tick box. One label is simply drawn here.
-  const shown = picking ? [] : faces.slice(0, 1)
+  // With several labels, they are all in the picker grid below the status
+  // bar, each with its tick box. One label is simply drawn here.
+  if (picking || faces.length === 0) return null
   return (
-    <div className="w-full max-w-[420px]">
-      <div className="rounded-t-2xl bg-navy-900 px-5 pb-6 pt-4 text-white">
-        <div className="flex items-center justify-between text-[11px] font-bold uppercase tracking-wider">
-          <span>Label printer</span>
-          <span className="flex items-center gap-1.5">
-            Ready <span className="h-2 w-2 rounded-full bg-emerald-400" />
-          </span>
-        </div>
-      </div>
-      <div className="-mt-3 flex flex-col items-center gap-2 rounded-b-2xl bg-amber-50/60 px-4 pb-4">
-        {shown.map((f, i) => (
-          <div key={i} className="overflow-hidden rounded-md bg-white shadow-sm ring-1 ring-slate-200">
-            <LabelFace data={f} size={size} />
-          </div>
-        ))}
-        {picking && (
-          <span className="pt-1 text-[12px] text-slate-500">
-            {faces.length} labels below. Untick any you don&apos;t want.
-          </span>
-        )}
+    <div className="flex w-full max-w-[420px] justify-center rounded-2xl bg-[color-mix(in_srgb,var(--accent-50)_60%,transparent)] p-4 ring-1 ring-[var(--color-slate-200)]">
+      <div className="overflow-hidden rounded-md bg-[var(--color-white)] shadow-sm ring-1 ring-[var(--color-slate-200)]">
+        <LabelFace data={faces[0]} size={size} />
       </div>
     </div>
   )

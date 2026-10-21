@@ -28,6 +28,8 @@ import {
   type PartGroup,
   type Review,
 } from '@/lib/purchaseRequests'
+import { OrderFilterChips } from '@/components/parts/OrderFilterChips'
+import { applyFilter, filterCounts, groupKinds, type OrderFilter } from '@/lib/startPo'
 
 /** One supplier's share of a part: who, how many, and the cost if typed. */
 type Row = { vendor_id: string; qty: string; cost: string }
@@ -96,7 +98,11 @@ function BuyerView() {
   const vendorsQ = useQuery({ queryKey: ['catalog-order-vendors'], queryFn: listVendors, staleTime: 5 * 60_000 })
   const lowStock = useLowStock(true)
   const vendors = vendorsQ.data ?? []
-  const groups = useMemo(() => review.data?.groups ?? [], [review.data])
+  const allGroups = useMemo(() => review.data?.groups ?? [], [review.data])
+  // All / For stock / For jobs / For estimates. Suppliers, Use preferred and Create work on the parts shown.
+  const [filter, setFilter] = useState<OrderFilter>('all')
+  const counts = useMemo(() => filterCounts(allGroups, (g) => groupKinds(g.asks)), [allGroups])
+  const groups = useMemo(() => applyFilter(allGroups, filter, (g) => groupKinds(g.asks)), [allGroups, filter])
   const drafts = review.data?.drafts ?? []
 
   const [rows, setRows] = useState<Record<string, Row[]>>({})
@@ -108,13 +114,13 @@ function BuyerView() {
   useEffect(() => {
     setRows((prev) => {
       const next: Record<string, Row[]> = {}
-      for (const g of groups) {
+      for (const g of allGroups) {
         if (g.open <= 0) continue
         next[g.key] = prev[g.key] ?? [{ vendor_id: g.preferred_vendor_id ?? '', qty: count(g.open), cost: '' }]
       }
       return next
     })
-  }, [groups])
+  }, [allGroups])
 
   const show = (data: Review) => qc.setQueryData(['order-parts'], data)
   const [toast, setToast] = useUndoToast()
@@ -209,7 +215,7 @@ function BuyerView() {
   }
 
   // Low on the shelves, and not already in the cart for stock.
-  const inCartForStock = new Set(groups.flatMap((g) => g.asks.filter((a) => a.for_kind === 'stock' && a.open > 0).map((a) => a.catalog_item_id)).filter(Boolean))
+  const inCartForStock = new Set(allGroups.flatMap((g) => g.asks.filter((a) => a.for_kind === 'stock' && a.open > 0).map((a) => a.catalog_item_id)).filter(Boolean))
   const low = (lowStock.data ?? []).filter((it) => !inCartForStock.has(it.id) && Math.ceil((it.suggested_qty || 0) - (it.on_order_qty || 0)) > 0)
   const addLow = async () => {
     setBusy(true)
@@ -268,7 +274,17 @@ function BuyerView() {
         </p>
       )}
 
-      {review.isSuccess && groups.length === 0 && (
+      {allGroups.length > 0 && (
+        <OrderFilterChips value={filter} counts={counts} onChange={setFilter} />
+      )}
+
+      {review.isSuccess && allGroups.length > 0 && groups.length === 0 && (
+        <div className="rounded-xl border border-slate-200 bg-white p-8 text-center text-sm text-slate-600">
+          Nothing in the cart is for that. <button type="button" className="underline" onClick={() => setFilter('all')}>Show all</button>
+        </div>
+      )}
+
+      {review.isSuccess && allGroups.length === 0 && (
         <div data-tour="order-parts-empty" className="rounded-xl border border-slate-200 bg-white p-10 text-center text-sm text-slate-600">
           Nothing waiting to be ordered. Parts your crew adds to the cart from catalogs, reference cards, items, estimates and jobs show up here.
         </div>
@@ -420,7 +436,7 @@ function PartCard({
               <li key={a.id} className="rounded-lg bg-slate-50 px-2.5 py-1.5">
                 <div className="flex flex-wrap items-baseline gap-x-2">
                   <span className="tabular-nums font-medium">{count(a.qty)}</span>
-                  <span className="text-slate-700">for {askFor(a)}</span>
+                  <span className="text-slate-700">for <AskForLink a={a} /></span>
                   {a.estimate && a.estimate.status !== 'approved' && a.for_kind === 'estimate' && (
                     <span className="rounded-full bg-sky-100 px-2 py-px text-[11px] text-sky-800">Waiting on the customer</span>
                   )}
@@ -566,7 +582,7 @@ function MyAsks() {
               <div className="min-w-0 flex-1">
                 <p className="truncate text-sm font-medium text-slate-900">{a.description}</p>
                 <p className="text-xs text-slate-500">
-                  For {askFor(a)}
+                  For <AskForLink a={a} />
                   {a.needed_by ? ` · needed by ${a.needed_by}` : ''}
                   {a.on_order > 0 ? ` · ${count(a.on_order)} on order` : ''}
                 </p>
@@ -590,4 +606,12 @@ function MyAsks() {
       )}
     </div>
   )
+}
+
+/** "Job 1042 · Smith" or "Estimate EST-001137 · Susan Vaughn", opening the job or estimate; plain "Stock" otherwise. */
+function AskForLink({ a }: { a: Pick<Ask, 'for_kind' | 'job' | 'estimate'> }) {
+  const to = a.for_kind === 'estimate' && a.estimate
+    ? `/estimates/${encodeURIComponent(a.estimate.id)}`
+    : a.job ? `/jobs/${encodeURIComponent(a.job.id)}` : null
+  return to ? <Link to={to} className="font-medium text-sky-700 hover:underline" data-for-link>{askFor(a)}</Link> : <>{askFor(a)}</>
 }

@@ -33,7 +33,7 @@ export const PAGE_TOUR: PageTour = {
     {
       id: 'actions', selector: t('ai-rules-actions'),
       title: 'Edit and history',
-      say: 'Edit rules changes the page. History keeps every version, and restoring one never loses the others.',
+      say: 'Press Edit rules, write one clear instruction per line, then Save rules. Read the result: conflicting lines can be marked as unable to apply. Ask CBI a new question to check your wording. History lets you restore an earlier version as the current rules.',
     },
     {
       id: 'read-only', selector: t('ai-rules-read-only'),

@@ -3,7 +3,7 @@ import { useOnboardingStatus } from '@/hooks/useOnboarding'
 import { buildOnboardingStages, type OnboardingStage } from '@/components/onboarding/onboardingStages'
 import { useOnboardingWalkthrough } from '@/components/onboarding/onboardingWalkthrough'
 import { speakLine, stopLine } from '@/lib/tourVoice'
-import { CLOUDFLARE_PERMS, MODEL_JOBS, SETUP_GUIDE, type GuideBeat, type GuideCtx } from './setupGuideScript'
+import { CLOUDFLARE_PERMS, MODEL_JOBS, SETUP_GUIDE, requiresSavedReview, shouldSkipGuideStage, shouldAdvanceSavedStage, type GuideBeat, type GuideCtx } from './setupGuideScript'
 
 /**
  * The setup guide: walks the real onboarding steps top to bottom, out loud.
@@ -60,8 +60,10 @@ export function OnboardingSetupGuide({ open, audioOn, onToggleAudio, onClose }: 
   const [away, setAway] = useState<false | 'leaving' | 'back'>(false)
   const [skipped, setSkipped] = useState<string[]>([])
   const [finished, setFinished] = useState(false)
+  const [reviewAlreadySaved, setReviewAlreadySaved] = useState(false)
   const [, setTick] = useState(0)
   const run = useRef(0)
+  const savedFor = useRef<string | null>(null)
   const cardRef = useRef<HTMLDivElement>(null)
 
   const script = useMemo(() => SETUP_GUIDE.filter((s) => stages.some((st) => st.key === s.key)), [stages])
@@ -104,7 +106,8 @@ export function OnboardingSetupGuide({ open, audioOn, onToggleAudio, onClose }: 
       if (st.locked) { setSkipped((s) => s.includes(st.key) ? s : [...s, st.key]); continue }
       // A step that is already done gets its one-liner (if it has one) and is passed.
       const firstUsable = script[i].beats.findIndex((b) => !b.when || b.when(ctx))
-      if (st.complete && !script[i].beats.some((b) => b.line.endsWith('.done'))) continue
+      if (shouldSkipGuideStage(script[i], st.complete)) continue
+      setReviewAlreadySaved(requiresSavedReview(script[i], st.complete))
       setStageIndex(i); setBeatIndex(Math.max(0, firstUsable)); setMet(false); setAway(false)
       openStage(script[i].key)
       return
@@ -132,11 +135,10 @@ export function OnboardingSetupGuide({ open, audioOn, onToggleAudio, onClose }: 
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, stages.length])
 
-  useEffect(() => { if (!open) { run.current += 1; stopLine(); setStageIndex(-1); setFinished(false); setSkipped([]) } }, [open])
+  useEffect(() => { if (!open) { run.current += 1; stopLine(); savedFor.current = null; setReviewAlreadySaved(false); setStageIndex(-1); setFinished(false); setSkipped([]) } }, [open])
 
-  const savedFor = useRef<string | null>(null)
-  const live = useRef({ beat, met, ctx, stage, stageIndex, say, nextBeat, goStage })
-  live.current = { beat, met, ctx, stage, stageIndex, say, nextBeat, goStage }
+  const live = useRef({ beat, met, ctx, stage, stageIndex, say, nextBeat, goStage, reviewAlreadySaved })
+  live.current = { beat, met, ctx, stage, stageIndex, say, nextBeat, goStage, reviewAlreadySaved }
 
   // Each beat: point at it, say it, move on when there is nothing to wait for.
   useEffect(() => {
@@ -146,12 +148,13 @@ export function OnboardingSetupGuide({ open, audioOn, onToggleAudio, onClose }: 
     const already = !!beat.until?.(ctx)
     setMet(already)
     // Saved on the page before the guide got here: say so and move on.
-    if (stage && !beat.line.endsWith('.done') && ctx.complete(stage.key) && savedFor.current !== stage.key) {
+    if (stage && !beat.line.endsWith('.done') && shouldAdvanceSavedStage(ctx.complete(stage.key), reviewAlreadySaved) && savedFor.current !== stage.key) {
       savedFor.current = stage.key
       say('setup.saved', () => live.current.goStage(live.current.stageIndex + 1))
       return
     }
     say(beat.line, () => {
+      if (live.current.reviewAlreadySaved) return
       if (!beat.until) window.setTimeout(() => live.current.nextBeat(), 600)
       else if (beat.until(live.current.ctx)) window.setTimeout(() => live.current.nextBeat(), 500)
     })
@@ -167,12 +170,12 @@ export function OnboardingSetupGuide({ open, audioOn, onToggleAudio, onClose }: 
       const L = live.current
       setTick((t) => t + 1)
       // Saved on the page from any beat (with or without the guide): move on.
-      if (L.stage && L.beat && !L.beat.line.endsWith('.done') && L.ctx.complete(L.stage.key) && savedFor.current !== L.stage.key) {
+      if (L.stage && L.beat && !L.beat.line.endsWith('.done') && shouldAdvanceSavedStage(L.ctx.complete(L.stage.key), L.reviewAlreadySaved) && savedFor.current !== L.stage.key) {
         savedFor.current = L.stage.key
         L.say('setup.saved', () => live.current.goStage(live.current.stageIndex + 1))
         return
       }
-      if (!L.beat?.until || L.met || !L.beat.until(L.ctx)) return
+      if (L.reviewAlreadySaved || !L.beat?.until || L.met || !L.beat.until(L.ctx)) return
       setMet(true)
       L.met = true
       L.say(L.beat.done, () => window.setTimeout(() => live.current.nextBeat(), 400), false)
@@ -239,7 +242,7 @@ export function OnboardingSetupGuide({ open, audioOn, onToggleAudio, onClose }: 
 
   if (!open) return null
 
-  const close = () => { run.current += 1; stopLine(); onClose(finished) }
+  const close = () => { run.current += 1; stopLine(); savedFor.current = null; onClose(finished) }
   const skipStep = () => {
     if (!stage) return
     setSkipped((s) => s.includes(stage.key) ? s : [...s, stage.key])
@@ -247,14 +250,19 @@ export function OnboardingSetupGuide({ open, audioOn, onToggleAudio, onClose }: 
   }
   const back = () => {
     if (beatIndex > 0) { setBeatIndex(beatIndex - 1); setMet(false) }
-    else if (stageIndex > 0) { setStageIndex(stageIndex - 1); setBeatIndex(0); openStage(script[stageIndex - 1].key) }
+    else if (stageIndex > 0) {
+      const previous = script[stageIndex - 1]
+      setReviewAlreadySaved(requiresSavedReview(previous, !!stageState(previous.key)?.complete))
+      savedFor.current = null
+      setStageIndex(stageIndex - 1); setBeatIndex(0); openStage(previous.key)
+    }
   }
   const setLook = (next: Mode) => { setMode(next); try { window.localStorage.setItem(MODE_KEY, next) } catch { /* private mode */ } }
 
   const text = finished ? line('setup.finish') : beat ? line(beat.line) : line('setup.start')
   const words = text.split(/\s+/).filter(Boolean)
   const lit = audioOn ? Math.round(progress * words.length) : words.length
-  const waiting = !!beat?.until && !met
+  const waiting = !reviewAlreadySaved && !!beat?.until && !met
   const stageTitle = stage ? stageState(stage.key)?.title ?? '' : ''
   const links = beat?.links?.(ctx) ?? []
 
@@ -306,7 +314,8 @@ export function OnboardingSetupGuide({ open, audioOn, onToggleAudio, onClose }: 
           {links.map(([label, href]) => <a key={href} href={href} target="_blank" rel="noopener noreferrer" onClick={() => setAway('leaving')} className="rounded-lg bg-white px-2.5 py-1.5 text-[12.5px] font-extrabold text-navy-950">{label} ↗</a>)}
         </div>
       )}
-      {beat?.until && (
+      {reviewAlreadySaved && <p className="mt-3 rounded-xl border border-amber-300/35 bg-amber-300/10 px-3 py-2 text-[13px] text-amber-100">Setup data is already saved. Review these choices and checks, then press Next. Next only moves the guide forward.</p>}
+      {beat?.until && !reviewAlreadySaved && (
         <div className={`mt-3 flex items-center gap-2.5 rounded-xl border px-3 py-2 text-[13px] ${met ? 'border-emerald-400/45 bg-emerald-400/10 text-emerald-200' : 'border-amber-300/35 bg-amber-300/10 text-amber-100'}`}>
           {met ? '✓ ' + (line(beat.done) || 'Done.') : <><span className="cbg-spin" />{away === 'back' && beat.back ? line(beat.back) : line(beat.waiting)}</>}
         </div>
@@ -317,7 +326,7 @@ export function OnboardingSetupGuide({ open, audioOn, onToggleAudio, onClose }: 
 
       <div className="mt-4 flex flex-wrap items-center gap-1.5">
         {!finished && <button type="button" className="cbg-btn" onClick={back} disabled={stageIndex <= 0 && beatIndex === 0}>Back</button>}
-        {!finished && beat && <button type="button" className="cbg-btn" onClick={() => { setMet(!!beat.until?.(ctx)); say(beat.line) }}>Replay</button>}
+        {!finished && beat && <button type="button" className="cbg-btn" onClick={() => { savedFor.current = null; setMet(!!beat.until?.(ctx)); say(beat.line) }}>Replay</button>}
         {!finished && beat && (beat.optional
           ? <button type="button" className="cbg-btn" onClick={() => { run.current += 1; stopLine(); nextBeat() }}>{beat.optional}</button>
           : <button type="button" className="cbg-btn" onClick={skipStep} title="Skip for now. It stays on the list.">Skip step</button>)}

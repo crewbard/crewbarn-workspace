@@ -59,8 +59,14 @@ export interface TreeNode {
   own: { items: number; amount: number }
   /** This node and everything below it. */
   total: { items: number; amount: number }
-  /** Own capacity if set, else the children's total when every child has one. */
+  /**
+   * Layered: when every place inside has a capacity, this is their sum (rows add
+   * up to the bin, bins to the shelf, shelves to the rack), whatever was set on
+   * the place itself. Otherwise its own capacity, if any.
+   */
   capacity: number | null
+  /** True when the capacity above is the sum of the places inside. */
+  capacityRolledUp?: boolean
   /** Places below (bins, rows) that hold stock and have nothing in them. */
   emptySpots: number
   /** All descendants, not counting itself. */
@@ -184,7 +190,7 @@ export function buildBinTree(
     n.total = { items, amount }
     n.emptySpots = empty
     n.descendantCount = desc
-    if (n.capacity == null && allChildrenHaveCap) n.capacity = childCap
+    if (allChildrenHaveCap) { n.capacity = childCap; n.capacityRolledUp = true }
   }
   return { nodes, roots }
 }
@@ -569,4 +575,43 @@ export function treeTotals(tree: BinTree): TreeTotals {
   // Places with a capacity of their own, so a full rack isn't counted once per level.
   for (const n of tree.nodes.values()) if (n.bin?.capacity != null && isNearFull(n)) near++
   return { locations: tree.roots.length, places, items, amount, emptySpots: empty, nearFull: near }
+}
+
+/**
+ * One row pill on a bin tile: how much of it is stored (green) and how much
+ * room is left (red), as fractions of the pill. Null when the row has no
+ * capacity, so it keeps a neutral look.
+ */
+export function pillFill(n: Pick<TreeNode, 'capacity' | 'total'>): { stored: number; room: number; over: boolean } | null {
+  if (n.capacity == null || n.capacity <= 0) return null
+  const stored = Math.max(0, Math.min(1, n.total.amount / n.capacity))
+  return { stored, room: 1 - stored, over: n.total.amount > n.capacity }
+}
+
+/** The innermost places under a node (its rows), which is where "how many fit" is set. */
+export function innermostUnder(tree: BinTree, id: string): TreeNode[] {
+  const out: TreeNode[] = []
+  const walk = (nid: string) => {
+    const n = tree.nodes.get(nid)
+    if (!n) return
+    if (n.children.length === 0) { if (nid !== id) out.push(n); return }
+    for (const c of n.children) walk(c)
+  }
+  walk(id)
+  return out
+}
+
+/** A "how many fit" box: '' clears (null); a whole number 1..1,000,000; anything else is undefined (not valid). */
+export function parseFits(v: string): number | null | undefined {
+  const t = v.trim()
+  if (t === '') return null
+  const n = Math.floor(Number(t))
+  return Number.isFinite(n) && n >= 1 && n <= 1_000_000 && String(n) === t ? n : undefined
+}
+
+/** "254 of 400 units", or "254 units · no capacity set" (short: "254 units"). */
+export function unitsLine(n: Pick<TreeNode, 'capacity' | 'total'>, short = false): string {
+  const amt = Math.round(n.total.amount).toLocaleString('en-US')
+  if (n.capacity != null && n.capacity > 0) return `${amt} of ${n.capacity.toLocaleString('en-US')} units`
+  return short ? `${amt} units` : `${amt} units · no capacity set`
 }

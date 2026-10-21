@@ -7,6 +7,7 @@ import { CustomerPicker } from '@/components/CustomerPicker'
 import { InlineQuickAddCustomer } from '@/components/InlineQuickAddCustomer'
 import { ContractSummary } from '@/components/contracts/ContractSummary'
 import type { Customer as PickedCustomer } from '@/types/customer'
+import { useNow } from '@/lib/useNow'
 
 /**
  * Starting a service agreement.
@@ -232,6 +233,7 @@ const FIELD =
   'w-full px-3 py-2 text-sm bg-white border border-navy-200 rounded-md text-navy-800 placeholder:text-navy-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-1 focus-visible:ring-navy-800'
 
 export function NewServiceAgreementPage() {
+  const now = useNow()
   const navigate = useNavigate()
   const [params] = useSearchParams()
 
@@ -242,7 +244,7 @@ export function NewServiceAgreementPage() {
   const easy = theme === 'easy-side' || theme === 'easy-top'
 
   const today = new Date().toISOString().slice(0, 10)
-  const inAYear = new Date(Date.now() + 364 * 86400000).toISOString().slice(0, 10)
+  const inAYear = new Date(now + 364 * 86400000).toISOString().slice(0, 10)
 
   // The picker hands back a whole customer; the id is derived. Held
   // this way so arriving with ?customer= still works — that id is all

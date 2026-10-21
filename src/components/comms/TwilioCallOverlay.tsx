@@ -39,6 +39,14 @@ export function TwilioCallOverlay() {
   const callRef = useRef<any>(null)
   const activeRequestRef = useRef<TwilioCallRequest | null>(null)
 
+  function finishCall(nextMessage: string, failed = false) {
+    callRef.current = null
+    activeRequestRef.current = null
+    setMuted(false)
+    setStatus(failed ? 'error' : 'ended')
+    setMessage(nextMessage)
+  }
+
   useEffect(() => {
     mountedStartCall = async (nextRequest) => {
       if (callRef.current || activeRequestRef.current) {
@@ -120,14 +128,6 @@ export function TwilioCallOverlay() {
       deviceRef.current?.destroy?.()
     }
   }, [])
-
-  function finishCall(nextMessage: string, failed = false) {
-    callRef.current = null
-    activeRequestRef.current = null
-    setMuted(false)
-    setStatus(failed ? 'error' : 'ended')
-    setMessage(nextMessage)
-  }
 
   function hangUp() {
     callRef.current?.disconnect?.()

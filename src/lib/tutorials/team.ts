@@ -28,14 +28,14 @@ export const TUTORIAL: TutorialData = {
       label: 'Everyone',
       title: 'Everyone who works for you, in one place',
       narration:
-        'Welcome to your team. Everyone who works for you lives in Staff and crews. Staff sign in to CrewBarn. Crew members don’t, but you can still put them on jobs, log their hours and pay them.',
+        'Welcome to your team. Everyone who works for you lives in Staff and crews. People can use the full app, the employee portal, or no login. You can still assign work, log hours and set pay for crew without full-app access.',
     },
     {
       id: 'three',
       label: 'Three switches',
       title: 'Three separate switches',
       narration:
-        'Each person has three separate switches. App access decides if they can sign in. Their role decides what they can see and change. And Works as a technician decides if they show up when you assign field work.',
+        'Each person has three separate switches. App access decides whether they use the full app; employee portal access is chosen separately. Their role decides what they can see and change. And Works as a technician decides if they show up when you assign field work.',
     },
     {
       id: 'roles',
@@ -173,12 +173,12 @@ export const TUTORIAL: TutorialData = {
     {
       id: 'add-portal', chapter: 'add', route: STAFF, selector: t('staff-invite-portal'),
       title: 'Employee portal',
-      say: 'The employee portal is a light web view of their day: their jobs, tasks, time off and messages. It’s on to start with. Crew can have it too, but then they need an email, since the portal is a login.',
+      say: 'The employee portal is their own web page for jobs, tasks, pay, time off and messages. Choose it separately from phone-app access. People who need to sign in must have an email address, even if their setup link also goes by text.',
     },
     {
       id: 'add-email', chapter: 'add', route: STAFF, selector: t('staff-invite-email'),
       title: 'Email',
-      say: 'Their email is where the invite goes, and it’s what they sign in with. For crew without the portal, it’s optional.',
+      say: 'Their email is their sign-in address. Check it and their mobile number: the private setup link can go by email and text. Crew without sign-in access can be added without an email.',
     },
     {
       id: 'add-names', chapter: 'add', route: STAFF, selector: t('staff-person-names'), hold: true,
@@ -221,12 +221,12 @@ export const TUTORIAL: TutorialData = {
     {
       id: 'add-crew-form', chapter: 'add', route: STAFF, selector: t('staff-invite-modal'),
       title: 'Add crew',
-      say: 'See how it changed? It’s Add crew now. There’s no role and no calling number, because crew don’t sign in. Untick the employee portal and the email becomes optional too.',
+      say: 'See how it changed? It’s Add crew now. There is no full-app role or calling number. Crew can still sign in to the employee portal if you leave it enabled. Untick the employee portal and the email becomes optional too.',
     },
     {
       id: 'add-send', chapter: 'add', route: STAFF, selector: t('staff-invite-send'),
       title: 'Send invite or Add crew',
-      say: 'This button finishes it. Send invite emails them a link to set a password, and if email isn’t set up, you get the link to share yourself. The link lasts 14 days. Add crew just puts them on the list. We’ll leave it this time.',
+      say: 'Choose Quick setup for a password and immediate access, or Full onboarding for contact details and optional employee documents. Send invite delivers their private setup link by email and text when available; read the delivery result and share the link yourself if needed. App users receive the download link after finishing. Add crew creates their record. We will leave it this time.',
     },
     {
       id: 'add-cancel', chapter: 'add', route: STAFF, selector: t('staff-invite-cancel'),
@@ -278,7 +278,7 @@ export const TUTORIAL: TutorialData = {
     {
       id: 'person-fieldapp', chapter: 'person', route: STAFF, selector: t('staff-edit-fieldapp'),
       title: 'Field app',
-      say: 'Field app lets them sign in to the phone app, clock in automatically, and lead jobs.',
+      say: 'Field app lets them sign in to the phone app and work field jobs. Automatic clock-in also depends on company rules and phone location setup. App users receive a download link after they finish setup.',
     },
     {
       id: 'person-portal', chapter: 'person', route: STAFF, selector: t('staff-edit-portal'),
@@ -306,6 +306,11 @@ export const TUTORIAL: TutorialData = {
       say: 'Status is Active, or Disabled, which means they can’t sign in anymore. You can’t disable yourself.',
     },
     {
+      id: 'person-quiet', chapter: 'person', route: STAFF, selector: t('staff-edit-employee-settings'),
+      title: 'Quiet days and reminders',
+      say: 'Keep the company defaults, choose no quiet hours, or set their own weekdays and times. These use the company timezone. Check their task emails too, then use Save changes and reopen the record to verify. Late-tech alerts still come through.',
+    },
+    {
       id: 'person-train', chapter: 'person', route: STAFF, selector: t('staff-edit-cbi-train'),
       title: 'Can train and correct CBI',
       say: 'This lets them make lasting corrections to CBI. It doesn’t open any other records. Switching it turns on personal permissions for them.',
@@ -328,7 +333,7 @@ export const TUTORIAL: TutorialData = {
     {
       id: 'person-save', chapter: 'person', route: STAFF, selector: t('staff-edit-save'),
       title: 'Save changes',
-      say: 'Save changes keeps everything in this window except pay, which saves on its own. Let’s look at pay next.',
+      say: 'Save changes keeps the staff settings; pay needs its own Save button. Reopen the record to check access and quiet days. Cancel only discards changes you have not saved, and does not undo pay already saved. Let us look at pay next.',
     },
 
     // ---------- Their pay ----------
@@ -345,7 +350,7 @@ export const TUTORIAL: TutorialData = {
     {
       id: 'pay-rate', chapter: 'pay', route: STAFF, selector: t('pay-editor-rate'),
       title: 'Rate and a normal week',
-      say: 'Then their hourly rate or yearly salary, and the hours in a normal week. For a salary, the week works out what an hour of their time costs.',
+      say: 'Enter their hourly rate or salary before tax. Salary can be a year, month or payment: twice a month is 24 payments a year; every two weeks is 26. Check the yearly total. Changing the period shows the same annual salary; enter a new amount to change pay. Choose actual payment dates separately, and set their normal weekly hours.',
     },
     {
       id: 'pay-cut', chapter: 'pay', route: STAFF, selector: t('pay-editor-cut'),
@@ -527,7 +532,7 @@ export const TUTORIAL: TutorialData = {
     {
       id: 'profiles-type', chapter: 'profiles', route: PROFILES, click: t('pay-profiles-tab-pay'), selector: t('pay-profiles-pay-type'),
       title: 'Pay type and rates',
-      say: 'Pay type is hourly, salary, commission or hybrid. Next to it are the hourly rate, yearly salary, commission percent and what it’s based on, and the margin you aim for.',
+      say: 'Choose hourly, salary, commission or hybrid. For salary, check the amount period and yearly total: twice a month is 24 payments; every two weeks is 26. Set actual payment dates separately, with a known pay date for every-two-week pay. Review commission and the health insurance company and employee shares; confirm whether the company share is already counted in costs.',
     },
     {
       id: 'profiles-parts', chapter: 'profiles', route: PROFILES, selector: t('pay-profiles-parts'),
@@ -558,7 +563,7 @@ export const TUTORIAL: TutorialData = {
     {
       id: 'profiles-save', chapter: 'profiles', route: PROFILES, selector: t('pay-profiles-save'),
       title: 'Save profile',
-      say: 'Save profile keeps it. Changes only affect payroll and reports from now on. We’ll leave it.',
+      say: 'Press Save profile and wait for confirmation. Reopen the person to check the salary total, payment dates and insurance split. Review the payroll preview before posting; saving this profile does not post payroll or create an insurance deduction. We will leave it this time.',
     },
 
     // ---------- Time off ----------

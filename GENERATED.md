@@ -9,7 +9,7 @@ changes belong in the source tree and arrive here on the next release.
 - removed the platform admin console block (26 routes)
 - removed 111 further routes that belong to CrewBarn's own account handling
 - routes published: 218
-- files: 1035 (97 pages)
+- files: 1040 (97 pages)
 
 The generator refuses to run if any of the removed code is still reachable
 from the published entry point.

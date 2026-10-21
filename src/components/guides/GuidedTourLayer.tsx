@@ -160,6 +160,14 @@ function PageTourLayer() {
           return
         }
       }
+      // Nothing left to show (for example, an empty or view-only page).
+      // Do not leave the card describing a target that was never found.
+      if (!cancelled) {
+        stopLine()
+        setTour(null)
+        setIndex(0)
+        setRoadmapOpen(false)
+      }
     }
     void run()
     return () => { cancelled = true; stopLine() }

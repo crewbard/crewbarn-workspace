@@ -311,7 +311,7 @@ export const ACCOUNTING_FILMS: PageFilm[] = [
       { id: 'name', say: 'This is Payroll profiles: how each person on your team gets paid.', visual: { kind: 'title', title: 'Payroll profiles', area: 'Accounting' } },
       { id: 'types', title: 'How they’re paid', say: 'Hourly, salary, commission, or a mix of them.', visual: { kind: 'chips', chips: ['Hourly', 'Salary', 'Commission', 'A mix'] } },
       {
-        id: 'rules', title: 'Their pay rules', say: 'Set their rate, and which parts of a job count toward their commission, like labor or parts.',
+        id: 'rules', title: 'Their pay rules', say: 'Set their rate and actual payment dates, then check commission and any health insurance split. Salary can be entered per payment: twice a month is 24 payments a year; every two weeks is 26. Save the profile, then reopen it to check.',
         visual: { kind: 'form', fields: [
           { label: 'Person', value: 'Jordan' },
           { label: 'Pay type', value: 'Hourly plus commission' },

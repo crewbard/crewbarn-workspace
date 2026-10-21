@@ -14,6 +14,7 @@ import { TechMiniMap, type TechMarker } from './TechMiniMap'
 import { bucketByRange, bucketGrouped, type DashRange } from '@/lib/dashboardTime'
 import { TeamMessagesWidget } from './TeamMessagesWidget'
 import { CustomerMixCard } from '@/components/dashboard/CustomerMixCard'
+import { useNow } from '@/lib/useNow'
 
 /** Distinct, repeatable color palette for per-tech / per-method segments. */
 const SEGMENT_PALETTE = [
@@ -815,6 +816,7 @@ interface Position {
 }
 
 function TechsLiveWidget() {
+  const now = useNow(60_000)
   const q = useQuery({
     queryKey: ['dash', 'tech-positions'],
     queryFn: () => apiRequest<{ data: { positions: Position[] } }>('/v1/dispatch/positions'),
@@ -825,7 +827,7 @@ function TechsLiveWidget() {
     (p) => p.account_id && p.latitude != null && p.longitude != null,
   )
   const isStale = (p: Position) =>
-    !p.recorded_at || Date.now() - new Date(p.recorded_at).getTime() >= 10 * 60_000
+    !p.recorded_at || now - new Date(p.recorded_at).getTime() >= 10 * 60_000
   const fresh = positions.filter((p) => !isStale(p))
   const markers: TechMarker[] = positions.map((p) => ({
     id: String(p.account_id),

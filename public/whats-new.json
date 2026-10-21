@@ -1,6 +1,69 @@
 {
   "releases": [
     {
+      "version": "2026-10-20n",
+      "items": [
+        "Bins: right-click any bin, shelf, rack or row and pick Start PO. It lists the low items kept there and inside it, ticked, with how many to order (less what is already on order). Create PO puts them in Parts to order, where each line already has its preferred supplier and that supplier's part number, and you can change or split suppliers, one purchase order per supplier.",
+        "Needs ordering and Order parts have All, For stock, For jobs and For estimates filters with counts. Ticking and ordering follow the lines shown, and each line links to its job or estimate.",
+        "Purchase orders from Order parts now carry each supplier's own part number, also when a part is split between suppliers."
+      ]
+    },
+    {
+      "version": "2026-10-20l",
+      "items": [
+        "Bins: how many fit now adds up in layers. Set it on the rows and the bin is the rows added up, the shelf its bins, the rack its shelves. Each row pill on a bin fills green for what is stored and red for the room left; rows with no number stay plain.",
+        "Set how many fit on a bin with rows shows the total and lets you set every row the same or each row on its own. Rack cards and shelf labels now read like 254 of 400 units."
+      ]
+    },
+    {
+      "version": "2026-10-20k",
+      "items": [
+        "Build structure: if the place already has Rack 1, a new rack built from the layers becomes Rack 2 by itself and the note says so (R1 is taken, so this is R2). To fill in the existing rack on purpose, press Add into the existing R1 instead."
+      ]
+    },
+    {
+      "version": "2026-10-20j",
+      "items": [
+        "Bins: click or right-click any bin, shelf, rack or row and pick Edit to rename it, change its code or move it. It opens the same form as Move or edit in the side panel."
+      ]
+    },
+    {
+      "version": "2026-10-20i",
+      "items": [
+        "Printed roll labels (Print Bridge, Bluetooth and every label printer language) now carry the same words as the preview: the name in large type, the code, the type badge (BIN, ROW, RACK…) and where it is. Before, a 2 × 1 label printed only the QR code and a small name."
+      ]
+    },
+    {
+      "version": "2026-10-20h",
+      "items": [
+        "Print labels: the top of the preview is now one slim bar showing your label printer and whether it's really ready, the paper and size, how many labels are picked, and a Print button. Nothing hides the label list any more.",
+        "Bins racks view: on a 1080p screen racks now use the full width instead of being squeezed into two narrow columns. Below 1440px wide the details panel slides in from the right when you pick a place, and the tips and totals sit in a thin strip above the racks."
+      ]
+    },
+    {
+      "version": "2026-10-20g",
+      "items": [
+        "Parts held for a job now follow the parts on every kind of move: a transfer accepted, a part scanned onto a van, or a shelf-to-shelf move. A move that leaves a shelf with fewer than are held there takes the uncovered part of the hold with it, so Held always shows where the parts really are.",
+        "Customer > Parts records: the equipment link opens that piece of equipment instead of a blank page.",
+        "Small fixes: times like \u0022saved\u0022, \u0022expires soon\u0022 and \u0022live\u0022 now refresh on their own, and the Activity log range counts back from when you pick it."
+      ]
+    },
+    {
+      "version": "2026-10-20f",
+      "items": [
+        "Your own mail server (Settings, Communication): changing the server, port or encryption now asks for the password again, and a password can't be used with no encryption. The server has to be a public mail server on port 25, 465, 587 or 2525.",
+        "Azure AI: the address in your Azure key has to be your own Azure OpenAI resource, like https://your-resource.openai.azure.com/openai/deployments/your-deployment."
+      ]
+    },
+    {
+      "version": "2026-10-20e",
+      "items": [
+        "Setup guides now explain quick and full staff invitations, employee portal access, app downloads, quiet hours, pay dates and salary amounts with clear steps to save and check your choices.",
+        "Pricing walkthroughs explain company-paid insurance, profit and growth separately, and show how to review the company costs before using a suggested price.",
+        "Walkthroughs now follow the product window correctly and explain missing or skipped steps without claiming that setup work has been completed. The setup guide also recognizes a saved Maps key and the manual storage setup option."
+      ]
+    },
+    {
       "version": "2026-10-20d",
       "items": [
         "Vendor part numbers: on a product (new or edit, including New product from receiving, a PO line, Bins, stock and a vendor invoice), Add vendor and type that vendor's own part number. From a PO or invoice the vendor and their number are filled in. Your SKU and the Supplier field stay as they are.",

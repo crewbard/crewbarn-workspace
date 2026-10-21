@@ -19,7 +19,7 @@ export const TEAM_TOURS: GuidedTour[] = [
     roadmap: [
       { title: 'Set up roles', detail: 'Decide what each role can do on Roles & permissions.' },
       { title: 'Add someone', detail: 'An employee (with or without a login), or a sub company if the sub network is on.' },
-      { title: 'They accept the invite', detail: 'They open the emailed link and set a password.' },
+      { title: 'They accept the invite', detail: 'They open their private link from email or text and finish Quick setup or Full onboarding.' },
       { title: 'Fine-tune each person', detail: 'Access, role, personal permissions, pay and dashboard widgets.' },
       { title: 'Watch how it goes', detail: 'Scorecard and Timesheet show results and clocked hours. Pay flows on to Payroll.' },
     ],
@@ -37,7 +37,7 @@ export const TEAM_TOURS: GuidedTour[] = [
       {
         selector: '[data-tour="staff-three-choices"]',
         title: 'Three separate choices',
-        say: "Keep these three apart in your head. App access decides if they can sign in, the role decides what they can do, and 'works as a technician' decides if they show up for field jobs.",
+        say: "Keep these three apart in your head. App access decides whether they use the full app; employee portal access is chosen separately, the role decides what they can do, and 'works as a technician' decides if they show up for field jobs.",
       },
       {
         selector: '[data-tour="staff-tabs"]',
@@ -52,7 +52,7 @@ export const TEAM_TOURS: GuidedTour[] = [
       {
         selector: '[data-tour="staff-add"]',
         title: 'Add someone',
-        say: 'Use this to bring someone new on board. With app access they get an email to set a password. Without it, they are a crew member you can still schedule and pay.',
+        say: 'Use this to bring someone new on board. Choose app access and the employee portal separately. Quick setup asks for a password; Full onboarding also collects contact details and optional employee documents. The private setup link can go by email and text. App users receive the download link after finishing.',
         optional: 'Skip',
       },
       {
@@ -93,7 +93,7 @@ export const TEAM_TOURS: GuidedTour[] = [
       },
       {
         selector: '[data-tour="staff-pay"]',
-        title: 'Pay saves on its own',
+        title: 'Save pay separately',
         say: "Start with how they're paid, and the yellow box shows what a normal week would cost you. Pay has its own Save button. If you change pay and forget, we'll warn you before you close.",
         optional: 'Skip',
       },

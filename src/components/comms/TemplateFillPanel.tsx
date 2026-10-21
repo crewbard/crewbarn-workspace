@@ -3,6 +3,7 @@ import { useQuery } from '@tanstack/react-query'
 import { listWorkOrders } from '@/lib/workOrders'
 import type { ComposerUsedJob } from '@/lib/comms'
 import type { WorkOrder } from '@/types/workOrder'
+import { useNow } from '@/lib/useNow'
 
 /**
  * Shared by the email and text composers: once a template is filled in from
@@ -136,7 +137,7 @@ export function TemplateFillPanel({
     staleTime: 60_000,
   })
 
-  const now = Date.now()
+  const now = useNow(60_000)
   const jobs = (jobsQuery.data?.data ?? []).slice()
   const startOf = (w: WorkOrder) => (w.schedule?.start_at ? new Date(w.schedule.start_at).getTime() : null)
   const upcoming = jobs

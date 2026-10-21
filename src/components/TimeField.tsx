@@ -113,7 +113,7 @@ export function TimeField({
         type="button"
         tabIndex={-1}
         disabled={disabled}
-        onMouseDown={(e) => { e.preventDefault(); clockOpen ? closeAll() : openClock() }}
+        onMouseDown={(e) => { e.preventDefault(); if (clockOpen) closeAll(); else openClock() }}
         className="absolute inset-y-0 right-0 flex items-center px-2 text-slate-400 hover:text-amber-600"
         aria-label="Open clock"
       >

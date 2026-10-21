@@ -95,6 +95,7 @@ export function LabelPicker({
         <span className="text-[13px] font-bold text-navy-900" aria-live="polite">
           {chosenCount} of {faces.length} selected
         </span>
+        <span className="text-[12px] text-[var(--color-slate-500)]">Untick any you don&apos;t want.</span>
         <button
           type="button"
           onClick={() => onChange(shown, true)}

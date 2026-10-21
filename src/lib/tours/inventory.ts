@@ -153,7 +153,7 @@ export const INVENTORY_TOURS: GuidedTour[] = [
       { selector: '[data-tour="prod-search"]', title: 'Search', say: 'Search by name, SKU or part number. The slash key jumps here.' },
       { selector: '[data-tour="prod-category-tiles"]', title: 'Shop by category', say: 'Each tile is a category, with how many items it has, what’s on hand and whether anything is low. Tap one to narrow the list.', optional: 'Shows when you have product categories' },
       { selector: '[data-tour="prod-table"]', title: 'Your products', say: 'Click any row for the details. The stock number tells you where to find it, and red means it’s at or below the reorder point.' },
-      { selector: '[data-tour="prod-view"]', title: 'One product', say: 'Everything about this product at a glance: price, stock in each place, and what that stock is worth at your cost.', optional: 'Click a product to see this' },
+      { selector: '[data-tour="prod-view-top"]', title: 'One product', say: 'Everything about this product at a glance: price, stock in each place, and what that stock is worth at your cost.', optional: 'Click a product to see this' },
       { selector: '[data-tour="prod-form"]', title: 'Add or edit', say: 'Only the name is required. Leave the SKU blank and one is made for you when you save, or press Generate.', optional: 'Open New Product or Edit to see this' },
     ],
   },

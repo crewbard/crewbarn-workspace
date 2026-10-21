@@ -43,6 +43,7 @@ import 'react-big-calendar/lib/css/react-big-calendar.css'
 import 'react-big-calendar/lib/addons/dragAndDrop/styles.css'
 import { matteStatusBorder, matteStatusFill, matteStatusTextColor, statusAccentColor, toHexColor, textColorOn, visibleStatusColor } from '@/lib/statusColor'
 import { LateRiskPanel } from '@/components/schedule/LateRiskPanel'
+import { useNow } from '@/lib/useNow'
 
 const locales = { 'en-US': enUS }
 const localizer = dateFnsLocalizer({
@@ -2038,13 +2039,14 @@ function UnscheduledRow({
  * which removes them from this list automatically.
  */
 function PendingEstimatesPanel() {
+  const now = useNow(60_000)
   const { data, isLoading, isError, isFetching, refetch } = useEstimates({ status: 'sent', per_page: 25 })
   const rows = data?.data ?? []
 
   function relativeExpiry(iso: string | null): string {
     if (!iso) return ''
     const d = new Date(iso)
-    const ms = d.getTime() - Date.now()
+    const ms = d.getTime() - now
     const days = Math.round(ms / 86_400_000)
     if (days < 0) return `expired ${-days}d ago`
     if (days === 0) return 'expires today'
@@ -2080,7 +2082,7 @@ function PendingEstimatesPanel() {
         {!isLoading && !isError && rows.map((est) => {
           const expiringSoon =
             !!est.expires_at &&
-            new Date(est.expires_at).getTime() - Date.now() < 3 * 86_400_000
+            new Date(est.expires_at).getTime() - now < 3 * 86_400_000
           return (
             <li key={est.id} className="px-4 py-2 hover:bg-slate-50">
               <Link to={`/estimates/${est.id}`} className="block">

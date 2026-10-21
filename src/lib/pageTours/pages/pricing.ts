@@ -36,5 +36,6 @@ export const PAGE_TOUR: PageTour = {
     { id: 'amount', selector: t('disc-form-amount'), title: 'Percent or dollars', say: 'Pick a percentage or a fixed amount, then how much comes off.' },
     { id: 'code', selector: t('disc-form-code'), title: 'Code', say: 'An optional code for a deal you advertise.' },
     { id: 'active', selector: t('disc-form-active'), title: 'Active', say: 'Untick Active to retire a discount and keep it on the list.' },
+    { id: 'save', selector: t('disc-save'), when: FORM, title: 'Save and check', say: 'Press Create for a new discount or Save for an existing one. Wait for the form to close, then check the amount and active state in the list. Try the discount on a draft estimate and check the total before sending anything.' },
   ],
 }

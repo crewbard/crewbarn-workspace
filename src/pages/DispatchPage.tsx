@@ -1347,7 +1347,7 @@ function DispatchMap({
   // Jobs (and their techs) predicted to be late → ⚠ above the job pin + red tech
   // pill. Mirror of the server at_risk heuristic; recomputes on each GPS poll.
   const atRiskSets = useMemo(() => {
-    const now = Date.now()
+    const now = nowMs
     const jobsSet = new Set<string>()
     const techsSet = new Set<string>()
     for (const j of jobs) {
@@ -1369,7 +1369,7 @@ function DispatchMap({
       }
     }
     return { jobs: jobsSet, techs: techsSet }
-  }, [jobs, positions])
+  }, [jobs, positions, nowMs])
 
   // Lasso bulk-assign: draw a box → select the jobs inside → assign all to one
   // tech. The drawing manager is created once the map is ready (effect below).

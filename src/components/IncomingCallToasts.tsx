@@ -30,6 +30,7 @@ import {
   RECENT_INCOMING_CALLS_QUERY_KEY,
   type IncomingCallAlert,
 } from '@/lib/incomingCalls'
+import { useNow } from '@/lib/useNow'
 
 const CALL_TOAST_SUPPRESSION_MS = 45_000
 /** A queued call this recent still counts as waiting for the pill. */
@@ -162,6 +163,7 @@ export function IncomingCallToasts() {
     }
   }, [])
 
+  const now = useNow(30_000)
   const waiting = useMemo<Array<{ call: IncomingCallAlert; view: WaitingCall }>>(() => {
     void queueTick
     return waitingCalls(recentCallsQ.data ?? [], {
@@ -169,10 +171,10 @@ export function IncomingCallToasts() {
       queued: readQueuedIncomingCallKeys(),
       isHandled: isIncomingCallHandled,
       shownKey: toastShowing && visibleCall ? incomingCallKey(visibleCall) : null,
-      now: Date.now(),
+      now,
       windowMs: WAITING_WINDOW_MS,
     }).map((call) => ({ call, view: waitingView(call, incomingCallKey(call)) }))
-  }, [recentCallsQ.data, visibleCall, toastShowing, queueTick])
+  }, [recentCallsQ.data, visibleCall, toastShowing, queueTick, now])
 
   // Two or more calls at once: the card plus one waiting, or two waiting.
   const pillCalls = pillCount(waiting.length, toastShowing) ? waiting : []

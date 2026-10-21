@@ -88,7 +88,8 @@ export function NotificationCard({
 
   const [leaving, setLeaving] = useState(false)
   const [left, setLeft] = useState(token.seconds * 1000)
-  const started = useRef(Date.now())
+  const [mountedAt] = useState(() => Date.now())
+  const started = useRef(mountedAt)
 
   // The flick-out has to finish before the toast is taken away, so dismissing
   // runs the animation first and calls back after it.

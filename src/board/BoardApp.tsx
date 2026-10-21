@@ -83,12 +83,15 @@ export function BoardApp() {
 
   // ── pairing ───────────────────────────────────────────────────────────
   const beginPairing = useCallback(async () => {
-    try {
-      setPairing(await startPairing())
-    } catch {
-      // Even this failing must not blank the screen. Try again shortly.
-      window.setTimeout(() => void beginPairing(), 5000)
+    const attempt = async (): Promise<void> => {
+      try {
+        setPairing(await startPairing())
+      } catch {
+        // Even this failing must not blank the screen. Try again shortly.
+        window.setTimeout(() => void attempt(), 5000)
+      }
     }
+    await attempt()
   }, [])
 
   useEffect(() => {

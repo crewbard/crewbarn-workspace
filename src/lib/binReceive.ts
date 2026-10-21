@@ -192,7 +192,7 @@ export function capacityWarning(target: TreeNode, adding: number): string | null
 
 // ------------------------------------------------------------- menu ----
 
-export type MenuId = 'add-product' | 'add-po' | 'add-row' | 'print' | 'capacity' | 'catalog' | 'details'
+export type MenuId = 'add-product' | 'add-po' | 'add-row' | 'print' | 'capacity' | 'catalog' | 'start-po' | 'edit' | 'details'
 
 /** A way out of a "can't": a menu action or a page to open. */
 export type MenuFix = { label: string; action: MenuId } | { label: string; href: string }
@@ -214,6 +214,8 @@ export interface MenuRules {
   poRequired: boolean
   /** Lines waiting on open orders; undefined while still loading. */
   openPoLines: number | undefined
+  /** May put parts in the parts cart (inventory edit or order). Defaults to canEdit. */
+  canOrder?: boolean
 }
 
 /**
@@ -312,10 +314,21 @@ export function contextMenu(tree: BinTree, id: string, rules: MenuRules): MenuIt
   })
   items.push({ id: 'print', label: n.children.length ? 'Print labels for this and inside' : 'Print label', disabled: false })
   items.push({
-    id: 'capacity', label: n.bin?.capacity ? `Change how many fit (${n.bin.capacity})` : 'Set how many fit',
+    id: 'capacity', label: n.capacity ? `Change how many fit (${n.capacity})` : 'Set how many fit',
     disabled: !rules.canEdit, reason: rules.canEdit ? undefined : noBins,
   })
   items.push({ id: 'catalog', label: "See what's inside", disabled: false })
+  // What's low in here goes to the parts cart (Order parts), like Needs ordering.
+  const canOrder = rules.canOrder ?? rules.canEdit
+  items.push({
+    id: 'start-po', label: 'Start PO', disabled: !canOrder,
+    reason: canOrder ? undefined : 'Ordering parts needs the Inventory edit or order permission. Ask an owner or admin.',
+  })
+  // Rename, change the code or move it: the same editor as the panel's Move or edit.
+  items.push({
+    id: 'edit', label: `Edit ${(n.bin?.kind || 'bin').toLowerCase()}`,
+    disabled: !rules.canEdit, reason: rules.canEdit ? undefined : noBins,
+  })
   items.push({ id: 'details', label: 'Details', disabled: false })
   return items
 }

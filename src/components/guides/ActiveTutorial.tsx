@@ -615,15 +615,15 @@ export default function ActiveTutorial({
           <span className="cbat-avatar" aria-hidden="true">CB</span>
           <div className="min-w-0 flex-1">
             <div className="text-xs font-bold uppercase tracking-[0.14em] text-amber-300">{data.kicker}</div>
-            <div className="text-lg font-black">{fullMode ? 'That’s the whole tour' : pageMode ? 'That’s this page' : 'You’ve done the whole thing'}</div>
+            <div className="text-lg font-black">You’ve reached the end of {fullMode ? 'the tour' : pageMode ? 'this page’s tour' : 'the tutorial'}</div>
           </div>
         </div>
         <p className="mt-3 text-sm leading-6 text-slate-200">
           {fullMode
-            ? 'You’ve seen every part of Connect. Take any page’s tour again from the tour button at the top of that page.'
+            ? 'Parts that weren’t available were skipped. Take any page’s tour again from the tour button at the top of that page when you’re ready to set it up.'
             : pageMode
-              ? 'Take this tour again any time from the tour button at the top of the page.'
-              : 'You walked the whole thing. Take any part again whenever you like, from Parts or the Tutorial button at the top of the page.'}
+              ? 'Parts that weren’t available were skipped. Take this tour again any time from the tour button at the top of the page.'
+              : 'Parts that weren’t available were skipped. Take any part again whenever you like, from Parts or the Tutorial button at the top of the page. Your setup is saved only when you save it on the page.'}
         </p>
         <div className="mt-4 flex flex-wrap gap-2">
           {data.film.length > 0 && <button type="button" onClick={replayFilm} className="rounded-xl border border-white/20 px-3 py-2 text-sm font-bold">Watch the film again</button>}

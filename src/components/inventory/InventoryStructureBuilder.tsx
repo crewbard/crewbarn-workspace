@@ -9,7 +9,7 @@ import { binLabelPickUrl } from '@/lib/binLabelPick'
 import {
   addRows, apiTreeToDraft, binsToDraft, codePath, copyAsSibling, countDraft, draftToApiTree, findNode, generateDraft,
   layerLabel, levelLine, levelSummaries, MAX_LAYERS, MAX_PER_LAYER, MAX_TREE_NODES, nextCodes, newKey, patchNode,
-  removeNode, renumberRoots, setCapacityMany, setRowCount, type DraftNode, type Layer, type Mode, type NodePatch,
+  nextFreeNote, removeNode, renumberRoots, shouldAutoNextFree, setCapacityMany, setRowCount, type DraftNode, type Layer, type Mode, type NodePatch,
 } from '@/lib/structureDraft'
 import {
   applyStructureTemplate, canUndo, copyPlace, deleteStructureTemplate, listStructureTemplates, saveStructureTemplate,
@@ -340,8 +340,39 @@ export function InventoryStructureBuilder({
   const useNextFree = () => {
     const r = renumberRoots(draft, existingRoots.map((b) => b.bin_code ?? ''))
     editTree(r.nodes, 'used the next free codes')
+    setAutoMoved(null)
     setNote(`${r.moved.map((m) => `${m.from} is now ${m.to}`).join(', ')}. Undo takes it back.`)
   }
+
+  // Building from the layers where R1 already exists: move on to the next free
+  // codes by themselves, once per layer shape and place. "Add into the existing
+  // ones" puts the clashing codes back on purpose and stops it for this place.
+  // Worked out while rendering (React's "adjust state when inputs change"), not in an effect.
+  const [autoTried, setAutoTried] = useState<ReadonlySet<string>>(() => new Set())
+  const [declinedIn, setDeclinedIn] = useState<string | null>(null)
+  const [autoMoved, setAutoMoved] = useState<{ from: string[]; before: Doc; after: Doc } | null>(null)
+  const autoSig = `${locationId}|${JSON.stringify(layers.map((l) => [l.name, l.count, l.mode, l.prefix, l.stock, l.capacity ?? null]))}`
+  if (shouldAutoNextFree({
+    fromLayers: !doc.custom, existingLoaded: existing.isSuccess, clashes: rootClashes.length,
+    declined: declinedIn === locationId, tried: autoTried.has(autoSig),
+  })) {
+    setAutoTried(new Set([...autoTried, autoSig]))
+    const r = renumberRoots(draft, existingRoots.map((b) => b.bin_code ?? ''))
+    if (r.moved.length) {
+      const after: Doc = { ...doc, custom: r.nodes, preset: null }
+      commit(after, 'used the next free codes')
+      setAutoMoved({ from: r.moved.map((m) => m.from), before: doc, after })
+      setNote(nextFreeNote(r.moved))
+    }
+  }
+  const intoExisting = () => {
+    if (!autoMoved) return
+    setDeclinedIn(locationId)
+    commit(autoMoved.before, 'added into the existing ones')
+    setNote(`Adding into the existing ${autoMoved.from.join(', ')}. What's already there stays as it is; only the missing places are made.`)
+    setAutoMoved(null)
+  }
+  const showIntoExisting = !!autoMoved && doc === autoMoved.after
 
   // ── templates ──
   const templates = useQuery({ queryKey: structureTemplateKeys.all, queryFn: listStructureTemplates, staleTime: 60_000 })
@@ -786,7 +817,8 @@ export function InventoryStructureBuilder({
               )}
             </div>
             <Conflicts conflicts={data?.conflicts ?? []} place={locationName} truncated={!!data?.truncated}
-              rootClashes={rootClashes} onNextFree={rootClashes.length ? useNextFree : undefined} />
+              rootClashes={rootClashes} onNextFree={rootClashes.length ? useNextFree : undefined}
+              intoExisting={showIntoExisting && autoMoved ? { codes: autoMoved.from, onChoose: intoExisting } : undefined} />
           </div>
         </div>
       </div>
@@ -841,12 +873,14 @@ function IconBtn({ title, disabled, onClick, d }: { title: string; disabled?: bo
 }
 
 function Conflicts({
-  conflicts, place, truncated, rootClashes, onNextFree,
+  conflicts, place, truncated, rootClashes, onNextFree, intoExisting,
 }: {
   conflicts: Array<{ path?: string; message: string }>
   place: string
   truncated: boolean
   rootClashes: string[]
+  /** After the codes moved on by themselves: build into the existing ones on purpose. */
+  intoExisting?: { codes: string[]; onChoose: () => void }
   onNextFree?: () => void
 }) {
   if (truncated) return <div />
@@ -860,6 +894,12 @@ function Conflicts({
       <p className="mb-2 mt-1 text-[11.5px] leading-relaxed text-slate-500">
         {clean ? 'Every code in this structure is new here.' : 'Existing places keep their stock and history. The ones that already exist are skipped, not overwritten.'}
       </p>
+      {intoExisting && (
+        <button type="button" onClick={intoExisting.onChoose}
+          className="mb-2 min-h-[40px] w-full rounded-lg border border-slate-300 bg-white px-3 text-left text-[12.5px] font-semibold text-slate-700 hover:bg-slate-50">
+          Add into the existing {intoExisting.codes.slice(0, 3).join(', ')}{intoExisting.codes.length > 3 ? '…' : ''} instead
+        </button>
+      )}
       {onNextFree && (
         <button type="button" onClick={onNextFree}
           className="mb-2 min-h-[40px] w-full rounded-lg border border-amber-300 bg-amber-50 px-3 text-left text-[12.5px] font-semibold text-amber-900 hover:bg-amber-100">

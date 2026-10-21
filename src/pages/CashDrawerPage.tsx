@@ -8,6 +8,7 @@ import { paymentMethodLabel } from '@/lib/paymentMethod'
 import { useTheme } from '@/hooks/useTheme'
 import { EasyPageHeading } from '@/components/easy/EasyPageHeading'
 import { EasyCashCount } from '@/components/easy/EasyCashCount'
+import { useNow } from '@/lib/useNow'
 
 /**
  * Cash drawer — queue of tech-collected payments waiting for a
@@ -133,6 +134,7 @@ function methodBucket(method: string): 'cash' | 'check' | 'card' | 'other' {
 }
 
 export function CashDrawerPage() {
+  const nowMs = useNow(60_000)
   const { theme } = useTheme()
   const easy = theme === 'easy-side' || theme === 'easy-top'
   const [tab, setTab] = useState<'pending' | 'received' | 'voided' | 'disputed' | 'all'>('pending')
@@ -282,7 +284,7 @@ export function CashDrawerPage() {
   // Chart data — AR aging buckets (by days past due) + received-by-method.
   const charts = useMemo(() => {
     const invoices = invoicesQ.data ?? []
-    const now = Date.now()
+    const now = nowMs
     const b = { current: 0, d30: 0, d60: 0, d90: 0, d90plus: 0 }
     for (const inv of invoices) {
       if (inv.status !== 'sent' || inv.money.balance_due_cents <= 0) continue
@@ -313,7 +315,7 @@ export function CashDrawerPage() {
       .map(([m, cents]) => ({ label: paymentMethodLabel(m), cents }))
 
     return { aging, methods }
-  }, [invoicesQ.data, receivedQ.data])
+  }, [invoicesQ.data, receivedQ.data, nowMs])
 
   return (
     <div className="mx-auto w-full max-w-none px-4 py-4 sm:px-6 sm:py-6 2xl:px-8">

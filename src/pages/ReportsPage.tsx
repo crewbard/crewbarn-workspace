@@ -1267,6 +1267,21 @@ export function ReportsPage() {
     savePresetMutation.mutate(preset)
   }
 
+  const setReportLayoutPreference = (next: ReportLayout) => {
+    setReportLayout(next)
+    setSearchParams((current) => {
+      const params = new URLSearchParams(current)
+      params.set('layout', next)
+      params.set('report', selectedReport)
+      return params
+    }, { replace: true })
+    try {
+      localStorage.setItem(reportLayoutKey, next)
+    } catch {
+      /* ignore */
+    }
+  }
+
   const openSavedReportPreset = (preset: SavedReportPreset) => {
     setSelectedReport(preset.report)
     setFrom(preset.from || defaults.from)
@@ -1313,20 +1328,6 @@ export function ReportsPage() {
     }
   }
 
-  const setReportLayoutPreference = (next: ReportLayout) => {
-    setReportLayout(next)
-    setSearchParams((current) => {
-      const params = new URLSearchParams(current)
-      params.set('layout', next)
-      params.set('report', selectedReport)
-      return params
-    }, { replace: true })
-    try {
-      localStorage.setItem(reportLayoutKey, next)
-    } catch {
-      /* ignore */
-    }
-  }
 
   const setReportDragPreference = (next: boolean) => {
     setReportDragMode(next)
